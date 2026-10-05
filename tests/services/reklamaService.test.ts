@@ -323,6 +323,46 @@ describe('reklamaOverview', () => {
   })
 })
 
+describe('reklamaOverview — the Collagen / Zextra switch', () => {
+  const leads = [
+    lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 30),
+    lead('2026-08-01', 'UC_0FMQ5Q', 'Недозвон', 'LOST', 5),
+    lead('2026-08-01', 'UC_A8LE21', 'Сделка успешна', 'WON', 12),
+  ]
+  const campaigns = [
+    campaign({ spendMicroUsd: 40_000_000n, conversations: 100 }), // Umar - 64 · Collagen DM
+    campaign({ accountId: '440073592484616', accountName: 'Zextra Umar', objective: 'OUTCOME_LEADS', spendMicroUsd: 8_000_000n, leads: 9 }),
+    campaign({ accountId: '517245084208402', accountName: 'Kosmetika Eldor', objective: 'OUTCOME_LEADS', spendMicroUsd: 3_000_000n }),
+    campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', spendMicroUsd: 5_000_000n, conversations: 9 }),
+  ]
+  const build = (brand?: 'all' | 'Collagen' | 'Zextra') =>
+    reklamaOverview({ window: WINDOW, pages: PAGES, leadRows: leads, campaignRows: campaigns, importedAt: null, brand })
+
+  it('keeps one brand\'s pages, leads and ad accounts — unmapped money drops out', () => {
+    const z = build('Zextra')
+    expect(z.dm.pages.map((p) => p.key)).toEqual(['UC_A8LE21'])
+    expect(z.quality.total).toMatchObject({ leads: 12, success: 12 })
+    expect(z.spend).toEqual({ totalUsd: 8, formUsd: 8, dmUsd: 0, hiringUsd: 0, otherUsd: 0 })
+    expect(z.form.owners.map((o) => o.key)).toEqual(['Zextra|Umar'])
+    expect(z.campaigns.map((c) => c.account)).toEqual(['Zextra Umar'])
+    expect(z.dm.unattributed).toEqual({ spendUsd: 0, conversations: 0 })
+
+    const c = build('Collagen')
+    expect(c.dm.pages.map((p) => p.key)).toEqual(['UC_1X1J24', 'UC_0FMQ5Q'])
+    expect(c.quality.total.leads).toBe(35)
+    expect(c.dm.total).toMatchObject({ spendUsd: 40, conversations: 100, qualified: 30 })
+  })
+
+  it('adds back up to «Hammasi» with the brandless accounts', () => {
+    const all = build()
+    const [c, z] = [build('Collagen'), build('Zextra')]
+    expect(c.quality.total.leads + z.quality.total.leads).toBe(all.quality.total.leads)
+    // Kosmetika and the unmapped account are neither brand's.
+    expect(c.spend.totalUsd + z.spend.totalUsd + 3 + 5).toBe(all.spend.totalUsd)
+    expect(build('all')).toEqual(all)
+  })
+})
+
 describe('ReklamaRepository.leadStageDays — the statement it sends', () => {
   const PERIOD: Period = {
     start: new Date('2026-07-31T19:00:00Z'),

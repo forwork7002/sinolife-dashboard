@@ -35,7 +35,7 @@ import {
 } from '@/server/integrations/meta/accounts'
 import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
-import type { TargetProduct } from '@/server/domain/types'
+import type { TargetProduct, TargetProductFilter } from '@/server/domain/types'
 import type {
   CampaignDayRow,
   LeadStageDayRow,
@@ -338,6 +338,12 @@ const SIDE_NAMES: Readonly<Record<SideColumn, string>> = { hr: 'HR', kosmetika: 
  * `pages` is the target pages in display order, each with its product; a page
  * with nothing on it in the window is still listed, so the columns do not
  * move from one month to the next.
+ *
+ * `brand` (the Collagen / Zextra switch) narrows all three ledgers before
+ * anything is summed: the pages and their leads to that brand's pages
+ * (`TARGET_SOURCE_PRODUCT` — every lead here is a target page's, so this is
+ * `leadBrand`'s answer too), the Meta rows to that brand's ad accounts. An
+ * account mapped to no brand (HR Eldor, Kosmetika) drops out with it.
  */
 export function reklamaOverview(input: {
   window: { from: string; to: string }
@@ -345,7 +351,18 @@ export function reklamaOverview(input: {
   leadRows: readonly LeadStageDayRow[]
   campaignRows: readonly CampaignDayRow[]
   importedAt: Date | null
+  brand?: TargetProductFilter
 }): ReklamaOverviewDto {
+  const brand = input.brand ?? 'all'
+  if (brand !== 'all') {
+    input = {
+      ...input,
+      brand: 'all',
+      pages: input.pages.filter((page) => page.product === brand),
+      leadRows: input.leadRows.filter((row) => TARGET_SOURCE_PRODUCT[row.sourceId] === brand),
+      campaignRows: input.campaignRows.filter((row) => ownerOf(row.accountId, row.accountName).product === brand),
+    }
+  }
   const days = calendarDays(input.window.from, input.window.to)
   const dmPageOf = new Map<TargetProduct, string>(
     (Object.entries(DM_PAGE_OF_PRODUCT) as [TargetProduct, string][]).map(([p, id]) => [p, id]),
@@ -634,7 +651,7 @@ const leadCache = ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE)
 export class ReklamaService {
   constructor(private readonly repository: ReklamaRepository) {}
 
-  async overview(period: Period, timeZone: string): Promise<ReklamaOverviewDto> {
+  async overview(period: Period, timeZone: string, brand: TargetProductFilter = 'all'): Promise<ReklamaOverviewDto> {
     const window = {
       from: zonedDateKey(period.start, timeZone),
       to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),
@@ -648,6 +665,7 @@ export class ReklamaService {
       this.repository.campaignsImportedAt(),
     ])
 
-    return reklamaOverview({ window, pages: orderedPages(named), leadRows, campaignRows, importedAt })
+    // The cache holds both brands' leads; the switch narrows after it.
+    return reklamaOverview({ window, pages: orderedPages(named), leadRows, campaignRows, importedAt, brand })
   }
 }

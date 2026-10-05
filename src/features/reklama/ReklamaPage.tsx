@@ -6,8 +6,9 @@ import { useMemo } from 'react'
 import { ErrorState } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
+import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
-import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
+import { type DashboardBrand, useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { usd } from '@/features/target/targetTheme'
 import { apiGet } from '@/lib/api'
 import { formatDateTime, formatNumber } from '@/lib/format'
@@ -41,7 +42,8 @@ import { TargetologDaySection } from './TargetologDaySection'
  */
 
 export function ReklamaPage() {
-  const { apiParams } = useDashboardFilters()
+  const { apiParams, filters } = useDashboardFilters()
+  const { brand } = filters
 
   const params = useMemo(() => {
     const out: Record<string, string | number> = { preset: apiParams.preset }
@@ -50,9 +52,12 @@ export function ReklamaPage() {
     return out
   }, [apiParams.preset, apiParams.from, apiParams.to])
 
+  // The brand reaches the overview only: «Targetologlar · kunlik» narrows its own answer in place.
+  const overviewParams = useMemo(() => (brand === 'all' ? params : { ...params, brand }), [params, brand])
+
   const overview = useQuery({
-    queryKey: ['reklama-overview', params],
-    queryFn: ({ signal }) => apiGet<ReklamaOverviewDto>('/reklama/overview', params, signal),
+    queryKey: ['reklama-overview', overviewParams],
+    queryFn: ({ signal }) => apiGet<ReklamaOverviewDto>('/reklama/overview', overviewParams, signal),
   })
 
   const status: Status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
@@ -66,6 +71,7 @@ export function ReklamaPage() {
       meta={overview.data?.meta}
       stale={overview.isPlaceholderData}
       period
+      toolbar={<DashboardBrandSwitch />}
     >
       <div className="flex min-w-0 flex-col gap-6">
         {status === 'error' ? (
@@ -77,13 +83,13 @@ export function ReklamaPage() {
           </Card>
         ) : (
           <>
-            <Tiles data={data} status={status} />
+            <Tiles data={data} status={status} brand={brand} />
             {/* The client's per-targetolog day sheet, full width so the targetologs stand side by side. */}
-            <TargetologDaySection params={params} />
+            <TargetologDaySection params={params} brand={brand} />
             {/* The HR · Kosmetika table sits beside the sheets on a wide screen, above them on a phone. */}
             <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start">
               <aside className="min-w-0 xl:sticky xl:top-0 xl:col-start-2 xl:row-start-1">
-                <SideSection side={data?.side} status={status} />
+                <SideSection side={data?.side} status={status} brand={brand} />
               </aside>
               <div className="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1">
                 <DmSection dm={data?.dm} status={status} />
@@ -99,7 +105,7 @@ export function ReklamaPage() {
   )
 }
 
-function Tiles({ data, status }: { data: ReklamaOverviewDto | undefined; status: Status }) {
+function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; status: Status; brand: DashboardBrand }) {
   if (status === 'ready' && data && data.importedAt === null) {
     return (
       <Card className="p-5">
@@ -137,7 +143,9 @@ function Tiles({ data, status }: { data: ReklamaOverviewDto | undefined; status:
                 ]
                   .filter(Boolean)
                   .join(', ')} — jadvallarga kirmaydi`
-              : 'Meta, barcha akkauntlar'
+              : brand === 'all'
+                ? 'Meta, barcha akkauntlar'
+                : `Meta, ${brand} akkauntlari`
           }
         />
         <UsdTile status={status} label="Lid-forma sarfi" value={spend?.formUsd ?? null} hint="«Отчёт Т»" />

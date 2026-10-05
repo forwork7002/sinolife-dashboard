@@ -1,6 +1,6 @@
 import { toPeriodDto } from '@/server/domain/period/period'
 import { getHandler, periodFrom } from '@/server/http/handler'
-import { periodQuerySchema } from '@/server/http/queryParams'
+import { reklamaOverviewQuerySchema } from '@/server/http/queryParams'
 import { reklamaService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
@@ -17,10 +17,11 @@ const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as con
 
 /**
  * «Reklama samarasi» — the client's «DM», «Отчёт Т» and lead-quality sheets
- * over the dashboard period, one row per Tashkent day. See reklamaService.ts.
+ * over the dashboard period, one row per Tashkent day, narrowed by the
+ * Collagen / Zextra switch (`brand`). See reklamaService.ts.
  */
-export const GET = getHandler(ACCESS, periodQuerySchema, async (ctx) => {
+export const GET = getHandler(ACCESS, reklamaOverviewQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const data = await reklamaService.overview(period, ctx.timeZone)
+  const data = await reklamaService.overview(period, ctx.timeZone, ctx.query.brand)
   return { data, meta: { period: toPeriodDto(period) } }
 })
