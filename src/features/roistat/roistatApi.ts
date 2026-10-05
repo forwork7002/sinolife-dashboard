@@ -15,7 +15,8 @@ import type { PeriodDto } from '@/lib/api'
 
 /**
  * The table's cut. `camp` → `adset` → `ad` drill into each other through
- * `parent`; the rest are flat.
+ * `parent`; the rest are flat. `days` is not a tab here: it is «Kunlar
+ * boʻyicha» on Savdo dinamikasi (`/analytics/sales-days`).
  */
 export type RoistatDim =
   | 'camp'
@@ -29,8 +30,9 @@ export type RoistatDim =
   | 'rop'
   | 'seller'
   | 'registrator'
+  | 'days'
 
-export const ROISTAT_DIMS: readonly RoistatDim[] = Object.freeze([
+export const ROISTAT_DIMS: readonly Exclude<RoistatDim, 'days'>[] = Object.freeze([
   'camp',
   'adset',
   'ad',
@@ -133,3 +135,6 @@ export interface RoistatOverviewDto {
    */
   readonly campaignSpendUsd: number
 }
+
+/** The «Дни» cut alone — `/analytics/sales-days`, `RoistatService.days`. */
+export type RoistatDaysDto = Pick<RoistatOverviewDto, 'dim' | 'columns' | 'rows' | 'total' | 'rate' | 'freshFrom'>

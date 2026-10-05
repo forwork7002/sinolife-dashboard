@@ -60,16 +60,27 @@ describe('RoistatRepository.bitrix', () => {
   it('binds exactly what it names, in both shapes', async () => {
     const { calls, repository } = recorder()
     await repository.bitrix(PERIOD, new Date('2026-10-05T00:00:00Z'))
-    await repository.bitrix(PERIOD, new Date('2026-10-05T00:00:00Z'), true)
+    await repository.bitrix(PERIOD, new Date('2026-10-05T00:00:00Z'), 'total')
     for (const call of calls) expectBound(call)
   })
 
   it('names no GROUPING() in the totals-only read, whose GROUP BY groups nothing', async () => {
     const { calls, repository } = recorder()
-    await repository.bitrix(PERIOD, new Date('2026-10-05T00:00:00Z'), true)
+    await repository.bitrix(PERIOD, new Date('2026-10-05T00:00:00Z'), 'total')
     const bare = calls[0]!.sql.replace(/\/\*[\s\S]*?\*\//g, '')
     expect(bare).not.toMatch(/GROUPING\(/)
     expect(bare).toMatch(/GROUPING SETS \(\(\)\)/)
+  })
+
+  it('reads only the () and (day) sets for «Kunlar boʻyicha»', async () => {
+    const { calls, repository } = recorder()
+    await repository.bitrix(PERIOD, new Date('2026-10-05T00:00:00Z'), 'days')
+    expectBound(calls[0]!)
+    const bare = calls[0]!.sql.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(bare).toMatch(/GROUPING SETS \(\(\), \(day\)\)/)
+    expect(bare.match(/GROUPING\(/g)).toHaveLength(1)
+    expect(bare).toContain('GROUPING(day)::int AS g_day')
+    expect(bare).toContain('NULL::text AS rop')
   })
 
   it('stops reading sales a month after the window, and never past now', async () => {

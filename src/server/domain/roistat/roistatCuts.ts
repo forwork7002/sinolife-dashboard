@@ -137,8 +137,7 @@ export function columnsOf(dim: RoistatDim): RoistatColumns {
     case 'ad':
       // No lead can be tied to an ad (UTM is empty), so Meta's figures stand alone.
       return { meta: true, leads: false, spend: true, sales: false }
-    case 'days':
-      return { meta: true, leads: true, spend: true, sales: true }
+    case 'days': // the reference's «Дни» has no Meta group — Расход, then leads and sales (2026-10-05)
     case 'targetolog':
     case 'product':
       return { meta: false, leads: true, spend: true, sales: true }

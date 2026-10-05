@@ -91,12 +91,12 @@ function metaRow(fields: Partial<RoistatMetaRow>): RoistatMetaRow {
 }
 
 function harness() {
-  const bitrixCalls: { period: Period; now: Date; totalOnly: boolean }[] = []
+  const bitrixCalls: { period: Period; now: Date; shape: string }[] = []
   const metaCalls: unknown[][] = []
   const repository = {
-    bitrix: async (period: Period, now: Date, totalOnly = false) => {
-      bitrixCalls.push({ period, now, totalOnly })
-      return totalOnly
+    bitrix: async (period: Period, now: Date, shape = 'all') => {
+      bitrixCalls.push({ period, now, shape })
+      return shape === 'total'
         ? [bitrixRow('total', { leads: 50, sold: 5, soldMinor: 5_000_000_00n })]
         : [
             bitrixRow('total', { leads: 100, kval: 40, sold: 10, soldMinor: 12_000_000_00n }),
@@ -152,10 +152,10 @@ describe('RoistatService.overview', () => {
   it('reads the previous cohort at the same age, not as of today', async () => {
     const { service, bitrixCalls } = harness()
     await service.overview(PERIOD, { dim: 'camp' }, NOW)
-    const previous = bitrixCalls.find((c) => c.totalOnly)!
+    const previous = bitrixCalls.find((c) => c.shape === 'total')!
     const shift = PERIOD.start.getTime() - previous.period.start.getTime()
     expect(previous.now.getTime()).toBe(NOW.getTime() - shift)
-    expect(bitrixCalls.find((c) => !c.totalOnly)!.now).toEqual(NOW)
+    expect(bitrixCalls.find((c) => c.shape === 'all')!.now).toEqual(NOW)
   })
 
   it('lists only ad-budget campaigns on the Meta cut, biggest spend first', async () => {
@@ -189,6 +189,26 @@ describe('RoistatService.overview', () => {
     expect(usdDays[0]).toEqual(['2026-10-05'])
     expect(r.rate).toEqual({ uzsPerUsd: 12_000, date: '2026-10-05' })
     expect(r.freshFrom).toBe('2026-09-29')
+  })
+})
+
+describe('RoistatService.days — «Kunlar boʻyicha» on Savdo dinamikasi', () => {
+  it('answers the overview\'s «Дни» rows exactly, without the previous window or Meta cut', async () => {
+    const { service, bitrixCalls, metaCalls } = harness()
+    const overview = await service.overview(PERIOD, { dim: 'days' }, NOW)
+    bitrixCalls.length = 0
+    const days = await service.days(PERIOD, NOW)
+    expect(days.dim).toBe('days')
+    expect(days.rows).toEqual(overview.rows)
+    expect(days.total).toEqual(overview.total)
+    expect(days.columns).toEqual(overview.columns)
+    expect(days.rate).toEqual(overview.rate)
+    expect(days.freshFrom).toBe(overview.freshFrom)
+    // Newest day first, as the reference's «Дни».
+    expect(days.rows.map((r) => r.key)).toEqual(['2026-10-02', '2026-10-01'])
+    // Only the () and (day) sets are asked for.
+    expect(bitrixCalls.map((c) => c.shape)).toEqual(['days'])
+    expect(metaCalls).toHaveLength(0)
   })
 })
 

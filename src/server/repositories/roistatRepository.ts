@@ -113,14 +113,19 @@ export class RoistatRepository {
    * Bitrix cuts and the chart's revenue are groupings of the same rows read
    * at the same instant, so each cut's ИТОГО is the tiles' figure.
    *
-   * `totalOnly` reads the () set alone: the previous window's tiles.
+   * `shape` narrows the grouping: `total` reads the () set alone (the
+   * previous window's tiles), `days` the () and (day) sets («Kunlar
+   * boʻyicha», polled by every open Savdo dinamikasi tab — the seven other
+   * cuts would be computed and thrown away).
    */
-  async bitrix(period: Period, now: Date, totalOnly = false): Promise<RoistatBitrixRow[]> {
+  async bitrix(period: Period, now: Date, shape: 'all' | 'days' | 'total' = 'all'): Promise<RoistatBitrixRow[]> {
     // Sales deals open after their lead; none can belong to the window once a month has passed.
     const scanEnd = new Date(Math.min(now.getTime(), period.end.getTime() + ORIGIN_LEAD_DAYS * 86_400_000))
-    const sets = totalOnly
+    const sets = shape === 'total'
       ? '()'
-      : `(),
+      : shape === 'days'
+        ? '(), (day)'
+        : `(),
         (day),
         (form_title, targetolog),
         (source_id, source_name),
@@ -130,8 +135,9 @@ export class RoistatRepository {
         (seller),
         (registrar)`
     /*
-      GROUPING() may only name columns the GROUP BY groups, so the totals-only
-      read answers every flag as «rolled up» and every key as null itself.
+      GROUPING() may only name columns the GROUP BY groups, so a narrowed
+      read answers every other flag as «rolled up» and every other key as
+      null itself.
     */
     const keys = ['day', 'source_id', 'source_name', 'form_title', 'targetolog', 'product_line', 'region', 'rop', 'seller', 'registrar']
     const flags: readonly (readonly [string, string])[] = [
@@ -146,9 +152,10 @@ export class RoistatRepository {
       ['g_seller', 'seller'],
       ['g_registrar', 'registrar'],
     ]
+    const grouped = (column: string) => shape === 'all' || (shape === 'days' && column === 'day')
     const columns = [
-      ...flags.map(([alias, column]) => `${totalOnly ? '1' : `GROUPING(${column})::int`} AS ${alias},`),
-      ...keys.map((key) => `${totalOnly ? `NULL::text AS ${key}` : key},`),
+      ...flags.map(([alias, column]) => `${grouped(column) ? `GROUPING(${column})::int` : '1'} AS ${alias},`),
+      ...keys.map((key) => `${grouped(key) ? key : `NULL::text AS ${key}`},`),
     ].join('\n        ')
 
     const rows = await this.prisma.$queryRawUnsafe<

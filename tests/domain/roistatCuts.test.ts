@@ -80,6 +80,10 @@ describe('columnsOf', () => {
     )
     expect(withSpend).toEqual(['targetolog', 'product', 'days'])
   })
+
+  it('draws «Дни» as the reference does — Расход, leads and sales, no Meta group', () => {
+    expect(columnsOf('days')).toEqual({ meta: false, leads: true, spend: true, sales: true })
+  })
 })
 
 describe('bitrixCut', () => {

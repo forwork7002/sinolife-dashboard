@@ -3,89 +3,32 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-import { type Column, DataTable } from '@/components/ui/DataTable'
+import type { RoistatDaysDto } from '@/features/roistat/roistatApi'
+import { RoistatTable, dayLabel } from '@/features/roistat/RoistatTable'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
-import { type AdSalesDayDto, type AdSalesDaysDto, apiGet } from '@/lib/api'
-import { formatCents, formatFullUzs } from '@/lib/format'
+import { apiGet } from '@/lib/api'
+import { formatFullUzs } from '@/lib/format'
 
 /**
- * «Kunlar boʻyicha» — Сана · Реклама жами · Жами савдо факт1 · Первичка · База.
+ * «Kunlar boʻyicha» — Roistat's «Дни» cut, drawn here as the client's
+ * dashboard draws it (2026-10-05: «dashboarddagi Дни qanday boʻlsa, shunday
+ * boʻlishi kerak»): Расход · Лиды · Чистые · Качество · CPL · Квал · QL % ·
+ * CPQL · Заказы · Продажи · Выкуп · CPO · Ср.чек · ROAS, newest day first, in
+ * soʻm. The same `RoistatTable` and the same server rows as /roistat
+ * (`RoistatService.days`), so the two can never disagree. Its own path,
+ * `/analytics/sales-days`: the morning's table answered `/analytics/ad-sales-days`
+ * in another shape, and a tab still running that bundle must get a 404 it
+ * survives, not rows it would crash on. It replaced the
+ * day's ad $ / FAKT 1 / Первичка / База table of the same morning.
  *
- * Asked for on 2026-10-05 in place of Roistat's «Дни» cut, which dated a sale
- * by its origin lead's day and so never matched the FAKT 1 on this page. Here
- * FAKT 1 is the hero's own (the queue cohort, /rnp's «Сумма ФАКТ 1»), split by
- * the selling team: База = the БАЗА teams, Первичка = everyone else. The ad
- * money is /rnp's «Жами бюджет»: Meta, Collagen + Zextra, hiring left out.
- * See domain/sales/adSalesDays.ts.
+ * A LEAD COHORT, not the queue cohort the rest of this page reads: a sale
+ * sits on its origin lead's day, so «Продажи» here is not FAKT 1 and the
+ * caption says so.
  *
  * THE WINDOW ONLY. Meta money has no employee, department or source, so the
- * page's filters do not reach this table and the caption says so when one is
- * set. Rendered for a company-wide account only — the endpoint refuses a
- * narrowed one (`ForecastSection` decides).
+ * page's filters do not reach this table. Rendered for a company-wide account
+ * only — the endpoint refuses a narrowed one (`ForecastSection` decides).
  */
-
-type Line = { readonly kind: 'day' | 'total'; readonly row: AdSalesDayDto }
-
-const TOTAL_KEY = '__total__'
-
-/** «05.10.2026» from `YYYY-MM-DD`. */
-function dayLabel(date: string): string {
-  return `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(0, 4)}`
-}
-
-const strong = (line: Line, text: string) => (line.kind === 'total' ? <strong>{text}</strong> : text)
-
-function columns(openDay: string | null): readonly Column<Line>[] {
-  return [
-    {
-      key: 'date',
-      header: 'Сана',
-      rowHeader: true,
-      render: (line) =>
-        line.kind === 'total' ? (
-          <span className="eyebrow">Жами</span>
-        ) : (
-          <span className="whitespace-nowrap">
-            {dayLabel(line.row.date)}
-            {line.row.date === openDay && (
-              <span className="ml-1" title="Kun hali yopilmagan — reklama va FAKT 1 hali tushmoqda">
-                ⏳<span className="sr-only"> kun hali yopilmagan</span>
-              </span>
-            )}
-          </span>
-        ),
-    },
-    {
-      key: 'spend',
-      header: 'Реклама жами, $',
-      align: 'right',
-      numeric: true,
-      render: (line) => strong(line, formatCents(line.row.spendUsd)),
-    },
-    {
-      key: 'fakt1',
-      header: 'Жами савдо факт1',
-      align: 'right',
-      numeric: true,
-      render: (line) => strong(line, formatFullUzs(line.row.fakt1)),
-    },
-    {
-      key: 'primary',
-      header: 'Первичка',
-      align: 'right',
-      numeric: true,
-      render: (line) => strong(line, formatFullUzs(line.row.primary)),
-    },
-    {
-      key: 'base',
-      header: 'База',
-      align: 'right',
-      numeric: true,
-      render: (line) => strong(line, formatFullUzs(line.row.base)),
-    },
-  ]
-}
-
 export function AdSalesDaysTable() {
   const { apiParams, activeCount } = useDashboardFilters()
 
@@ -97,20 +40,14 @@ export function AdSalesDaysTable() {
   }, [apiParams.preset, apiParams.from, apiParams.to])
 
   const query = useQuery({
-    queryKey: ['ad-sales-days', params],
-    queryFn: ({ signal }) => apiGet<AdSalesDaysDto>('/analytics/ad-sales-days', params, signal),
+    queryKey: ['sales-days', params],
+    queryFn: ({ signal }) => apiGet<RoistatDaysDto>('/analytics/sales-days', params, signal),
     placeholderData: keepPreviousData,
   })
 
   const data = query.data?.data
   // A failed BACKGROUND refetch keeps the rows on screen; the error state is for having none.
   const status = query.isPending ? 'loading' : !data ? 'error' : 'ready'
-  const lines: Line[] = data
-    ? [
-        ...data.rows.map((row) => ({ kind: 'day' as const, row })),
-        ...(data.rows.length > 1 ? [{ kind: 'total' as const, row: { ...data.total, date: TOTAL_KEY } }] : []),
-      ]
-    : []
 
   return (
     <div
@@ -120,24 +57,35 @@ export function AdSalesDaysTable() {
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h3 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-          Kunlar boʻyicha · reklama va FAKT 1
+          Kunlar boʻyicha · Дни
         </h3>
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          Реклама — Meta (Collagen + Zextra, ishga olishsiz) · База — БАЗА jamoalari, Первичка — qolganlari
+          Roistat «Дни» · sotuv lid kelgan kunga yoziladi (FAKT 1 emas) · Расход — Meta, ishga olishsiz
+          {data?.rate && ` · kurs ${formatFullUzs(Math.round(data.rate.uzsPerUsd))} soʻm (${dayLabel(data.rate.date)})`}
           {activeCount > 0 && ' · filtrlar bu jadvalga taʼsir qilmaydi, butun kompaniya'}
         </p>
       </div>
-      <DataTable
-        columns={columns(data?.openDay ?? null)}
-        rows={lines}
-        rowKey={(line) => line.row.date}
+      {data && data.rate === null && (
+        <p
+          role="note"
+          className="rounded-lg px-3 py-2 text-xs"
+          style={{
+            background: 'color-mix(in oklab, var(--status-warning) 12%, transparent)',
+            borderLeft: '3px solid var(--status-warning)',
+            color: 'var(--ink-primary)',
+          }}
+        >
+          CBU kursi olinmadi — soʻmdagi Расход, CPL, CPQL, CPO va ROAS hozircha chiqmaydi.
+        </p>
+      )}
+      <RoistatTable
+        data={data}
         status={status}
+        currency="uzs"
         errorMessage={query.error instanceof Error ? query.error.message : undefined}
         onRetry={() => void query.refetch()}
         emptyTitle="Bu davrda kun yoʻq"
-        stickyLastRow={lines.length > 1}
-        stickyColumns={1}
-        minWidth={640}
+        emptyBody="Tanlangan davrda na Meta rasxodi, na Bitrix24 lidi topildi."
       />
     </div>
   )
