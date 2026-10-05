@@ -1,33 +1,28 @@
 'use client'
 
-import { useState } from 'react'
-
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { SectionHeader } from '@/components/ui/Stat'
 import { PRODUCT_TONE, usd } from '@/features/target/targetTheme'
 
 import type { DmBlockDto, DmCellsDto, DmPageDto } from './reklamaApi'
-import { type DayRow, DayCell, type Status, TableCard, SlicePicker, count, dayRows, money, muted, pct } from './reklamaUi'
+import { DmSheet } from './DmSheet'
+import { type Status, TableCard, count, money, muted, pct } from './reklamaUi'
 
 /**
  * «DM» — the client's sheet of Instagram-message advertising, per page.
  *
- * The sheet puts every page side by side, five columns each; every ad page
- * that way is more columns than anybody can read on a laptop. So the pages are
- * one table of totals, and the days are one page at a time — «Jami» first,
- * which is the sheet's «Итог» block.
+ * The pages are one table of totals, then the days the way the sheet lays
+ * them out: «Итог» and every page side by side, five columns each (asked for
+ * on 2026-10-05 with a screenshot of the sheet; until then the days were one
+ * page at a time behind a picker). Wider than a laptop, so it scrolls
+ * sideways under a pinned date column.
  *
  * Murojat and Reklama come from Meta's DM campaigns; Lid and Kval from the
  * page's Регистрация leads in Bitrix24. The two meet on the day and the page
  * and nowhere else, which the column headers say.
  */
 export function DmSection({ dm, status }: { dm: DmBlockDto | undefined; status: Status }) {
-  const [slice, setSlice] = useState<string>('total')
-
   const pages = dm?.pages ?? []
-  const chosen: DmPageDto | undefined = pages.find((p) => p.key === slice)
-  const days = chosen ? chosen.days : dm?.days
-  const total = chosen ? chosen.total : dm?.total
 
   type PageRow = { key: string; name: string; page: DmPageDto | null; cells: DmCellsDto }
   const pageRows: PageRow[] = dm
@@ -67,28 +62,10 @@ export function DmSection({ dm, status }: { dm: DmBlockDto | undefined; status: 
       </TableCard>
 
       <TableCard
-        title={`Kunlik — ${chosen ? chosen.name : 'barcha sahifalar'}`}
-        hint="Har kun alohida qator, oxirida davr jami — jadvaldagidek."
-        action={
-          <SlicePicker
-            ariaLabel="Qaysi sahifa"
-            value={chosen ? slice : 'total'}
-            onChange={setSlice}
-            options={[{ value: 'total', label: 'Jami' }, ...pages.map((p) => ({ value: p.key, label: p.name }))]}
-          />
-        }
+        title="Kunlik — sahifalar yonma-yon"
+        hint="Mijozning «DM» jadvalidek: chapda «Итог», keyin har sahifa alohida blok; tepada davr jami, ostida har kun."
       >
-        <DataTable<DayRow<DmCellsDto>>
-          columns={dayColumns}
-          rows={dayRows(days, total)}
-          rowKey={(r) => r.key}
-          status={status}
-          emptyTitle="Bu davrda maʼlumot yoʻq"
-          minWidth={860}
-          maxHeight="60dvh"
-          stickyColumns={1}
-          stickyLastRow
-        />
+        <DmSheet dm={dm} status={status} />
       </TableCard>
     </section>
   )
@@ -156,9 +133,4 @@ const pageColumns: readonly Column<{ key: string; name: string; page: DmPageDto 
       ),
   },
   ...cellColumns<{ cells: DmCellsDto }>((r) => r.cells),
-]
-
-const dayColumns: readonly Column<DayRow<DmCellsDto>>[] = [
-  { key: 'date', header: 'Kun', rowHeader: true, render: (r) => <DayCell date={r.date} /> },
-  ...cellColumns<DayRow<DmCellsDto>>((r) => r.cells),
 ]
