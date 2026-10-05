@@ -9,12 +9,16 @@ export const dynamic = 'force-dynamic'
 /**
  * Who reaches this endpoint: the capability, then the screen it feeds.
  *
- * COMPANY-WIDE: every ROP team, the registration desk and the Meta spend side
- * by side, with every team's plans. A ROP given TEAM scope is refused rather
- * than handed the other teams — narrowing it would have to reach the memo key
- * too.
+ * COMPANY-WIDE FOR EVERY CALLER (2026-10-05, the client: «rnp jadvali …
+ * global bo'ladi, rnp hammaga»). Every ROP team, the registration desk and the
+ * Meta spend side by side, with every team's plans — the sheet the ROPs are
+ * run by, so a ROP reads the whole of it, not their own block. Until then a
+ * TEAM-scoped account was refused here. `ctx.scope` is deliberately NOT read:
+ * the answer, and its memo, are the same for everyone. Who sees the screen at
+ * all is still the `rnp` section on the account; who may type plans is still
+ * `kpi:manage`. Pinned as such in `routeAccess.test.ts` (COMPANY_WIDE).
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'rnp' } as const
+const ACCESS = { permission: 'analytics:read:own', section: 'rnp' } as const
 
 const querySchema = z.object({
   /**

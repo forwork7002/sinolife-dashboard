@@ -138,11 +138,11 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
   */
   'leads',
   /*
-    «RNP JADVALI» (2026-09-28) FOR THE SAME REASON: the client's «СентябрРНП»
-    sheet sets every ROP team, the registration desk and the Meta spend side
-    by side, and its plans are every team's. `analytics:read:all`.
+    «RNP JADVALI» LEFT THE SET ON 2026-10-05 («rnp jadvali … global bo'ladi,
+    rnp hammaga»): it is still the whole company's sheet, but it is now SERVED
+    to a narrowed account as such, the way «Sotuvchilar reytingi» is — see
+    COMPANY_WIDE in `routeAccess.test.ts`.
   */
-  'rnp',
   /*
     «TARGET TAHLILI» FOR THE SAME REASON, TWICE OVER. Its leads sit in
     Регистрация with whichever registrar picked them up — nobody's sales team —

@@ -141,6 +141,7 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     'insights/structure': 'nothing on it to narrow: who reports to whom, and no figures',
     'insights/structure/roster': 'same as the tree above',
     kpi: 'spreads scope; plans and roster both narrowed',
+    'rnp/overview': 'COMPANY-WIDE ON PURPOSE — see COMPANY_WIDE below',
     'meta/alerts': 'the bell counts the caller\'s own backlog',
     'meta/filters': 'the roster it offers is filtered to the scope',
     search: 'every group is section-gated and the rows are scope-narrowed',
@@ -209,10 +210,16 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     seller and per team, FAKT 1 / FAKT 2 money, order counts, conversion and
     rank. No deal rows, no customers, no phone numbers, no costs, no salaries.
 
+    «RNP jadvali» joined it on 2026-10-05, the client's word: «rnp jadvali …
+    global bo'ladi, rnp hammaga» — every ROP reads the whole sheet the ROPs
+    are run by. What that discloses to a ROP: every team's FAKT 1 / FAKT 2,
+    leads, calls, plans and the brands' P&L lines, Meta spend included. No
+    deal rows, no customers, no phone numbers, no salaries.
+
     Everything else in NARROWS still has to be seen reading `ctx.scope`, which
-    is the point of keeping this a LIST of one rather than loosening the rule.
+    is the point of keeping this a short LIST rather than loosening the rule.
   */
-  const COMPANY_WIDE = ['analytics/sellers']
+  const COMPANY_WIDE = ['analytics/sellers', 'rnp/overview']
 
   it.each(
     Object.keys(NARROWS)
