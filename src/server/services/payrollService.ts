@@ -4,11 +4,15 @@
  * different window and a different table; see `domain/payroll/sellerPayroll`.
  *
  * ONE MEASUREMENT AND ONE RULE, kept apart. The measurement is FAKT 2 per
- * seller over the payroll window, read from the SAME query the sellers board
- * and the confirmation queue read (`confirmationSellerRating`), so a figure
- * printed here and the same person's Успешно on «Sotuvchilar reytingi» cannot
- * disagree. The rule is `domain/payroll/sellerPayroll`, which is the client's
- * own table transcribed and knows nothing about databases.
+ * seller BY THE DAY IT WAS DELIVERED (`deliveredSellerRows`) — the client,
+ * 2026-10-05: pay is the money delivered in the period. Until then it was the
+ * board's query (`confirmationSellerRating`), which dates FAKT 2 by the queue
+ * arrival: the running week read low, a closed month kept growing, and a
+ * parcel delivered this week was paid into last. So this figure and the same
+ * person's Успешно on «Sotuvchilar reytingi» now differ BY THE DATE ONLY —
+ * same orders, same seller (the team label follows the newest delivery). The rule is
+ * `domain/payroll/sellerPayroll`, which is the client's own table transcribed
+ * and knows nothing about databases.
  *
  * WHY IT DOES NOT GO THROUGH `SellerBoardService`. That service is the
  * protected board's own path — window from an `AnalyticsContext`, its own
@@ -118,7 +122,7 @@ export interface PayrollDto {
    * be able to say that out loud, or a mid-period total reads as a final one.
    */
   readonly open: boolean
-  /** Every seller with at least one order in the cohort, best FAKT 2 first. */
+  /** Every seller with money delivered in the period, best FAKT 2 first. */
   readonly sellers: readonly PayrollSellerDto[]
   readonly totals: {
     readonly sellers: number
@@ -212,10 +216,9 @@ export class PayrollService {
   }
 
   /*
-    COMPANY-WIDE, EXPLICITLY. `restrictToEmployeeIds: null` is the value the
-    repository reads as "everybody", and it is written here rather than left
-    to a default so the one screen in this product that states salaries says
-    whose rows it is asking for in its own source.
+    COMPANY-WIDE, EXPLICITLY. `deliveredSellerRows` takes no scope at all —
+    the one screen in this product that states salaries reads everybody's
+    rows, and the route refuses a narrowed account (see the header).
 
     FOLDED TO ONE ROW PER PERSON. The rating hands back a slice per seller
     and team since the team became the deal's own snapshot (2026-09-26),
@@ -223,12 +226,7 @@ export class PayrollService {
     tiers and rank one seller twice. See `mergeSellerTeamSlices`.
   */
   private async rows(period: Period): Promise<ConfirmationSellerRatingRow[]> {
-    return mergeSellerTeamSlices(
-      await this.insights.confirmationSellerRating({
-        ...period,
-        restrictToEmployeeIds: null,
-      }),
-    )
+    return mergeSellerTeamSlices(await this.insights.deliveredSellerRows(period))
   }
 
   private async build(
@@ -261,21 +259,22 @@ export class PayrollService {
       pay: sellerPayroll({ basisMinor: row.deliveredMinor, scheme }),
     }))
     /*
-      «HAD A PREVIOUS» MEANS DELIVERED MONEY THEN. The rating also returns a
-      seller whose orders were all still in flight (FAKT 2 = 0); counting that
-      as a baseline would print «baza yoʻq · oldin 0» where the screen means
-      «yangi», and rank them top of the risers with their whole FAKT 2.
+      «HAD A PREVIOUS» MEANS DELIVERED MONEY THEN. Every row carries a
+      delivery since the basis became the delivery day, but an order booked at
+      0 soʻm still makes a FAKT 2 of 0; counting that as a baseline would
+      print «baza yoʻq · oldin 0» where the screen means «yangi», and rank
+      them top of the risers with their whole FAKT 2.
     */
     const previousById = new Map(
       previousPay.filter((row) => row.fakt2 > 0n).map((row) => [row.employeeId, row]),
     )
 
     /*
-      FAKT 2 FIRST, THEN FAKT 1, THEN THE ID — the sellers board's rule,
-      mirrored. Delivered money leads because it is what the pay is computed
-      from; FAKT 1 separates the people FAKT 2 cannot yet (a fortnight that has
-      only just opened has almost no delivered money in it); the id is the last
-      resort so two people level on both do not swap places between refreshes.
+      FAKT 2 FIRST, THEN THE ID. Delivered money is what the pay is computed
+      from; the id is the last resort so two people level on it do not swap
+      places between refreshes. (FAKT 1 was the middle leg while the rows came
+      off the queue's rating; the delivery rows carry none, so it reads 0 on
+      every row and two equal FAKT 2s now share a rank.)
     */
     const ordered = [...rows].sort(
       (a, b) =>

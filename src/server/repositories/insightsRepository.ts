@@ -4823,6 +4823,125 @@ export class InsightsRepository {
   }
 
   /**
+   * FAKT 2 BY THE DAY IT WAS DELIVERED — the payroll's basis since 2026-10-05.
+   *
+   * The client, asked which date pays: «yetkazilgan sana». Their pay is the
+   * money delivered IN the period, whenever the order entered Тасдиклаш.
+   * `confirmationSellerRating` dates FAKT 2 by the queue arrival instead, which
+   * is right for the board and wrong for pay three ways: the running week read
+   * low (its orders were still on the road), a closed month kept growing as
+   * late parcels landed, and a parcel delivered this week was paid into last.
+   *
+   * Same FAKT 2 otherwise, so the two can only differ by the date: the deal's
+   * CURRENT stage is a delivery stage (`faktDeliveredSql` — a delivered order
+   * bounced back out is not delivered money today), the order passed through
+   * the confirmation queue (a CONFIRM_NEW arrival, the queue's own cohort
+   * rule — so an Ecommerce sale nobody confirmed is not some seller's pay),
+   * the seller is the operator else the owner, the team is the deal's
+   * snapshot else the seller's department, as `queueSql` names them.
+   *
+   * THE DELIVERY MOMENT IS THE LAST ENTRY INTO A DELIVERY STAGE — the one the
+   * deal stands in now. A deal with an entry in the window and a later one
+   * after it is paid in the later period, once. A delivered deal with no
+   * history row at all falls back to `closedAt` (Успешно is WON), so an order
+   * imported before its history is not lost.
+   *
+   * Returned in the rating's row shape with only the delivery fields filled,
+   * so `mergeSellerTeamSlices` folds it unchanged; `lastQueuedAt` carries the
+   * slice's newest delivery, which is what picks the seller's current team.
+   */
+  async deliveredSellerRows(period: { start: Date; end: Date }): Promise<ConfirmationSellerRatingRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { employee_id: string; full_name: string; rop: string | null; last_at: Date | null; orders: bigint; delivered: MoneyText }[]
+    >(
+      `
+      /*
+        WINDOW FIRST, so the cost follows the period and not the history.
+        Both arms below start from the window — the delivery-stage history on
+        (stageId, enteredAt), the fallback on (countsAsRevenue, status,
+        closedAt) — and only the deals that survive them are probed for the
+        rest, one index lookup each.
+
+        LEFT BOUND ONLY on the history scan, and that is load-bearing: the
+        deal's date is its LAST delivery entry, so a deal delivered in
+        September and again in October must read October's max and drop out
+        of September. Adding «< $2» inside the scan would give it a September
+        max as well, and pay it twice. The upper bound is the HAVING.
+      */
+      WITH delivered AS (
+        SELECT h."dealId" AS deal_id, max(h."enteredAt") AS delivered_at
+          FROM "deal_stage_history" h
+          JOIN "deal_stage" s ON s."id" = h."stageId" AND s."logisticsRole" = 'DELIVERED'
+         WHERE h."enteredAt" >= $1
+         GROUP BY h."dealId"
+        HAVING max(h."enteredAt") < $2
+      ),
+      dated AS (
+        SELECT deal_id, delivered_at FROM delivered
+        UNION ALL
+        -- No delivery row in the history at all (imported before it): Успешно is WON, so closedAt.
+        SELECT d."id", d."closedAt"
+          FROM "deal" d
+         WHERE d."countsAsRevenue" AND d."status" = 'WON'
+           AND d."closedAt" >= $1 AND d."closedAt" < $2
+           AND NOT EXISTS (
+             SELECT 1 FROM "deal_stage_history" h2
+               JOIN "deal_stage" s2 ON s2."id" = h2."stageId" AND s2."logisticsRole" = 'DELIVERED'
+              WHERE h2."dealId" = d."id")
+      )
+      SELECT
+        e."id" AS employee_id,
+        e."fullName" AS full_name,
+        COALESCE(
+          ${InsightsRepository.ropNameSql('d."operatorTeamSource"')},
+          ${InsightsRepository.ropNameSql('dep."name"')}
+        ) AS rop,
+        max(t.delivered_at) AS last_at,
+        count(*)::bigint AS orders,
+        sum(d."amountMinor")::text AS delivered
+      FROM dated t
+      JOIN "deal" d ON d."id" = t.deal_id AND d."countsAsRevenue"
+      -- Delivered NOW: a parcel delivered and then bounced back out is not delivered money today.
+      JOIN "deal_stage" ds ON ds."id" = d."stageId" AND ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')}
+      JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+      LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+      WHERE EXISTS (
+          SELECT 1 FROM "deal_stage_history" q
+            JOIN "deal_stage" qs ON qs."id" = q."stageId" AND qs."confirmationSignal" = 'CONFIRM_NEW'
+           WHERE q."dealId" = d."id"
+        )
+      GROUP BY 1, 2, 3
+      `,
+      period.start,
+      period.end,
+    )
+
+    return rows.map((r) => {
+      const orders = int(r.orders)
+      const deliveredMinor = money(r.delivered)
+      return {
+        employeeId: r.employee_id,
+        fullName: r.full_name,
+        rop: r.rop,
+        lastQueuedAt: r.last_at,
+        // No cohort here: the delivered count stands in, read only by the team fold's tie-break.
+        cohortOrders: orders,
+        confirmedOrders: 0,
+        confirmedMinor: 0n,
+        deliveredOrders: orders,
+        deliveredMinor,
+        inTransitOrders: 0,
+        inTransitMinor: 0n,
+        lostAfterConfirmOrders: 0,
+        lostAfterConfirmMinor: 0n,
+        rejectedOrders: 0,
+        byOutcome: { CONFIRM_NEW: 0, NO_ANSWER: 0, CONFIRMED: 0, REJECTED: 0, UNCONFIRMED_SHIPPED: 0 },
+        byOutcomeMinor: { CONFIRM_NEW: 0n, NO_ANSWER: 0n, CONFIRMED: 0n, REJECTED: 0n, UNCONFIRMED_SHIPPED: 0n },
+      }
+    })
+  }
+
+  /**
    * The per-day series, isolated for the same reason `ratingSql` is: it has to
    * be pinned against the board's own predicates without a database.
    *

@@ -46,7 +46,7 @@ function slice(employeeId: string, rop: string, fakt2Mln: number, day: number): 
 describe('payroll over per-team slices', () => {
   it('pays a seller who moved team once, on their whole FAKT 2', async () => {
     const insights = {
-      confirmationSellerRating: async () => [
+      deliveredSellerRows: async () => [
         slice('moved', 'Sevinchxon', 30, 10),
         slice('other', 'Lola', 45, 20),
         slice('moved', 'Sadriddin', 20, 24),
@@ -71,7 +71,7 @@ describe('payroll over per-team slices', () => {
 
   it('pays a week off the weekly table, with the rate on every row', async () => {
     const insights = {
-      confirmationSellerRating: async () => [
+      deliveredSellerRows: async () => [
         slice('a', 'Lola', 34.9, 29),
         slice('b', 'Lola', 12, 29),
       ],
@@ -112,7 +112,7 @@ describe('payroll growth and ROP cards', () => {
     const previous = comparablePayrollPeriod(period, payrollPeriod(monthBefore, 'first', TZ), now)
     const service = (current: ConfirmationSellerRatingRow[], then: ConfirmationSellerRatingRow[]) =>
       new PayrollService({
-        confirmationSellerRating: async (window: { start: Date }) =>
+        deliveredSellerRows: async (window: { start: Date }) =>
           window.start.getTime() === period.start.getTime() ? current : then,
       } as unknown as InsightsRepository)
     return { period, previous, service }
@@ -219,7 +219,7 @@ describe('payroll growth and ROP cards', () => {
     const whole = comparablePayrollPeriod(period, payrollPeriod('2025-07', 'first', TZ_), now)
     const cut = comparablePayrollPeriod(period, payrollPeriod('2025-07', 'first', TZ_), new Date('2025-08-05T06:00:00Z'))
     const service = new PayrollService({
-      confirmationSellerRating: async (window: { start: Date; end: Date }) =>
+      deliveredSellerRows: async (window: { start: Date; end: Date }) =>
         window.start.getTime() === period.start.getTime()
           ? [slice('a', 'Lola', 10, 10)]
           : [slice('a', 'Lola', window.end.getTime() === whole.end.getTime() ? 20 : 5, 5)],
@@ -233,7 +233,7 @@ describe('payroll growth and ROP cards', () => {
   it('does not ask for a comparison window that is empty', async () => {
     let calls = 0
     const insights = {
-      confirmationSellerRating: async () => {
+      deliveredSellerRows: async () => {
         calls += 1
         return [slice('a', 'Lola', 1, 10)]
       },

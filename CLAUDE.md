@@ -434,7 +434,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
-| Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` + `PayrollTeams` — three tabs, «Haftalik», «15 kunlik» (1–15 / 16–oxiri) and «Oylik» (2026-10-05); sellers in one card per ROP, every figure against the like period before | `/payroll/weekly`, `/payroll/sellers` | Payroll → Insights | **a payroll period** — a Monday-to-Sunday week (`week`, its Monday) or a calendar month / one half of it (`month` + `half`), resolved on the server. No dashboard preset reaches it |
+| Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` + `PayrollTeams` — three tabs, «Haftalik», «15 kunlik» (1–15 / 16–oxiri) and «Oylik» (2026-10-05); sellers in one card per ROP, every figure against the like period before | `/payroll/weekly`, `/payroll/sellers` | Payroll → Insights (`deliveredSellerRows`) | **a payroll period, on the DELIVERY day** (2026-10-05) — a Monday-to-Sunday week (`week`, its Monday) or a calendar month / one half of it (`month` + `half`), resolved on the server. No dashboard preset reaches it |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) — the sellers' seats and rows carry medals, the teams' carry none — and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
 | Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **nothing — the screen is DATELESS.** `period={false}`, no window control, and neither endpoint takes one |
@@ -1694,11 +1694,16 @@ Per-screen traps worth knowing before you touch one:
   part. Reinstating a dismissal rule would delete real pay. (The WEEK is
   different by its own table: under 15 mln it pays 0, and the row still shows,
   with the distance to 15 mln.)
-  **FAKT 2 AND NOTHING ELSE**, read from `confirmationSellerRating` — the same
-  query the sellers board reads — so a disputed figure can be traced on a
-  screen the floor already has. The service does NOT go through
-  `SellerBoardService`: that file serves the protected board, and payroll asks
-  a narrower question on a different clock.
+  **FAKT 2 AND NOTHING ELSE, DATED BY THE DELIVERY (2026-10-05).** The client,
+  asked which date pays: «yetkazilgan sana» — the money delivered IN the
+  period. `deliveredSellerRows` is the board's FAKT 2 (current stage DELIVERED,
+  passed through the queue, operator else owner, the deal's team) dated by the
+  LAST entry into a delivery stage (`closedAt` when there is no history row).
+  It was `confirmationSellerRating`, dated by the queue arrival: the running
+  week read low, a closed month kept growing, and a parcel delivered this week
+  was paid into last. So a seller's payroll FAKT 2 and their Успешно on
+  «Sotuvchilar reytingi» now differ BY THE DATE ONLY. The service does NOT go
+  through `SellerBoardService`.
   **THE WINDOW IS A CALENDAR FACT.** `payrollPeriod(month, half, tz)` and
   `payrollWeekPeriod(monday, tz)` (Monday 00:00 → next Monday, Tashkent; a
   non-Monday is a 400 at the schema) in `period.ts`; the endpoints take
@@ -1728,8 +1733,9 @@ Per-screen traps worth knowing before you touch one:
   (floored to the minute) while the period runs and is echoed as
   `meta.comparisonPeriod`. The previous window is paid by the same table; a
   seller absent then reads «yangi», and a team's previous figure groups the
-  previous sellers by the label they wore THEN. Mid-period growth reads low by
-  construction: the newer cohort's FAKT 2 is still being delivered.
+  previous sellers by the label they wore THEN. Both windows count money
+  delivered inside them, so mid-period growth is like for like (the
+  «oʻsish past koʻrinadi» note went with the queue basis).
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
 - **Struktura** — **no money and no reporting window, and both are load-bearing

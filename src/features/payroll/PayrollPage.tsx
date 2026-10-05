@@ -45,9 +45,9 @@ import { NO_ROP, NewChip, PayrollMovers, RopCards, RopCompareChart } from './Pay
  * IS the tier and a seller checks their pay by redoing one multiplication.
  *
  * FAKT 2, NEVER FAKT 1. «sotuvchilar oyligi fakt 2 ga qarab olinadi» —
- * delivered money, read from the same query the sellers board reads, so a
- * seller who disputes their pay can be shown the orders behind it on a screen
- * they already read.
+ * delivered money, BY THE DAY IT WAS DELIVERED since 2026-10-05 (the client:
+ * «yetkazilgan sana»). The sellers board dates the same FAKT 2 by the queue
+ * arrival, so the two differ by the date only — same orders, same seller.
  *
  * THIS IS THE ONE SCREEN WHERE A NUMBER IS SOMEBODY'S MONEY: ONE hero figure —
  * the fund actually paid out — with the three inputs beside it and a rail
@@ -119,15 +119,6 @@ export function PayrollPage() {
   const comparisonLabel = comparison ? comparisonText(comparison, data?.open ?? false) : null
   /* A delta over an empty comparison window (a period not started) says nothing. */
   const compared = Boolean(comparison && comparison.start !== comparison.end)
-  /*
-    Ended less than RECENT_DAYS ago (or still running): the comparison cohort
-    has had more time to be delivered, see the note under the hero.
-  */
-  const meta = data ? query.data?.meta : undefined
-  // Measured against the answer's own clock, not the browser's.
-  const recent = meta?.period
-    ? Date.parse(meta.period.end) > Date.parse(meta.generatedAt) - RECENT_DAYS * 86_400_000
-    : false
   /*
     Memoised because the groupings below depend on it: `data?.sellers ?? []`
     mints a fresh empty array on every render while the request is in flight.
@@ -349,21 +340,6 @@ export function PayrollPage() {
           <p className="mt-4 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
             Davr hali tugamagan — raqamlar hozirgacha yetkazilgan buyurtmalar boʻyicha va davr
             oxirigacha oʻsadi.
-          </p>
-        )}
-
-        {compared && recent && (
-          /*
-            THE GROWTH IS MEASURED ON TWO COHORTS OF DIFFERENT AGE. FAKT 2 is the
-            order's delivery status TODAY, and the comparison window's orders
-            have had a whole period longer to arrive — so while this period is
-            running, and for a fortnight after it closes, the change reads LOW.
-            The figures are not wrong; the comparison is younger on one side.
-          */
-          <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            Oʻsish haqida: FAKT 2 — buyurtmaning bugungi holati. Oʻtgan davr buyurtmalari
-            yetkazilishga koʻproq vaqt olgan, shuning uchun hozircha oʻsish biroz past koʻrinadi
-            — yangi buyurtmalar yetib borgani sari tenglashadi.
           </p>
         )}
       </section>
@@ -669,13 +645,6 @@ function tsvCell(value: string): string {
 // ---------------------------------------------------------------------------
 // The table
 // ---------------------------------------------------------------------------
-
-/**
- * How long after a period closes its growth still reads low. A fortnight
- * covers the bulk of delivery: most orders arrive within days, the slow tail
- * within two weeks (Logistika's wait bands).
- */
-const RECENT_DAYS = 14
 
 /** One identity for "no rows yet", so a pending render is not a new array. */
 const EMPTY_SELLERS: readonly PayrollSellerDto[] = []
