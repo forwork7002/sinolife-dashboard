@@ -31,8 +31,11 @@
  * with the desk's head, the registrars or the admin). A ROP's безквал leads
  * are the Регистрация deals created that day whose owner HEADS that team,
  * every stage — the portal's own filter (Воронка, Дата создания,
- * Ответственный). A deal owned by anyone who heads no team — a registrar
- * included, though she may sit in a ROP's unit — is «ROP belgilanmagan».
+ * Ответственный). One exception (the user, 2026-10-05): a registrar whose
+ * portal name carries «rop» («Davlat imomaliyev 104 rop», who sits in
+ * Shohjaxon(ROP)) counts for the ROP unit the portal lists them in. A deal
+ * owned by anyone else who heads no team — a registrar included, though she
+ * may sit in a ROP's unit — is «ROP belgilanmagan».
  *
  * Pure: rows in, a DTO out.
  */

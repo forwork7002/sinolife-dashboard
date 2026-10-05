@@ -53,6 +53,14 @@ describe('bezkvalDaysSql', () => {
     expect(sql).not.toContain('dep."name"')
   })
 
+  it('credits a registrar named «… rop» to the ROP unit the portal lists them in, the primary first', () => {
+    expect(sql).toContain(`FROM "department_member" m`)
+    expect(sql).toContain(`JOIN "department" md ON md."id" = m."departmentId" AND md."isActive"`)
+    expect(sql).toContain(`WHERE m."employeeId" = d."employeeId"`)
+    expect(sql).toContain(`AND e."fullName" ~* '(^|[^[:alpha:]])rop([^[:alpha:]]|$)'`)
+    expect(sql).toContain(`ORDER BY m."isPrimary" DESC, md."name"`)
+  })
+
   it('counts every stage, as the portal filter does', () => {
     expect(sql).not.toContain('stage')
     expect(sql).not.toContain('status')

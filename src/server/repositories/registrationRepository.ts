@@ -107,10 +107,13 @@ export class RegistrationRepository {
 
   /**
    * The Регистрация deals created each day, by the team their «Ответственный»
-   * heads — of two, the one they sit in, as `leadRopSql` reads a head — else
-   * null. Only a HEAD: a registrar sitting in a ROP's unit owns the deal as
-   * the desk, not as that ROP. Every stage, «Дубликат (лид)» included: the
-   * portal's filter. Served by the (pipelineId, createdAtSource) index.
+   * heads — of two, the one they sit in, as `leadRopSql` reads a head — then,
+   * for a registrar whose portal name carries «rop» («Davlat imomaliyev 104
+   * rop», the client 2026-10-05), the ROP unit the portal lists them in
+   * (`department_member`; the primary first) — else null. Any other registrar
+   * sitting in a ROP's unit owns the deal as the desk, not as that ROP. Every
+   * stage, «Дубликат (лид)» included: the portal's filter. Served by the
+   * (pipelineId, createdAtSource) index.
    */
   static bezkvalDaysSql(): string {
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
@@ -118,12 +121,22 @@ export class RegistrationRepository {
     return `
       SELECT
         (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
-        (SELECT ${InsightsRepository.ropNameSql('h."name"')}
-           FROM "department" h
-          WHERE h."headId" = d."employeeId" AND h."isActive"
-            AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
-          ORDER BY (h."id" = e."departmentId") DESC, h."name"
-          LIMIT 1) AS rop,
+        COALESCE(
+          (SELECT ${InsightsRepository.ropNameSql('h."name"')}
+             FROM "department" h
+            WHERE h."headId" = d."employeeId" AND h."isActive"
+              AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
+            ORDER BY (h."id" = e."departmentId") DESC, h."name"
+            LIMIT 1),
+          (SELECT ${InsightsRepository.ropNameSql('md."name"')}
+             FROM "department_member" m
+             JOIN "department" md ON md."id" = m."departmentId" AND md."isActive"
+            WHERE m."employeeId" = d."employeeId"
+              AND e."fullName" ~* '(^|[^[:alpha:]])rop([^[:alpha:]]|$)'
+              AND ${InsightsRepository.ropNameSql('md."name"')} IS NOT NULL
+            ORDER BY m."isPrimary" DESC, md."name"
+            LIMIT 1)
+        ) AS rop,
         count(*)::bigint AS leads
       FROM "deal" d
       JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
