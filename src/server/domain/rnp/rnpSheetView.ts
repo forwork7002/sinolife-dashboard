@@ -24,6 +24,9 @@
 import type { RnpBlockDto, RnpRowDto } from './rnpSheet'
 import { type RnpFactTone, type RnpLabelTone, RNP_SHEET_LAYOUT } from './rnpSheetLayout'
 
+/** A line's brand on the switch; `both` = a heading each brand keeps over its own rows. */
+export type RnpLineBrand = 'Collagen' | 'Zextra' | 'both'
+
 export type RnpLine =
   | {
       readonly kind: 'title'
@@ -36,6 +39,8 @@ export type RnpLine =
       readonly tone: RnpLabelTone
       /** The first line of a team the sheet has no block for — the page marks it so. */
       readonly added?: true
+      /** The Collagen / Zextra switch's brand (`lineBrand` in rnpSheet.ts); absent = company-wide. */
+      readonly brand?: RnpLineBrand
     }
   | {
       readonly kind: 'value'
@@ -50,6 +55,8 @@ export type RnpLine =
       readonly key: string | null
       /** The first line of a team the sheet has no block for — the page marks it so. */
       readonly added?: true
+      /** The Collagen / Zextra switch's brand (`lineBrand` in rnpSheet.ts); absent = company-wide. */
+      readonly brand?: RnpLineBrand
     }
 
 /*

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RnpLine, RnpRowDto } from '@/features/rnp/rnpApi'
-import { RNP_FIRST_MONTH, dayMonth, dayMonthYear, dayTone, indexTone, rnpMonthIn, ropLines } from '@/features/rnp/rnpDerive'
+import { RNP_FIRST_MONTH, brandLines, dayMonth, dayMonthYear, dayTone, indexTone, rnpMonthIn, ropLines } from '@/features/rnp/rnpDerive'
 
 /**
  * The grid's heat tint: a finished day of an additive row with a plan, read
@@ -100,5 +100,38 @@ describe('rnpMonthIn — a month the sheet can open on', () => {
     for (const v of ['0002-10', '0020-10', '0202-10', '2027-10', '2026-11', '2024-12', '2026-13', '2026-00', '2026-9', '2026-09-01', '', 'abc', null]) {
       expect(rnpMonthIn(v, '2026-10')).toBeNull()
     }
+  })
+})
+
+describe('brandLines', () => {
+  const line = (key: string | null, row: number, brand?: RnpLine['brand']): RnpLine => ({
+    kind: 'value', row, team: null, label: `r${row}`, sub: null, tone: 'plain', fact: 'plain', bold: false, key,
+    ...(brand ? { brand } : {}),
+  })
+  const lines: RnpLine[] = [
+    line('sv:fakt1', 348),
+    line('mk:zextra:spend', 38, 'Zextra'),
+    line('mk:collagen:spend', 14, 'Collagen'),
+    { kind: 'title', row: 3001, team: null, label: 'Регистрация лид → квал', sub: null, tone: 'section', brand: 'both' },
+    line(null, 1001, 'Zextra'),
+    line('reg:group:Asliddin:qualified', 1002, 'Zextra'),
+    line('team:Asliddin:fakt1', 132, 'Zextra'),
+    line('team:Sevinch:fakt1', 93, 'Collagen'),
+    line('wh:orders', 265),
+    line('pj:zextra:fakt1', 421, 'Zextra'),
+    line('pj:zextra:fakt2', 422, 'Zextra'),
+  ]
+
+  it('keeps the whole sheet on «Hammasi»', () => {
+    expect(brandLines(lines, 'all')).toBe(lines)
+  })
+
+  it('keeps one brand\'s lines, its P&L first, the shared heading over its groups', () => {
+    expect(brandLines(lines, 'Zextra').map((l) => l.row)).toEqual([421, 422, 38, 3001, 1001, 1002, 132])
+  })
+
+  it('leaves out every company-wide line', () => {
+    const rows = brandLines(lines, 'Collagen').map((l) => l.row)
+    expect(rows).toEqual([14, 3001, 93])
   })
 })

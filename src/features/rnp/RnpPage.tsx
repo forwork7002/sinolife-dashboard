@@ -6,7 +6,9 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useS
 import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { useCohortRop } from '@/features/cohort/useCohortRop'
+import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type Status, muted } from '@/features/reklama/reklamaUi'
 import { apiGet } from '@/lib/api'
 import { t } from '@/lib/messages'
@@ -14,7 +16,7 @@ import { t } from '@/lib/messages'
 import { RnpColumnScope } from './RnpColumnResizer'
 import { RnpSheetTable, scrollToToday } from './RnpSheetTable'
 import type { RnpOverviewDto } from './rnpApi'
-import { RNP_FIRST_MONTH, dayMonth, dayMonthYear, rnpMonthIn, ropLines } from './rnpDerive'
+import { RNP_FIRST_MONTH, brandLines, dayMonth, dayMonthYear, rnpMonthIn, ropLines } from './rnpDerive'
 import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
 
 /**
@@ -46,6 +48,10 @@ import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
  * roplar bo'yicha ham»): its block and its logistics, each
  * under a heading (`ropLines`). Kept in the URL (`?rop=`), so a link opens on
  * the team; no request — the whole sheet is already on the page.
+ *
+ * «Hammasi · Collagen · Zextra» CUTS IT TO ONE BRAND (2026-10-05) the same
+ * way, in the browser (`brandLines`): `?brand=`, and the ROP list offers only
+ * that brand's teams.
  */
 export function RnpPage() {
   const current = useCurrentMonth()
@@ -53,6 +59,8 @@ export function RnpPage() {
   // What the month box holds while it is not yet a month the sheet can show (`rnpMonthIn`).
   const [draft, setDraft] = useState<string | null>(null)
   const { rop, setRop } = useCohortRop()
+  const { filters } = useDashboardFilters()
+  const brand = filters.brand
   // The grid's box lives under the scope: the toolbar's «Bugun» scrolls it.
   const scope = useRef<HTMLDivElement>(null)
 
@@ -78,22 +86,20 @@ export function RnpPage() {
     logistics in a quiet month) is offered too, under its name in
     `data.teams`, else its block's column-B text.
   */
+  const branded = useMemo(() => (data ? brandLines(data.lines, brand) : []), [data, brand])
   const teams = useMemo(() => {
     if (!data) return []
     const named = new Map(data.teams.map((t) => [t.rop, t.label]))
     const order = new Map<string, string | null>()
-    for (const l of data.lines) {
+    for (const l of branded) {
       if (l.team === null) continue
       const sub = l.kind === 'value' && (l.tone === 'team' || l.tone === 'section') ? l.sub : null
       if (!order.has(l.team) || order.get(l.team) === null) order.set(l.team, named.get(l.team) ?? sub)
     }
     return [...order].map(([rop, label]) => ({ rop, label: label ?? rop }))
-  }, [data])
+  }, [data, branded])
   const chosen = teams.find((t) => t.rop === rop) ?? null
-  const lines = useMemo(
-    () => (data ? ropLines(data.lines, chosen?.rop ?? null, chosen?.label ?? '') : []),
-    [data, chosen],
-  )
+  const lines = useMemo(() => ropLines(branded, chosen?.rop ?? null, chosen?.label ?? ''), [branded, chosen])
 
   return (
     <PageShell
@@ -106,6 +112,7 @@ export function RnpPage() {
       fill
       toolbar={
         <>
+          <DashboardBrandSwitch />
           <label className="flex items-center gap-2 text-xs" style={muted}>
             Oy
             <input
