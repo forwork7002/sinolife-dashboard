@@ -1,4 +1,6 @@
-import { analyticsQuerySchema } from '@/server/http/queryParams'
+import { z } from 'zod'
+
+import { analyticsQuerySchema, brandFilter } from '@/server/http/queryParams'
 import { getHandler, periodFrom } from '@/server/http/handler'
 import { ANALYTICS_READ } from '@/server/http/permissions'
 import { AnalyticsService } from '@/server/services/analyticsService'
@@ -24,7 +26,10 @@ const ACCESS = { permission: ANALYTICS_READ, section: 'sales' } as const
  * that one is a leaderboard everybody is meant to see the same way, and this
  * is money standing in a funnel.
  */
-export const GET = getHandler(ACCESS, analyticsQuerySchema, async (ctx) => {
+// The Collagen / Zextra switch on Savdo dinamikasi: deals of that brand's teams.
+const schema = analyticsQuerySchema.and(z.object({ brand: brandFilter }))
+
+export const GET = getHandler(ACCESS, schema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
   const context = AnalyticsService.context(
     period,

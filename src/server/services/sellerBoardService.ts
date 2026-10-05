@@ -41,6 +41,7 @@ import { mergeSellerTeamSlices } from '@/server/domain/analytics/sellerTeams'
 import { type SellerMedal, buildSellerMedals } from '@/server/domain/analytics/sellerMedals'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { scopedPeriod } from '@/server/domain/employees/branches'
+import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import {
   type Period,
   chooseGranularity,
@@ -736,6 +737,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
+      keyPart(filters.teams),
     ].join('|')
 
     return boardCache.get(key, () => this.buildBoard(ctx, basis, filters))
@@ -1008,6 +1010,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
+      keyPart(filters.teams),
     ].join('|')
 
     return recordsCache.get(key, () => this.buildRecords(ctx, period, filters))
@@ -1086,6 +1089,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
+      keyPart(filters.teams),
     ].join('|')
 
     return medalsCache.get(key, () => this.buildMedals(ctx, period, filters))
@@ -1256,6 +1260,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
+      keyPart(filters.teams),
     ].join('|')
 
     return sourcesCache.get(key, async () => {
@@ -1356,7 +1361,18 @@ function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
     employeeIds: ctx.filters.employeeIds,
     departmentIds: ctx.filters.departmentIds,
     sourceIds: ctx.filters.sourceIds,
+    teams: brandTeamsOf(ctx),
   }
+}
+
+/**
+ * The Collagen / Zextra switch as a team list: an order is the brand's when
+ * the team that sold it is (`teamBrand` — the P&L's rule, so the board and
+ * RNP's «Коллаген / Зехтра проект» agree). Undefined for both brands.
+ */
+export function brandTeamsOf(ctx: AnalyticsContext): readonly string[] | undefined {
+  const brand = ctx.filters.brand
+  return brand === undefined || brand === 'all' ? undefined : brandTeams(brand)
 }
 
 /**

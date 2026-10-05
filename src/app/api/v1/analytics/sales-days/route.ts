@@ -1,6 +1,8 @@
 import { toPeriodDto } from '@/server/domain/period/period'
 import { getHandler, periodFrom } from '@/server/http/handler'
-import { periodQuerySchema } from '@/server/http/queryParams'
+import { z } from 'zod'
+
+import { brandFilter, periodQuerySchema } from '@/server/http/queryParams'
 import { roistatService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
@@ -20,8 +22,11 @@ const ACCESS = { permission: 'analytics:read:all', section: 'sales' } as const
  * and counters (`RoistatService.days`). The window only — the page's
  * employee, department and source filters do not reach Meta money.
  */
-export const GET = getHandler(ACCESS, periodQuerySchema, async (ctx) => {
+// The Collagen / Zextra switch: Roistat's own brand rule (`RoistatService.days`).
+const schema = periodQuerySchema.and(z.object({ brand: brandFilter }))
+
+export const GET = getHandler(ACCESS, schema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const data = await roistatService.days(period, ctx.now)
+  const data = await roistatService.days(period, ctx.now, ctx.query.brand)
   return { data, meta: { period: toPeriodDto(period) } }
 })

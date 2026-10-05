@@ -36,9 +36,10 @@
 
 import type { Period } from '@/server/domain/period/period'
 import type { PrismaClient } from '@/generated/prisma/client'
-import type {
-  ConfirmationOutcomeMinor,
-  ConfirmationOutcomeTotals,
+import {
+  type ConfirmationOutcomeMinor,
+  type ConfirmationOutcomeTotals,
+  InsightsRepository,
 } from '@/server/repositories/insightsRepository'
 
 /** Money arrives from Postgres as a string: bigint cannot ride JSON. */
@@ -58,6 +59,12 @@ export interface SellerBoardFilters {
    * directly, and ANDed with `employeeIds` above rather than replacing it: the
    * caller's own pick narrows the scope, it never widens it.
    */
+  /**
+   * ROP teams by name — the Collagen / Zextra switch (`brandTeams`), matched
+   * against the deal's team (`InsightsRepository.dealTeamSql`). Undefined or
+   * empty means every team, and deals on no team.
+   */
+  readonly teams?: readonly string[]
   readonly restrictToEmployeeIds?: readonly string[] | null
 }
 
@@ -281,6 +288,10 @@ export class SellerBoardRepository {
     if (filters.sourceIds?.length) {
       params.push(filters.sourceIds.join(','))
       conditions.push(`${alias}."sourceId" = ANY(string_to_array($${params.length}, ','))`)
+    }
+    if (filters.teams?.length) {
+      params.push([...filters.teams])
+      conditions.push(`${InsightsRepository.dealTeamSql(alias)} = ANY($${params.length}::text[])`)
     }
 
     return conditions.length === 0 ? '' : ` AND ${conditions.join(' AND ')}`

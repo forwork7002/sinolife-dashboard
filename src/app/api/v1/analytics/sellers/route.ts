@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { analyticsQuerySchema } from '@/server/http/queryParams'
+import { analyticsQuerySchema, brandFilter } from '@/server/http/queryParams'
 import { getHandler, periodFrom } from '@/server/http/handler'
 import { AnalyticsService } from '@/server/services/analyticsService'
 import { SELLER_BOARD_BASES } from '@/server/services/sellerBoardService'
@@ -52,6 +52,8 @@ const schema = analyticsQuerySchema.and(
      * gets checked against, not a screen anyone is meant to keep reading.
      */
     basis: z.enum(SELLER_BOARD_BASES).default('queue'),
+    /** The Collagen / Zextra switch on Savdo dinamikasi: orders of that brand's teams. */
+    brand: brandFilter,
     /*
       THE RECORD WALL, ASKED FOR SEPARATELY AND ON ITS OWN CLOCK.
 

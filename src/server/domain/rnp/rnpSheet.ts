@@ -271,6 +271,16 @@ export function teamBrand(team: string | null): 'Collagen' | 'Zextra' | null {
 }
 
 /**
+ * Every team name `teamBrand` files under `brand` — its own teams and the old
+ * department names folded into them — for a SQL `rop = ANY(...)`, so a query
+ * narrows by the same rule without a copy of it.
+ */
+export function brandTeams(brand: 'Collagen' | 'Zextra'): string[] {
+  const aliases = Object.keys(TEAM_ALIASES).filter((alias) => teamBrand(alias) === brand)
+  return [...BRAND_TEAMS[brand], ...aliases]
+}
+
+/**
  * What the client's «РНП» sheet calls each team, by department name. The
  * sheet names teams by their ROP as the floor knows them, which is not always
  * the department's name: «Садриддин РОП» (the sheet's «Чарос РОП», renamed by

@@ -24,6 +24,7 @@ import { stripPipelinePrefix } from '@/server/domain/analytics/stageNames'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { PulseDealFilters, PulseRepository } from '@/server/repositories/pulseRepository'
 import type { AnalyticsContext } from './analyticsService'
+import { brandTeamsOf } from './sellerBoardService'
 
 /**
  * One column of the Доставка kanban.
@@ -68,6 +69,7 @@ function pulseFilters(ctx: AnalyticsContext): PulseDealFilters {
     employeeIds: ctx.filters.employeeIds,
     departmentIds: ctx.filters.departmentIds,
     sourceIds: ctx.filters.sourceIds,
+    teams: brandTeamsOf(ctx),
     restrictToEmployeeIds: ctx.filters.restrictToEmployeeIds,
   }
 }

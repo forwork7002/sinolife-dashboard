@@ -15,6 +15,7 @@ import {
 import { ConfirmationOutcomeSection } from '@/features/sales/ConfirmationOutcomeSection'
 import { DeliveryBoardSection } from '@/features/sales/DeliveryBoardSection'
 import { ForecastSection } from '@/features/sales/ForecastSection'
+import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet, type FaktTrendPointDto } from '@/lib/api'
@@ -185,6 +186,11 @@ export function SalesPage() {
         control that does nothing.
       */
       filters={{ employees: true, departments: true, sources: true }}
+      /*
+        Collagen / Zextra: an order is the brand's when the team that sold it
+        is (`teamBrand`, the P&L's rule) — every block below follows it.
+      */
+      toolbar={<DashboardBrandSwitch />}
     >
       {/*
         The lead instrument — the page's ONE hero, and now its only chart.
