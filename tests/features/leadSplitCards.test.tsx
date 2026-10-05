@@ -66,6 +66,13 @@ function fixture(over: Partial<LeadSplitDto> = {}): LeadSplitDto {
       week: [0, 0, 0, 0, 0, 0, 0],
     })),
     week: { days: Array.from({ length: 7 }, (_, i) => `2026-09-${String(24 + i).padStart(2, '0')}`), unassigned: [0, 0, 0, 0, 0, 0, 0] },
+    bezkval: {
+      rops: [...NINE, 'Davlat'].map((rop) => ({
+        rop,
+        week: rop === 'Azizbek' ? [0, 0, 0, 0, 0, 120, 275] : rop === 'Davlat' ? [0, 0, 0, 0, 0, 0, 61] : [0, 0, 0, 0, 0, 0, 0],
+      })),
+      unassigned: [0, 0, 0, 0, 0, 0, 330],
+    },
     previous: null,
     canEdit: true,
     ...over,
@@ -145,6 +152,26 @@ async function draw() {
 const sum = (rows: { shareBp: number }[]) => rows.reduce((a, r) => a + r.shareBp, 0)
 
 describe('LeadSplitCards', () => {
+  it('switches «Kimga qancha lid kelayapti» to «Безквал»: each ROP\'s Регистрация deals, and those no ROP owns', async () => {
+    data = fixture()
+    data = { ...data, week: { ...data.week, unassigned: [0, 0, 0, 0, 0, 0, 4] } }
+    await draw()
+    const card = screen.getByRole('heading', { name: 'Kimga qancha lid kelayapti' }).closest('section') as HTMLElement
+    const grid = () => within(card).getByRole('table')
+    expect(within(grid()).getByText('Berilmagan')).toBeTruthy()
+    expect(within(grid()).queryByText('ROP belgilanmagan')).toBeNull()
+    expect(within(grid()).queryByText('Davlat')).toBeNull()
+
+    fireEvent.click(within(card).getByRole('button', { name: 'Безквал' }))
+    const aziz = within(grid()).getByText('Azizbek').closest('tr')!
+    expect(within(aziz).getByText('275')).toBeTruthy()
+    expect(within(aziz).getByText('395')).toBeTruthy()
+    expect(within(grid()).getByText('Davlat')).toBeTruthy()
+    expect(within(grid()).queryByText('Berilmagan')).toBeNull()
+    expect(within(within(grid()).getByText('ROP belgilanmagan').closest('tr')!).getAllByText('330').length).toBe(2)
+    expect(within(card).getByText(/«Ответственный» shu ROP/)).toBeTruthy()
+  })
+
   it('reopens a split saved in leads and saves it unchanged', async () => {
     data = fixture({ split: { updatedAt: '2026-10-01T04:00:00.000Z' } })
     await draw()

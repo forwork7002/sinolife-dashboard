@@ -28,13 +28,15 @@ export class RegistrationService {
     private readonly insights: InsightsRepository,
   ) {}
 
-  async overview(input: { day: string; canEdit: boolean }): Promise<LeadSplitDto> {
-    const [rows, split, previous] = await Promise.all([
-      this.repository.distributedDays(addDays(input.day, -(GRID_DAYS - 1)), input.day),
+  async overview(input: { day: string; timeZone: string; canEdit: boolean }): Promise<LeadSplitDto> {
+    const from = addDays(input.day, -(GRID_DAYS - 1))
+    const [rows, bezkval, split, previous] = await Promise.all([
+      this.repository.distributedDays(from, input.day),
+      this.repository.bezkvalDays(from, input.day, input.timeZone),
       this.repository.split(input.day),
       this.repository.previousSplit(input.day),
     ])
-    return buildLeadSplit({ day: input.day, rows, split, previous, canEdit: input.canEdit })
+    return buildLeadSplit({ day: input.day, rows, bezkval, split, previous, canEdit: input.canEdit })
   }
 
   async saveSplit(day: string, rows: readonly SplitShare[], by: string): Promise<void> {

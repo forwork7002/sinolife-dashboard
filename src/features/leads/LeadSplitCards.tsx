@@ -1,7 +1,7 @@
 'use client'
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
@@ -151,15 +151,54 @@ export function LeadSplitCard({ day, onDay }: { day: string; onDay: (day: string
   )
 }
 
-/** «Kimga qancha lid kelayapti» — the month up to the chosen day. */
+type WeekView = 'kval' | 'bezkval'
+
+/**
+ * «Kimga qancha lid kelayapti» — the month up to the chosen day, in two
+ * readings of one response: «Квал», the leads handed to each ROP («РОП
+ * (Первичка)»), and «Безквал» (the client, 2026-10-05), the Регистрация deals
+ * the desk made each ROP «Ответственный» of, by the day they were created.
+ */
 export function LeadWeekCard({ day }: { day: string }) {
-  const { overview, data, rows } = useLeadSplit(day)
+  const { overview, data, rows, colors } = useLeadSplit(day)
+  const [view, setView] = useState<WeekView>('kval')
+  const hint =
+    view === 'kval'
+      ? `Har bir ROP ${formatDate(day)} gacha bir oyda olgan lidlar soni (Bitrix24, «РОП (Первичка)»). Rang qanchalik toʻq boʻlsa — shuncha koʻp. Oldingi kunlar — chapga suring.`
+      : `Безквал: Регистрация voronkasida «Ответственный» shu ROP boʻlgan bitimlar, yaratilgan kuni boʻyicha (${formatDate(day)} gacha bir oy, barcha bosqichlar). Oldingi kunlar — chapga suring.`
+  let grid: ReactNode = null
+  if (data) {
+    grid =
+      view === 'kval' ? (
+        <WeekGrid key="kval" days={data.week.days} rows={rows} unassigned={data.week.unassigned} unassignedLabel="Berilmagan" resetKey={data.day} />
+      ) : (
+        <WeekGrid
+          key="bezkval"
+          days={data.week.days}
+          rows={data.bezkval.rops.map((r, i) => ({ ...r, color: colors.get(r.rop) ?? ROP_COLORS[(rows.length + i) % ROP_COLORS.length]! }))}
+          unassigned={data.bezkval.unassigned}
+          unassignedLabel="ROP belgilanmagan"
+          resetKey={data.day}
+        />
+      )
+  }
   return (
     <ChartCard
       title="Kimga qancha lid kelayapti"
-      hint={`Har bir ROP ${formatDate(day)} gacha bir oyda olgan lidlar soni (Bitrix24, «РОП (Первичка)»). Rang qanchalik toʻq boʻlsa — shuncha koʻp. Oldingi kunlar — chapga suring.`}
+      hint={hint}
+      action={
+        <SegmentedControl<WeekView>
+          ariaLabel="Lid turi"
+          value={view}
+          onChange={setView}
+          options={[
+            { value: 'kval', label: 'Квал' },
+            { value: 'bezkval', label: 'Безквал' },
+          ]}
+        />
+      }
     >
-      {overview.isError && !data ? <SplitError overview={overview} /> : data ? <WeekGrid data={data} rows={rows} /> : <LoadingSkeleton rows={6} />}
+      {overview.isError && !data ? <SplitError overview={overview} /> : (grid ?? <LoadingSkeleton rows={6} />)}
     </ChartCard>
   )
 }
@@ -286,7 +325,7 @@ const tdR = `${td} tabular text-right`
 const pinL = 'tcol-sticky is-edge left-0'
 const pinR = 'tcol-sticky right-0'
 
-function RopCell({ row, className = '' }: { row: Row; className?: string }) {
+function RopCell({ row, className = '' }: { row: { readonly rop: string; readonly color: string }; className?: string }) {
   return (
     <th scope="row" className={`${td} ${className} text-left font-medium`} style={{ color: 'var(--ink-primary)' }}>
       <span className="inline-flex items-center gap-2">
@@ -465,16 +504,28 @@ function PlanEditor({ data, rows, onDone }: { data: LeadSplitDto; rows: readonly
  * busiest cell. It opens on the latest days; the ROP column and the total stay
  * put while the days scroll left.
  */
-function WeekGrid({ data, rows }: { data: LeadSplitDto; rows: readonly Row[] }) {
-  const days = data.week.days
+function WeekGrid({
+  days,
+  rows,
+  unassigned,
+  unassignedLabel,
+  resetKey,
+}: {
+  days: readonly string[]
+  rows: readonly { readonly rop: string; readonly color: string; readonly week: readonly number[] }[]
+  unassigned: readonly number[]
+  unassignedLabel: string
+  /** The day: a new one scrolls the grid back to its latest days. */
+  resetKey: string
+}) {
   const max = Math.max(1, ...rows.flatMap((r) => r.week))
-  const dayTotals = days.map((_, i) => rows.reduce((sum, r) => sum + (r.week[i] ?? 0), 0) + (data.week.unassigned[i] ?? 0))
-  const anyUnassigned = data.week.unassigned.some((v) => v > 0)
+  const dayTotals = days.map((_, i) => rows.reduce((sum, r) => sum + (r.week[i] ?? 0), 0) + (unassigned[i] ?? 0))
+  const anyUnassigned = unassigned.some((v) => v > 0)
   const scroller = useRef<HTMLDivElement>(null)
   useLayoutEffect(() => {
     const el = scroller.current
     if (el) el.scrollLeft = el.scrollWidth
-  }, [data.day])
+  }, [resetKey])
   const cell = (v: number, color: string, key: string) => (
     <td
       key={key}
@@ -516,12 +567,12 @@ function WeekGrid({ data, rows }: { data: LeadSplitDto; rows: readonly Row[] }) 
               <th scope="row" className={`${td} ${pinL} text-left font-normal`} style={muted}>
                 <span className="inline-flex items-center gap-2">
                   <Dot color={UNASSIGNED_COLOR} />
-                  Berilmagan
+                  {unassignedLabel}
                 </span>
               </th>
-              {data.week.unassigned.map((v, i) => cell(v, UNASSIGNED_COLOR, days[i]!))}
+              {unassigned.map((v, i) => cell(v, UNASSIGNED_COLOR, days[i]!))}
               <td className={`${tdR} ${pinR}`} style={muted}>
-                {formatNumber(data.week.unassigned.reduce((a, b) => a + b, 0))}
+                {formatNumber(unassigned.reduce((a, b) => a + b, 0))}
               </td>
             </tr>
           )}
