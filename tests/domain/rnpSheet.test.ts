@@ -253,9 +253,16 @@ describe('buildRnpSheet — teams', () => {
 describe('buildRnpSheet — company blocks', () => {
   it('prices the marketing on the dollar rate', () => {
     const dto = buildRnpSheet(input())
-    const share = row(dto, 'marketing', 'meta:share')
-    expect(on(share, '2026-09-21')).toBeCloseTo((140 * 12_200 * 100) / 2_000_000, 6)
-    expect(on(row(dto, 'marketing', 'meta:cac'), '2026-09-21')).toBe(140)
+    /*
+      The client, 2026-10-05: ad budget + marketing budget = both projects'
+      «Маркетинг харажат факт» on 21.09 — Collagen 100 $ × 12 200 + 10 %
+      targetolog + 1 % of Sevinch's 2 000 000 FAKT 2; Zextra 40 $ × 12 200 + 10 %.
+    */
+    const cost = 100 * 12_200 * 1.1 + 20_000 + 40 * 12_200 * 1.1
+    // ROMI = that ÷ all FAKT 1 (Sevinch 3 500 000 + Charos 1 000 000 + no ROP 200 000).
+    expect(on(row(dto, 'marketing', 'meta:share'), '2026-09-21')).toBeCloseTo((cost * 100) / 4_700_000, 6)
+    // CAC = that in $ ÷ the primary teams' FAKT 1 orders (Sevinch 2 + no ROP 1; Charos is БАЗА).
+    expect(on(row(dto, 'marketing', 'meta:cac'), '2026-09-21')).toBeCloseTo(cost / 12_200 / 3, 6)
     // Row 45, «Цена квал лида» (2026-10-03): the budget over the Регистрация kval leads (140 $ ÷ 2).
     expect(on(row(dto, 'marketing', 'meta:cost_per_reg_lead'), '2026-09-21')).toBe(70)
     expect(dto.lines.find((l) => l.row === 45)).toMatchObject({ kind: 'value', key: 'meta:cost_per_reg_lead' })
@@ -268,6 +275,22 @@ describe('buildRnpSheet — company blocks', () => {
     const share = row(dto, 'marketing', 'meta:share')
     expect(share.fact).toBeNull()
     expect(share.hint).toMatch(/Markaziy bank kursi olinmadi/)
+    expect(row(dto, 'marketing', 'meta:cac').fact).toBeNull()
+  })
+
+  it('adds the typed marketing costs into CAC and ROMI', () => {
+    const without = buildRnpSheet(input())
+    const x = buildRnpSheet(
+      input({
+        manualCosts: [
+          { day: '2026-09-21', project: 'Collagen', line: 'bloggers', amount: 2_000_000 },
+          { day: '2026-09-21', project: 'Zextra', line: 'marketing', amount: 820_000 },
+        ],
+      }),
+    )
+    const d21 = (d: ReturnType<typeof buildRnpSheet>, key: string) => on(row(d, 'marketing', key), '2026-09-21')!
+    expect(d21(x, 'meta:share') - d21(without, 'meta:share')).toBeCloseTo((2_820_000 * 100) / 4_700_000, 6)
+    expect(d21(x, 'meta:cac') - d21(without, 'meta:cac')).toBeCloseTo(2_820_000 / 12_200 / 3, 6)
   })
 
   it('shows the leads a ROP got against the registrar\'s kval, and the ones nobody got', () => {

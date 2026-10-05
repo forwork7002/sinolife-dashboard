@@ -825,8 +825,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
 
   const fakt1All = total((t) => t.fakt1)
   const fakt2All = total((t) => t.fakt2)
-  const fakt2Primary = total((t) => t.fakt2, primary)
-  const fakt2OrdersPrimary = total((t) => t.fakt2Orders, primary)
+  const fakt1OrdersPrimary = total((t) => t.fakt1Orders, primary)
   const refusedAll = total((t) => t.refused)
   const ropLeads = total((t) => t.leads)
 
@@ -869,6 +868,72 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   const spendAll = days.map((_, i) => meta.Collagen.spend[i]! + meta.Zextra.spend[i]!)
   const metaLeadsAll = days.map((_, i) => meta.Collagen.leads[i]! + meta.Zextra.leads[i]!)
 
+  // --- Loyiha P&L inputs (sheet rows 394–445), read by «Основные показатели» too ---
+  const brandGrid = (b: 'Collagen' | 'Zextra' | null) => {
+    const g = { fakt1: zeros(), fakt2: zeros(), primaryFakt2: zeros(), primaryOrders1: zeros(), primaryOrders2: zeros(), baseFakt2: zeros(), leads: zeros(), qualified: zeros() }
+    for (const r of input.fakt) {
+      const i = at.get(r.day)
+      const team = canonical(r.rop)
+      const brand = BRAND_TEAMS.Collagen.has(team) ? 'Collagen' : BRAND_TEAMS.Zextra.has(team) ? 'Zextra' : null
+      if (i === undefined || brand !== b) continue
+      const base = isBase(team)
+      g.fakt1[i]! += minorToSom(r.fakt1Minor)
+      g.fakt2[i]! += minorToSom(r.fakt2Minor)
+      if (base) g.baseFakt2[i]! += minorToSom(r.fakt2Minor)
+      else {
+        g.primaryFakt2[i]! += minorToSom(r.fakt2Minor)
+        g.primaryOrders1[i]! += r.fakt1Orders
+        g.primaryOrders2[i]! += r.fakt2Orders
+      }
+    }
+    for (const r of input.registration) {
+      const i = at.get(r.day)
+      if (i === undefined || (r.brand ?? null) !== b) continue
+      g.leads[i]! += r.leads
+      g.qualified[i]! += r.qualified
+    }
+    return g
+  }
+  /*
+    The P&L's percentages are constants in the sheet's formulas: «Маркетинг
+    харажат план» `=G395*11%`, «Таргетолог фот» `=G409*10%`, «Маркетолог
+    фот = 1%» `=G395*1%`. A value saved for the month (before «Rejalar» was
+    removed) still wins.
+  */
+  const pct = (metric: RnpPlanMetric, sheet: number) => plan('', metric) ?? sheet
+  const marketingPlanPct = pct('marketing_plan_pct', 11)
+  const targetologPct = pct('targetolog_pct', 10)
+  const marketerPct = pct('marketer_pct', 1)
+  /** A percent in a label, as the screen writes numbers: a decimal comma. */
+  const pctText = (v: number) => String(v).replace('.', ',')
+  /*
+    One project's marketing cost in soʻm, day by day — its «Маркетинг харажат
+    факт»: the ad budget at the day's rate, the targetologist's share of it,
+    the marketer's share of FAKT 2 — and the five lines no system holds
+    (bloggers, nutritionist, brand face, marketing costs, team; rows 411–415
+    / 438–442), typed in place since the client asked on 2026-09-30.
+  */
+  const brandCost = (b: 'Collagen' | 'Zextra', g: ReturnType<typeof brandGrid>) => {
+    const spendUsd = meta[b].spend
+    const spendUzs = days.map((_, i) => (rates[i] === null ? 0 : spendUsd[i]! * rates[i]!))
+    const targetolog = spendUzs.map((v) => (v * targetologPct) / 100)
+    const marketer = g.fakt2.map((v) => (v * marketerPct) / 100)
+    const typed = new Map(RNP_COST_LINES.map((line) => [line, days.map((): number | null => null)] as const))
+    for (const c of input.manualCosts) {
+      const i = at.get(c.day)
+      if (c.project === b && i !== undefined) typed.get(c.line)![i] = c.amount
+    }
+    const manualCost = days.map((_, i) => RNP_COST_LINES.reduce((sum, line) => sum + (typed.get(line)![i] ?? 0), 0))
+    const costFact = days.map((_, i) => spendUzs[i]! + targetolog[i]! + marketer[i]! + manualCost[i]!)
+    return { spendUsd, spendUzs, targetolog, marketer, typed, manualCost, costFact }
+  }
+  const brands = { Collagen: brandGrid('Collagen'), Zextra: brandGrid('Zextra') }
+  const brandCosts = { Collagen: brandCost('Collagen', brands.Collagen), Zextra: brandCost('Zextra', brands.Zextra) }
+  /* «Жами рекламный бюджет + маркетинг бюджет» (the client, 2026-10-05): both projects' «Маркетинг харажат факт». */
+  const marketingCostUzs = days.map((_, i) => brandCosts.Collagen.costFact[i]! + brandCosts.Zextra.costFact[i]!)
+  const marketingCostUsd = marketingCostUzs.map((v, i) => (rates[i] ? v / rates[i]! : 0))
+  const whenKnown = (known: boolean, row: RnpRowDto) => (known ? row : dashed(row))
+
   const blocks: RnpBlockDto[] = []
 
   const sh = (row: number, label: string): RnpSheetRef => ({ row, label })
@@ -896,23 +961,28 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       additive(clock, { key: 'meta:spend', label: 'Жами бюджет, $', unit: 'usd', better: 'down', tone: 'total', ...planned('', 'budget'), sheet: sh(42, 'Бюджет') }, spendAll),
       additive(clock, { key: 'meta:leads', label: 'Жами лид (Meta)', unit: 'count', tone: 'total', ...planned('', 'meta_leads'), sheet: sh(43, 'Количество лид') }, metaLeadsAll),
       ratio(clock, { key: 'meta:cpl', label: 'CPL, $', unit: 'usd', better: 'down', ...planned('', 'cpl'), hint: CPL_HINT, sheet: sh(44, 'CPL $ цена лида') }, spendAll, metaLeadsAll),
-      ratio(clock, { key: 'meta:cac', label: 'CAC (мижоз нарҳи), $', unit: 'usd', better: 'down', ...planned('', 'cac'), hint: 'Jami byudjet ÷ birlamchi jamoalarning FAKT 2 buyurtmalari (БАЗА jamoalarisiz).', sheet: sh(11, 'САС (мижоз нарҳи), $') }, spendAll, fakt2OrdersPrimary),
+      /* The client, 2026-10-05: «CAC = Жами рекламный бюджет + маркетинг бюджет / факт1 буюртма сони первичка». */
+      whenKnown(rateKnown, ratio(clock, { key: 'meta:cac', label: 'CAC (мижоз нарҳи), $', unit: 'usd', better: 'down', ...planned('', 'cac'), hint: `(Жами реклама бюджети + маркетинг бюджети) ÷ birlamchi jamoalarning FAKT 1 buyurtmalari (БАЗА jamoalarisiz). Marketing byudjeti — Коллаген va Зехтра «Маркетинг харажат факт»: target, targetolog, marketolog va qoʻlda kiritilgan xarajatlar; har kun oʻz kursida dollarga.${rateKnown ? '' : ' Markaziy bank kursi olinmadi.'}`, sheet: sh(11, 'САС (мижоз нарҳи), $') }, marketingCostUsd, fakt1OrdersPrimary)),
       // The sheet's unlabelled row 45, once `=IFERROR(G42/G47,0)`; the client renamed it «Цена квал лида» (2026-10-03): what one kval lead cost.
       ratio(clock, { key: 'meta:cost_per_reg_lead', label: 'Цена квал лида, $', unit: 'usd', better: 'down', hint: 'Jami byudjet ÷ «Жами квал сони» (Регистрация kval lidlari).', sheet: sh(45, 'Цена квал лида, $') }, spendAll, reg.qualified),
-      ratio(
-        clock,
-        {
-          key: 'meta:share',
-          label: 'Маркетинг улуши (ДРР), %',
-          unit: 'percent',
-          better: 'down',
-          ...planned('', 'marketing_share'),
-          hint: !rateKnown ? 'Markaziy bank kursi olinmadi.' : `Byudjet × shu kungi Markaziy bank kursi ÷ birlamchi FAKT 2 summasi. Jadvalda «ROMI» deb yozilgan, aslida xarajat ulushi.`,
-          sheet: sh(12, 'ROMI %'),
-        },
-        days.map((_, i) => spendAll[i]! * (rates[i] ?? 0)),
-        days.map((_, i) => (rates[i] === null ? 0 : fakt2Primary[i]!)),
-        100,
+      /* The client, 2026-10-05: «ROMI % = Жами рекламный бюджет + маркетинг бюджет / Жами факт1 савдо» — the cost as a share of all FAKT 1. */
+      whenKnown(
+        rateKnown,
+        ratio(
+          clock,
+          {
+            key: 'meta:share',
+            label: 'ROMI %',
+            unit: 'percent',
+            better: 'down',
+            ...planned('', 'marketing_share'),
+            hint: `(Жами реклама бюджети + маркетинг бюджети) ÷ Жами FAKT 1 savdo summasi × 100. Ikkalasi soʻmda: byudjet × shu kungi Markaziy bank kursi.${rateKnown ? '' : ' Markaziy bank kursi olinmadi.'}`,
+            sheet: sh(12, 'ROMI %'),
+          },
+          marketingCostUzs,
+          fakt1All,
+          100,
+        ),
       ),
     ],
   })
@@ -1140,43 +1210,6 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   }
 
   // --- Loyiha P&L: Коллаген / Зехтра (sheet rows 394–445) --------------------
-  const brandGrid = (b: 'Collagen' | 'Zextra' | null) => {
-    const g = { fakt1: zeros(), fakt2: zeros(), primaryFakt2: zeros(), primaryOrders1: zeros(), primaryOrders2: zeros(), baseFakt2: zeros(), leads: zeros(), qualified: zeros() }
-    for (const r of input.fakt) {
-      const i = at.get(r.day)
-      const team = canonical(r.rop)
-      const brand = BRAND_TEAMS.Collagen.has(team) ? 'Collagen' : BRAND_TEAMS.Zextra.has(team) ? 'Zextra' : null
-      if (i === undefined || brand !== b) continue
-      const base = isBase(team)
-      g.fakt1[i]! += minorToSom(r.fakt1Minor)
-      g.fakt2[i]! += minorToSom(r.fakt2Minor)
-      if (base) g.baseFakt2[i]! += minorToSom(r.fakt2Minor)
-      else {
-        g.primaryFakt2[i]! += minorToSom(r.fakt2Minor)
-        g.primaryOrders1[i]! += r.fakt1Orders
-        g.primaryOrders2[i]! += r.fakt2Orders
-      }
-    }
-    for (const r of input.registration) {
-      const i = at.get(r.day)
-      if (i === undefined || (r.brand ?? null) !== b) continue
-      g.leads[i]! += r.leads
-      g.qualified[i]! += r.qualified
-    }
-    return g
-  }
-  /*
-    The P&L's percentages are constants in the sheet's formulas: «Маркетинг
-    харажат план» `=G395*11%`, «Таргетолог фот» `=G409*10%`, «Маркетолог
-    фот = 1%» `=G395*1%`. A value saved for the month (before «Rejalar» was
-    removed) still wins.
-  */
-  const pct = (metric: RnpPlanMetric, sheet: number) => plan('', metric) ?? sheet
-  const marketingPlanPct = pct('marketing_plan_pct', 11)
-  const targetologPct = pct('targetolog_pct', 10)
-  const marketerPct = pct('marketer_pct', 1)
-  /** A percent in a label, as the screen writes numbers: a decimal comma. */
-  const pctText = (v: number) => String(v).replace('.', ',')
   /* «Свод» counts every team; the two projects only the sheet's two lists — so name who is in neither (Kompaniya, Ҳаёт, orders with no ROP). */
   const brandless = withNoRop.filter((rop) => !BRAND_TEAMS.Collagen.has(rop) && !BRAND_TEAMS.Zextra.has(rop) && sum(grid.get(rop)!.fakt1) !== 0).map(labelOf)
   const fakt1Hint = `Buyurtma brendi — uni sotgan jamoa (jadvaldagi Collagen / Zextra roʻyxati).${brandless.length > 0 ? ` Roʻyxatlarda yoʻq jamoalar — ${brandless.join(', ')} — «Свод» da bor, ikki loyihaning hech birida yoʻq.` : ''}`
@@ -1189,27 +1222,13 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   */
   const shareOf = (row: RnpRowDto, of: RnpRowDto): RnpRowDto => ({ ...row, plan: div(row.fact, of.fact, 100), planUnit: 'percent', dayPlan: null, index: null })
   for (const b of ['Collagen', 'Zextra'] as const) {
-    const g = brandGrid(b)
+    const g = brands[b]
     const k = `pj:${b.toLowerCase()}`
     /* Коллаген проект starts at row 394, Зехтра at 421, one 25-row template. */
     const r0 = b === 'Collagen' ? 394 : 421
     const at0 = (offset: number, label: string) => sh(r0 + offset, label)
-    const spendUsd = meta[b].spend
-    const spendUzs = days.map((_, i) => (rates[i] === null ? 0 : spendUsd[i]! * rates[i]!))
-    const targetolog = spendUzs.map((v) => (v * targetologPct) / 100)
-    const marketer = g.fakt2.map((v) => (v * marketerPct) / 100)
+    const { spendUsd, spendUzs, targetolog, marketer, typed, manualCost, costFact } = brandCosts[b]
     const costPlan = g.fakt2.map((v) => (v * marketingPlanPct) / 100)
-    /*
-      The ad budget in soʻm, the targetologist's share of it, the marketer's
-      share of FAKT 2 — and the five lines no system holds (bloggers,
-      nutritionist, brand face, marketing costs, team; rows 411–415 /
-      438–442), typed in place since the client asked on 2026-09-30.
-    */
-    const typed = new Map(RNP_COST_LINES.map((line) => [line, days.map((): number | null => null)] as const))
-    for (const c of input.manualCosts) {
-      const i = at.get(c.day)
-      if (c.project === b && i !== undefined) typed.get(c.line)![i] = c.amount
-    }
     const manualRows = RNP_COST_LINES.map((line) => {
       const cells = typed.get(line)!
       const { offset, label } = COST_LINE_SHEET[line]
@@ -1223,8 +1242,6 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       // A typed cost is a payment, not a pace: one 10 M payment on the 1st must not forecast 300 M.
       return { ...row, forecast: null, index: null, days: row.days.map((v, i) => (cells[i] === null ? null : v)) }
     })
-    const manualCost = days.map((_, i) => RNP_COST_LINES.reduce((sum, line) => sum + (typed.get(line)![i] ?? 0), 0))
-    const costFact = days.map((_, i) => spendUzs[i]! + targetolog[i]! + marketer[i]! + manualCost[i]!)
     const computedCost = days.map((_, i) => costFact[i]! - manualCost[i]!)
     /* «Маркетинг харажат факт»: the computed costs run at their pace; the typed ones are added as paid, never extrapolated. */
     const withTyped = (row: RnpRowDto): RnpRowDto => {
@@ -1242,7 +1259,6 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     const rateHint = rateKnown ? ' Har kun oʻz kursi — Markaziy bank (cbu.uz).' : ' Markaziy bank kursi olinmadi.'
     /* The whole cost needs the dollar rate; without it it is not «the cost», it is part of it. */
     const missingHint = rateKnown ? '' : ' Markaziy bank kursi olinmadi.'
-    const whenKnown = (known: boolean, row: RnpRowDto) => (known ? row : dashed(row))
     const fakt1Row = additive(clock, { key: `${k}:fakt1`, label: 'Сумма ФАКТ 1', unit: 'uzs', tone: 'total', ...planned(b, 'brand_fakt1'), hint: fakt1Hint, sheet: at0(0, 'Сумма факт1') }, g.fakt1)
     const fakt2Row = additive(clock, { key: `${k}:fakt2`, label: 'Сумма ФАКТ 2 (успешка)', unit: 'uzs', tone: 'total', sheet: at0(1, 'Сумма факт2 (успешка)') }, g.fakt2)
     blocks.push({
