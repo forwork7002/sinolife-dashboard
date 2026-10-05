@@ -510,9 +510,15 @@ function formDaysView(
   const chosen = owners.find((o) => o.key === slice)
   const days = chosen ? chosen.days : data?.forms.days
   const dayTotal: FormDayDto | undefined = chosen
-    ? { date: '', metaLeads: chosen.metaLeads, leads: chosen.outcome.leads, success: chosen.outcome.success }
+    ? { date: '', spendUsd: chosen.spendUsd, metaLeads: chosen.metaLeads, leads: chosen.outcome.leads, success: chosen.outcome.success }
     : data
-      ? { date: '', metaLeads: data.forms.metaLeads, leads: data.forms.outcome.leads, success: data.forms.outcome.success }
+      ? {
+          date: '',
+          spendUsd: data.forms.spendUsd,
+          metaLeads: data.forms.metaLeads,
+          leads: data.forms.outcome.leads,
+          success: data.forms.outcome.success,
+        }
       : undefined
 
   return {

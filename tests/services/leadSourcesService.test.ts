@@ -258,10 +258,16 @@ describe('leadSourcesOverview', () => {
     expect(umar.spendUsd).toBe(25)
     expect(umar.costPerLeadUsd).toBe(5)
     expect(umar.costPerSuccessUsd).toBeCloseTo(25 / 3)
+    // The day's lead-form spend rides each day — the DM campaign's 9 $ does not.
     expect(umar.days).toEqual([
-      { date: '2026-09-18', metaLeads: 8, leads: 3, success: 3 },
-      { date: '2026-09-19', metaLeads: 2, leads: 2, success: 0 },
+      { date: '2026-09-18', spendUsd: 20, metaLeads: 8, leads: 3, success: 3 },
+      { date: '2026-09-19', spendUsd: 5, metaLeads: 2, leads: 2, success: 0 },
     ])
+  })
+
+  it('sums the days\' spend to the targetologs\' (the client\'s day sheet, 2026-10-05)', () => {
+    expect(data.forms.days.map((d) => d.spendUsd)).toEqual([21, 5])
+    expect(data.forms.days.reduce((n, d) => n + d.spendUsd, 0)).toBe(data.forms.spendUsd)
   })
 
   it('keeps an unmapped account visible with no Bitrix24 leads', () => {

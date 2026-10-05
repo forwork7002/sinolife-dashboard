@@ -35,6 +35,7 @@ export interface LeadOutcomeDto {
 
 export interface FormDayDto {
   readonly date: string
+  readonly spendUsd: number
   readonly metaLeads: number
   readonly leads: number
   readonly success: number

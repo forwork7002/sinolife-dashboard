@@ -20,6 +20,7 @@ import { QualitySection } from './QualitySection'
 import type { ReklamaOverviewDto } from './reklamaApi'
 import { type Status, UsdTile } from './reklamaUi'
 import { SideSection } from './SideSection'
+import { TargetologDaySection } from './TargetologDaySection'
 
 /**
  * «Reklama samarasi» — the client's own ad sheets, without anybody typing them.
@@ -32,7 +33,8 @@ import { SideSection } from './SideSection'
  *
  * THE TWO OTHER TABS MOVED ON 2026-09-25 to their own section, «Lidlar»
  * (`features/leads`): «Sotuv · ROP» (removed 2026-10-01) and «Lid
- * kogortasi». This page is the Meta side alone now, and one request.
+ * kogortasi». This page is the Meta side alone now, and one request —
+ * plus «Targetologlar · kunlik» (2026-10-05), which asks for its own.
  *
  * Every ad table is built from the same Meta rows and the same lead scan, so
  * the tiles, the page totals and the day rows sum to each other.
@@ -76,6 +78,8 @@ export function ReklamaPage() {
         ) : (
           <>
             <Tiles data={data} status={status} />
+            {/* The client's per-targetolog day sheet, full width so the targetologs stand side by side. */}
+            <TargetologDaySection params={params} />
             {/* The HR · Kosmetika table sits beside the sheets on a wide screen, above them on a phone. */}
             <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start">
               <aside className="min-w-0 xl:sticky xl:top-0 xl:col-start-2 xl:row-start-1">

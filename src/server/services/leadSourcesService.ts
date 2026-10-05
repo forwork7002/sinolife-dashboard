@@ -77,6 +77,8 @@ export interface LeadOutcomeDto {
 
 export interface FormDayDto {
   readonly date: string
+  /** The targetolog's lead-form campaigns' spend that day — «Отчёт Т»'s $. */
+  readonly spendUsd: number
   readonly metaLeads: number
   readonly leads: number
   readonly success: number
@@ -258,6 +260,22 @@ function outcomeCells(a: OutcomeAcc): LeadOutcomeDto {
   return { leads, ...a, successPercent: percent(a.success, leads) }
 }
 
+/** A targetolog's day: spend summed in micro-dollars, converted once. */
+interface FormDayAcc {
+  spend: bigint
+  metaLeads: number
+  leads: number
+  success: number
+}
+
+const formDayCells = (date: string, a: FormDayAcc): FormDayDto => ({
+  date,
+  spendUsd: usd(a.spend),
+  metaLeads: a.metaLeads,
+  leads: a.leads,
+  success: a.success,
+})
+
 interface TileAcc {
   leads: number
   duplicates: number
@@ -321,7 +339,7 @@ export function leadSourcesOverview(input: {
     spend: bigint
     metaLeads: number
     outcome: OutcomeAcc
-    days: Map<string, { metaLeads: number; leads: number; success: number }>
+    days: Map<string, FormDayAcc>
   }
   interface PageAcc {
     key: string
@@ -337,6 +355,7 @@ export function leadSourcesOverview(input: {
     outcome: OutcomeAcc
   }
 
+  const formDayZero = (): FormDayAcc => ({ spend: 0n, metaLeads: 0, leads: 0, success: 0 })
   const owners = new Map<string, FormAcc>()
   const ownerAcc = (o: { key: string; targetolog: string; product: MetaProduct }) =>
     mapGet(owners, o.key, () => ({
@@ -406,7 +425,7 @@ export function leadSourcesOverview(input: {
       const acc = ownerAcc(ownerOfForm(form))
       acc.forms.add(form)
       addOutcome(acc.outcome, one)
-      const day = mapGet(acc.days, row.day, () => ({ metaLeads: 0, leads: 0, success: 0 }))
+      const day = mapGet(acc.days, row.day, formDayZero)
       day.leads += row.leads
       if (bucket === 'success') day.success += row.leads
     } else if (row.sourceId !== null && (channel === 'page' || pages.has(pageKeyOf(row.sourceId)))) {
@@ -443,11 +462,13 @@ export function leadSourcesOverview(input: {
     acc.accounts.add(row.accountName)
     acc.spend += row.spendMicroUsd
     acc.metaLeads += row.leads
-    mapGet(acc.days, row.date, () => ({ metaLeads: 0, leads: 0, success: 0 })).metaLeads += row.leads
+    const day = mapGet(acc.days, row.date, formDayZero)
+    day.spend += row.spendMicroUsd
+    day.metaLeads += row.leads
   }
 
   // --- forms block
-  const formDays = days.map((date) => ({ date, metaLeads: 0, leads: 0, success: 0 }))
+  const formDays = days.map(() => formDayZero())
   const formOutcome = outcomeZero()
   let formSpend = 0n
   let metaFormLeads = 0
@@ -478,11 +499,12 @@ export function leadSourcesOverview(input: {
         costPerLeadUsd: perUnit(o.spend, outcome.leads),
         costPerSuccessUsd: perUnit(o.spend, outcome.success),
         days: days.map((date, i) => {
-          const cell = o.days.get(date) ?? { metaLeads: 0, leads: 0, success: 0 }
+          const cell = o.days.get(date) ?? formDayZero()
+          formDays[i]!.spend += cell.spend
           formDays[i]!.metaLeads += cell.metaLeads
           formDays[i]!.leads += cell.leads
           formDays[i]!.success += cell.success
-          return { date, ...cell }
+          return formDayCells(date, cell)
         }),
       }
     })
@@ -590,7 +612,7 @@ export function leadSourcesOverview(input: {
     },
     forms: {
       owners: formOwners,
-      days: formDays,
+      days: formDays.map((cell, i) => formDayCells(days[i]!, cell)),
       spendUsd: usd(formSpend),
       metaLeads: metaFormLeads,
       outcome: outcomeCells(formOutcome),
@@ -630,7 +652,8 @@ export function leadSourcesOverview(input: {
 
 /*
   One memo per window in front of the three deal scans. Company-wide by
-  construction — the route refuses a narrowed account — so no scope reaches it.
+  construction — both routes that read it (`/leads/overview`,
+  `/reklama/targetologs`) refuse a narrowed account — so no scope reaches it.
 */
 const scanCache = ttlCache<{
   registration: RegistrationDayRow[]
