@@ -14,6 +14,7 @@
 import { z } from 'zod'
 
 import { PAYROLL_HALVES, PERIOD_PRESETS } from '@/server/domain/period/period'
+import { ROISTAT_DIMS } from '@/server/domain/roistat/roistatCuts'
 import {
   CONFIRMATION_ORDER_SORTS,
   CONFIRMATION_OUTCOMES,
@@ -341,5 +342,24 @@ export const targetLeadsQuerySchema = periodQuerySchema.and(
     q: optionalText(100),
     page: z.coerce.number().int().min(1).max(10_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  }),
+)
+
+// ---------------------------------------------------------------------------
+// «Roistat»
+// ---------------------------------------------------------------------------
+
+/**
+ * The table's cut and, under Адсеты / Объявления, the campaign or adset being
+ * drilled into — a Meta id, digits only, so nothing but an id reaches SQL.
+ */
+export const roistatOverviewQuerySchema = periodQuerySchema.and(
+  z.object({
+    dim: z.enum(ROISTAT_DIMS).default('camp'),
+    parent: z
+      .string()
+      .trim()
+      .regex(/^\d{1,30}$/)
+      .optional(),
   }),
 )

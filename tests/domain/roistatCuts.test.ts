@@ -1,0 +1,198 @@
+import { describe, expect, it } from 'vitest'
+
+import {
+  type BitrixCutRow,
+  type SpendDay,
+  ROISTAT_NO_PRODUCT,
+  ROISTAT_NOT_FORM,
+  ROISTAT_NOT_STATED,
+  bitrixCut,
+  bitrixTotal,
+  columnsOf,
+  daysBetween,
+  mergeCuts,
+  productOfLine,
+  spendCut,
+  spendTotal,
+} from '@/server/domain/roistat/roistatCuts'
+import type { TargetProduct } from '@/server/domain/types'
+
+/*
+  RNP's `leadBrand` lives in a service, which loads `env`; the cut only needs
+  a brand reader handed in, so a two-line one stands in for it here.
+*/
+function leadBrand(_sourceId: string | null, formTitle: string | null): TargetProduct | null {
+  if (!formTitle) return null
+  return /zextra/i.test(formTitle) ? 'Zextra' : 'Collagen'
+}
+
+function row(set: BitrixCutRow['set'], fields: Partial<BitrixCutRow>): BitrixCutRow {
+  return {
+    set,
+    day: null,
+    sourceId: null,
+    sourceName: null,
+    formTitle: null,
+    targetolog: null,
+    productLine: null,
+    region: null,
+    rop: null,
+    seller: null,
+    registrar: null,
+    leads: 0,
+    clean: 0,
+    kval: 0,
+    orders: 0,
+    orderedMinor: 0n,
+    sold: 0,
+    soldMinor: 0n,
+    newCustomers: 0,
+    dealDaysSum: 0,
+    dealCount: 0,
+    ...fields,
+  }
+}
+
+function spend(fields: Partial<SpendDay>): SpendDay {
+  return {
+    date: '2026-09-01',
+    targetolog: 'Umar',
+    product: 'Collagen',
+    form: true,
+    spendMicroUsd: 0n,
+    impressions: 0,
+    clicks: 0,
+    metaLeads: 0,
+    ...fields,
+  }
+}
+
+describe('columnsOf', () => {
+  it('gives the Meta cuts no Bitrix columns — no lead can be tied to an ad', () => {
+    for (const dim of ['camp', 'adset', 'ad'] as const) {
+      expect(columnsOf(dim)).toEqual({ meta: true, leads: false, spend: true, sales: false })
+    }
+  })
+
+  it('places spend only where an owner is a fact: day, targetolog, product', () => {
+    const withSpend = (['targetolog', 'form', 'source', 'product', 'region', 'rop', 'seller', 'registrator', 'days'] as const).filter(
+      (dim) => columnsOf(dim).spend,
+    )
+    expect(withSpend).toEqual(['targetolog', 'product', 'days'])
+  })
+})
+
+describe('bitrixCut', () => {
+  it('reads the targetolog from the form name first, then the field, then «не указано»', () => {
+    const rows = [
+      row('form', { formTitle: 'Заполнение CRM-формы "Umar-collagen Collagen (UMAR)"', targetolog: 'Kimdir', leads: 3 }),
+      row('form', { formTitle: null, targetolog: 'Kamron', leads: 2 }),
+      row('form', { formTitle: null, targetolog: null, leads: 5 }),
+      // Not the targetolog's set: ignored.
+      row('source', { sourceName: 'sinolifeuz', leads: 100 }),
+    ]
+    const cut = bitrixCut('targetolog', rows, leadBrand)
+    expect(cut.get('Umar')?.leads).toBe(3)
+    expect(cut.get('Kamron')?.leads).toBe(2)
+    expect(cut.get(ROISTAT_NOT_STATED)?.leads).toBe(5)
+    expect(cut.size).toBe(3)
+  })
+
+  it('names a form by its title and folds two titles of one form together', () => {
+    const rows = [
+      row('form', { formTitle: 'Заполнение CRM-формы "Sinolife (UMAR) 777"', targetolog: 'a', leads: 1 }),
+      row('form', { formTitle: 'Заполнение CRM-формы "Sinolife (UMAR) 777"', targetolog: 'b', leads: 2 }),
+    ]
+    expect(bitrixCut('form', rows, leadBrand).get('Sinolife (UMAR) 777')?.leads).toBe(3)
+  })
+
+  it('reads the product from the lead brand, then the sale’s own «Товар», then «Boshqa»', () => {
+    const rows = [
+      row('product', { formTitle: 'Заполнение CRM-формы "Kamron-zextra Zextra 6 etapli filtr forma 05.07"', leads: 4 }),
+      row('product', { productLine: 'Collagen Marine Sinolife', sold: 1, soldMinor: 100n }),
+      row('product', { productLine: 'Чай', sold: 1, soldMinor: 50n }),
+    ]
+    const cut = bitrixCut('product', rows, leadBrand)
+    expect(cut.get('Zextra')?.leads).toBe(4)
+    expect(cut.get('Collagen')?.soldMinor).toBe(100n)
+    expect(cut.get(ROISTAT_NO_PRODUCT)?.soldMinor).toBe(50n)
+  })
+
+  it('drops the leads from a sales-only cut instead of piling them into «не указано»', () => {
+    const rows = [
+      row('region', { region: null, leads: 50, clean: 45, kval: 20 }),
+      row('region', { region: 'Ташкент г.', orders: 3, orderedMinor: 300n, sold: 2, soldMinor: 200n }),
+      row('region', { region: null, orders: 1, orderedMinor: 100n }),
+    ]
+    const cut = bitrixCut('region', rows, leadBrand)
+    expect(cut.get('Ташкент г.')?.sold).toBe(2)
+    expect(cut.get(ROISTAT_NOT_STATED)).toMatchObject({ leads: 0, orders: 1 })
+    expect(cut.size).toBe(2)
+  })
+
+  it('keeps every lead and sale on the day cut, so its total is the tiles’ total', () => {
+    const rows = [
+      row('total', { leads: 7, sold: 2, soldMinor: 500n }),
+      row('day', { day: '2026-09-01', leads: 4, sold: 1, soldMinor: 200n }),
+      row('day', { day: '2026-09-02', leads: 3, sold: 1, soldMinor: 300n }),
+    ]
+    const cut = bitrixCut('days', rows, leadBrand)
+    const total = bitrixTotal(rows)
+    expect([...cut.values()].reduce((n, c) => n + c.leads, 0)).toBe(total.leads)
+    expect([...cut.values()].reduce((n, c) => n + c.soldMinor, 0n)).toBe(total.soldMinor)
+  })
+
+  it('refuses a scan without its grand total rather than answer zero', () => {
+    expect(() => bitrixTotal([row('day', { day: '2026-09-01' })])).toThrow(/grand-total/)
+  })
+})
+
+describe('spendCut', () => {
+  const days = [
+    spend({ date: '2026-09-01', targetolog: 'Umar', product: 'Collagen', spendMicroUsd: 10_000_000n }),
+    spend({ date: '2026-09-01', targetolog: 'Элдор', product: 'Zextra', spendMicroUsd: 5_000_000n }),
+    spend({ date: '2026-09-01', targetolog: 'Umar', product: 'Collagen', form: false, spendMicroUsd: 2_000_000n }),
+    // Not ad budget: an unmapped account, a hiring campaign (adBudgetProduct → null).
+    spend({ date: '2026-09-02', targetolog: 'Newgen', product: null, spendMicroUsd: 1_000_000n }),
+    spend({ date: '2026-09-02', targetolog: 'Элдор', product: null, spendMicroUsd: 99_000_000n }),
+  ]
+
+  it('counts the ad budget only — RNP and «Lidlar» price the same money', () => {
+    expect(spendTotal(days).spendMicroUsd).toBe(17_000_000n)
+    expect(spendCut('days', days).get('2026-09-02')).toBeUndefined()
+    expect([...spendCut('product', days).keys()].sort()).toEqual(['Collagen', 'Zextra'])
+  })
+
+  it('gives a targetolog his form money only; DM and the rest get a row of their own', () => {
+    const cut = spendCut('targetolog', days)
+    expect(cut.get('Umar')?.spendMicroUsd).toBe(10_000_000n)
+    expect(cut.get(ROISTAT_NOT_FORM)?.spendMicroUsd).toBe(2_000_000n)
+    // …and the cut still adds up to the tile.
+    expect([...cut.values()].reduce((n, c) => n + c.spendMicroUsd, 0n)).toBe(spendTotal(days).spendMicroUsd)
+  })
+
+  it('places no money on a cut that cannot carry it', () => {
+    expect(spendCut('source', days).size).toBe(0)
+    expect(spendCut('seller', days).size).toBe(0)
+  })
+
+  it('meets the leads on one targetolog key', () => {
+    const merged = mergeCuts(
+      bitrixCut('targetolog', [row('form', { formTitle: 'Заполнение CRM-формы "Eldor-collagen Sinolife Collagen - 30.04"', leads: 9 })], leadBrand),
+      spendCut('targetolog', days),
+    )
+    expect(merged.get('Элдор')).toMatchObject({ leads: 9, spendMicroUsd: 5_000_000n })
+  })
+})
+
+describe('helpers', () => {
+  it('reads a product line', () => {
+    expect(productOfLine('Zextra Sinolife')).toBe('Zextra')
+    expect(productOfLine('Коллаген')).toBe('Collagen')
+    expect(productOfLine(null)).toBeNull()
+  })
+
+  it('lists every day of a window, inclusive', () => {
+    expect(daysBetween('2026-09-29', '2026-10-02')).toEqual(['2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02'])
+  })
+})

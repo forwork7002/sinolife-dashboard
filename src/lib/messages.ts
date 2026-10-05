@@ -40,6 +40,7 @@ export const t = {
     marketing: 'Reklama samarasi',
     leads: 'Lidlar',
     target: 'Target tahlili',
+    roistat: 'Roistat',
     /** Not one of the nine: account administration, shown only to an admin. */
     users: 'Foydalanuvchilar',
   },
@@ -87,6 +88,10 @@ export const t = {
     target: {
       title: 'Target tahlili',
       lead: 'Target sahifalaridan kelgan leadlar — qaysi manba, targetolog va kreativdan kelgani, qanchasi buyurtmaga aylangani va qancha pul keltirgani. Bitrix24 dagi yaratilgan sana boʻyicha, Toshkent vaqti.',
+    },
+    roistat: {
+      title: 'Roistat — skvoznaya analitika',
+      lead: 'Meta Ads rasxodidan Bitrix24 dagi lid, kval, buyurtma va sotuvgacha — bir oynada. Kunlar Toshkent vaqti boʻyicha.',
     },
     calls: {
       title: 'Qoʻngʻiroqlar',

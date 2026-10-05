@@ -60,6 +60,10 @@ const ALL_ROUTES = [
   // Leads with customer names and phones. ADMIN and MANAGER only by default,
   // and the endpoints refuse any account that is not company-wide.
   '/target',
+  // Meta spend beside every lead, kval and sale, per campaign, targetolog,
+  // seller. ADMIN and MANAGER only by default, and the endpoint refuses any
+  // account that is not company-wide.
+  '/roistat',
   // Salaries. ADMIN and MANAGER only by default, and the endpoint refuses any
   // account that is not company-wide however the sections are ticked.
   '/payroll',

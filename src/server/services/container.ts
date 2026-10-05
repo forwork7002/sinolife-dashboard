@@ -21,6 +21,7 @@ import { LeadSourcesRepository } from '@/server/repositories/leadSourcesReposito
 import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import { RegistrationRepository } from '@/server/repositories/registrationRepository'
 import { RnpRepository } from '@/server/repositories/rnpRepository'
+import { RoistatRepository } from '@/server/repositories/roistatRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
@@ -39,6 +40,7 @@ import { LeadSourcesService } from './leadSourcesService'
 import { ReklamaService } from './reklamaService'
 import { RegistrationService } from './registrationService'
 import { RnpService } from './rnpService'
+import { RoistatService } from './roistatService'
 
 const dealRepository = new DealRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
@@ -104,7 +106,18 @@ export const leadSourcesService = new LeadSourcesService(new LeadSourcesReposito
   repository, everything else and the plans from its own. See rnpService.ts.
 */
 const rnpRepository = new RnpRepository(prisma)
-export const rnpService = new RnpService(insightsRepository, rnpRepository, reklamaRepository, new CbuUsdRates())
+/*
+  ONE bank-rate cache for the two screens that convert dollars, so a day
+  read for one is not asked of cbu.uz again for the other.
+*/
+const cbuUsdRates = new CbuUsdRates()
+export const rnpService = new RnpService(insightsRepository, rnpRepository, reklamaRepository, cbuUsdRates)
+/*
+  «Roistat» (2026-10-05) — Meta's ad-level rows and the Регистрация lead
+  cohort through to Доставка, from its own repository; Meta's campaign-days
+  for the money through the reklama repository. See roistatService.ts.
+*/
+export const roistatService = new RoistatService(new RoistatRepository(prisma), reklamaRepository, cbuUsdRates)
 /*
   «Registratsiya» (2026-10-01) — the day's handed-out leads per ROP against the
   administrator's split, and «ROP otchet» seller by seller (FAKT from the

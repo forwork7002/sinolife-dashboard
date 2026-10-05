@@ -140,6 +140,7 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
       { href: '/marketing', label: t.nav.marketing, icon: MegaphoneIcon },
       { href: '/leads', label: t.nav.leads, icon: InboxIcon },
       { href: '/target', label: t.nav.target, icon: FunnelIcon },
+      { href: '/roistat', label: t.nav.roistat, icon: ChartIcon },
     ],
   },
   {

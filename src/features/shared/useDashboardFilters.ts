@@ -307,6 +307,8 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   '/customers',
   // «Target tahlili»: `src/app/target/page.tsx` reads no searchParams either.
   '/target',
+  // «Roistat»: `src/app/roistat/page.tsx` reads no searchParams either.
+  '/roistat',
 ])
 
 export function useDashboardFilters() {

@@ -53,6 +53,7 @@ export const SECTIONS = [
   { id: 'marketing', route: '/marketing', label: 'Reklama samarasi', group: 'Marketing' },
   { id: 'leads', route: '/leads', label: 'Lidlar', group: 'Marketing' },
   { id: 'target', route: '/target', label: 'Target tahlili', group: 'Marketing' },
+  { id: 'roistat', route: '/roistat', label: 'Roistat', group: 'Marketing' },
 ] as const satisfies readonly {
   id: string
   route: string
@@ -144,6 +145,12 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
     and their phone numbers, which no narrowed screen hands out.
   */
   'target',
+  /*
+    «ROISTAT» (2026-10-05) FOR THE SAME REASON: Meta spend carries no
+    employee, a lead sits with its registrar, and the screen sets every ROP
+    team and seller side by side on purpose.
+  */
+  'roistat',
   /*
     «SOTUVCHILAR OYLIGI» IS COMPANY-WIDE BECAUSE OF WHAT IT STATES, not
     because of what it can aggregate.
