@@ -1860,7 +1860,22 @@ tbody tr:hover > .tcol-sticky {
   position: relative;
   overflow: hidden;
   background: var(--grid);
-  border-radius: var(--radius-panel-sm);
+}
+
+/*
+  THE RADIUS IS A DEFAULT, SO IT LIVES IN A LAYER — the one declaration here a
+  call site is meant to override. Unlayered it beat every Tailwind `rounded-*`,
+  as an unlayered rule outranks any layered one whatever the specificity (the
+  `@layer base` note under BASE): the two ring placeholders — StatTile's gauge
+  and Yalpi marja's — asked for `rounded-full`, drew as 12px squares and popped
+  into circles when the data came, and every other skeleton that named a radius
+  drew 12px too. `components` sits under `utilities`, so a skeleton that asks
+  for a radius gets it, and a bare one keeps the house 12px.
+*/
+@layer components {
+  .skeleton {
+    border-radius: var(--radius-panel-sm);
+  }
 }
 
 .skeleton::after {
