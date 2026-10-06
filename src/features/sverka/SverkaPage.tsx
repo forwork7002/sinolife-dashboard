@@ -393,8 +393,8 @@ function FreshLine({ data }: { data: SverkaOverviewDto | undefined }) {
       {before.orders > 0 && (
         <p className="text-xs" style={{ color: 'var(--status-warning)' }}>
           MoySklad buyurtmalari {formatDate(data.moysklad.since)} dan boshlanadi — undan oldin Tasdiqlashga tushgan{' '}
-          {formatNumber(before.orders)} ta bitim ({formatFullUzs(before.amount)} soʻm) MoySkladʼda yoʻq. Ular Bitrix24
-          raqamlarida bor, lekin solishtirilmadi.
+          {formatNumber(before.orders)} ta bitim ({formatFullUzs(before.amount)} soʻm) MoySkladʼda yoʻq. Ular FAKT
+          raqamlarida bor, lekin solishtirilmadi va mahsulot hamda ROP jadvallariga kirmadi.
         </p>
       )}
       {/* A revoked token or a MoySklad outage leaves the figures standing; say they are stale. */}

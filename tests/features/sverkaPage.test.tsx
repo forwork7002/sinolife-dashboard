@@ -182,9 +182,10 @@ describe('SverkaBody — a window reaching back past MoySklad', () => {
   it('says from when MoySklad holds orders and how much of the window was left out', () => {
     render(<SverkaBody data={year} status="ready" />)
     const since = formatDate('2026-06-14T19:00:00.000Z')
-    expect(screen.getByText(new RegExp(`MoySklad buyurtmalari ${since} dan boshlanadi`)).textContent).toContain(
-      '2 ta bitim (3,200,000 soʻm) MoySkladʼda yoʻq',
-    )
+    const note = screen.getByText(new RegExp(`MoySklad buyurtmalari ${since} dan boshlanadi`)).textContent
+    expect(note).toContain('2 ta bitim (3,200,000 soʻm) MoySkladʼda yoʻq')
+    // The tiles keep them; the product and ROP tables, which only compare, do not.
+    expect(note).toContain('mahsulot hamda ROP jadvallariga kirmadi')
     expect(screen.getByText(/davrda Tasdiqlashga tushgan 1 ta bitim solishtirildi/)).toBeTruthy()
   })
 
