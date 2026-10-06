@@ -74,8 +74,10 @@ export function withinHours(now: Date, timeZone: string, [from, to]: readonly [n
   and the route handlers are separate bundles in one process, and each would
   get its own copy of a module-level set.
 */
+const FIRST_WARM = 'sinolife.firstWarmPending'
+
 function pendingSet(): Set<string> {
-  return processWide('sinolife.firstWarmPending', () => new Set<string>())
+  return processWide(FIRST_WARM, () => new Set<string>())
 }
 
 /** True while any warmer's first build is still running; false where no warmer runs. */
