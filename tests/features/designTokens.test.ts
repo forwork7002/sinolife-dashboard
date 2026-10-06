@@ -1,7 +1,9 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+
+import { ROP_COLORS, ropInk } from '@/features/leads/ropColors'
 
 /**
  * The design system, read the way the browser reads it: as `globals.css`.
@@ -108,6 +110,16 @@ function mix(a: Rgb, p: number, b: Rgb): Rgb {
   return fromOklab(x.map((v, i) => v * p + y[i]! * (1 - p)) as unknown as Rgb)
 }
 
+/** An opaque colour as written in the stylesheet or a style prop: a hex, a token, or an oklab mix of two. */
+function colour(theme: Theme, value: string): Rgb {
+  const v = value.trim()
+  const variable = /^var\((--[\w-]+)\)$/.exec(v)
+  if (variable) return colour(theme, token(theme, variable[1]!))
+  const mixed = /^color-mix\(in oklab, (.+) ([\d.]+)%, (.+)\)$/.exec(v)
+  if (mixed) return mix(colour(theme, mixed[1]!), Number(mixed[2]) / 100, colour(theme, mixed[3]!))
+  return rgb(v)
+}
+
 /**
  * The slots a page may wear as its accent — globals.css «Page identity»:
  * 4 is too light to carry a mark on a grid track, 8 sits 4.1 ΔE from
@@ -169,6 +181,70 @@ describe('the accent derivatives follow the page, not :root', () => {
         expect(contrast(ink, wash), `${theme} slot ${slot} on its wash`).toBeGreaterThanOrEqual(4.5)
         expect(contrast(ink, card), `${theme} slot ${slot} on the card`).toBeGreaterThanOrEqual(4.5)
       }
+    }
+  })
+})
+
+describe('ink on a series fill', () => {
+  /*
+    One theme-free #fff was said to clear every slot in both modes. It cleared
+    five slots in light and none in dark, and text sat on all of them: the
+    bell count, the MultiSelect count, «Yangi versiya», the lead split's
+    labels, a payroll rank chip.
+  */
+  const BRIGHT = new Set([3, 4, 5])
+
+  it('clears 4.5:1 on every slot in both themes, with the ink the slot is assigned', () => {
+    for (const theme of THEMES) {
+      for (let slot = 1; slot <= 8; slot += 1) {
+        const ink = colour(theme, BRIGHT.has(slot) ? 'var(--ink-on-series-bright)' : 'var(--ink-on-series)')
+        expect(contrast(ink, colour(theme, `var(--series-${slot})`)), `${theme} slot ${slot}`).toBeGreaterThanOrEqual(4.5)
+      }
+      // The lead split's «Berilmagan» share is filled with --ink-muted.
+      expect(contrast(colour(theme, 'var(--ink-on-series)'), colour(theme, 'var(--ink-muted)')), `${theme} muted`).toBeGreaterThanOrEqual(4.5)
+    }
+  })
+
+  it('pairs every ROP team colour with an ink that clears it, the two mixes included', () => {
+    expect(ROP_COLORS).toHaveLength(9)
+    for (const theme of THEMES) {
+      for (const fill of ROP_COLORS) {
+        expect(contrast(colour(theme, ropInk(fill)), colour(theme, fill)), `${theme} ${fill}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  it('is never a literal white in a component, where no theme can reach it', () => {
+    const offenders: string[] = []
+    for (const dir of ['src/components', 'src/features']) {
+      for (const file of readdirSync(join(process.cwd(), dir), { recursive: true }) as string[]) {
+        if (!file.endsWith('.tsx')) continue
+        const source = readFileSync(join(process.cwd(), dir, file), 'utf8')
+        if (/\btext-white\b|color:\s*['"](#fff(fff)?|white)['"]/i.test(source)) offenders.push(`${dir}/${file}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+
+  /*
+    The active rail item and the S mark keep white in both themes: their fills
+    are the house's own and do not follow the theme's series steps. The hover
+    used to BRIGHTEN the gradient (1.08), which took the label to 4.36:1.
+  */
+  it('keeps the active rail item on its own theme-free white, above 4.5:1 at rest and under the pointer', () => {
+    expect(DARK.has('--ink-on-brand')).toBe(false)
+    const active = /\.rail-item\[aria-current='page'\]\s*\{([^}]*)\}/.exec(CSS)![1]!
+    const hover = /\.rail-item\[aria-current='page'\]:hover\s*\{([^}]*)\}/.exec(CSS)![1]!
+    expect(active).toMatch(/color:\s*var\(--ink-on-brand\)/)
+    expect(hover).toMatch(/color:\s*var\(--ink-on-brand\)/)
+
+    const gain = Number(/brightness\(([\d.]+)\)/.exec(hover)?.[1] ?? 1)
+    const stops = [...token('light', '--rail-active-bg').matchAll(/#[0-9a-f]{6}/gi)].map((m) => rgb(m[0]))
+    expect(stops).toHaveLength(2)
+    const white = rgb(token('dark', '--ink-on-brand'))
+    for (const stop of stops) {
+      expect(contrast(white, stop)).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(white, stop.map((v) => Math.min(255, v * gain)) as unknown as Rgb)).toBeGreaterThanOrEqual(4.5)
     }
   })
 })

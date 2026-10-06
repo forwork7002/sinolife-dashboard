@@ -710,16 +710,23 @@ function payrollColumns(scheme: Scheme, compared: boolean): Column<PayrollLine>[
           <span className="flex items-center gap-2">
             {/*
               THE RANK IS A MARK, NOT A SENTENCE. «1. Ism» run into the name
-              reads as part of the name. The leader is filled; everybody else
-              gets the same quiet chip, so the column still scans as a ranking
-              rather than a podium.
+              reads as part of the name. The leader is marked the way RankBadge
+              marks a place — weight and a ring, never hue: it was filled with
+              --series-4, which on this screen is «fiksa», under white text
+              that read 3.04:1. Everybody else gets the same quiet chip, so the
+              column still scans as a ranking rather than a podium.
             */}
             <span
               aria-hidden
               className="tabular inline-flex size-[22px] shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
               style={
                 line.row.rank === 1
-                  ? { background: 'var(--series-4)', color: '#fff' }
+                  ? {
+                      background: 'var(--grid)',
+                      color: 'var(--ink-primary)',
+                      fontWeight: 700,
+                      boxShadow: 'inset 0 0 0 1px var(--border-strong)',
+                    }
                   : { background: 'var(--grid)', color: 'var(--ink-muted)' }
               }
             >

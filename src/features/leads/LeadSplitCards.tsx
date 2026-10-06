@@ -14,7 +14,7 @@ import { apportion } from '@/lib/apportion'
 import { APP_TIME_ZONE, formatDate, formatDateShort, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
 
 import { type LeadSplitDto, type LeadSplitRopDto, type SaveSplitBody, SHARE_TOTAL_BP, type SplitShare } from './leadSplitApi'
-import { ROP_COLORS } from './ropColors'
+import { ROP_COLORS, ropInk } from './ropColors'
 
 /**
  * How one day's handed-out leads are shared among the ROPs — the cards that
@@ -227,13 +227,15 @@ function Bar({ label, whole, parts }: { label: string; whole: number; parts: rea
               <div
                 key={p.key}
                 title={`${p.label}: ${p.note}`}
-                className="flex min-w-0 flex-col justify-center overflow-hidden border-r px-2 text-white last:border-r-0"
-                style={{ width: `${pct}%`, background: p.color, borderColor: 'var(--surface-raised)' }}
+                className="flex min-w-0 flex-col justify-center overflow-hidden border-r px-2 last:border-r-0"
+                // The fill's own ink (`ropInk`), never a literal white, and at
+                // full strength on both lines: 11px text has no contrast to spare.
+                style={{ width: `${pct}%`, background: p.color, borderColor: 'var(--surface-raised)', color: ropInk(p.color) }}
               >
                 {pct >= 6 && (
                   <span className="hidden min-w-0 flex-col sm:flex">
                     <span className="truncate text-[11px] leading-tight font-medium">{p.label}</span>
-                    <span className="tabular truncate text-[11px] leading-tight opacity-90">{p.note}</span>
+                    <span className="tabular truncate text-[11px] leading-tight">{p.note}</span>
                   </span>
                 )}
               </div>

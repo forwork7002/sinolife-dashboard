@@ -58,6 +58,21 @@ Status steps were darkened in light mode so each clears **4.5:1** and may carry
 text, not only a mark. They still ship with a word or an icon; colour alone is
 never a channel.
 
+### Ink on a series fill
+
+No single ink clears 4.5:1 on all eight slots, so text on a filled chip, badge
+or bar takes one of two, measured slot by slot in both themes:
+
+| Token | Slots | Light | Dark |
+|---|---|---|---|
+| `--ink-on-series` | 1, 2, 6, 7, 8 (and `--ink-muted` as a fill) | `#ffffff` | `#02040c` |
+| `--ink-on-series-bright` | 3, 4, 5 — teal, amber, pink | `#02040c` | `#02040c` |
+
+White on the dark steps failed every slot (2.07–4.46:1), and in light it fails
+teal, amber and pink. Never a literal `#fff` or `text-white` in a component —
+the theme cannot reach it. The house's own brand fills (the active rail item,
+the S mark) keep white in both themes on their own token, `--ink-on-brand`.
+
 ### The three-series cap
 
 Scatter, bubble, choropleth and small-multiples charts — anywhere two marks can

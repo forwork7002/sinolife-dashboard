@@ -234,9 +234,27 @@
    *
    * A literal `#fff` in a component is a colour the palette cannot reach: it
    * stays white when the surface under it changes, and there is nowhere to fix
-   * it once. Every series step clears 4.5:1 against this in both modes.
+   * it once.
+   *
+   * NO ONE INK CLEARS 4.5:1 ON EVERY SLOT, so there are two, measured per slot:
+   *
+   *   --ink-on-series         slots 1, 2, 6, 7, 8 (and --ink-muted as a fill)
+   *     light #ffffff    4.91 · 4.62 · 4.65 · 4.80 · 4.78   (muted 5.62)
+   *     dark  #02040c    6.31 · 5.24 · 4.59 · 5.78 · 5.07   (muted 7.47)
+   *   --ink-on-series-bright  slots 3, 4, 5 — teal, amber, pink
+   *     #02040c, both    light 4.75 · 6.73 · 5.22   dark 9.89 · 6.65 · 6.00
+   *
+   * This was one theme-free #fff said to clear every slot in both modes. In
+   * light it failed teal, amber and pink (4.31 / 3.04 / 3.92); in dark it
+   * failed all eight (2.07–4.46). The dark override is in both dark blocks.
    */
   --ink-on-series: #ffffff;
+  --ink-on-series-bright: #02040c;
+  /* White on the house's own brand fills, which do not follow the theme's
+     series steps: the active rail item (--rail-active-bg, 4.91 and 5.93 on its
+     two stops) and the S mark, a logotype. Not a series ink, so the dark
+     blocks leave it alone. */
+  --ink-on-brand: #ffffff;
 
   /* --- Elevation -------------------------------------------------------- */
   --shadow-card:
@@ -470,6 +488,9 @@
     --px4-track: inset 0 1px 3px rgba(0, 0, 0, 0.65);
     --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
     --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
+    /* Dark ink on the dark series steps — white failed all eight; see the
+       light block for every slot's figure. */
+    --ink-on-series: #02040c;
 
     --shadow-card: 0 1px 2px rgba(2, 5, 20, 0.55), 0 8px 24px -12px rgba(40, 80, 220, 0.25);
     --shadow-raised: 0 1px 2px rgba(2, 5, 20, 0.55), 0 12px 32px -10px rgba(40, 80, 220, 0.35);
@@ -595,6 +616,8 @@
   --px4-track: inset 0 1px 3px rgba(0, 0, 0, 0.65);
   --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
   --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
+  /* Series ink — kept in lockstep with the media-query block above. */
+  --ink-on-series: #02040c;
 
   --shadow-card: 0 1px 2px rgba(2, 5, 20, 0.55), 0 8px 24px -12px rgba(40, 80, 220, 0.25);
   --shadow-raised: 0 1px 2px rgba(2, 5, 20, 0.55), 0 12px 32px -10px rgba(40, 80, 220, 0.35);
@@ -2204,15 +2227,18 @@ p {
   transform: scale(0.98);
 }
 .rail-item[aria-current='page'] {
-  color: var(--ink-on-series);
+  color: var(--ink-on-brand);
   background: var(--rail-active-bg);
   box-shadow:
     0 8px 18px -8px rgba(47, 102, 240, 0.7),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
+/* The hover DEEPENS the gradient. It brightened it (1.08) until 2026-10-06,
+   which took the white label on the blue stop from 4.91:1 to 4.36:1; at 0.94
+   the two stops read 5.43 and 6.51. */
 .rail-item[aria-current='page']:hover {
-  color: var(--ink-on-series);
-  filter: brightness(1.08);
+  color: var(--ink-on-brand);
+  filter: brightness(0.94);
 }
 
 .rail-icon {
@@ -2230,7 +2256,7 @@ p {
 }
 .rail-item[aria-current='page'] .rail-icon,
 .rail-item[aria-current='page']:hover .rail-icon {
-  color: var(--ink-on-series);
+  color: var(--ink-on-brand);
 }
 
 /* Folded to icons: the glyph grows from 15px to 18px so a 40px square does
@@ -4596,8 +4622,12 @@ p {
   color: var(--ink-on-series);
   font-weight: 600;
 }
+/* The hover moves the fill AWAY from its label, toward --ink-primary (darker
+   in light, lighter in dark). It moved toward --ink-on-series, which is the
+   label's own colour, and read 3.55:1 in light and 3.43:1 in dark; this
+   reads 5.81 and 5.87 on /structure's olive. */
 .org-float-btn--primary:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--accent) 85%, var(--ink-on-series));
+  background: color-mix(in oklab, var(--accent) 85%, var(--ink-primary));
   color: var(--ink-on-series);
 }
 

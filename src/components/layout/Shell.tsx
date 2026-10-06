@@ -840,7 +840,9 @@ export function Shell({
                   type="button"
                   onClick={() => window.location.reload()}
                   className="focusable rounded-lg px-2.5 py-1.5 text-[11px] font-semibold whitespace-nowrap"
-                  style={{ background: 'var(--series-3)', color: '#fff' }}
+                  // Teal takes the dark ink in both themes: white on it read
+                  // 4.31:1 in light and 2.07:1 in dark (see --ink-on-series).
+                  style={{ background: 'var(--series-3)', color: 'var(--ink-on-series-bright)' }}
                 >
                   Yangi versiya · yangilash
                 </button>
@@ -984,11 +986,14 @@ function WordmarkBadge({ small = false }: { small?: boolean }) {
           : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold'
       }
       style={{
+        // White in both themes (--ink-on-brand): the mark shares the active
+        // rail item's ink, and the light it leans toward is white whatever
+        // the series inks do.
         background:
-          'linear-gradient(180deg, color-mix(in oklab, var(--series-1) 86%, var(--ink-on-series)) 0%, var(--series-1) 65%)',
-        color: 'var(--ink-on-series)',
+          'linear-gradient(180deg, color-mix(in oklab, var(--series-1) 86%, var(--ink-on-brand)) 0%, var(--series-1) 65%)',
+        color: 'var(--ink-on-brand)',
         boxShadow:
-          'inset 0 1px 0 color-mix(in oklab, var(--ink-on-series) 30%, transparent), var(--shadow-card)',
+          'inset 0 1px 0 color-mix(in oklab, var(--ink-on-brand) 30%, transparent), var(--shadow-card)',
       }}
       aria-hidden="true"
     >
