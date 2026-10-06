@@ -29,6 +29,7 @@
  */
 
 import { logger } from '@/server/logging/logger'
+import { processWide } from '@/server/processWide'
 
 export const RNP_WARM_EVERY_MS = 4 * 60_000
 
@@ -69,16 +70,12 @@ export function withinHours(now: Date, timeZone: string, [from, to]: readonly [n
   serving meanwhile — bounded there by `WARMING_GRACE_S`, so a slow or failing
   build never fails a deploy.
 
-  ON `globalThis`, NOT A MODULE VARIABLE: `instrumentation.ts` and the route
-  handlers are separate bundles in one process, and each would get its own
-  copy of a module-level set.
+  ON `globalThis`, NOT A MODULE VARIABLE (`processWide`): `instrumentation.ts`
+  and the route handlers are separate bundles in one process, and each would
+  get its own copy of a module-level set.
 */
-const FIRST_WARM = Symbol.for('sinolife.firstWarmPending')
-type WarmFlags = { [FIRST_WARM]?: Set<string> }
-
 function pendingSet(): Set<string> {
-  const g = globalThis as WarmFlags
-  return (g[FIRST_WARM] ??= new Set())
+  return processWide('sinolife.firstWarmPending', () => new Set<string>())
 }
 
 /** True while any warmer's first build is still running; false where no warmer runs. */

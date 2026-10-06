@@ -32,6 +32,7 @@ import { productOfLine } from '@/server/domain/roistat/roistatCuts'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
 import { adBudgetProduct } from '@/server/integrations/meta/accounts'
 import { logger } from '@/server/logging/logger'
+import { processWide } from '@/server/processWide'
 import { InsightsRepository, type RnpTeamDayRow } from '@/server/repositories/insightsRepository'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import type {
@@ -107,23 +108,23 @@ interface MonthRows {
   statement timeout — the «RNP juda sekin ochilayapti» the client reported.
   The warmer alone keeps the current month at most one tick old.
 */
-const monthCache = shared('monthCache', () => staleWhileRevalidate<MonthRows>(RNP_WARM_EVERY_MS, Date.now, 30 * 60_000, warnRebuild))
-const pastMonthCache = shared('pastMonthCache', () => staleWhileRevalidate<MonthRows>(30 * 60_000, Date.now, Infinity, warnRebuild))
-
 /*
-  ON `globalThis`, NOT MODULE VARIABLES (2026-10-06). `instrumentation.ts`
-  and the route handlers are separate bundles in one process, and each loads
-  its own copy of this module (`rnpWarmer.ts` says the same of its flag). As
-  module variables the warmer rebuilt, every four minutes, a memo no route
-  read, while /rnp's own copy was refreshed only by its readers: cold after
-  each deploy (17–38 s) and after every quiet half hour. Whichever copy loads
-  first makes each memo, and the other finds it. Under `next dev` a reloaded
-  module finds them too, so a TTL edited there needs a server restart.
+  ON `globalThis`, NOT MODULE VARIABLES (2026-10-06, `processWide`).
+  `instrumentation.ts` and the route handlers are separate bundles in one
+  process, and each loads its own copy of this module (`rnpWarmer.ts` says
+  the same of its flag). As module variables the warmer rebuilt, every four
+  minutes, a memo no route read, while /rnp's own copy was refreshed only by
+  its readers: cold after each deploy (17–38 s) and after every quiet half
+  hour. Whichever copy loads first makes each memo, and the other finds it.
+  Under `next dev` a reloaded module finds them too, so a TTL edited there
+  needs a server restart.
 */
-function shared<T>(name: string, make: () => T): T {
-  const g = globalThis as unknown as Record<symbol, unknown>
-  return (g[Symbol.for(`sinolife.rnp.${name}`)] ??= make()) as T
-}
+const monthCache = processWide('sinolife.rnp.monthCache', () =>
+  staleWhileRevalidate<MonthRows>(RNP_WARM_EVERY_MS, Date.now, 30 * 60_000, warnRebuild),
+)
+const pastMonthCache = processWide('sinolife.rnp.pastMonthCache', () =>
+  staleWhileRevalidate<MonthRows>(30 * 60_000, Date.now, Infinity, warnRebuild),
+)
 
 function warnRebuild(key: string, err: unknown): void {
   logger.warn({ err, key }, 'rnp rebuild failed; serving the previous answer')
@@ -144,7 +145,7 @@ function warnRebuild(key: string, err: unknown): void {
 const REGISTRATION_HISTORY_MS = 30 * 60_000
 /* Cold, beside the other reads, the scan ran past 20 s on 2026-09-30; see `registrationDays`. */
 const REGISTRATION_HISTORY_TIMEOUT_MS = 60_000
-const registrationHistory = shared('registrationHistory', () =>
+const registrationHistory = processWide('sinolife.rnp.registrationHistory', () =>
   staleWhileRevalidate<RnpRegistrationDayRow[]>(REGISTRATION_HISTORY_MS, Date.now, Infinity, warnRebuild),
 )
 

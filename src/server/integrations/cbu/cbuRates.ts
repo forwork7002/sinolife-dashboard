@@ -20,6 +20,8 @@
  * month not read yet (30 days, five at a time).
  */
 
+import { processWide } from '@/server/processWide'
+
 const ENDPOINT = 'https://cbu.uz/uz/arkhiv-kursov-valyut/json/USD'
 const REQUEST_TIMEOUT_MS = 5_000
 const TODAY_TTL_MS = 60 * 60_000
@@ -101,12 +103,9 @@ export class CbuUsdRates {
   the RNP warmer read the month's rates into a cache no screen asked, and the
   first /rnp after a deploy asked the bank for the whole month again (30
   days, five at a time). Whichever bundle asks first makes it; the other is
-  handed the same one.
+  handed the same one (`processWide`).
 */
-const SHARED_RATES = Symbol.for('sinolife.cbu.usdRates')
-
 /** The process's one `CbuUsdRates` — the container's. */
 export function sharedCbuUsdRates(): CbuUsdRates {
-  const g = globalThis as { [SHARED_RATES]?: CbuUsdRates }
-  return (g[SHARED_RATES] ??= new CbuUsdRates())
+  return processWide('sinolife.cbu.usdRates', () => new CbuUsdRates())
 }
