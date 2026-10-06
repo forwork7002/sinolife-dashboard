@@ -74,6 +74,20 @@ export function TargetPage() {
   const [page, setPage] = useState(1)
   const leadListRef = useRef<HTMLDivElement>(null)
 
+  /*
+    A new reporting window is a new list, so the page goes back to the first,
+    as `useDashboardFilters` does for a page kept in the URL: page 3 of «Shu
+    oy» asked of «Bugun»'s 40 leads answered an empty list under «40 ta yozuv
+    · 3/1». Reset while rendering, not in an effect, so the stale page is
+    never requested.
+  */
+  const windowKey = `${apiParams.preset}|${apiParams.from ?? ''}|${apiParams.to ?? ''}`
+  const [pagedWindow, setPagedWindow] = useState(windowKey)
+  if (pagedWindow !== windowKey) {
+    setPagedWindow(windowKey)
+    setPage(1)
+  }
+
   const windowParams = useMemo(() => {
     const out: Record<string, string | number> = { preset: apiParams.preset, scope, product }
     if (apiParams.from !== undefined) out.from = apiParams.from
