@@ -172,6 +172,25 @@ export function sheetLines(blocks: readonly RnpBlockDto[], options: { month: str
     ),
   ]
 
+  /*
+    «Brendsiz проект» — the P&L of what neither brand claims, drawn like the
+    two brands' («Коллаген / Зехтра проект»: the project's name on its first
+    line, the metric beside it), under the «Brendsiz» slice only. The sheet
+    has no such block, so «Hammasi» never shows it.
+  */
+  const brandlessProject = (blocks.find((b) => b.id === 'project:none')?.rows ?? []).map(
+    (r, i): RnpLine => ({
+      ...valueLine(r),
+      label: i === 0 ? 'Brendsiz проект' : r.label,
+      sub: i === 0 ? r.label : null,
+      tone: i === 0 ? 'section' : 'brand',
+      bold: i === 0,
+      brand: 'none',
+      brandOnly: true,
+    }),
+  )
+  lines.push(...brandlessProject)
+
   insertAfter(lines, LOGISTICS, addedLogistics)
   insertAfter(lines, TEAMS, addedTeams)
   insertAfter(lines, GROUPS, otherTeams)

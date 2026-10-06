@@ -120,9 +120,12 @@ export function brandLines(lines: readonly RnpLine[], brand: 'all' | 'Collagen' 
     const whole = lines.filter((l) => !(l.kind === 'value' && l.brandOnly))
     return whole.length === lines.length ? lines : whole
   }
-  // «Brendsiz»: the blocks and logistics of the teams on neither brand's list.
-  if (brand === 'none') return lines.filter((l) => l.brand === 'none')
-  const own = lines.filter((l) => l.brand === brand || l.brand === 'both')
   const isProject = (l: RnpLine) => l.kind === 'value' && l.key !== null && l.key.startsWith('pj:')
+  // «Brendsiz»: its P&L first, as a brand's, then the blocks and logistics of the teams on neither list.
+  if (brand === 'none') {
+    const own = lines.filter((l) => l.brand === 'none')
+    return [...own.filter(isProject), ...own.filter((l) => !isProject(l))]
+  }
+  const own = lines.filter((l) => l.brand === brand || l.brand === 'both')
   return [...own.filter(isProject), ...own.filter((l) => !isProject(l))]
 }

@@ -525,6 +525,14 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     expect(on(row(d, 'registration', 'reg:distributed'), '2026-09-02')).toBe(sum)
   })
 
+  it('draws «Brendsiz проект» for the «Brendsiz» slice only, like the two brands\' P&L', () => {
+    const d = dto()
+    const pj = d.lines.filter((l) => l.kind === 'value' && l.key?.startsWith('pj:none:'))
+    expect(pj.map((l) => l.kind === 'value' && l.key)).toEqual(['pj:none:fakt1', 'pj:none:fakt2', 'pj:none:leads', 'pj:none:qualified'])
+    expect(pj[0]).toMatchObject({ label: 'Brendsiz проект', sub: 'Сумма ФАКТ 1', brand: 'none', brandOnly: true })
+    expect(pj.every((l) => l.brand === 'none' && l.kind === 'value' && l.brandOnly)).toBe(true)
+  })
+
   it('cuts «Boshqa jamoalar» by brand for the switch, the three cuts adding up to it', () => {
     const d = dto()
     const others = on(row(d, 'registration', 'reg:group:none:qualified'), '2026-09-02')
