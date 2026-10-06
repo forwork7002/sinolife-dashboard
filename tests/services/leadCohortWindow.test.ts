@@ -112,6 +112,8 @@ describe('LeadCohortService', () => {
     expect(sql).toMatch(/h\."headId" = e\."id"/)
     expect(sql).toMatch(/e\."id" = ANY\(\$1::text\[\]\)/)
     expect(sql).toMatch(/DISTINCT ON \(e\."id"\)/)
+    // Of two ROP units they head, the one they sit in — «THE ROP OF A LEAD», as the split cards and RNP read it.
+    expect(sql).toMatch(/IS NULL, \(h\."id" = e\."departmentId"\) DESC, h\."name"\s*$/)
   })
 
   it('reads the deal SQL with the three windows and the three pipelines', () => {

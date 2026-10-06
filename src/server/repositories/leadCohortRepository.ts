@@ -102,8 +102,10 @@ export class LeadCohortRepository {
 
   /**
    * The team each ROP the window names stands for (`ropNameSql`) — the
-   * department they head, else their own — for the Collagen / Zextra switch,
-   * which files a lead by the team it was routed to (`teamBrand`).
+   * department they head (of two, the one they sit in, as `leadRopSql` and
+   * RNP's `leadDaysSql` read it — 2026-10-06 audit), else their own — for the
+   * Collagen / Zextra switch, which files a lead by the team it was routed to
+   * (`teamBrand`).
    */
   async teams(ids: readonly string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map()
@@ -124,6 +126,6 @@ export class LeadCohortRepository {
         LEFT JOIN "department" h ON h."headId" = e."id" AND h."isActive"
         LEFT JOIN "department" dep ON dep."id" = e."departmentId"
        WHERE e."id" = ANY($1::text[])
-       ORDER BY e."id", (${headed}) IS NULL, h."name"`
+       ORDER BY e."id", (${headed}) IS NULL, (h."id" = e."departmentId") DESC, h."name"`
   }
 }
