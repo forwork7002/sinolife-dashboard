@@ -2466,6 +2466,36 @@ p {
 
 
 /*
+ * THE CHROME — header, rail and the phone drawer — is glass too («Shisha»),
+ * and it is the cheapest glass in the house: nothing ever moves under it.
+ *
+ * The header is a row of a column exactly the viewport tall and the rail is
+ * the column beside it, so behind both there is only html's backdrop, which
+ * does not scroll. The header's old blur(12px) saturate(1.6) blurred that
+ * still picture and nothing else — a composited layer and a backdrop pass
+ * for a bar that looks the same as this fill. No backdrop-filter here, then,
+ * and classes rather than inline styles, so the one transparency fallback
+ * reaches them. `viewTransitionName` stays on the elements (Shell.tsx).
+ */
+.app-header,
+.app-rail {
+  background: var(--glass-chrome);
+  border-color: var(--glass-edge);
+}
+
+/*
+ * The drawer is the one piece of chrome that opens OVER the page, and the
+ * page is content: a translucent panel there showed the cards under it as
+ * ghost text through the scrim. So it lays the chrome over --page, the bare
+ * sky — the colour the rail is wherever the backdrop is unlit — and hides
+ * whatever is beneath it.
+ */
+.app-drawer {
+  background: linear-gradient(var(--glass-chrome), var(--glass-chrome)), var(--page);
+  border-color: var(--glass-edge);
+}
+
+/*
  * The sidebar's items — hover, active, folded — in one place.
  *
  * Inline styles cannot express :hover, and the rail had none: a pointer over a
@@ -2483,9 +2513,12 @@ p {
     color 150ms ease-out,
     transform 120ms ease-out;
 }
+/* A wash, not the opaque --grid it was: on glass chrome a solid hover patch
+   read as a hole in the pane. Under the pointer the label is --ink-primary,
+   which holds 7:1 on the wash over every sample of the backdrop. */
 .rail-item:hover {
   color: var(--ink-primary);
-  background: var(--grid);
+  background: var(--glass-hover);
 }
 .rail-item:active {
   transform: scale(0.98);

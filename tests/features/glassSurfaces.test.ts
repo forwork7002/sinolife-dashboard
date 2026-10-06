@@ -95,3 +95,55 @@ describe('data never sits on glass', () => {
     expect(source('src/features/sellers/SellersPage.tsx')).toMatch(/tv-col tv-col--\$\{tone\}[^`]*card reveal/)
   })
 })
+
+describe('the chrome is glass with no blur', () => {
+  const shell = source('src/components/layout/Shell.tsx')
+  /** An element's opening tag in Shell.tsx, from `<tag` to its inline style object. */
+  const openingTag = (pattern: RegExp) => {
+    const found = pattern.exec(shell)
+    if (!found) throw new Error(`no match for ${pattern}`)
+    return found[0]
+  }
+
+  /*
+    Nothing ever moves under the header or the rail: the Shell is 100dvh and
+    only <main> scrolls. The header's blur(12px) saturate(1.6) blurred a still
+    picture — a layer and a pass per frame for no visible difference — and as
+    an inline style no media query could take it away from a reader who asked
+    for less transparency.
+  */
+  it('paints header, rail and drawer from classes, keeping only geometry and the transition name inline', () => {
+    const header = openingTag(/<header\b[\s\S]*?style=\{\{[\s\S]*?\}\}/)
+    const rail = openingTag(/<aside\b[\s\S]*?style=\{\{[\s\S]*?\}\}/)
+    const drawer = openingTag(/className="app-drawer[\s\S]*?style=\{\{[\s\S]*?\}\}/)
+    expect(header).toMatch(/className="app-header /)
+    expect(header).toMatch(/viewTransitionName: 'app-header'/)
+    expect(rail).toMatch(/app-rail/)
+    expect(rail).toMatch(/viewTransitionName: 'app-sidebar'/)
+    for (const [name, tag] of [['header', header], ['rail', rail], ['drawer', drawer]] as const) {
+      expect(tag, name).not.toMatch(/background:|backdropFilter|WebkitBackdropFilter|borderColor/)
+    }
+  })
+
+  it('fills header and rail with the chrome glass and never blurs them', () => {
+    const chrome = rule('.app-header, .app-rail')
+    expect(chrome).toMatch(/background: var\(--glass-chrome\)/)
+    expect(chrome).toMatch(/border-color: var\(--glass-edge\)/)
+    expect(chrome).not.toMatch(/backdrop-filter/)
+  })
+
+  /*
+    The drawer opens over the page, and a translucent panel there showed the
+    cards beneath as ghost text through the scrim; it lays the chrome over the
+    bare --page, so it is the rail's colour and opaque.
+  */
+  it('lays the phone drawer\'s chrome over the bare page, so nothing shows through it', () => {
+    const drawer = rule('.app-drawer')
+    expect(drawer).toMatch(/background: linear-gradient\(var\(--glass-chrome\), var\(--glass-chrome\)\), var\(--page\);/)
+    expect(drawer).not.toMatch(/backdrop-filter/)
+  })
+
+  it('washes a hovered rail item with the glass hover, not an opaque patch', () => {
+    expect(rule('.rail-item:hover')).toMatch(/background: var\(--glass-hover\)/)
+  })
+})
