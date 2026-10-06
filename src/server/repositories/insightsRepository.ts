@@ -1123,6 +1123,10 @@ export interface SverkaDealRow {
   /** «Продавец» as the portal stamped it on the deal (UF_CRM_1778416910). */
   readonly sellerSource: string | null
   readonly rop: string | null
+  /** «Организация сотрудника» on the deal, «(ROP)» stripped — null when it names no team. */
+  readonly ropSource: string | null
+  /** «Регион» on the deal. */
+  readonly region: string | null
 }
 
 /** One Регистрация lead whose phone reached FAKT 1, as `leadFakt1Clients` reads it. */
@@ -3259,6 +3263,8 @@ export class InsightsRepository {
         stage_name: string
         seller_source: string | null
         rop: string | null
+        rop_source: string | null
+        region: string | null
       }[]
     >(
       `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.sverkaCohortSql()}`,
@@ -3279,6 +3285,8 @@ export class InsightsRepository {
       stageName: r.stage_name,
       sellerSource: r.seller_source,
       rop: r.rop,
+      ropSource: r.rop_source,
+      region: r.region,
     }))
   }
 
@@ -3296,7 +3304,9 @@ export class InsightsRepository {
            ds."externalId" AS stage_external_id,
            ds."name" AS stage_name,
            d."operatorNameSource" AS seller_source,
-           c.rop
+           c.rop,
+           ${InsightsRepository.ropNameSql('d."operatorTeamSource"')} AS rop_source,
+           d."region" AS region
       FROM scoped c
       JOIN "deal" d ON d."id" = c.deal_id
       JOIN "deal_stage" ds ON ds."id" = d."stageId"`

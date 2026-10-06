@@ -35,6 +35,10 @@ const ORDER_SELECT = {
   sumMinor: true,
   sellerName: true,
   projectName: true,
+  region: true,
+  logistics: true,
+  payedMinor: true,
+  shippedMinor: true,
   items: { select: { productCode: true, productName: true, quantity: true, totalMinor: true } },
 } as const
 
@@ -47,6 +51,10 @@ type OrderRecord = {
   sumMinor: bigint
   sellerName: string | null
   projectName: string | null
+  region: string | null
+  logistics: string | null
+  payedMinor: bigint
+  shippedMinor: bigint
   items: { productCode: string | null; productName: string; quantity: number; totalMinor: bigint }[]
 }
 
@@ -60,6 +68,10 @@ function toRow(o: OrderRecord): MoyskladOrderRow {
     sumMinor: o.sumMinor,
     seller: o.sellerName,
     project: o.projectName,
+    region: o.region,
+    logistics: o.logistics,
+    payedMinor: o.payedMinor,
+    shippedMinor: o.shippedMinor,
     items: o.items.map((i) => ({
       code: i.productCode,
       name: i.productName,

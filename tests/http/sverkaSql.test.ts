@@ -40,6 +40,11 @@ describe('sverkaCohortSql', () => {
     expect(TAIL).toContain('d."externalId" AS external_id')
   })
 
+  it('carries the deal\'s region and its team at the sale, which MoySklad copies', () => {
+    expect(TAIL).toContain('d."region" AS region')
+    expect(TAIL).toMatch(/d\."operatorTeamSource"[\s\S]*AS rop_source/)
+  })
+
   it('binds the window and the scope as the other queue readers do', () => {
     expect(bare(reach.queueSql('window', '$3'))).toContain('$3')
   })

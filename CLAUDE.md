@@ -1069,6 +1069,19 @@ Per-screen traps worth knowing before you touch one:
   19 orders with no deal id, 11 deals with two orders. Company-wide.
   Checked end to end on a throwaway DB (real MoySklad + those 357 deals'
   real stages/sums), NOT against production.
+  **2026-10-06 afternoon («eng kerakli maʼlumotlarni solishtir … farq
+  boʻlimiga toʻliq»)**: two more issues, REGION (deal «Регион» against the
+  order's «Регион», through `regionKey`'s fourteen regions and their
+  spellings — an unknown spelling is never a difference, bare «Ташкент» is
+  either Tashkent) and ROP (`operatorTeamSource` against a «…(ROP)» project,
+  x/kh folded to h). The panel's ✓ for region/team comes from the server
+  (`regionMatch` / `ropMatch`), never from two non-empty strings. Each chip
+  carries the soʻm at stake (`issueAmounts`: the gap for SUM, the order's
+  money otherwise — not summable across chips); each line its gap
+  (`diffAmount`), the products it differs by (`productDiff`), a duplicate's
+  other orders, MoySklad's payed/shipped. Search + TSV copy over the list.
+  The region/ROP vocabularies were NOT measured on production MoySklad rows
+  (no local data then) — if a chip reads high, read the pairs first.
 - **Mijoz qaytishi** — **REWORKED ON 2026-09-15**, on the client's instruction
   («kogorta jadvalini … kuchaytirish … oddiylashtirish kerak, mijoz qaytishi
   boʻlimini toʻliqligicha yaxshilash»). Three things changed and each fixed a

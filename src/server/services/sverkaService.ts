@@ -27,7 +27,10 @@ import {
   compareDeal,
   moyskladPhase,
   orphanLine,
+  productDiff,
   productRows,
+  regionVerdict,
+  ropVerdict,
   sverkaTotals,
   teamRows,
 } from '@/server/domain/sverka/sverka'
@@ -50,6 +53,8 @@ export const SVERKA_ISSUES: readonly SverkaIssue[] = [
   'STATUS',
   'PRODUCTS',
   'SELLER',
+  'REGION',
+  'ROP',
   'DUPLICATE',
 ]
 
@@ -71,9 +76,31 @@ export interface SverkaItemDto {
   readonly amount: number
 }
 
+export interface SverkaProductDiffDto {
+  readonly key: string
+  readonly name: string
+  readonly bitrixQuantity: number
+  readonly moyskladQuantity: number
+}
+
+export interface SverkaOtherOrderDto {
+  readonly orderId: string
+  readonly orderName: string
+  readonly moment: string
+  readonly state: string | null
+  readonly amount: number
+}
+
 export interface SverkaLineDto {
   readonly dealId: string | null
   readonly issues: readonly SverkaIssue[]
+  /** MoySklad − Bitrix24, soʻm; null when one side is missing. */
+  readonly diffAmount: number | null
+  /** The products the two baskets disagree on; empty when they agree or a side is missing. */
+  readonly productDiff: readonly SverkaProductDiffDto[]
+  /** The region and team as compared: null when either side names none the comparison knows. */
+  readonly regionMatch: 'same' | 'diff' | null
+  readonly ropMatch: 'same' | 'diff' | null
   readonly bitrix: {
     readonly amount: number
     readonly stage: string
@@ -82,6 +109,8 @@ export interface SverkaLineDto {
     readonly delivered: boolean
     readonly seller: string | null
     readonly rop: string | null
+    readonly ropSource: string | null
+    readonly region: string | null
     readonly queuedAt: string | null
     readonly items: readonly SverkaItemDto[]
   } | null
@@ -94,9 +123,17 @@ export interface SverkaLineDto {
     readonly amount: number
     readonly seller: string | null
     readonly project: string | null
+    readonly region: string | null
+    readonly logistics: string | null
+    /** Soʻm MoySklad has received against the order. */
+    readonly payed: number
+    /** Soʻm MoySklad has shipped against the order. */
+    readonly shipped: number
     readonly items: readonly SverkaItemDto[]
   } | null
   readonly moyskladOrders: number
+  /** The deal's other MoySklad orders, newest first. */
+  readonly otherOrders: readonly SverkaOtherOrderDto[]
 }
 
 export interface SverkaProductDto {
@@ -131,6 +168,12 @@ export interface SverkaOverviewDto {
   }
   /** Deals per issue, over every line (not only the ones sent). */
   readonly issueCounts: Readonly<Record<SverkaIssue, number>>
+  /**
+   * Soʻm at stake per issue, over every line: the gap itself for SUM, the
+   * order's money for the rest (Bitrix24's where it has the deal, else
+   * MoySklad's). Not summable across issues — one deal can carry several.
+   */
+  readonly issueAmounts: Readonly<Record<SverkaIssue, number>>
   /** MoySklad orders dated in the window whose deal arrived in another window. */
   readonly otherWindowOrders: number
   readonly lines: readonly SverkaLineDto[]
@@ -163,6 +206,18 @@ function lineDto(line: SverkaLine): SverkaLineDto {
   return {
     dealId: line.dealId,
     issues: line.issues,
+    diffAmount: bx && ms ? som(ms.sumMinor - bx.amountMinor) : null,
+    productDiff:
+      bx && ms && line.issues.includes('PRODUCTS')
+        ? productDiff(bx.items, ms.items).map((d) => ({
+            key: d.key,
+            name: d.name,
+            bitrixQuantity: d.bitrixQuantity,
+            moyskladQuantity: d.moyskladQuantity,
+          }))
+        : [],
+    regionMatch: bx && ms ? regionVerdict(bx.region, ms.region) : null,
+    ropMatch: bx && ms ? ropVerdict(bx.ropSource, ms.project) : null,
     bitrix: bx
       ? {
           amount: som(bx.amountMinor),
@@ -172,6 +227,8 @@ function lineDto(line: SverkaLine): SverkaLineDto {
           delivered: bx.delivered,
           seller: bx.seller,
           rop: bx.rop,
+          ropSource: bx.ropSource,
+          region: bx.region,
           queuedAt: bx.queuedAt?.toISOString() ?? null,
           items: bx.items.map(itemDto),
         }
@@ -186,11 +243,31 @@ function lineDto(line: SverkaLine): SverkaLineDto {
           amount: som(ms.sumMinor),
           seller: ms.seller,
           project: ms.project,
+          region: ms.region,
+          logistics: ms.logistics,
+          payed: som(ms.payedMinor),
+          shipped: som(ms.shippedMinor),
           items: ms.items.map(itemDto),
         }
       : null,
     moyskladOrders: line.moyskladOrders,
+    otherOrders: line.others.map((o) => ({
+      orderId: o.orderId,
+      orderName: o.orderName,
+      moment: o.moment.toISOString(),
+      state: o.stateName,
+      amount: som(o.sumMinor),
+    })),
   }
+}
+
+/** What one line puts at stake under one issue — see `issueAmounts`. */
+function stakeOf(line: SverkaLine, issue: SverkaIssue): bigint {
+  if (issue === 'SUM' && line.bitrix && line.moysklad) {
+    const gap = line.moysklad.sumMinor - line.bitrix.amountMinor
+    return gap < 0n ? -gap : gap
+  }
+  return amountOf(line)
 }
 
 const pair = (p: { bitrix: { orders: number; amountMinor: bigint }; moysklad: { orders: number; amountMinor: bigint } }) => ({
@@ -253,6 +330,8 @@ export class SverkaService {
         stageName: d.stageName,
         seller: d.sellerSource,
         rop: d.rop,
+        ropSource: d.ropSource,
+        region: d.region,
         queuedAt: d.queuedAt,
         items: items.get(d.dealId) ?? [],
       }
@@ -282,7 +361,17 @@ export class SverkaService {
     }
 
     const issueCounts = Object.fromEntries(SVERKA_ISSUES.map((i) => [i, 0])) as Record<SverkaIssue, number>
-    for (const line of lines) for (const issue of line.issues) issueCounts[issue] += 1
+    const stakes = new Map<SverkaIssue, bigint>(SVERKA_ISSUES.map((i) => [i, 0n]))
+    for (const line of lines) {
+      for (const issue of line.issues) {
+        issueCounts[issue] += 1
+        stakes.set(issue, (stakes.get(issue) ?? 0n) + stakeOf(line, issue))
+      }
+    }
+    const issueAmounts = Object.fromEntries(SVERKA_ISSUES.map((i) => [i, som(stakes.get(i) ?? 0n)])) as Record<
+      SverkaIssue,
+      number
+    >
 
     const flagged = lines
       .filter((l) => l.issues.length > 0)
@@ -300,6 +389,7 @@ export class SverkaService {
         cohortOrders: cohort.length,
       },
       issueCounts,
+      issueAmounts,
       otherWindowOrders,
       lines: flagged.slice(0, SVERKA_LINE_LIMIT).map(lineDto),
       flaggedCount: flagged.length,

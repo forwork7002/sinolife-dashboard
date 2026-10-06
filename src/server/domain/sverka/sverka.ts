@@ -111,6 +111,10 @@ export type SverkaIssue =
   | 'STATUS'
   | 'PRODUCTS'
   | 'SELLER'
+  /** Both name a region, and not the same one. */
+  | 'REGION'
+  /** Both name a ROP team, and not the same one. */
+  | 'ROP'
   /** Two or more MoySklad orders for one deal. */
   | 'DUPLICATE'
 
@@ -133,6 +137,14 @@ export interface BitrixSide {
   readonly stageName: string
   readonly seller: string | null
   readonly rop: string | null
+  /**
+   * The team the portal stamped on the deal at the sale («Организация
+   * сотрудника», «(ROP)» stripped) — what MoySklad's project copies. `rop`
+   * falls back to the owner's department and is not compared.
+   */
+  readonly ropSource: string | null
+  /** «Регион» as the portal names it («Ташкент г.», «Хорезм»). */
+  readonly region: string | null
   readonly queuedAt: Date | null
   readonly items: readonly SverkaItem[]
 }
@@ -146,6 +158,14 @@ export interface MoyskladSide {
   readonly sumMinor: bigint
   readonly seller: string | null
   readonly project: string | null
+  /** The «Регион» attribute. */
+  readonly region: string | null
+  /** The «Логистика» attribute — the carrier («CARAVAN»). */
+  readonly logistics: string | null
+  /** Money MoySklad has received against the order. */
+  readonly payedMinor: bigint
+  /** Money MoySklad has shipped against the order. */
+  readonly shippedMinor: bigint
   readonly items: readonly SverkaItem[]
 }
 
@@ -157,7 +177,110 @@ export interface SverkaLine {
   readonly moysklad: MoyskladSide | null
   /** How many MoySklad orders name this deal. */
   readonly moyskladOrders: number
+  /** The deal's other MoySklad orders, newest first — a DUPLICATE's rest. */
+  readonly others: readonly MoyskladSide[]
   readonly issues: readonly SverkaIssue[]
+}
+
+/**
+ * The fourteen regions of the portal's «Регион» list, each with the other
+ * spellings a warehouse clerk may file it under (Russian, Uzbek Cyrillic,
+ * Uzbek Latin). Keys are `regionText` forms.
+ */
+const REGION_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  TASHKENT_CITY: ['ташкент г', 'г ташкент', 'ташкент город', 'город ташкент', 'тошкент ш', 'тошкент шахар', 'тошкент шахри', 'toshkent sh', 'toshkent shahar', 'toshkent shahri', 'tashkent city'],
+  TASHKENT_REGION: ['ташкент область', 'ташкентская область', 'ташкент обл', 'тошкент вилояти', 'тошкент вил', 'toshkent viloyati', 'toshkent vil', 'tashkent region'],
+  ANDIJAN: ['андижан', 'андижон', 'andijon', 'andijan'],
+  BUKHARA: ['бухара', 'бухоро', 'buxoro', 'bukhara'],
+  JIZZAKH: ['джизак', 'джиззак', 'жиззах', 'жизах', 'jizzax', 'jizzakh', 'jizzak'],
+  KASHKADARYA: ['кашкадаре', 'кашкадарья', 'кашкадарё', 'qashqadaryo', 'kashkadarya'],
+  NAVOI: ['навои', 'навоий', 'navoiy', 'navoi'],
+  NAMANGAN: ['наманган', 'namangan'],
+  SAMARKAND: ['самарканд', 'samarqand', 'samarkand'],
+  SURKHANDARYA: ['сурхондаре', 'сурхандарья', 'сурхондарё', 'surxondaryo', 'surkhandarya'],
+  SYRDARYA: ['сирдаре', 'сырдарья', 'сирдарё', 'sirdaryo', 'syrdarya'],
+  FERGANA: ['фергана', 'фаргона', 'fargona', 'fergana'],
+  KHOREZM: ['хорезм', 'хоразм', 'xorazm', 'khorezm'],
+  KARAKALPAKSTAN: ['нукус', 'каракалпакстан', 'коракалпогистон', 'nukus', 'qoraqalpogiston', 'karakalpakstan'],
+}
+
+/** Uzbek letters folded to Russian ones, punctuation and «область»-like tails kept as words. */
+function regionText(text: string): string {
+  return text
+    .normalize('NFC')
+    .toLocaleLowerCase('ru')
+    .replace(/[ʻʼ'‘’`]/g, '')
+    .replace(/ё/g, 'е')
+    .replace(/қ/g, 'к')
+    .replace(/ғ/g, 'г')
+    .replace(/ҳ/g, 'х')
+    .replace(/ў/g, 'у')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+}
+
+const REGION_BY_TEXT: ReadonlyMap<string, string> = new Map(
+  Object.entries(REGION_ALIASES).flatMap(([key, names]) => names.map((n) => [regionText(n), key] as const)),
+)
+
+/** Words a region may carry after its name that do not change which region it is. */
+const REGION_TAIL = /\s+(область|обл|вилояти|вил|viloyati|vil|viloyat|region|республика|respublikasi)$/
+
+/**
+ * One region however it is spelled, or null when the text is not one of the
+ * fourteen — an unrecognised spelling is never called a difference.
+ * Bare «Ташкент» names the city OR the region, so it is `TASHKENT_ANY`, which
+ * `regionVerdict` takes to agree with either and with nothing else.
+ */
+export function regionKey(text: string | null | undefined): string | null {
+  if (!text) return null
+  const plain = regionText(text)
+  if (!plain) return null
+  if (plain === 'ташкент' || plain === 'тошкент' || plain === 'toshkent' || plain === 'tashkent') return 'TASHKENT_ANY'
+  const exact = REGION_BY_TEXT.get(plain)
+  if (exact) return exact
+  const stripped = plain.replace(REGION_TAIL, '')
+  // «Ташкент область» lost its tail would read as the city — the tail decides there.
+  if (stripped === plain || /^(ташкент|тошкент|toshkent|tashkent)$/.test(stripped)) return null
+  return REGION_BY_TEXT.get(stripped) ?? null
+}
+
+/** Whether two named regions agree; null when either is not one of the fourteen. */
+export function regionVerdict(bitrix: string | null | undefined, moysklad: string | null | undefined): 'same' | 'diff' | null {
+  const a = regionKey(bitrix)
+  const b = regionKey(moysklad)
+  if (!a || !b) return null
+  if (a === b) return 'same'
+  const tashkent = (k: string) => k.startsWith('TASHKENT_')
+  if ((a === 'TASHKENT_ANY' || b === 'TASHKENT_ANY') && tashkent(a) && tashkent(b)) return 'same'
+  return 'diff'
+}
+
+/**
+ * A team name folded so the two systems' spellings of one ROP meet: case,
+ * spaces and digits dropped, Latin «x» / «kh» read as «h» («Shoxjaxon» is
+ * «Shohjahon»).
+ */
+function teamText(name: string): string {
+  return normaliseName(name)
+    .replace(/kh/g, 'h')
+    .replace(/x/g, 'h')
+    .replace(/[^\p{L}]+/gu, '')
+}
+
+/** «Shohjaxon(ROP)» → «shohjahon»; a project that is not a ROP team → null. */
+export function ropKey(text: string | null | undefined): string | null {
+  if (!text || !/\(ROP\)/i.test(text)) return null
+  const name = teamText(text.replace(/\(ROP\)/gi, ''))
+  return name || null
+}
+
+/** Whether the deal's team and MoySklad's project agree; null when the project names no team. */
+export function ropVerdict(ropSource: string | null | undefined, project: string | null | undefined): 'same' | 'diff' | null {
+  const msTeam = ropKey(project)
+  const bxTeam = ropSource ? teamText(ropSource) : ''
+  if (!msTeam || !bxTeam) return null
+  return bxTeam === msTeam ? 'same' : 'diff'
 }
 
 /** Items folded by code — a product without one keyed by its name. */
@@ -168,6 +291,8 @@ export function itemKey(item: Pick<SverkaItem, 'code' | 'name'>): string {
 function quantities(items: readonly SverkaItem[]): Map<string, number> {
   const out = new Map<string, number>()
   for (const item of items) out.set(itemKey(item), (out.get(itemKey(item)) ?? 0) + item.quantity)
+  // A zero line holds nothing; left in, it makes two equal baskets differ by key count.
+  for (const [key, q] of out) if (Math.abs(q) < 1e-6) out.delete(key)
   return out
 }
 
@@ -182,6 +307,40 @@ export function sameProducts(a: readonly SverkaItem[], b: readonly SverkaItem[])
     if (other === undefined || Math.abs(other - q) > 1e-6) return false
   }
   return true
+}
+
+export interface ProductDiff {
+  readonly key: string
+  readonly code: string | null
+  readonly name: string
+  readonly bitrixQuantity: number
+  readonly moyskladQuantity: number
+}
+
+/**
+ * The products two baskets disagree on, each with both counts — named by
+ * MoySklad where it has the product, as `productRows` does.
+ */
+export function productDiff(bitrix: readonly SverkaItem[], moysklad: readonly SverkaItem[]): ProductDiff[] {
+  const rows = new Map<string, { code: string | null; name: string; b: number; m: number }>()
+  const row = (item: SverkaItem) => {
+    const key = itemKey(item)
+    let r = rows.get(key)
+    if (!r) {
+      r = { code: item.code, name: item.name, b: 0, m: 0 }
+      rows.set(key, r)
+    }
+    return r
+  }
+  for (const item of bitrix) row(item).b += item.quantity
+  for (const item of moysklad) {
+    const r = row(item)
+    r.m += item.quantity
+    r.name = item.name
+  }
+  return [...rows.entries()]
+    .filter(([, r]) => Math.abs(r.b - r.m) > 1e-6)
+    .map(([key, r]) => ({ key, code: r.code, name: r.name, bitrixQuantity: r.b, moyskladQuantity: r.m }))
 }
 
 /**
@@ -200,7 +359,7 @@ export function compareDeal(bitrix: BitrixSide, orders: readonly MoyskladSide[])
       with no issue and counted as `pending`.
     */
     if (bitrix.fakt1 && phase !== 'PRE_WAREHOUSE') issues.push('MISSING_IN_MS')
-    return { dealId: bitrix.externalId, bitrix, moysklad: null, moyskladOrders: 0, issues }
+    return { dealId: bitrix.externalId, bitrix, moysklad: null, moyskladOrders: 0, others: [], issues }
   }
 
   if (!bitrix.fakt1) issues.push('NOT_FAKT1')
@@ -217,8 +376,11 @@ export function compareDeal(bitrix: BitrixSide, orders: readonly MoyskladSide[])
   }
   if (bitrix.items.length > 0 && !sameProducts(bitrix.items, ms.items)) issues.push('PRODUCTS')
   if (bitrix.seller && ms.seller && normaliseName(bitrix.seller) !== normaliseName(ms.seller)) issues.push('SELLER')
+  // Only two recognised regions can disagree; a spelling neither list knows is not a difference.
+  if (regionVerdict(bitrix.region, ms.region) === 'diff') issues.push('REGION')
+  if (ropVerdict(bitrix.ropSource, ms.project) === 'diff') issues.push('ROP')
 
-  return { dealId: bitrix.externalId, bitrix, moysklad: ms, moyskladOrders: orders.length, issues }
+  return { dealId: bitrix.externalId, bitrix, moysklad: ms, moyskladOrders: orders.length, others: orders.slice(1), issues }
 }
 
 /** A MoySklad order whose deal is not in the window's cohort. */
@@ -231,7 +393,7 @@ export type OrphanKind =
 export function orphanLine(dealId: string | null, kind: OrphanKind, orders: readonly MoyskladSide[]): SverkaLine {
   const issues: SverkaIssue[] = kind === 'NOT_QUEUED' ? ['NOT_QUEUED'] : kind === 'NO_DEAL' ? ['NO_DEAL'] : []
   if (orders.length > 1 && dealId) issues.push('DUPLICATE')
-  return { dealId, bitrix: null, moysklad: orders[0] ?? null, moyskladOrders: orders.length, issues }
+  return { dealId, bitrix: null, moysklad: orders[0] ?? null, moyskladOrders: orders.length, others: orders.slice(1), issues }
 }
 
 export interface SideTotal {

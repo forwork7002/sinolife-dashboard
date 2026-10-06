@@ -9,7 +9,12 @@ import {
   normaliseName,
   orphanLine,
   phasesAgree,
+  productDiff,
   productRows,
+  regionKey,
+  regionVerdict,
+  ropKey,
+  ropVerdict,
   sameProducts,
   sverkaTotals,
   teamRows,
@@ -34,6 +39,8 @@ const bitrix = (over: Partial<BitrixSide> = {}): BitrixSide => ({
   stageName: 'CARAVAN',
   seller: 'Zarnigor Mirzayeva230',
   rop: 'Shohjaxon',
+  ropSource: 'Shohjaxon',
+  region: 'Хорезм',
   queuedAt: new Date('2026-10-05T13:00:00Z'),
   // The portal sells the offers: «Sinolife collagen marine kakao», «Sinolife omega kapsula 60».
   items: [
@@ -51,6 +58,10 @@ const moysklad = (over: Partial<MoyskladSide> = {}): MoyskladSide => ({
   sumMinor: 160_000_000n,
   seller: 'Zarnigor Mirzayeva230',
   project: 'Shohjaxon(ROP)',
+  region: 'Хорезм',
+  logistics: 'CARAVAN',
+  payedMinor: 0n,
+  shippedMinor: 160_000_000n,
   items: [
     { code: COLLAGEN, name: 'Collagen Marine Sinolife', quantity: 2, totalMinor: 160_000_000n },
     { code: OMEGA, name: 'Omega Sinolife 500', quantity: 1, totalMinor: 0n },
@@ -159,12 +170,104 @@ describe('compareDeal', () => {
   })
 })
 
+describe('regionKey / ropKey', () => {
+  it('reads the portal\'s fourteen regions and their other spellings as one', () => {
+    expect(regionKey('Ташкент г.')).toBe('TASHKENT_CITY')
+    expect(regionKey('Ташкент')).toBe('TASHKENT_ANY')
+    expect(regionKey('Тошкент ш.')).toBe('TASHKENT_CITY')
+    expect(regionKey('Ташкент область')).toBe('TASHKENT_REGION')
+    expect(regionKey('Тошкент вилояти')).toBe('TASHKENT_REGION')
+    expect(regionKey('Қашқадарё')).toBe('KASHKADARYA')
+    expect(regionKey('Кашкадарья')).toBe('KASHKADARYA')
+    expect(regionKey('Самарқанд')).toBe('SAMARKAND')
+    expect(regionKey('Samarqand viloyati')).toBe('SAMARKAND')
+    expect(regionKey("Farg'ona")).toBe('FERGANA')
+    expect(regionKey('Нукус')).toBe('KARAKALPAKSTAN')
+  })
+
+  it('knows nothing it cannot name — an unknown spelling is null, never a difference', () => {
+    expect(regionKey('Москва')).toBeNull()
+    expect(regionKey('')).toBeNull()
+    expect(regionKey(null)).toBeNull()
+  })
+
+  it('reads a ROP project, and only a ROP project', () => {
+    expect(ropKey('Shohjaxon(ROP)')).toBe('shohjahon')
+    expect(ropKey('Sevinch (rop)')).toBe('sevinch')
+    expect(ropKey('Collagen Marine')).toBeNull()
+  })
+})
+
+describe('compareDeal — region and team', () => {
+  it('flags two different regions', () => {
+    expect(compareDeal(bitrix({ region: 'Хорезм' }), [moysklad({ region: 'Бухара' })]).issues).toEqual(['REGION'])
+  })
+
+  it('takes two spellings of one region as the same', () => {
+    expect(compareDeal(bitrix({ region: 'Ташкент г.' }), [moysklad({ region: 'Тошкент ш.' })]).issues).toEqual([])
+  })
+
+  it('reads bare «Ташкент» as either Tashkent, and as no other region', () => {
+    expect(compareDeal(bitrix({ region: 'Ташкент г.' }), [moysklad({ region: 'Ташкент' })]).issues).toEqual([])
+    expect(compareDeal(bitrix({ region: 'Ташкент область' }), [moysklad({ region: 'Ташкент' })]).issues).toEqual([])
+    expect(compareDeal(bitrix({ region: 'Ташкент г.' }), [moysklad({ region: 'Ташкент область' })]).issues).toEqual(['REGION'])
+    expect(compareDeal(bitrix({ region: 'Хорезм' }), [moysklad({ region: 'Ташкент' })]).issues).toEqual(['REGION'])
+  })
+
+  it('says «not compared», never «same», for a region it cannot name', () => {
+    expect(regionVerdict('Хорезмская обл.', 'Самаркандская обл.')).toBeNull()
+    expect(regionVerdict('Хорезм', 'Склад 3')).toBeNull()
+    expect(regionVerdict('Хорезм', 'Xorazm')).toBe('same')
+  })
+
+  it('does not flag a region either side leaves empty or spells in a way nobody knows', () => {
+    expect(compareDeal(bitrix({ region: null }), [moysklad()]).issues).toEqual([])
+    expect(compareDeal(bitrix(), [moysklad({ region: 'Склад 3' })]).issues).toEqual([])
+  })
+
+  it('flags a MoySklad project naming another ROP team', () => {
+    expect(compareDeal(bitrix(), [moysklad({ project: 'Sevinch(ROP)' })]).issues).toEqual(['ROP'])
+  })
+
+  it('folds the two systems\' spellings of one team', () => {
+    expect(ropVerdict('Shohjaxon', 'Shoxjaxon(ROP)')).toBe('same')
+    expect(ropVerdict('Shohjaxon', 'Collagen')).toBeNull()
+  })
+
+  it('does not compare a project that names no team', () => {
+    expect(compareDeal(bitrix(), [moysklad({ project: 'Collagen' })]).issues).toEqual([])
+    expect(compareDeal(bitrix({ ropSource: null }), [moysklad({ project: 'Sevinch(ROP)' })]).issues).toEqual([])
+  })
+
+  it('keeps the other orders of a duplicate', () => {
+    const line = compareDeal(bitrix(), [moysklad(), moysklad({ orderId: 'older' })])
+    expect(line.others.map((o) => o.orderId)).toEqual(['older'])
+  })
+})
+
+describe('productDiff', () => {
+  it('names the product and both counts (deal 1071484: an extra Sedana in MoySklad)', () => {
+    const sedana = { code: 'sedana', name: 'Sedana Sinolife', quantity: 1, totalMinor: 20_000_000n }
+    const diff = productDiff(bitrix().items, [...moysklad().items, sedana])
+    expect(diff).toEqual([{ key: 'code:sedana', code: 'sedana', name: 'Sedana Sinolife', bitrixQuantity: 0, moyskladQuantity: 1 }])
+  })
+
+  it('is empty when the baskets agree', () => {
+    expect(productDiff(bitrix().items, moysklad().items)).toEqual([])
+  })
+})
+
 describe('sameProducts / normaliseName', () => {
   it('tells two different products apart even when the baskets have as many lines', () => {
     const collagen = { code: COLLAGEN, name: 'Collagen', quantity: 2, totalMinor: 0n }
     const zextra = { code: 'wSM3W0pTh9TL4bG0R77Oe2', name: 'Zextra sure', quantity: 2, totalMinor: 0n }
     expect(sameProducts([collagen], [zextra])).toBe(false)
     expect(compareDeal(bitrix({ items: [collagen] }), [moysklad({ items: [zextra] })]).issues).toContain('PRODUCTS')
+  })
+
+  it('ignores a zero line, so it cannot flag a basket with nothing to show for it', () => {
+    const one = { code: OMEGA, name: 'x', quantity: 1, totalMinor: 0n }
+    expect(sameProducts([one, { ...one, code: 'gift', quantity: 0 }], [one])).toBe(true)
   })
 
   it('adds up repeated codes before comparing', () => {

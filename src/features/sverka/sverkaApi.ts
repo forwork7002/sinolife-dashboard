@@ -18,6 +18,8 @@ export type SverkaIssue =
   | 'STATUS'
   | 'PRODUCTS'
   | 'SELLER'
+  | 'REGION'
+  | 'ROP'
   | 'DUPLICATE'
 
 export interface SverkaSideDto {
@@ -37,9 +39,30 @@ export interface SverkaItemDto {
   readonly amount: number
 }
 
+export interface SverkaProductDiffDto {
+  readonly key: string
+  readonly name: string
+  readonly bitrixQuantity: number
+  readonly moyskladQuantity: number
+}
+
+export interface SverkaOtherOrderDto {
+  readonly orderId: string
+  readonly orderName: string
+  readonly moment: string
+  readonly state: string | null
+  readonly amount: number
+}
+
 export interface SverkaLineDto {
   readonly dealId: string | null
   readonly issues: readonly SverkaIssue[]
+  /** MoySklad − Bitrix24, soʻm; null when one side is missing. */
+  readonly diffAmount: number | null
+  readonly productDiff: readonly SverkaProductDiffDto[]
+  /** null when either side names a region / team the comparison does not know. */
+  readonly regionMatch: 'same' | 'diff' | null
+  readonly ropMatch: 'same' | 'diff' | null
   readonly bitrix: {
     readonly amount: number
     readonly stage: string
@@ -48,6 +71,8 @@ export interface SverkaLineDto {
     readonly delivered: boolean
     readonly seller: string | null
     readonly rop: string | null
+    readonly ropSource: string | null
+    readonly region: string | null
     readonly queuedAt: string | null
     readonly items: readonly SverkaItemDto[]
   } | null
@@ -60,9 +85,14 @@ export interface SverkaLineDto {
     readonly amount: number
     readonly seller: string | null
     readonly project: string | null
+    readonly region: string | null
+    readonly logistics: string | null
+    readonly payed: number
+    readonly shipped: number
     readonly items: readonly SverkaItemDto[]
   } | null
   readonly moyskladOrders: number
+  readonly otherOrders: readonly SverkaOtherOrderDto[]
 }
 
 export interface SverkaProductDto {
@@ -93,6 +123,8 @@ export interface SverkaOverviewDto {
     readonly cohortOrders: number
   }
   readonly issueCounts: Readonly<Record<SverkaIssue, number>>
+  /** Soʻm at stake per issue — the gap for SUM, the order's money for the rest. */
+  readonly issueAmounts: Readonly<Record<SverkaIssue, number>>
   readonly otherWindowOrders: number
   readonly lines: readonly SverkaLineDto[]
   readonly flaggedCount: number
@@ -116,6 +148,8 @@ export const SVERKA_ISSUES: readonly SverkaIssue[] = [
   'STATUS',
   'PRODUCTS',
   'SELLER',
+  'REGION',
+  'ROP',
   'DUPLICATE',
 ]
 
@@ -153,6 +187,16 @@ export const ISSUE_TEXT: Readonly<Record<SverkaIssue, { label: string; hint: str
     tone: 'warning',
   },
   SELLER: { label: 'Sotuvchi farqi', hint: 'Bitimdagi «Продавец» va MoySkladdagi «Продавцы (new)» boshqa odam.', tone: 'warning' },
+  REGION: {
+    label: 'Region farqi',
+    hint: 'Bitimdagi «Регион» va MoySklad buyurtmasidagi «Регион» boshqa viloyat (yozilishi farqi — «Ташкент г.» / «Тошкент ш.» — farq emas).',
+    tone: 'warning',
+  },
+  ROP: {
+    label: 'ROP farqi',
+    hint: 'Bitimdagi «Организация сотрудника» va MoySklad loyihasi («…(ROP)») boshqa jamoani koʻrsatadi.',
+    tone: 'warning',
+  },
   DUPLICATE: { label: 'MoySkladʼda 2 marta', hint: 'Bitta bitimga MoySkladʼda bir nechta buyurtma ochilgan.', tone: 'warning' },
 }
 
