@@ -167,8 +167,9 @@ const MOYSKLAD_MAX_PAGES = 15
  * SIX-HOURLY SINCE 2026-09-15, AND THIS IS THE SINGLE BIGGEST THING WE STOPPED
  * SPENDING ON THE PORTAL.
  *
- * Measured: `listDealIds` walks all 464 396 deals at 2 500 a round trip = 180
- * requests, which at the 2 rps limiter is ninety seconds of continuous traffic.
+ * Measured: `listDealContacts` walks all 464 396 deals at 2 500 a round trip =
+ * 180 requests, which at the 2 rps limiter is ninety seconds of continuous
+ * traffic.
  * Hourly, that was 4 320 requests a day — 32% of the worker's ENTIRE volume —
  * carrying 9 000 `crm.deal.list` invocations an hour against that method's
  * ten-minute operating basket, to detect an event this comment itself calls
@@ -1295,7 +1296,8 @@ async function main() {
       it walks. That was 432 000 deals rewritten to answer a question the ID
       column alone answers: thirty to sixty minutes of write traffic on a
       1-vCPU database, with this loop blocked for all of it and no incremental
-      tick running. `listDealIds` walks the same pipelines selecting only ID —
+      tick running. `listDealContacts` walks the same pipelines selecting only ID
+      (and CONTACT_ID, for the relink below) —
       a couple of minutes, zero writes — and `deleteMissing` is called
       directly, so the DEALS watermark is never touched by a sweep.
 
@@ -1307,7 +1309,7 @@ async function main() {
       the sweep never does.
 
       Guarded, because `sweepByAntiJoin` refuses to delete anything when the
-      source returns nothing at all, and `listDealIds` throws rather than
+      source returns nothing at all, and `listDealContacts` throws rather than
       returning a short read — a failed read must never empty the table. And
       a read that is complete but too SHORT — a pipeline the webhook stopped
       seeing — is refused by `sweepLimit` (2026-10-06); see the catch below.

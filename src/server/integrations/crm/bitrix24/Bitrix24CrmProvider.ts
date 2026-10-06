@@ -206,8 +206,8 @@ interface ProductRow {
  * for four times as much; a chain that runs dry ends the walk and resets. A
  * quiet tick costs 2 invocations instead of 50. A full import pays three extra
  * round trips at the start of a 186-request walk and is otherwise unchanged —
- * measured against `listDealIds`: 2 + 8 + 32 + 50 + 50 … reaches 464 000 deals
- * in 188 requests against the old 186.
+ * measured against the sweep's walk (`listDealContacts`): 2 + 8 + 32 + 50 +
+ * 50 … reaches 464 000 deals in 188 requests against the old 186.
  *
  * The floor is 2 rather than 1 so a tick with 51–100 changed rows still
  * finishes in one round trip, which is the ordinary busy minute on this portal.
@@ -495,7 +495,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
         blocks — 2 rps was true for every second of both of them. This is the
         only thing in the process that remembers how much we have asked for,
         and the only thing a regression cannot quietly walk past. A refusal
-        here is safe wherever it lands: `listDealIds` throws rather than
+        here is safe wherever it lands: `listDealContacts` throws rather than
         returning a short read, the sweep will not delete on an empty source,
         and no watermark advances except after a clean run.
       */
@@ -1557,24 +1557,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
   // -------------------------------------------------------------------------
 
   /**
-   * Deals, 2 500 per page.
-   *
-   * The cursor is the row offset. `pageSize` from the sync engine is ignored on
-   * purpose: the page size here is dictated by the portal's batch limit, and
-   * honouring a smaller request would multiply the number of round trips by an
-   * order of magnitude for no benefit.
-   */
-  /**
-   * Every deal id the portal currently holds, for the deletion sweep.
+   * Every deal id the portal holds, with the contact it points at NOW — the
+   * daily deletion sweep's walk.
    *
    * WHY THIS EXISTS SEPARATELY FROM `fetchDeals`
-   * The sweep needs one thing — the set of ids that still exist — and used to
-   * get it by running a FULL `fetchDeals` pass, which reads twenty-three
-   * fields for 432 000 deals and re-upserts every one of them. On a 1-vCPU
-   * database that is thirty to sixty minutes of pure write traffic to learn
-   * something the ID column alone answers, and the worker's tick loop was
-   * blocked for all of it. Selecting only ID makes the same walk cost a
-   * couple of minutes and not a single write.
+   * The sweep needs the set of ids that still exist, and used to get it by
+   * running a FULL `fetchDeals` pass, which reads twenty-three fields for
+   * 432 000 deals and re-upserts every one of them. On a 1-vCPU database that
+   * is thirty to sixty minutes of pure write traffic to learn something the ID
+   * column alone answers, and the worker's tick loop was blocked for all of it.
+   * Selecting only ID (and CONTACT_ID) makes the same walk cost a couple of
+   * minutes and not a single write.
    *
    * The filter is built from `this.pipelines` exactly as `fetchDeals` does.
    * A filter that diverged would mark deals in the excluded pipelines as
@@ -1583,25 +1576,15 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * Throws rather than returning a partial set. A half-read walk handed to the
    * sweep would look like "these deals are gone" — the caller must be able to
    * tell a short read from a small portal.
-   */
-  async listDealIds(): Promise<Set<string>> {
-    return new Set((await this.listDealContacts()).keys())
-  }
-
-  /**
-   * Every deal id the portal holds, with the contact it points at NOW.
    *
-   * THE SAME WALK AS `listDealIds`, ONE MORE COLUMN. The daily sweep already
-   * pays for this walk; carrying `CONTACT_ID` on it costs a few bytes a row and
-   * not a single extra invocation.
-   *
-   * WHY THE SWEEP NEEDS IT. Merging duplicate contacts in Bitrix24 moves the
-   * loser's deals onto the survivor WITHOUT touching the deals' DATE_MODIFY —
-   * measured 2026-09-25: deal 35736, created and last modified 2025-07-12, now
-   * points at contact 579290, created 2026-08-05. The incremental pass asks
-   * only for `>=DATE_MODIFY`, so it never sees a merge, and one buyer stays
-   * two «customers» here forever — which is exactly what «Mijoz qaytishi»
-   * counts. See `relinkDealContacts`.
+   * WHY IT CARRIES THE CONTACT. Merging duplicate contacts in Bitrix24 moves
+   * the loser's deals onto the survivor WITHOUT touching the deals'
+   * DATE_MODIFY — measured 2026-09-25: deal 35736, created and last modified
+   * 2025-07-12, now points at contact 579290, created 2026-08-05. The
+   * incremental pass asks only for `>=DATE_MODIFY`, so it never sees a merge,
+   * and one buyer stays two «customers» here forever — which is exactly what
+   * «Mijoz qaytishi» counts. See `relinkDealContacts`. The column costs a few
+   * bytes a row and not a single extra invocation.
    *
    * Throws when the walk came back without the column at all: an ignored
    * `select` would read as «every deal lost its contact».
@@ -1645,7 +1628,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
   /**
    * Which of THESE deal ids the portal still holds — the recent-deletion check.
    *
-   * WHY NOT `listDealIds`. That walk answers for all 464 000 deals and costs
+   * WHY NOT `listDealContacts`. That walk answers for all 464 000 deals and costs
    * ~9 300 invocations, which is why it runs once a day — and why a test order
    * posted to the Тасдиклаш queue and deleted a minute later sat on the board
    * until the next night. The queue's recent orders are a few hundred to a few
@@ -1653,7 +1636,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * `crm.deal.list` per 50 ids, filtered by ID, selecting only ID. 300 ids is
    * six invocations in one round trip.
    *
-   * The filter carries `CATEGORY_ID` exactly as `listDealIds` does, so the two
+   * The filter carries `CATEGORY_ID` exactly as `listDealContacts` does, so the two
    * sweeps agree on what «gone» means: a deal moved into a pipeline we do not
    * import is gone to both.
    *
@@ -1685,7 +1668,8 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
   /**
    * The rows of THESE deal ids, one `crm.deal.list` per 50 ids, filtered by ID
-   * and by the imported pipelines, so «gone» means the same as in `listDealIds`.
+   * and by the imported pipelines, so «gone» means the same as in
+   * `listDealContacts`.
    *
    * THROWS RATHER THAN GUESSING: `existingDealIds`' caller deletes whatever is
    * not returned. A refused command, a missing answer, or a row outside the

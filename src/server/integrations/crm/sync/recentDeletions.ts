@@ -4,8 +4,8 @@ import type { ExternalSourceValue } from '@/server/domain/types'
 /**
  * THE TASDIQLASH QUEUE FOLLOWS THE PORTAL'S DELETIONS WITHIN MINUTES.
  *
- * The full sweep (`listDealIds` + `deleteMissing`) walks every deal and runs
- * once a day, for the portal-budget reasons written over `SWEEP_EVERY`. So an
+ * The full sweep (`listDealContacts` + `deleteMissing`) walks every deal and
+ * runs once a day, for the portal-budget reasons written over `SWEEP_EVERY`. So an
  * order posted to the queue and then deleted in Bitrix24 stayed on the board
  * until the next night — reported by the client on 2026-09-24.
  *

@@ -26,8 +26,8 @@
  * Above `SOFT_FRACTION` it paces — the tick still completes, more slowly, and
  * the worker logs it. Above the ceiling it REFUSES locally, sending nothing,
  * until the rolling window drains. A refusal is safe by construction
- * everywhere it can land: `listDealIds` throws rather than returning a short
- * read, `sweepByAntiJoin` will not delete on an empty source, and every
+ * everywhere it can land: `listDealContacts` throws rather than returning a
+ * short read, `sweepByAntiJoin` will not delete on an empty source, and every
  * entity's watermark only advances after a clean run — so a budget refusal
  * costs freshness and nothing else.
  *
@@ -50,7 +50,7 @@ const WINDOW_MINUTES = 60
  *
  *   ordinary hour   60 ticks × 8 invocations             ≈    500
  *   reference hour  the above plus one reference pass    ≈    600
- *   sweep hour      the above plus `listDealIds`         ≈  9 800
+ *   sweep hour      the above plus `listDealContacts`    ≈  9 800
  *   the OLD hot path, for comparison                     ≈ 12 000
  *
  * So the ceiling sits above the most expensive hour this worker has any
