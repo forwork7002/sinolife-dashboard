@@ -216,6 +216,8 @@ describe('the three absences are named, never printed as a zero', () => {
     expect(screen.getByText('hozir 0 — prognoz uchun hali asos yoʻq')).toBeDefined()
     // The projection tile and its «kutilayotgan qoldiq».
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2)
+    // Only FAKT 1's remainder is a subtraction that was made, so only it says so.
+    expect(screen.getAllByText('prognoz minus hozirgi')).toHaveLength(1)
     expect(screen.getByText(/Shu surʼatda davom etsa/)).toBeDefined()
   })
 

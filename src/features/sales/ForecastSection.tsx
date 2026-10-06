@@ -230,6 +230,10 @@ export function ForecastBand({
               so — it is not a third measurement and must not look like one,
               which is why these two carry the compact format the pair above
               them does not.
+
+              EACH HINT KEYS ON ITS OWN FACT, as its value does: one fact can
+              be null while the other projects, and «prognoz minus hozirgi»
+              under an em dash describes a subtraction that was not made.
             */}
         <StatTile
           label="FAKT 1 · kutilayotgan qoldiq"
@@ -240,7 +244,7 @@ export function ForecastBand({
           }
           unit="money"
           status={status}
-          hint={projecting ? "prognoz minus hozirgi" : undefined}
+          hint={forecast?.fakt1 ? "prognoz minus hozirgi" : undefined}
         />
         <StatTile
           label="FAKT 2 · kutilayotgan qoldiq"
@@ -251,7 +255,7 @@ export function ForecastBand({
           }
           unit="money"
           status={status}
-          hint={projecting ? "prognoz minus hozirgi" : undefined}
+          hint={forecast?.fakt2 ? "prognoz minus hozirgi" : undefined}
         />
       </div>
 
