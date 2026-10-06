@@ -1530,16 +1530,6 @@ export interface SellerMedalsDto {
   readonly from: string
 }
 
-/** One day of one seller's intake. */
-export interface SellerDayDto {
-  readonly date: string
-  readonly orders: number
-  readonly ordered: MoneyDto
-  readonly won: MoneyDto
-  /** See `SellerBoardRowDto.leads`. Always null, for the same reason. */
-  readonly leads: number | null
-}
-
 /**
  * One point of the FAKT 1 / FAKT 2 line on Savdo dinamikasi's hero chart.
  *

@@ -5127,105 +5127,11 @@ export class InsightsRepository {
   }
 
   /**
-   * The per-day series, isolated for the same reason `ratingSql` is: it has to
-   * be pinned against the board's own predicates without a database.
-   *
-   * IT IS THE SAME TWO FACTS, SPREAD OVER DAYS — so it has to be measured the
-   * same way, and it was not. The chart under an expanded row graded FAKT 2 on
-   * `d."status" = 'WON'` while the row above it graded on the deal's CURRENT
-   * stage carrying the DELIVERED logistics role, and it named the operator
-   * with a bare `d."employeeId"` while the row was minted by
-   * `COALESCE(d."operatorEmployeeId", d."employeeId")`. Two definitions of one
-   * column and two definitions of one person, on one screen.
-   *
-   * Neither divergence is theoretical. `status = 'WON'` admits «База · Успешно»
-   * (C10:WON) and the «Регистрация · Сделка успешна» stamp — nine stages across
-   * nine pipelines carry WON and only three mean a courier arrived — and it
-   * keeps an order that was delivered and then bounced back out. The operator
-   * column drifts because this portal moves deals to back office while they
-   * are processed. Measured on production 2026-09-04 over «Oʻtgan oy», the two
-   * agreed for 18 of the top 19 sellers and disagreed for one — Sirojov 115
-   * Davlatbek, 1 000 000 soʻm of FAKT 1 the chart could not see, because the
-   * order sat on somebody else's row. On the local fixtures, where deals are
-   * OPEN inside a delivered stage, the whole FAKT 2 series read flat zero.
-   *
-   * A chart that quietly answers a different question than the row it hangs
-   * under is worse than no chart: nobody reconciles what they cannot see.
-   */
-  private static ratingDaysSql(teamFilter = ''): string {
-    return `
-       SELECT
-         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
-         count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS orders,
-         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::text AS confirmed,
-         sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')})::text AS delivered
-       FROM scoped c
-       JOIN "deal" d ON d."id" = c.deal_id
-       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
-       WHERE COALESCE(d."operatorEmployeeId", d."employeeId") = $3${teamFilter}
-       GROUP BY 1
-       -- The same gate as the board: a day whose only money was delivered
-       -- without a confirmation still belongs to FAKT 2's series.
-       HAVING count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}) > 0
-           OR count(*) FILTER (WHERE ${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')}) > 0
-       ORDER BY 1`
-  }
-
-  /**
-   * One operator's daily arrivals into the confirmation queue — the queue
-   * basis's counterpart to `SellerBoardRepository.sellerDays`.
-   *
-   * Dated by `queued_at`, not `createdAtSource`: see `queueSql` for why the
-   * arrival in C4:NEW is the only date that tracks the client's own board.
-   */
-  async confirmationSellerRatingDays(
-    period: ScopedWindow,
-    employeeId: string,
-    /** The brand switch, as the board row this chart hangs under narrows by it (`ratingFilterSql`). */
-    brand?: BrandSlice,
-  ): Promise<{ date: string; confirmedMinor: bigint; deliveredMinor: bigint; orders: number }[]> {
-    const brandParams: unknown[] = [null, null, null, null]
-    const teamFilter = brand ? ` AND ${InsightsRepository.brandSliceSql('d', 'c.rop', brand, brandParams)}` : ''
-    const rows = await this.prisma.$queryRawUnsafe<
-      { date: string; confirmed: MoneyText; delivered: MoneyText; orders: bigint }[]
-    >(
-      /*
-        The requested seller is narrowed by the prelude, not checked here.
-
-        `classified` has already dropped every operator outside the caller's
-        scope, so asking for a colleague on another floor returns an empty
-        series rather than their days — the same fail-closed shape
-        `deals/[id]` gets from putting the scope in its WHERE clause instead of
-        comparing after the read.
-      */
-      `${InsightsRepository.queueSql('window', '$4')}${InsightsRepository.ratingDaysSql(teamFilter)}`,
-      period.start,
-      period.end,
-      employeeId,
-      InsightsRepository.scopeValue(period),
-      ...brandParams.slice(4),
-    )
-
-    return rows.map((r) => ({
-      date: r.date,
-      orders: int(r.orders),
-      confirmedMinor: money(r.confirmed),
-      deliveredMinor: money(r.delivered),
-    }))
-  }
-
-  /**
    * The FAKT 1 / FAKT 2 series behind the hero chart on Savdo dinamikasi.
    *
-   * Isolated from the query for the same reason `ratingSql` and
-   * `ratingDaysSql` are: it has to be pinned against the board's own
-   * predicates without a database. See `confirmationFaktTrendSql.test.ts`.
-   *
-   * NOT `ratingDaysSql` WITH THE `$3` DROPPED. That one answers "one
-   * operator's days" and pins the seller at a fixed placeholder; this answers
-   * "the floor's days" under whatever the reader has filtered to, which needs
-   * the employee joined rather than compared. The two share every predicate
-   * that decides what FAKT 1 and FAKT 2 mean, and nothing else.
+   * Isolated from the query for the same reason `ratingSql` is: it has to be
+   * pinned against the board's own predicates without a database. See
+   * `confirmationFaktTrendSql.test.ts`.
    */
   private static faktTrendSql(filterClause: string): string {
     return `
@@ -5265,8 +5171,7 @@ export class InsightsRepository {
          FAKT 1 or FAKT 2 money bought nothing — faktTrend zero-fills every
          bucket regardless — and it would have cost the confirmation-rate line
          the one day it most needs to show: a day whose every order was refused
-         is a 0% point on that line, not a gap. ratingDaysSql keeps its gate;
-         one operator's drill-down has no rate line under it.
+         is a 0% point on that line, not a gap.
        */
        ORDER BY 1`
   }
@@ -5279,9 +5184,9 @@ export class InsightsRepository {
    * NOT the clock the revenue area on that same chart is drawn on. The screen
    * says so; see `RevenueTrendChart` and `FaktBasisNote`.
    *
-   * ONLY THE DAYS THAT CARRY ORDERS come back, as with the per-seller series.
-   * Zero-filling a time axis is the caller's job, because only the caller
-   * knows which buckets the chart is drawn on.
+   * ONLY THE DAYS THAT CARRY ORDERS come back. Zero-filling a time axis is the
+   * caller's job, because only the caller knows which buckets the chart is
+   * drawn on.
    */
   async confirmationFaktDays(
     period: ScopedWindow,
@@ -5828,8 +5733,8 @@ export class InsightsRepository {
   }
 
   /**
-   * Isolated for the same reason `ratingSql` and `ratingDaysSql` are: it has
-   * to be pinned against the board's own predicates without a database.
+   * Isolated for the same reason `ratingSql` is: it has to be pinned against
+   * the board's own predicates without a database.
    */
   private static recordsSql(filterClause: string): string {
     const month = `date_trunc('month', c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date`

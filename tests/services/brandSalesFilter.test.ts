@@ -141,27 +141,6 @@ describe('the Доставка board', () => {
   })
 })
 
-describe('the seller\'s day chart', () => {
-  it('narrows by the brand like the board row it opens from', async () => {
-    const calls: { sql: string; params: unknown[] }[] = []
-    const prisma = {
-      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
-        calls.push({ sql, params })
-        return []
-      },
-    } as unknown as PrismaClient
-    const repo = new InsightsRepository(prisma)
-    const period = { ...resolvePeriod('this_month', { timeZone: TZ, now: NOW }), restrictToEmployeeIds: null }
-    await repo.confirmationSellerRatingDays(period, 'e1')
-    await repo.confirmationSellerRatingDays(period, 'e1', { slice: 'none', collagenTeams: ['Sevinch'], zextraTeams: ['Asliddin'] })
-    expect(calls[0]!.sql).not.toContain('$5')
-    expect(calls[0]!.params).toHaveLength(4)
-    expect(calls[1]!.sql).toContain('WHEN (c.rop) = ANY($5::text[])')
-    expect(calls[1]!.sql).toContain(') IS NULL')
-    expect(calls[1]!.params.slice(4)).toEqual([['Sevinch'], ['Asliddin']])
-  })
-})
-
 describe('dealProductBrandSql — what decides an order\'s brand', () => {
   const sql = InsightsRepository.dealProductBrandSql('d')
   it('reads PAID lines only, so a gift (0 soʻm) never decides — an order of gifts only falls to its team', () => {

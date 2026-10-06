@@ -451,15 +451,6 @@ export interface SellerBoardDto {
   readonly planWindow: { readonly start: string; readonly end: string } | null
 }
 
-export interface SellerDayDto {
-  readonly date: string
-  readonly orders: number
-  readonly ordered: MoneyDto
-  readonly won: MoneyDto
-  /** See `SellerBoardRowDto.leads`. Always null, for the same reason. */
-  readonly leads: number | null
-}
-
 /**
  * One point of the FAKT 1 / FAKT 2 line drawn over the revenue area on Savdo
  * dinamikasi.
@@ -1164,40 +1155,6 @@ export class SellerBoardService {
     }
   }
 
-  async sellerDays(
-    ctx: AnalyticsContext,
-    employeeId: string,
-    basis: SellerBoardBasisValue = 'queue',
-  ): Promise<readonly SellerDayDto[]> {
-    if (basis === 'queue') {
-      /*
-        UNSCOPED, like the board this drills into. It used to carry the scope
-        so a caller could not read a seller on another floor; the board is
-        company-wide by decision now, and a day chart that refused the rows the
-        table above it prints would be the one screen disagreeing with itself.
-        `boardFilters` is what drops the scope, in one place, for both.
-      */
-      const filters = boardFilters(ctx)
-      const days = await this.insights.confirmationSellerRatingDays(scopedPeriod(ctx.period, filters), employeeId, filters.brand)
-      return days.map((d) => ({
-        date: d.date,
-        orders: d.orders,
-        ordered: toMoneyDto(money(d.confirmedMinor, ctx.currency)),
-        won: toMoneyDto(money(d.deliveredMinor, ctx.currency)),
-        leads: null,
-      }))
-    }
-
-    const days = await this.repo.sellerDays(ctx.period, employeeId, boardFilters(ctx))
-    return days.map((d) => ({
-      date: d.date,
-      orders: d.orders,
-      ordered: toMoneyDto(money(d.orderedMinor, ctx.currency)),
-      won: toMoneyDto(money(d.wonMinor, ctx.currency)),
-      leads: null,
-    }))
-  }
-
   /**
    * FAKT 1 and FAKT 2 as a time series, on the hero chart's own buckets.
    *
@@ -1210,10 +1167,10 @@ export class SellerBoardService {
    * perfectly ordinary.
    *
    * EVERY BUCKET IS EMITTED, including the ones the queue was empty on. The
-   * repository returns only the days that carry orders — right for a seller's
-   * drill-down, wrong for a series drawn beside another: a shorter array is
-   * silently indexed against the longer one and every point after the first
-   * quiet day is drawn a day early.
+   * repository returns only the days that carry orders, which is wrong for a
+   * series drawn beside another: a shorter array is silently indexed against
+   * the longer one and every point after the first quiet day is drawn a day
+   * early.
    *
    * A DIFFERENT CLOCK FROM THE AREA UNDERNEATH, and the screen says so. These
    * are dated by the order's arrival in the confirmation queue (C4:NEW);

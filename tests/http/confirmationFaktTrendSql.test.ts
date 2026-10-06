@@ -22,11 +22,10 @@ const { InsightsRepository } = await import('@/server/repositories/insightsRepos
  * up to the tiles' period totals, or a reader summing the line by eye finds a
  * third number for a month.
  *
- * It does NOT reuse `ratingDaysSql`: that one narrows to a single operator at
- * a fixed `$3` and groups nothing else, while this is the whole floor under
- * the reader's own filters. The agreement is bought the way the record wall
- * buys it — by sharing the predicates literally — and this file is what proves
- * they are still shared. Every assertion here has a matching one in
+ * It is the whole floor under the reader's own filters, never one operator
+ * pinned at a fixed placeholder. The agreement is bought the way the record
+ * wall buys it — by sharing the predicates literally — and this file is what
+ * proves they are still shared. Every assertion here has a matching one in
  * `confirmationSellerRatingSql.test.ts`.
  */
 const faktTrendSql = (
@@ -71,8 +70,8 @@ describe('the FAKT trend speaks the board’s language', () => {
   })
 
   it('is the whole floor, not one operator — no fixed employee placeholder', () => {
-    // `ratingDaysSql` pins `= $3` to one seller. This series is every seller
-    // the reader can see, so the only narrowing is the filter clause.
+    // This series is every seller the reader can see, so the only narrowing
+    // is the filter clause — no seller is pinned at a fixed placeholder.
     expect(BARE).not.toContain('$3')
   })
 

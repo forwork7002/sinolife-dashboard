@@ -35,14 +35,6 @@ const ACCESS = { permission: 'leaderboard:read', section: ['sellers', 'sales'] }
 const schema = analyticsQuerySchema.and(
   z.object({
     /**
-     * One seller's daily rows instead of the whole board.
-     *
-     * A separate parameter rather than a separate route because the two reads
-     * share every filter and the same period resolution; splitting them would
-     * duplicate that surface for one extra query.
-     */
-    employeeId: z.string().min(1).optional(),
-    /**
      * Which clock the board reads — see `SellerBoardDto.basis`.
      *
      * Defaults to 'queue', the floor's own FAKT 1 / FAKT 2 definitions. The
@@ -197,13 +189,6 @@ export const GET = getHandler(ACCESS, schema, async (ctx) => {
   if (ctx.query.include === 'medals') {
     return {
       data: await sellerBoardService.medals(context),
-      meta: AnalyticsService.periodMeta(context),
-    }
-  }
-
-  if (ctx.query.employeeId) {
-    return {
-      data: await sellerBoardService.sellerDays(context, ctx.query.employeeId, ctx.query.basis),
       meta: AnalyticsService.periodMeta(context),
     }
   }
