@@ -2,6 +2,7 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
 
 import { statusOf } from '@/components/states/States'
+import { ApiClientError } from '@/lib/api'
 
 /**
  * THE ERROR CARD IS FOR HAVING NOTHING TO SHOW.
@@ -46,6 +47,33 @@ describe('statusOf', () => {
     expect(result.data).toEqual({ figure: 12 })
     // Ours: that is still a screen with figures on it.
     expect(statusOf(result)).toBe('ready')
+  })
+
+  it('is the error card when a poll is REFUSED, figures or not — a 401 or a 403 answers every poll after it the same', async () => {
+    const cases: readonly [ApiClientError, 'error' | 'ready'][] = [
+      // A revoked session (a password change signs the others out), an expired one.
+      [new ApiClientError('UNAUTHENTICATED', 'Tizimga kirish talab qilinadi.', 401), 'error'],
+      // The section taken away, the account deactivated.
+      [new ApiClientError('FORBIDDEN', 'Bu boʻlim sizga berilmagan.', 403), 'error'],
+      // …while a failure to answer is still a blip the next poll clears.
+      [new ApiClientError('INTERNAL_ERROR', 'Kutilmagan xatolik yuz berdi.', 500), 'ready'],
+      [new ApiClientError('UPSTREAM_UNAVAILABLE', 'Server vaqtincha javob bermadi.', 502), 'ready'],
+    ]
+    for (const [refusal, expected] of cases) {
+      let fail = false
+      const observer = observe(async () => {
+        if (fail) throw refusal
+        return { figure: 12 }
+      })
+      await observer.refetch()
+
+      fail = true
+      await observer.refetch()
+      const result = observer.getCurrentResult()
+
+      expect(result.data).toEqual({ figure: 12 })
+      expect(statusOf(result), `${refusal.status}`).toBe(expected)
+    }
   })
 
   it('is the error card when the first read fails — there is nothing to keep', async () => {

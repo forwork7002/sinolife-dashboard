@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/Button'
+import { ApiClientError } from '@/lib/api'
 import { t } from '@/lib/messages'
 
 /**
@@ -39,14 +40,29 @@ export type ViewStatus = 'loading' | 'error' | 'ready'
  * A first read that fails still gets the card, and so does a new period
  * whose read fails: placeholder data covers only a query that is still
  * pending, so after the failure there is no `data` to keep.
+ *
+ * AND SO DOES A REFUSAL, FIGURES OR NOT. A 401 or a 403 is not a blip the next
+ * poll clears: a password change revokes every other session, a section can
+ * be taken away, an account deactivated, and every poll after that answers
+ * the same. Keeping the figures there left the TV board on its last ranking
+ * indefinitely, with nothing on screen but a header chip that reads like a
+ * Bitrix24 delay; the card prints the server's own sentence instead
+ * («Tizimga kirish talab qilinadi.»).
  */
 export function statusOf(query: {
   readonly isPending: boolean
   readonly isError: boolean
   readonly data: unknown
+  readonly error: unknown
 }): ViewStatus {
   if (query.isPending) return 'loading'
-  return query.isError && query.data === undefined ? 'error' : 'ready'
+  if (!query.isError) return 'ready'
+  return query.data === undefined || isRefusal(query.error) ? 'error' : 'ready'
+}
+
+/** The server said no to this account — signed out (401) or not allowed (403) — rather than failed to answer. */
+function isRefusal(error: unknown): boolean {
+  return error instanceof ApiClientError && (error.status === 401 || error.status === 403)
 }
 
 export function LoadingSkeleton({ rows = 3, className = '' }: { rows?: number; className?: string }) {

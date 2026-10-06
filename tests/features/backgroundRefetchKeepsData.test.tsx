@@ -15,7 +15,8 @@ import type { LogisticsDto, SellerBoardDto } from '@/lib/api'
  * whole of Logistika and both columns of the floor's television behind
  * «Qayta urinish» for two minutes, with every figure still in memory. The
  * rule now lives in `statusOf`; these pin it on the two screens that are
- * left open on a wall, through the real page and a real query client.
+ * left open on a wall, through the real page and a real query client — and
+ * its one exception, a refusal (401 / 403), which no later poll clears.
  */
 
 vi.mock('next/navigation', () => ({
@@ -106,7 +107,7 @@ const BOARD = {
 } as unknown as SellerBoardDto
 
 /** What the server answers, flipped by each test. */
-let answer: 'ok' | 'fail' = 'ok'
+let answer: 'ok' | 'fail' | 'signed-out' = 'ok'
 
 beforeEach(() => {
   answer = 'ok'
@@ -118,6 +119,13 @@ beforeEach(() => {
           ok: false,
           status: 502,
           json: async () => ({ error: { code: 'INTERNAL_ERROR', message: 'Server xatosi' } }),
+        }
+      }
+      if (answer === 'signed-out') {
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({ error: { code: 'UNAUTHENTICATED', message: 'Tizimga kirish talab qilinadi.' } }),
         }
       }
       const include = new URL(url, 'http://x').searchParams.get('include')
@@ -184,6 +192,20 @@ describe('a failed background poll', () => {
     expect(screen.getAllByText('154 Marjona Xayrullayeva').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Saparboyeva 110 Farida').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Qayta urinish' })).toBeNull()
+  })
+
+  it('does NOT keep the television board once the session is gone — the card says to sign in', async () => {
+    const client = draw(<SellersPage />)
+    await waitFor(() => expect(screen.getAllByText('154 Marjona Xayrullayeva').length).toBeGreaterThan(0))
+
+    // A password change revokes every other session: every poll from here on is a 401.
+    answer = 'signed-out'
+    await poll(client)
+
+    // Both columns, sellers and teams, say so in the server's own words.
+    expect(screen.getAllByText('Tizimga kirish talab qilinadi.')).toHaveLength(2)
+    expect(screen.getAllByRole('button', { name: 'Qayta urinish' })).toHaveLength(2)
+    expect(screen.queryByText('154 Marjona Xayrullayeva')).toBeNull()
   })
 
   it('still shows the error card when there was never anything to keep', async () => {
