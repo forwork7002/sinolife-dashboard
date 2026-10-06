@@ -10,11 +10,10 @@ import { SECTION_IDS } from '@/lib/sections'
  *
  * `getHandler` takes an `Access` with a required `section`, so TypeScript
  * already refuses a handler that omits it. What TypeScript cannot see is a
- * route that goes around the wrapper: `users/[id]` hand-rolls its response and
- * calls `requirePermission` directly, and a second could be added tomorrow by
- * copying it. (`deals/[id]` and `employees/[id]` did the same until they were
- * deleted on 2026-09-10 as endpoints no screen called.) That is exactly the
- * path by which an unguarded endpoint ships.
+ * route that goes around the wrapper and authorises by hand. `deals/[id]` and
+ * `employees/[id]` did that until they were deleted on 2026-09-10 as endpoints
+ * no screen called, and a new one could be added tomorrow the same way. That
+ * is exactly the path by which an unguarded endpoint ships.
  *
  * So this reads the files. It is a blunt instrument on purpose — it does not
  * parse, it looks for the decision being made — and its value is that the

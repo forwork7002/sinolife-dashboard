@@ -114,12 +114,11 @@ the mirror** — edit both sides.
 
 `getHandler(access, …)` takes `access = { permission, section }`. **Both are
 required fields**; `section: null` must be written out, so adding an endpoint is
-always a decision about who reaches it. Two drill-down routes
-(`deals/[id]`, `employees/[id]`) hand-roll `requirePermission` +
-`assertSection` because they authorise per-resource — and
-`tests/http/routeAccess.test.ts` is the only thing guarding that path. It also
-pins the ungated list exactly, so **adding an endpoint with `section: null`
-fails that test until you extend the array.**
+always a decision about who reaches it. Every route goes through
+`getHandler` / `mutationHandler` now; a route that authorises by hand must call
+`assertSection(` itself, and `tests/http/routeAccess.test.ts` is the only thing
+guarding that path. It also pins the ungated list exactly, so **adding an
+endpoint with `section: null` fails that test until you extend the array.**
 
 Route handlers spread scope **last**:
 

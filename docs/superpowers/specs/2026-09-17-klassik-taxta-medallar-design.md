@@ -2,7 +2,8 @@
 
 **Holat:** amalga oshirildi — klassik branch'i, deploy kutmoqda (2026-09-17).
 **O'rnini bosadi:** `2026-09-16-daraja-va-medallar-design.md`, `2026-09-16-efir-taxta-design.md`,
-`2026-09-17-efir-premium-design.md` — uchalasi ham BEKOR (tarix sifatida qoladi).
+`2026-09-17-efir-premium-design.md` — uchalasi ham BEKOR; 2026-10-06 da repo'dan
+olib tashlandi, git tarixida qoladi (`git show 05ce0d3:docs/superpowers/specs/<fayl>`).
 
 ## 0. Mijoz so'zi (2026-09-17, EFIR Premium chiqqandan keyin)
 
