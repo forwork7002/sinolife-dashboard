@@ -78,8 +78,8 @@ export interface SourceRowDto {
   readonly channel: LeadChannel
   readonly name: string
   readonly outcome: LeadOutcomeDto
-  /** Distinct clients (by phone) of these leads with a FAKT 1 order in the window. */
-  readonly fakt1Clients: number
+  /** Distinct clients (by phone) of these leads with a FAKT 1 order in the window; null while not ready. */
+  readonly fakt1Clients: number | null
 }
 
 export interface LeadSourcesOverviewDto {
@@ -101,7 +101,7 @@ export interface LeadSourcesOverviewDto {
   readonly totals: {
     readonly registration: LeadOutcomeDto
     /** Distinct over the whole of Регистрация — not the sum of the channels. */
-    readonly fakt1Clients: number
+    readonly fakt1Clients: number | null
     readonly formReachPercent: number | null
   }
   readonly forms: {
@@ -120,7 +120,7 @@ export interface LeadSourcesOverviewDto {
   readonly channels: readonly {
     readonly channel: LeadChannel
     readonly outcome: LeadOutcomeDto
-    readonly fakt1Clients: number
+    readonly fakt1Clients: number | null
   }[]
   /** «Boshqa kanallar lidlari» — every tile in the server's order, and the sum of all but «Исход» and «Boshqa». */
   readonly tiles: {

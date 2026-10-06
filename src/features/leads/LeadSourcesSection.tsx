@@ -921,7 +921,7 @@ function sourcesView(data: LeadSourcesOverviewDto | undefined, status: Status): 
     channel: LeadChannel | null
     name: string
     outcome: LeadOutcomeDto
-    fakt1Clients: number
+    fakt1Clients: number | null
     subtotal: boolean
   }
   const rows: Row[] = []
@@ -985,7 +985,15 @@ function sourcesView(data: LeadSourcesOverviewDto | undefined, status: Status): 
             header: 'Факт1 мижоз',
             align: 'right',
             numeric: true,
-            render: (r) => <span className={r.subtotal ? 'font-semibold' : 'font-medium'}>{count(r.fakt1Clients)}</span>,
+            // Null: the phone match is not ready (still running, or failed) — a later poll fills it in.
+            render: (r) =>
+              r.fakt1Clients === null ? (
+                <span style={muted} title="Hozircha tayyor emas — sahifa yangilanganda chiqadi">
+                  …
+                </span>
+              ) : (
+                <span className={r.subtotal ? 'font-semibold' : 'font-medium'}>{count(r.fakt1Clients)}</span>
+              ),
           },
           ...outcome.slice(afterKval),
         ]}

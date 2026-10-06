@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
 import type { CampaignDayRow } from '@/server/repositories/reklamaRepository'
@@ -487,5 +487,96 @@ describe('LeadSourcesService.targetologForms', () => {
 
     const whole = await service(false).overview(period, 'Asia/Tashkent')
     expect(alone.forms).toEqual(whole.forms)
+  })
+})
+
+describe('LeadSourcesService.overview — «Факт1 мижоз» never takes Lidlar down', () => {
+  it('shows the tab with «Факт1 мижоз» unknown when the phone match fails, and retries next time', async () => {
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-06-10T00:00:00Z'),
+      customEnd: new Date('2026-06-11T00:00:00Z'),
+    })
+    let fakt1Calls = 0
+    const service = new LeadSourcesService(
+      {
+        registrationDays: async () => [reg({ day: '2026-06-10', formTitle: UMAR_FORM, leads: 3 })],
+        triageDays: async () => [],
+        qualifiedSources: async () => [],
+        aiQualifiedStages: async () => [],
+        pipelineSourceCount: async () => NO_SARAFAN,
+        inboundCallCount: async () => null,
+      } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      {
+        leadFakt1Clients: async () => {
+          fakt1Calls += 1
+          if (fakt1Calls === 1) throw new Error('canceling statement due to statement timeout')
+          return [fakt1({}), fakt1({ client: '907654321' })]
+        },
+      } as never,
+    )
+
+    const first = await service.overview(period, 'Asia/Tashkent')
+    expect(first.totals.registration.leads).toBe(3)
+    expect(first.totals.fakt1Clients).toBeNull()
+    expect(first.channels.every((c) => c.fakt1Clients === null)).toBe(true)
+    expect(first.sources.every((s) => s.fakt1Clients === null)).toBe(true)
+
+    // The failure was not memoised: the next poll asks again and reads it.
+    const second = await service.overview(period, 'Asia/Tashkent')
+    expect(second.totals.fakt1Clients).toBe(2)
+  })
+})
+
+describe('LeadSourcesService.overview — a slow «Факт1 мижоз»', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('answers without it after the wait, and the scan still fills the memo for the next poll', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-05-10T00:00:00Z'),
+      customEnd: new Date('2026-05-11T00:00:00Z'),
+    })
+    let finish: (rows: LeadFakt1ClientRow[]) => void = () => {}
+    let fakt1Calls = 0
+    const service = new LeadSourcesService(
+      {
+        registrationDays: async () => [reg({ day: '2026-05-10', formTitle: UMAR_FORM, leads: 3 })],
+        triageDays: async () => [],
+        qualifiedSources: async () => [],
+        aiQualifiedStages: async () => [],
+        pipelineSourceCount: async () => NO_SARAFAN,
+        inboundCallCount: async () => null,
+      } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      {
+        leadFakt1Clients: () => {
+          fakt1Calls += 1
+          return new Promise<LeadFakt1ClientRow[]>((resolve) => {
+            finish = resolve
+          })
+        },
+      } as never,
+    )
+
+    const pending = service.overview(period, 'Asia/Tashkent')
+    await vi.advanceTimersByTimeAsync(8_000)
+    const first = await pending
+    expect(first.totals.registration.leads).toBe(3)
+    expect(first.totals.fakt1Clients).toBeNull()
+
+    finish([fakt1({})])
+    const second = await service.overview(period, 'Asia/Tashkent')
+    expect(second.totals.fakt1Clients).toBe(1)
+    // The late answer was the first scan's — no second phone match was started.
+    expect(fakt1Calls).toBe(1)
   })
 })

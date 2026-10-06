@@ -132,8 +132,11 @@ export interface SourceRowDto {
   readonly channel: LeadChannel
   readonly name: string
   readonly outcome: LeadOutcomeDto
-  /** Distinct clients (by phone) of these leads with a FAKT 1 order in the window — «Факт1 мижоз». */
-  readonly fakt1Clients: number
+  /**
+   * Distinct clients (by phone) of these leads with a FAKT 1 order in the
+   * window — «Факт1 мижоз». Null while the phone match is not ready yet.
+   */
+  readonly fakt1Clients: number | null
 }
 
 /**
@@ -197,8 +200,8 @@ export interface LeadSourcesOverviewDto {
   readonly totals: {
     /** Every Регистрация deal created in the window. */
     readonly registration: LeadOutcomeDto
-    /** «Факт1 мижоз» of the whole of Регистрация — distinct, so not the sum of the channels. */
-    readonly fakt1Clients: number
+    /** «Факт1 мижоз» of the whole of Регистрация — distinct, so not the sum of the channels; null while not ready. */
+    readonly fakt1Clients: number | null
     readonly formReachPercent: number | null
   }
   readonly forms: {
@@ -218,7 +221,7 @@ export interface LeadSourcesOverviewDto {
   readonly channels: readonly {
     readonly channel: LeadChannel
     readonly outcome: LeadOutcomeDto
-    readonly fakt1Clients: number
+    readonly fakt1Clients: number | null
   }[]
   /**
    * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
@@ -354,7 +357,7 @@ function ofBrand(input: LeadSourcesInput, brand: Exclude<BrandFilter, 'all'>): L
     registration: input.registration.filter(lead),
     triage: input.triage.filter((row) => brandMatches(brand, pageBrand(row.sourceId))),
     campaigns: input.campaigns.filter((row) => brandMatches(brand, adBudgetProduct(row))),
-    fakt1: input.fakt1.filter(lead),
+    fakt1: input.fakt1?.filter(lead) ?? null,
     qualified: input.qualified.filter(lead),
     aiQualified: input.aiQualified.filter(lead),
     sarafan: brandless ? input.sarafan : { leads: 0, qualified: 0 },
@@ -370,8 +373,12 @@ export function leadSourcesOverview(all: {
   registration: readonly RegistrationDayRow[]
   triage: readonly TriageDayRow[]
   campaigns: readonly CampaignDayRow[]
-  /** Leads that reached FAKT 1 (`InsightsRepository.leadFakt1Clients`). */
-  fakt1: readonly LeadFakt1ClientRow[]
+  /**
+   * Leads that reached FAKT 1 (`InsightsRepository.leadFakt1Clients`). Null when
+   * the phone match did not answer in time (`FAKT1_WAIT_MS`): «Факт1 мижоз»
+   * reads null, the rest stands.
+   */
+  fakt1: readonly LeadFakt1ClientRow[] | null
   /** Регистрация deals WON in the window, by source (`LeadSourcesRepository.qualifiedSources`). */
   qualified: readonly QualifiedSourceRow[]
   /** Deals whose «ИИ квал сана» is in the window, any pipeline, flagged Регистрация or not (`LeadSourcesRepository.aiQualifiedStages`). */
@@ -506,7 +513,8 @@ export function leadSourcesOverview(all: {
   const fakt1Sources = new Map<string, Set<string>>()
   const fakt1Channels = new Map<LeadChannel, Set<string>>(LEAD_CHANNELS.map((c) => [c, new Set<string>()]))
   const fakt1All = new Set<string>()
-  for (const row of input.fakt1) {
+  const fakt1Ready = input.fakt1 !== null
+  for (const row of input.fakt1 ?? []) {
     const form = formNameOf(row.formTitle)
     const sourceKey = sourceKeyOf(form, row.sourceId)
     mapGet(fakt1Sources, sourceKey, () => new Set<string>()).add(row.client)
@@ -674,7 +682,7 @@ export function leadSourcesOverview(all: {
     },
     totals: {
       registration: registrationCells,
-      fakt1Clients: fakt1All.size,
+      fakt1Clients: fakt1Ready ? fakt1All.size : null,
       formReachPercent: percent(formLeads, metaFormLeads),
     },
     forms: {
@@ -688,7 +696,7 @@ export function leadSourcesOverview(all: {
     channels: LEAD_CHANNELS.map((channel) => ({
       channel,
       outcome: outcomeCells(channels.get(channel)!),
-      fakt1Clients: fakt1Channels.get(channel)!.size,
+      fakt1Clients: fakt1Ready ? fakt1Channels.get(channel)!.size : null,
     })),
     tiles: {
       rows: LEAD_TILES.map((tile) => ({ tile, ...tileCells(tiles.get(tile)!) })),
@@ -706,7 +714,7 @@ export function leadSourcesOverview(all: {
         channel: s.channel,
         name: s.name,
         outcome: outcomeCells(s.outcome),
-        fakt1Clients: fakt1Sources.get(s.key)?.size ?? 0,
+        fakt1Clients: fakt1Ready ? (fakt1Sources.get(s.key)?.size ?? 0) : null,
       }))
       .sort(
         (a, b) =>
@@ -726,6 +734,32 @@ export function leadSourcesOverview(all: {
 const registrationCache = ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE)
 
 /*
+  «Факт1 мижоз» on its own memo, and never awaited past `FAKT1_WAIT_MS`: the
+  phone match is the heaviest scan of the tab (prod 2026-10-05: mean 4.4 s,
+  max 19.4 s on a month, against a 20 s statement timeout). A reader who
+  arrives first gets the tab without it; the query keeps running and fills
+  the memo for the next poll. A failure is evicted, so the next one retries.
+*/
+const fakt1Cache = ttlCache<LeadFakt1ClientRow[]>(120_000, LIVE_CACHE)
+const FAKT1_WAIT_MS = 8_000
+/** Still waited for when the other scans alone took past `FAKT1_WAIT_MS`. */
+const FAKT1_GRACE_MS = 1_000
+
+/** `promise`'s answer if it lands within `ms`, else null — a failure is null too (logged where it is built). */
+async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), ms)
+  })
+  const answer = promise.catch(() => null)
+  try {
+    return await Promise.race([answer, late])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/*
   One memo per window in front of the three deal scans. Company-wide by
   construction — both routes that read it (`/leads/overview`,
   `/reklama/targetologs`) refuse a narrowed account — so no scope reaches it.
@@ -733,7 +767,6 @@ const registrationCache = ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE)
 const scanCache = ttlCache<{
   registration: RegistrationDayRow[]
   triage: TriageDayRow[]
-  fakt1: LeadFakt1ClientRow[]
   qualified: QualifiedSourceRow[]
   aiQualified: AiQualifiedStageRow[]
   sarafan: PipelineSourceCount
@@ -751,25 +784,36 @@ export class LeadSourcesService {
     const window = periodWindow(period, timeZone)
     const key = windowKey(period)
 
+    // Started first, raced last: the budget counts from the start, never cutting it short of the other scans.
+    const started = Date.now()
+    const fakt1Scan = fakt1Cache.get(key, () =>
+      this.insights.leadFakt1Clients(period).catch((error: unknown) => {
+        void import('@/server/logging/logger').then(({ logger }) =>
+          logger.warn({ err: error }, '«Факт1 мижоз» scan failed; Lidlar shows the tab without it'),
+        )
+        throw error
+      }),
+    )
     const [scans, campaigns, importedAt] = await Promise.all([
       scanCache.get(key, async () => {
-        const [registration, triage, fakt1, qualified, aiQualified, sarafan, inboundCalls] = await Promise.all([
+        const [registration, triage, qualified, aiQualified, sarafan, inboundCalls] = await Promise.all([
           this.registrationDays(period),
           this.repository.triageDays(period),
-          this.insights.leadFakt1Clients(period),
           this.repository.qualifiedSources(period),
           this.repository.aiQualifiedStages(period),
           this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
           this.repository.inboundCallCount(period),
         ])
-        return { registration, triage, fakt1, qualified, aiQualified, sarafan, inboundCalls }
+        return { registration, triage, qualified, aiQualified, sarafan, inboundCalls }
       }),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),
     ])
 
+    const fakt1 = await within(fakt1Scan, Math.max(FAKT1_GRACE_MS, FAKT1_WAIT_MS - (Date.now() - started)))
+
     // Narrowed after the memo: one scan serves both brands and the whole.
-    return leadSourcesOverview({ window, ...scans, campaigns, importedAt, brand })
+    return leadSourcesOverview({ window, ...scans, fakt1, campaigns, importedAt, brand })
   }
 
   /**
