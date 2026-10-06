@@ -26,6 +26,31 @@
 /** Below this, two sums are the same sum (1 soʻm, in minor units). */
 export const SUM_TOLERANCE_MINOR = 100n
 
+/**
+ * THE FIRST DAY MOYSKLAD HOLDS AN ORDER FOR — 2026-06-15 00:00 Tashkent, as a
+ * UTC instant. The import's whole-table read begins there (`moyskladImport.ts`:
+ * ≈100 pages of 100, the first on 2026-06-15, read 2026-10-06); nothing older
+ * was ever in MoySklad to be read.
+ *
+ * So a deal queued before it that has no MoySklad order is not MISSING — the
+ * warehouse system did not exist for it — and it is not clean either: it is
+ * compared with nothing (`beforeFloor`). Without the floor a «Yil» window made
+ * every January–June FAKT 1 order a critical «MoySkladʼda yoʻq» line, put tens
+ * of mlrd soʻm on that chip and pushed the real differences out of the
+ * 3 000-line list. A deal queued before the floor that DOES have an order is
+ * compared as usual.
+ *
+ * THE COHORT IS NOT CLAMPED TO IT. FAKT 1 / FAKT 2 here are Savdo dinamikasi's
+ * to the soʻm for the window asked for, so those deals stay in Bitrix24's
+ * figures and only leave the comparison — each pair says how much of its
+ * Bitrix24 side they are.
+ *
+ * Written out rather than read as `min(moment)`: one backdated document in
+ * MoySklad would pull a computed floor back to its date, and every false line
+ * with it. Tashkent has been UTC+5 with no DST since 1992 (`CALL_DATA_FLOOR`).
+ */
+export const MOYSKLAD_DATA_FLOOR = new Date('2026-06-14T19:00:00.000Z')
+
 /** Where an order stands, in the four words both systems can say. */
 export type SverkaPhase = 'PRE_WAREHOUSE' | 'TRANSIT' | 'DELIVERED' | 'RETURNED' | 'OUTSIDE'
 
@@ -180,6 +205,12 @@ export interface SverkaLine {
   /** The deal's other MoySklad orders, newest first — a DUPLICATE's rest. */
   readonly others: readonly MoyskladSide[]
   readonly issues: readonly SverkaIssue[]
+  /**
+   * Queued before `MOYSKLAD_DATA_FLOOR`, past the warehouse and holding no
+   * MoySklad order: MoySklad could not have it, so it is in Bitrix24's figures
+   * and out of every comparison.
+   */
+  readonly beforeFloor: boolean
 }
 
 /**
@@ -356,10 +387,15 @@ export function compareDeal(bitrix: BitrixSide, orders: readonly MoyskladSide[])
       Only an order Bitrix24 has already sent past the warehouse is MISSING.
       «Подготовка товара» and «Заказ в мой склад» are where the warehouse
       order is still being made — waiting, not missing; the line is returned
-      with no issue and counted as `pending`.
+      with no issue and counted as `pending`. One queued before MoySklad held
+      any order is not missing either: it is `beforeFloor`, compared with
+      nothing. A packing order is `pending` whenever it arrived — its order is
+      made when it leaves, after the floor.
     */
-    if (bitrix.fakt1 && phase !== 'PRE_WAREHOUSE') issues.push('MISSING_IN_MS')
-    return { dealId: bitrix.externalId, bitrix, moysklad: null, moyskladOrders: 0, others: [], issues }
+    const beforeFloor =
+      phase !== 'PRE_WAREHOUSE' && bitrix.queuedAt !== null && bitrix.queuedAt < MOYSKLAD_DATA_FLOOR
+    if (bitrix.fakt1 && phase !== 'PRE_WAREHOUSE' && !beforeFloor) issues.push('MISSING_IN_MS')
+    return { dealId: bitrix.externalId, bitrix, moysklad: null, moyskladOrders: 0, others: [], issues, beforeFloor }
   }
 
   if (!bitrix.fakt1) issues.push('NOT_FAKT1')
@@ -380,7 +416,7 @@ export function compareDeal(bitrix: BitrixSide, orders: readonly MoyskladSide[])
   if (regionVerdict(bitrix.region, ms.region) === 'diff') issues.push('REGION')
   if (ropVerdict(bitrix.ropSource, ms.project) === 'diff') issues.push('ROP')
 
-  return { dealId: bitrix.externalId, bitrix, moysklad: ms, moyskladOrders: orders.length, others: orders.slice(1), issues }
+  return { dealId: bitrix.externalId, bitrix, moysklad: ms, moyskladOrders: orders.length, others: orders.slice(1), issues, beforeFloor: false }
 }
 
 /** A MoySklad order whose deal is not in the window's cohort. */
@@ -393,7 +429,7 @@ export type OrphanKind =
 export function orphanLine(dealId: string | null, kind: OrphanKind, orders: readonly MoyskladSide[]): SverkaLine {
   const issues: SverkaIssue[] = kind === 'NOT_QUEUED' ? ['NOT_QUEUED'] : kind === 'NO_DEAL' ? ['NO_DEAL'] : []
   if (orders.length > 1 && dealId) issues.push('DUPLICATE')
-  return { dealId, bitrix: null, moysklad: orders[0] ?? null, moyskladOrders: orders.length, others: orders.slice(1), issues }
+  return { dealId, bitrix: null, moysklad: orders[0] ?? null, moyskladOrders: orders.length, others: orders.slice(1), issues, beforeFloor: false }
 }
 
 export interface SideTotal {
@@ -404,6 +440,8 @@ export interface SideTotal {
 export interface SverkaPair {
   readonly bitrix: SideTotal
   readonly moysklad: SideTotal
+  /** The part of `bitrix` that is `beforeFloor` — inside Bitrix24's figure, outside the comparison. */
+  readonly beforeFloor: SideTotal
 }
 
 const zero = (): SideTotal => ({ orders: 0, amountMinor: 0n })
@@ -425,6 +463,8 @@ export interface SverkaTotals {
   readonly pending: SideTotal
   /** FAKT 1 deals that have a MoySklad order and no difference at all. */
   readonly clean: number
+  /** Every cohort deal that is `beforeFloor`, whichever pair it falls in. */
+  readonly beforeFloor: SideTotal
 }
 
 /**
@@ -433,11 +473,12 @@ export interface SverkaTotals {
  * cohort's delivered deals whatever their queue outcome.
  */
 export function sverkaTotals(lines: readonly SverkaLine[]): SverkaTotals {
-  const fakt1 = { bitrix: zero(), moysklad: zero() }
-  const fakt2 = { bitrix: zero(), moysklad: zero() }
-  const transit = { bitrix: zero(), moysklad: zero() }
-  const returned = { bitrix: zero(), moysklad: zero() }
+  const fakt1 = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
+  const fakt2 = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
+  const transit = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
+  const returned = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
   const pending = zero()
+  const beforeFloor = zero()
   let clean = 0
 
   for (const line of lines) {
@@ -446,21 +487,27 @@ export function sverkaTotals(lines: readonly SverkaLine[]): SverkaTotals {
     const ms = line.moysklad
     const bxPhase = bitrixPhase(bx.logisticsRole, bx.stageExternalId)
     const msPhase = ms ? moyskladPhase(ms.stateName) : null
+    // Bitrix24's figure always, and its `beforeFloor` share when MoySklad could not hold the deal.
+    const addBitrix = (pair: SverkaPair) => {
+      add(pair.bitrix, bx.amountMinor)
+      if (line.beforeFloor) add(pair.beforeFloor, bx.amountMinor)
+    }
 
-    if (bx.delivered) add(fakt2.bitrix, bx.amountMinor)
+    if (line.beforeFloor) add(beforeFloor, bx.amountMinor)
+    if (bx.delivered) addBitrix(fakt2)
     if (ms && msPhase === 'DELIVERED') add(fakt2.moysklad, ms.sumMinor)
 
     if (!bx.fakt1) continue
-    add(fakt1.bitrix, bx.amountMinor)
+    addBitrix(fakt1)
     if (ms) add(fakt1.moysklad, ms.sumMinor)
     if (!ms && bxPhase === 'PRE_WAREHOUSE') add(pending, bx.amountMinor)
-    if (bxPhase === 'TRANSIT') add(transit.bitrix, bx.amountMinor)
+    if (bxPhase === 'TRANSIT') addBitrix(transit)
     if (ms && msPhase === 'TRANSIT') add(transit.moysklad, ms.sumMinor)
-    if (bxPhase === 'RETURNED') add(returned.bitrix, bx.amountMinor)
+    if (bxPhase === 'RETURNED') addBitrix(returned)
     if (ms && msPhase === 'RETURNED') add(returned.moysklad, ms.sumMinor)
     if (ms && line.issues.length === 0) clean += 1
   }
-  return { fakt1, fakt2, transit, returned, pending, clean }
+  return { fakt1, fakt2, transit, returned, pending, clean, beforeFloor }
 }
 
 export interface ProductRow {
@@ -477,7 +524,8 @@ export interface ProductRow {
  * Pieces and money per product over the FAKT 1 deals: Bitrix24's product rows
  * against the lines of those deals' MoySklad orders. Named by MoySklad where
  * it has the product — the warehouse's catalogue is the one with one name per
- * code — else by Bitrix24.
+ * code — else by Bitrix24. A `beforeFloor` deal is left out: it has no side to
+ * set against, and would put a false gap on every product it sold.
  */
 export function productRows(lines: readonly SverkaLine[]): ProductRow[] {
   const rows = new Map<
@@ -494,7 +542,7 @@ export function productRows(lines: readonly SverkaLine[]): ProductRow[] {
     return r
   }
   for (const line of lines) {
-    if (!line.bitrix?.fakt1) continue
+    if (!line.bitrix?.fakt1 || line.beforeFloor) continue
     for (const item of line.bitrix.items) {
       const r = row(item)
       r.bq += item.quantity
@@ -530,12 +578,15 @@ export interface TeamRow {
   readonly issues: number
 }
 
-/** FAKT 1 against MoySklad per ROP team (the board's team, off the deal). */
+/**
+ * FAKT 1 against MoySklad per ROP team (the board's team, off the deal) —
+ * comparable deals only: a `beforeFloor` one would read as every team's gap.
+ */
 export function teamRows(lines: readonly SverkaLine[], noTeam: string): TeamRow[] {
   const teams = new Map<string, { bitrix: SideTotal; moysklad: SideTotal; issues: number }>()
   for (const line of lines) {
     const bx = line.bitrix
-    if (!bx?.fakt1) continue
+    if (!bx?.fakt1 || line.beforeFloor) continue
     const name = bx.rop ?? noTeam
     let t = teams.get(name)
     if (!t) {
