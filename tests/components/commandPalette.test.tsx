@@ -2,10 +2,10 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { CommandPalette, type CommandGroup } from '@/components/ui/CommandPalette'
+import { CommandPalette, type CommandGroup, useCommandK } from '@/components/ui/CommandPalette'
 
 /**
- * The ⌘K widget on its own: what a STALE group is.
+ * The ⌘K widget on its own: what a STALE group is, and which key opens it.
  *
  * A stale group is the previous search's hits, kept on screen while the next
  * lookup runs so the list does not blink empty. Selectable, they were what
@@ -61,5 +61,40 @@ describe('a stale group', () => {
     fireEvent.keyDown(box(), { key: 'Enter' })
     expect(live).toHaveBeenCalledTimes(1)
     expect(stale).not.toHaveBeenCalled()
+  })
+})
+
+/*
+  `key` is the layout's character: on a Russian or Uzbek-Cyrillic layout the
+  physical K reports «л», and Ctrl+K fell through to the browser's own search.
+*/
+describe('the ⌘K shortcut', () => {
+  function Bound({ onOpen }: { onOpen: () => void }) {
+    useCommandK(onOpen)
+    return null
+  }
+
+  function press(init: KeyboardEventInit): boolean {
+    const opened = vi.fn()
+    render(<Bound onOpen={opened} />)
+    fireEvent.keyDown(document.body, init)
+    cleanup()
+    return opened.mock.calls.length > 0
+  }
+
+  it('opens on the physical K whatever the layout', () => {
+    expect(press({ key: 'k', code: 'KeyK', ctrlKey: true })).toBe(true)
+    expect(press({ key: 'K', code: 'KeyK', metaKey: true })).toBe(true)
+    expect(press({ key: 'л', code: 'KeyK', ctrlKey: true })).toBe(true)
+    expect(press({ key: 'Л', code: 'KeyK', metaKey: true })).toBe(true)
+  })
+
+  it('leaves another Latin letter on that key alone — Dvorak types «t» there, and Ctrl+T is the browser’s', () => {
+    expect(press({ key: 't', code: 'KeyK', ctrlKey: true })).toBe(false)
+  })
+
+  it('needs the modifier, and a key', () => {
+    expect(press({ key: 'л', code: 'KeyK' })).toBe(false)
+    expect(press({ code: 'KeyK', ctrlKey: true })).toBe(false)
   })
 })

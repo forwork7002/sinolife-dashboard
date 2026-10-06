@@ -467,13 +467,22 @@ function PaletteDialog({
  * (readline kill-to-end, editor link dialogs) that a dashboard has no
  * business shadowing while someone is typing.
  *
+ * THE PHYSICAL K, ON A CYRILLIC LAYOUT TOO. `key` is the active layout's
+ * character, so with a Russian or Uzbek-Cyrillic layout Ctrl+K reports «л» and
+ * only `code` stays 'KeyK' — the palette did not open and the browser's own
+ * Ctrl+K took the keystroke. `code` is read only when the key is not a Latin
+ * letter: on Dvorak the K position types «t», and taking it there would steal
+ * Ctrl+T.
+ *
  * Pass a stable function (useCallback or a setState setter) — the listener
  * rebinds when the identity changes. Harmless, just wasteful.
  */
 export function useCommandK(openFn: () => void) {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
-      if (!event.key || event.key.toLowerCase() !== 'k') return
+      if (!event.key) return
+      const key = event.key.toLowerCase()
+      if (key !== 'k' && (event.code !== 'KeyK' || /^[a-z]$/.test(key))) return
       if (!(event.metaKey || event.ctrlKey)) return
       if (event.repeat) return
 
