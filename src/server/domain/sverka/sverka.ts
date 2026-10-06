@@ -27,27 +27,38 @@
 export const SUM_TOLERANCE_MINOR = 100n
 
 /**
- * THE FIRST DAY MOYSKLAD HOLDS AN ORDER FOR — 2026-06-15 00:00 Tashkent, as a
- * UTC instant. The import's whole-table read begins there (`moyskladImport.ts`:
- * ≈100 pages of 100, the first on 2026-06-15, read 2026-10-06); nothing older
- * was ever in MoySklad to be read.
+ * WHERE MOYSKLAD'S ORDERS BEGIN, AS FAR AS ANYONE HAS MEASURED — 2026-06-15
+ * 00:00 Tashkent, as a UTC instant. What was read is the import's first,
+ * whole-table pass on 2026-10-06 (`moyskladImport.ts`: ≈100 pages of 100, the
+ * first row on 2026-06-15) — and that pass is ordered by `updated`, so its
+ * first row is the order least recently CHANGED, not the oldest one. It proves
+ * MoySklad's earliest order is on or before this day, not that it is this day:
+ * an older order edited since (a return booked in July) sits further down.
  *
- * So a deal queued before it that has no MoySklad order is not MISSING — the
- * warehouse system did not exist for it — and it is not clean either: it is
- * compared with nothing (`beforeFloor`). Without the floor a «Yil» window made
- * every January–June FAKT 1 order a critical «MoySkladʼda yoʻq» line, put tens
- * of mlrd soʻm on that chip and pushed the real differences out of the
- * 3 000-line list. A deal queued before the floor that DOES have an order is
- * compared as usual.
+ * A deal queued before it that has no MoySklad order is therefore not called
+ * MISSING — as far as was measured, MoySklad held nothing then — and it is not
+ * clean either: it is compared with nothing (`beforeFloor`). Without the floor
+ * a «Yil» window made every January–June FAKT 1 order a critical «MoySkladʼda
+ * yoʻq» line, put tens of mlrd soʻm on that chip and pushed the real
+ * differences out of the 3 000-line list. A deal queued before the floor that
+ * DOES have an order is compared as usual.
+ *
+ * SO THE FLOOR CAN ONLY BE TOO LATE, AND TOO LATE HIDES MISSES: a deal queued
+ * between MoySklad's real first order and this day, holding none, reads as
+ * `beforeFloor` and not as MISSING_IN_MS. Until `SELECT min("moment") FROM
+ * moysklad_order` has been read on production and the date set from it, take
+ * a «MoySkladʼda yoʻq» count for a window reaching back to June as a lower
+ * bound.
  *
  * THE COHORT IS NOT CLAMPED TO IT. FAKT 1 / FAKT 2 here are Savdo dinamikasi's
  * to the soʻm for the window asked for, so those deals stay in Bitrix24's
  * figures and only leave the comparison — each pair says how much of its
  * Bitrix24 side they are.
  *
- * Written out rather than read as `min(moment)`: one backdated document in
- * MoySklad would pull a computed floor back to its date, and every false line
- * with it. Tashkent has been UTC+5 with no DST since 1992 (`CALL_DATA_FLOOR`).
+ * Written out rather than computed as `min(moment)` at run time: one backdated
+ * document in MoySklad would pull a computed floor back to its date, and every
+ * false line with it. Tashkent has been UTC+5 with no DST since 1992
+ * (`CALL_DATA_FLOOR`).
  */
 export const MOYSKLAD_DATA_FLOOR = new Date('2026-06-14T19:00:00.000Z')
 
