@@ -1193,14 +1193,15 @@ describe('buildRnpSheet — the audit fixes of 2026-10-02', () => {
     expect(row(x, 'team:Sevinch', 'team:Sevinch:reach').hint).toMatch(/30 kun ichida yaratilganlari/)
   })
 
-  it("names, on the projects' «Сумма факт1», who is in «Свод» but in neither project", () => {
-    const x = buildRnpSheet(input({ fakt: [...input().fakt, fakt('2026-09-21', 'Hayot', { fakt1Orders: 1, fakt1Minor: som(500_000) })] }))
+  it("says, on the projects' «Сумма факт1», how an order finds its brand — and where the rest is", () => {
+    const x = buildRnpSheet(input())
     const hint = row(x, 'project:collagen', 'pj:collagen:fakt1').hint!
-    expect(hint).toContain('Ҳаёт РОП')
-    expect(hint).toContain('(ROP yoʻq)')
-    expect(hint).not.toContain('Севинч')
+    expect(hint).toContain('eng koʻp pul toʻlangan mahsulot')
+    expect(hint).toContain('«Brendsiz»')
     expect(row(x, 'project:zextra', 'pj:zextra:fakt1').hint).toBe(hint)
-    expect(block(x, 'project:collagen').subtitle).toBe('Brend: buyurtmani sotgan jamoa (jadvaldagi roʻyxat); lid: manba yoki forma.')
+    expect(block(x, 'project:collagen').subtitle).toBe(
+      'Brend: buyurtmada eng koʻp pul toʻlangan mahsulot (mahsulot qatori yoʻq boʻlsa — sotgan jamoa); lid: manba yoki forma.',
+    )
   })
 
   it("explains the P&L's percent rows with the constants in force", () => {

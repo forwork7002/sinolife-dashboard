@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { PRODUCT_BRAND_PATTERNS, productBrand } from '@/server/domain/products/productBrand'
+import { PRODUCT_BRAND_PATTERNS } from '@/server/domain/products/productBrand'
+import type { TargetProduct } from '@/server/domain/types'
 import { saleBrand } from '@/server/domain/rnp/rnpSheet'
 
-describe('productBrand — the portal catalogue as read 2026-10-06', () => {
+/** The patterns as Postgres `~*` reads them: case-insensitive, first match wins. */
+function productBrand(name: string | null): TargetProduct | null {
+  if (!name) return null
+  return PRODUCT_BRAND_PATTERNS.find(([, pattern]) => new RegExp(pattern, 'i').test(name))?.[0] ?? null
+}
+
+describe('PRODUCT_BRAND_PATTERNS — the portal catalogue as read 2026-10-06', () => {
   it('reads the two brands\' products', () => {
     for (const name of ['Collagen Marine Sinolife', 'Collagen Tabletka Sinolife', 'Collagen Tabletka Marine new', 'Collagen Tabletka Bovine', 'Collagen Marmelad Sinolife', 'Sinolife collagen marine kakao']) {
       expect(productBrand(name)).toBe('Collagen')

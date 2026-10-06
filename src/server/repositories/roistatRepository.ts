@@ -32,6 +32,7 @@ import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import type { Period } from '@/server/domain/period/period'
 import { brandTeams } from '@/server/domain/rnp/rnpSheet'
+import { ROISTAT_NO_PRODUCT } from '@/server/domain/roistat/roistatCuts'
 
 import { InsightsRepository } from './insightsRepository'
 
@@ -133,9 +134,9 @@ export class RoistatRepository {
    * cuts would be computed and thrown away).
    *
    * `brandKeys` adds the brand inputs to every grouping set, for a screen
-   * narrowed to one brand: the rule (RNP's `leadBrand` for a lead, the
-   * selling team for a sale) lives in TypeScript, and a copy of its form
-   * regexes in SQL would drift from it.
+   * narrowed to one brand: the rule (RNP's `leadBrand` for a lead,
+   * `saleBrand` for a sale — its line items' brand, else its team) lives in
+   * TypeScript, and a copy of its form regexes in SQL would drift from it.
    */
   async bitrix(
     period: Period,
@@ -266,7 +267,13 @@ export class RoistatRepository {
         LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
         WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       ),
-      sale_base AS (
+      /*
+        MATERIALIZED: the sales deals are chosen first, so the per-deal
+        product probe (pb) and the origin-lead probe run on them alone, never
+        on the window's Регистрация deals the planner could otherwise reach
+        before the pipeline filter.
+      */
+      sale_base AS MATERIALIZED (
         SELECT
           d."id", d."customerId", d."createdAtSource", d."closedAt", d."status"::text AS status,
           p."role"::text AS role, d."amountMinor", d."title", d."targetolog", d."productLine",
@@ -301,11 +308,11 @@ export class RoistatRepository {
           END AS form_title,
           CASE WHEN o.created IS NOT NULL THEN o.targetolog ELSE NULLIF(btrim(sb."targetolog"), '') END AS targetolog,
           CASE
-            WHEN pb.brand = '-' THEN 'Boshqa'
+            WHEN pb.brand = '-' THEN '${ROISTAT_NO_PRODUCT}'
             WHEN pb.brand IS NOT NULL THEN pb.brand
             WHEN tm.team = ANY($5::text[]) THEN 'Collagen'
             WHEN tm.team = ANY($6::text[]) THEN 'Zextra'
-            ELSE 'Boshqa'
+            ELSE '${ROISTAT_NO_PRODUCT}'
           END AS product_line,
           NULLIF(btrim(sb."region"), '') AS region,
           tm.team AS rop,

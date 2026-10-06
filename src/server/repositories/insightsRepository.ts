@@ -745,7 +745,6 @@ export interface ConfirmationOrderQuery {
   readonly order: 'asc' | 'desc'
 }
 
-/** The same shape `SellerBoardFilters` carries, kept local so the two repositories stay independent. */
 /**
  * The brand switch on a sales reader: one brand's orders, or «Brendsiz» — an
  * order is its product's brand, an order with no line item its team's.
@@ -757,6 +756,7 @@ export interface BrandSlice {
   readonly zextraTeams: readonly string[]
 }
 
+/** The same shape `SellerBoardFilters` carries, kept local so the two repositories stay independent. */
 export interface ConfirmationSellerRatingFilters {
   readonly employeeIds?: readonly string[]
   readonly departmentIds?: readonly string[]
@@ -3541,21 +3541,23 @@ export class InsightsRepository {
   }
 
   /**
-   * A deal's brand by its line items (`DealProductBrand`): the brand of the
-   * product carrying the most PAID money (`totalMinor`; a free gift decides
-   * nothing), `'-'` when that product is neither brand's, NULL when the deal
-   * has no line item at all. Patterns from `PRODUCT_BRAND_PATTERNS`, Zextra
-   * first, as `productBrand` reads them. One indexed probe of `deal_item`
-   * per deal.
+   * A deal's brand by its line items (`DealProductBrand`): its PAID lines
+   * (`totalMinor > 0` — a free gift decides nothing) summed per brand
+   * (`PRODUCT_BRAND_PATTERNS`, Zextra asked first; every other product one
+   * bucket, `'-'`), the biggest bucket winning — the brand most of the
+   * order's money went to. A tie goes to a brand over `'-'`, then Collagen
+   * over Zextra. NULL when the deal has no paid line at all (no line items,
+   * or only gifts): `saleBrand` then reads its team. One indexed probe of
+   * `deal_item` per deal.
    */
   static dealProductBrandSql(alias: string): string {
     const cases = PRODUCT_BRAND_PATTERNS.map(([brand, pattern]) => `WHEN dp."name" ~* '${pattern}' THEN '${brand}'`).join(' ')
     return `(SELECT x.brand FROM (
               SELECT CASE ${cases} ELSE '-' END AS brand, sum(di."totalMinor") AS paid
               FROM "deal_item" di JOIN "product" dp ON dp."id" = di."productId"
-              WHERE di."dealId" = ${alias}."id"
+              WHERE di."dealId" = ${alias}."id" AND di."totalMinor" > 0
               GROUP BY 1
-            ) x ORDER BY x.paid DESC NULLS LAST, x.brand LIMIT 1)`
+            ) x ORDER BY x.paid DESC, (x.brand = '-'), x.brand LIMIT 1)`
   }
 
   /**

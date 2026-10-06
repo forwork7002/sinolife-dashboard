@@ -18,7 +18,7 @@ process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
 const { PulseRepository } = await import('@/server/repositories/pulseRepository')
-const { SellerBoardService, brandTeamsOf } = await import('@/server/services/sellerBoardService')
+const { SellerBoardService, brandSliceOf } = await import('@/server/services/sellerBoardService')
 const { PulseService } = await import('@/server/services/pulseService')
 
 /**
@@ -52,14 +52,14 @@ describe('brandTeams', () => {
   })
 
   it('is no filter at all for both brands', () => {
-    expect(brandTeamsOf(context({}))).toEqual({})
-    expect(brandTeamsOf(context({ brand: 'all' }))).toEqual({})
+    expect(brandSliceOf(context({}))).toEqual({})
+    expect(brandSliceOf(context({ brand: 'all' }))).toEqual({})
   })
 
   it('is a slice carrying both brands\' teams — the fallback for an order with no line items', () => {
     const team = { collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') }
-    expect(brandTeamsOf(context({ brand: 'Zextra' }))).toEqual({ brand: { slice: 'Zextra', ...team } })
-    expect(brandTeamsOf(context({ brand: 'none' }))).toEqual({ brand: { slice: 'none', ...team } })
+    expect(brandSliceOf(context({ brand: 'Zextra' }))).toEqual({ brand: { slice: 'Zextra', ...team } })
+    expect(brandSliceOf(context({ brand: 'none' }))).toEqual({ brand: { slice: 'none', ...team } })
   })
 })
 
@@ -159,5 +159,18 @@ describe('the seller\'s day chart', () => {
     expect(calls[1]!.sql).toContain('WHEN (c.rop) = ANY($5::text[])')
     expect(calls[1]!.sql).toContain(') IS NULL')
     expect(calls[1]!.params.slice(4)).toEqual([['Sevinch'], ['Asliddin']])
+  })
+})
+
+describe('dealProductBrandSql — what decides an order\'s brand', () => {
+  const sql = InsightsRepository.dealProductBrandSql('d')
+  it('reads PAID lines only, so a gift (0 soʻm) never decides — an order of gifts only falls to its team', () => {
+    expect(sql).toContain('WHERE di."dealId" = d."id" AND di."totalMinor" > 0')
+  })
+  it('sums per brand, the biggest bucket wins, a tie goes to a brand over «-», then Collagen over Zextra', () => {
+    expect(sql).toContain('GROUP BY 1')
+    expect(sql).toContain(`ORDER BY x.paid DESC, (x.brand = '-'), x.brand LIMIT 1`)
+    // Zextra is asked first, as PRODUCT_BRAND_PATTERNS lists it.
+    expect(sql.indexOf(`'zextra'`)).toBeLessThan(sql.indexOf(`'collagen|kollagen'`))
   })
 })

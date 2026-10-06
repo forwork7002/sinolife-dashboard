@@ -111,14 +111,19 @@ describe('bitrixCut', () => {
     expect(bitrixCut('form', rows, leadBrand).get('Sinolife (UMAR) 777')?.leads).toBe(3)
   })
 
-  it('reads the product from the lead brand, then the sale’s own «Товар», then «Boshqa»', () => {
+  it('files a sale by what it was paid for (its product_line), a lead by its source or form', () => {
+    const zextraForm = 'Заполнение CRM-формы "Kamron-zextra Zextra 6 etapli filtr forma 05.07"'
     const rows = [
-      row('product', { formTitle: 'Заполнение CRM-формы "Kamron-zextra Zextra 6 etapli filtr forma 05.07"', leads: 4 }),
-      row('product', { productLine: 'Collagen Marine Sinolife', sold: 1, soldMinor: 100n }),
-      row('product', { productLine: 'Чай', sold: 1, soldMinor: 50n }),
+      row('product', { formTitle: zextraForm, leads: 4 }),
+      // A sale from a Zextra lead that was paid for Collagen is Collagen's.
+      row('product', { formTitle: zextraForm, productLine: 'Collagen', sold: 1, soldMinor: 100n }),
+      // «Boshqa» (another product) is final — the lead's brand does not overrule it.
+      row('product', { formTitle: zextraForm, productLine: ROISTAT_NO_PRODUCT, sold: 1, soldMinor: 50n }),
+      row('product', { productLine: 'Zextra', sold: 1, soldMinor: 30n }),
     ]
     const cut = bitrixCut('product', rows, leadBrand)
     expect(cut.get('Zextra')?.leads).toBe(4)
+    expect(cut.get('Zextra')?.soldMinor).toBe(30n)
     expect(cut.get('Collagen')?.soldMinor).toBe(100n)
     expect(cut.get(ROISTAT_NO_PRODUCT)?.soldMinor).toBe(50n)
   })

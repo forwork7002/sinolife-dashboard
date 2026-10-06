@@ -187,8 +187,10 @@ export function SalesPage() {
       */
       filters={{ employees: true, departments: true, sources: true }}
       /*
-        Collagen / Zextra: an order is the brand's when the team that sold it
-        is (`teamBrand`, the P&L's rule) — every block below follows it.
+        The brand switch: an order is the brand most of its money was paid
+        for (its line items; its selling team only when it has none —
+        `saleBrand`, the P&L's rule since 2026-10-06), and «Brendsiz» what
+        neither brand claims — every block below follows it.
       */
       toolbar={<DashboardBrandSwitch />}
     >

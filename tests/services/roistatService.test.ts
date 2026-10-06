@@ -376,6 +376,25 @@ describe('RoistatRepository.bitrix — which set a row is', () => {
     expect(rows.map((r) => r.set)).toEqual(['total', 'day', 'form', 'source', 'product', 'region', 'rop', 'seller', 'registrar'])
   })
 
+  it('files a sale\'s «Товар» by its line items, its team only with none — the switch\'s rule', async () => {
+    const sql: string[] = []
+    const params: unknown[][] = []
+    const prisma = {
+      $queryRawUnsafe: async (text: string, ...p: unknown[]) => {
+        sql.push(text)
+        params.push(p)
+        return [raw([])]
+      },
+    } as unknown as PrismaClient
+    await new RoistatRepository(prisma).bitrix(PERIOD, NOW)
+    expect(sql[0]).toContain('sale_base AS MATERIALIZED (')
+    expect(sql[0]).toContain(`WHEN pb.brand = '-' THEN 'Boshqa'`)
+    expect(sql[0]).toContain(`WHEN tm.team = ANY($5::text[]) THEN 'Collagen'`)
+    expect(sql[0]).toContain(`WHEN tm.team = ANY($6::text[]) THEN 'Zextra'`)
+    expect(params[0]![4]).toContain('Sevinch')
+    expect(params[0]![5]).toContain('Asliddin')
+  })
+
   it('splits every grouping set by the brand inputs only when asked', async () => {
     const sql: string[] = []
     const prisma = {

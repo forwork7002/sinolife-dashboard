@@ -326,7 +326,8 @@ const targetProduct = z.enum(TARGET_PRODUCT_FILTERS).default('all')
 /**
  * The brand switch every main screen carries (`?brand=`, `BRAND_FILTERS`):
  * both, one, or «Brendsiz». A lead is filed by RNP's `leadBrand`, a sale by
- * the team that sold it (`teamBrand`), Meta money by `adBudgetProduct`.
+ * the product it was paid for (`saleBrand`; its team only with no line
+ * item), Meta money by `adBudgetProduct`.
  */
 export const brandFilter = z.enum(BRAND_FILTERS).default('all')
 

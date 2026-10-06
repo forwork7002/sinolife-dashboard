@@ -734,19 +734,26 @@ Per-screen traps worth knowing before you touch one:
     named in its hint, so the rows add up to «РОП ларга тарқатилди». Row 48
     stays the registrars' WON by close day: the two differ by definition
     (01.10: 240 kval, 233 handed out); its hint says so.
-  · Brand P&L: an ORDER's brand is its SELLING TEAM's, by the sheet's
-    SUMIFS lists (`BRAND_TEAMS`: Collagen = Sevinch, Gulzora, Azizbek, Lola,
+  · Brand P&L: an ORDER's brand is the PRODUCT most of its money was paid
+    for (2026-10-06, the client: «mahsulot bo'yicha») — its paid `deal_item`
+    lines summed per brand (`PRODUCT_BRAND_PATTERNS`: «collagen|kollagen»,
+    «zextra»; Prox, Tibomed, Omega … are «Brendsiz»), `saleBrand` in
+    rnpSheet.ts, SQL `InsightsRepository.dealProductBrandSql`. Only an order
+    with no paid line falls back to its SELLING TEAM, by the sheet's SUMIFS
+    lists (`BRAND_TEAMS`: Collagen = Sevinch, Gulzora, Azizbek, Lola,
     Saidaziz, Maftuna, Marjona, Baza, Shohjaxon; Zextra = Asliddin,
-    Sadriddin (+Sevinchxon), Charos (+Malika)) — 2026-10-01, was the
-    product line; a LEAD's brand is its source (`LEAD_SOURCE_BRAND`, +
+    Sadriddin (+Sevinchxon), Charos (+Malika)) — the rule from 2026-10-01
+    until then. The same rule drives every screen's brand switch
+    (`?brand=all|Collagen|Zextra|none`, «Brendsiz» the complement, so the
+    three slices add up to «Hammasi»); team BLOCKS stay team blocks; a LEAD's brand is its source (`LEAD_SOURCE_BRAND`, +
     collagen.sinolife and «Сммщик sinolifeuz» since 2026-10-02 — the map also
     marks «Lidlar»'s DM page rows), else its CRM form («zextra» in the name,
     then «collagen» — before the owner rule since 2026-10-02 — then a Kamron
     form), else none; a form title missing its
     closing quote still names its form. A «Brendsiz» block carries what
-    neither brand claims, so the three add up to the company; it is not drawn,
-    so the projects' «Сумма факт1» hint names the teams on neither list
-    (Kompaniya, Ҳаёт, «(ROP yoʻq)») that are in «Свод» but in no project.
+    neither brand claims (other products, brandless leads), so the three add
+    up to the company; it is drawn as «Brendsiz проект» under the «Brendsiz»
+    slice only, never on «Hammasi».
   · **THE AUDIT OF 2026-10-02** (prod vs portal, 282 checks): what it changed
     besides the above, each with its reason in the code.
     THE ROP OF A LEAD — a person heading TWO ROP units counts in the one they
@@ -846,9 +853,10 @@ Per-screen traps worth knowing before you touch one:
     place, day by day, Collagen only, each definition approved by the user:
     views / clicks = Meta impressions / clicks (all clicks) of the Collagen
     accounts, hiring left out (`adBudgetProduct`); leads / kval = Регистрация
-    by brand (as «Коллаген проект»); new transactions = the Collagen PRIMARY
-    teams' FAKT 1 orders, successful = their FAKT 2 (БАЗА out); «Сумма общий
-    успешка» = every Collagen team's FAKT 2, БАЗА in; ROI = (primary FAKT 2 −
+    by brand (as «Коллаген проект»); new transactions = the FAKT 1 orders of
+    Collagen's PRODUCTS sold by the primary teams, successful = their FAKT 2
+    (БАЗА out); «Сумма общий успешка» = every Collagen-product FAKT 2, БАЗА
+    in — the P&L's own figures (by product since 2026-10-06); ROI = (primary FAKT 2 −
     budget × CBU rate) ÷ (budget × rate), no typed plan (the grid caps a
     percent plan at 1 000 %). «Кол подписчиков» (2003) stays unfilled: Meta's
     ads API reports no follows. Plans shared with the P&L where the figure is

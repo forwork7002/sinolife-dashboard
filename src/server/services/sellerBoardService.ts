@@ -1380,7 +1380,7 @@ function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
     employeeIds: ctx.filters.employeeIds,
     departmentIds: ctx.filters.departmentIds,
     sourceIds: ctx.filters.sourceIds,
-    ...brandTeamsOf(ctx),
+    ...brandSliceOf(ctx),
   }
 }
 
@@ -1391,7 +1391,7 @@ function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
  * is every order neither brand claims, so the three slices add up to the
  * whole board. Empty for «Hammasi».
  */
-export function brandTeamsOf(ctx: AnalyticsContext): { brand?: BrandSlice } {
+export function brandSliceOf(ctx: AnalyticsContext): { brand?: BrandSlice } {
   const brand = ctx.filters.brand
   if (brand === undefined || brand === 'all') return {}
   return { brand: { slice: brand, collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') } }

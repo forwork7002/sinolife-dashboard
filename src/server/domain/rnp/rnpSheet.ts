@@ -1290,9 +1290,9 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   }
 
   // --- Loyiha P&L: Коллаген / Зехтра (sheet rows 394–445) --------------------
-  /* «Свод» counts every team; the two projects only the sheet's two lists — so name who is in neither (Kompaniya, Ҳаёт, orders with no ROP). */
-  const brandless = withNoRop.filter((rop) => !BRAND_TEAMS.Collagen.has(rop) && !BRAND_TEAMS.Zextra.has(rop) && sum(grid.get(rop)!.fakt1) !== 0).map(labelOf)
-  const fakt1Hint = `Buyurtma brendi — uni sotgan jamoa (jadvaldagi Collagen / Zextra roʻyxati).${brandless.length > 0 ? ` Roʻyxatlarda yoʻq jamoalar — ${brandless.join(', ')} — «Свод» da bor, ikki loyihaning hech birida yoʻq.` : ''}`
+  /* An order is the brand most of its money was paid for (`saleBrand`, the client 2026-10-06); «Свод» counts every order. */
+  const fakt1Hint =
+    'Buyurtma brendi — unda eng koʻp pul toʻlangan mahsulot (Collagen yoki Zextra mahsulotlari); mahsulot qatori yoʻq buyurtma — uni sotgan jamoa boʻyicha. Boshqa mahsulotlar (Prox, Tibomed, Omega …) «Brendsiz»da: ikki loyiha + Brendsiz = «Свод».'
   /*
     The sheet COMPUTES C on «Сумма факт2 (успешка)» and «База усп» — C395
     `=D395/D394`, C397 `=IFERROR(D397/D395,0)`: the share of FAKT 1 that is
@@ -1345,7 +1345,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       id: `project:${b.toLowerCase()}`,
       kind: 'project',
       title: b === 'Collagen' ? 'Коллаген проект' : 'Зехтра проект',
-      subtitle: 'Brend: buyurtmani sotgan jamoa (jadvaldagi roʻyxat); lid: manba yoki forma.',
+      subtitle: 'Brend: buyurtmada eng koʻp pul toʻlangan mahsulot (mahsulot qatori yoʻq boʻlsa — sotgan jamoa); lid: manba yoki forma.',
       team: null,
       sheet: sh(r0, b === 'Collagen' ? 'Коллаген проект' : 'Зехтра проект'),
       rows: [
@@ -1379,7 +1379,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       id: 'project:none',
       kind: 'project',
       title: 'Brendsiz',
-      subtitle: 'Jadvalning Collagen / Zextra roʻyxatida yoʻq jamoalar sotgan buyurtmalar va manbasi brendga bogʻlanmagan lidlar — jami ikki loyiha + shu = kompaniya',
+      subtitle: 'Ikki brendga kirmaydigan mahsulotlar sotuvi (Prox, Tibomed, Omega …) va manbasi brendga bogʻlanmagan lidlar — jami ikki loyiha + shu = kompaniya',
       team: null,
       sheet: null,
       rows: [
@@ -1398,10 +1398,11 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     template — views to money, day by day, Collagen only. The user approved
     each definition: views and clicks are Meta's (the Collagen accounts, hiring
     campaigns left out, as the budget); leads and kval are the Регистрация
-    leads by brand, as «Коллаген проект»; new transactions are the Collagen
-    primary teams' FAKT 1 orders and the successful ones their FAKT 2 (БАЗА
-    left out); «Сумма общий успешка» is every Collagen team's FAKT 2, БАЗА
-    included. «Кол подписчиков» (2003) stays unfilled: Meta's ads API reports
+    leads by brand, as «Коллаген проект»; new transactions are the FAKT 1
+    orders of Collagen's products sold by the primary teams and the
+    successful ones their FAKT 2 (БАЗА left out); «Сумма общий успешка» is
+    every Collagen-product FAKT 2, БАЗА included — the P&L's own figures
+    (`brandGrid`, by product since 2026-10-06). «Кол подписчиков» (2003) stays unfilled: Meta's ads API reports
     no follows. Plans are shared with the P&L where the row is the same figure.
   */
   {
@@ -1429,17 +1430,17 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         additive(clock, { key: `${k}:clicks`, label: 'Колич клик', unit: 'count', ...planned('Collagen', 'funnel_clicks'), hint: 'Meta Ads: Collagen akkauntlaridagi kliklar.', sheet: sh(2002, 'Колич клик') }, m.clicks),
         additive(clock, { key: `${k}:leads`, label: 'Колич лидов', unit: 'count', ...planned('Collagen', 'brand_leads'), hint: 'Регистрация lidlari, Collagen manba yoki CRM-forma boʻyicha.', sheet: sh(2004, 'Колич лидов') }, g.leads),
         additive(clock, { key: `${k}:qualified`, label: 'Колич квал лидов', unit: 'count', ...planned('Collagen', 'brand_qualified'), hint: 'Shu lidlardan «Сделка успешна» (kval).', sheet: sh(2005, 'Колич квал лидов') }, g.qualified),
-        additive(clock, { key: `${k}:orders1`, label: 'Колич новых транзак', unit: 'count', ...planned('Collagen', 'funnel_orders1'), hint: 'Collagen birlamchi jamoalarining FAKT 1 buyurtmalari (БАЗА jamoasisiz).', sheet: sh(2006, 'Колич новых транзак') }, g.primaryOrders1),
-        additive(clock, { key: `${k}:orders2`, label: 'Колич новых тран усп', unit: 'count', ...planned('Collagen', 'brand_orders2'), hint: 'Oʻsha jamoalarning FAKT 2 (yetkazilgan) buyurtmalari.', sheet: sh(2007, 'Колич новых тран усп') }, g.primaryOrders2),
+        additive(clock, { key: `${k}:orders1`, label: 'Колич новых транзак', unit: 'count', ...planned('Collagen', 'funnel_orders1'), hint: 'Collagen mahsulotlari FAKT 1 buyurtmalari, birlamchi jamoalar sotgani (БАЗА jamoasisiz).', sheet: sh(2006, 'Колич новых транзак') }, g.primaryOrders1),
+        additive(clock, { key: `${k}:orders2`, label: 'Колич новых тран усп', unit: 'count', ...planned('Collagen', 'brand_orders2'), hint: 'Oʻsha buyurtmalarning FAKT 2 (yetkazilgani).', sheet: sh(2007, 'Колич новых тран усп') }, g.primaryOrders2),
         ratio(clock, { key: `${k}:ctr`, label: 'CTR %', unit: 'percent', ...planned('Collagen', 'funnel_ctr'), hint: 'Колич клик ÷ Колич просмотр. Meta «clicks» — barcha kliklar (CTR all), faqat havola emas.', sheet: sh(2008, 'CTR %') }, m.clicks, m.impressions, 100),
         ratio(clock, { key: `${k}:qualified_pct`, label: 'Квал лид %', unit: 'percent', ...planned('Collagen', 'brand_qualified_pct'), hint: 'Колич квал лидов ÷ Колич лидов.', sheet: sh(2010, 'Квал лид %') }, g.qualified, g.leads, 100),
         ratio(clock, { key: `${k}:conv_qualified`, label: 'Конверсия от квал %', unit: 'percent', ...planned('Collagen', 'funnel_conv_qualified'), hint: 'Колич новых транзак ÷ Колич квал лидов.', sheet: sh(2011, 'Конверсия от квал %') }, g.primaryOrders1, g.qualified, 100),
         ratio(clock, { key: `${k}:conv_total`, label: 'Конверсия общ %', unit: 'percent', ...planned('Collagen', 'funnel_conv_total'), hint: 'Колич новых тран усп ÷ Колич лидов.', sheet: sh(2012, 'Конверсия общ %') }, g.primaryOrders2, g.leads, 100),
         additive(clock, { key: `${k}:spend`, label: 'Бюджет, $', unit: 'usd', better: 'down', ...planned('', 'budget_collagen'), hint: 'Meta Ads: Collagen akkauntlarining sarfi, ishga olish kampaniyalarisiz — «Бюджет Collagen» bilan bir xil.', sheet: sh(2013, 'Бюджет') }, m.spend),
-        additive(clock, { key: `${k}:primary_fakt2`, label: 'Сумма первичка успешка', unit: 'uzs', ...planned('Collagen', 'brand_primary_fakt2'), hint: 'Collagen birlamchi jamoalarining FAKT 2 summasi (БАЗА siz) — «Первичка усп» bilan bir xil.', sheet: sh(2014, 'Сумма первичка успешка') }, g.primaryFakt2),
+        additive(clock, { key: `${k}:primary_fakt2`, label: 'Сумма первичка успешка', unit: 'uzs', ...planned('Collagen', 'brand_primary_fakt2'), hint: 'Collagen mahsulotlarining birlamchi jamoalar sotgan FAKT 2 summasi (БАЗА siz) — «Первичка усп» bilan bir xil.', sheet: sh(2014, 'Сумма первичка успешка') }, g.primaryFakt2),
         ratio(clock, { key: `${k}:cheque2`, label: 'Средний чек', unit: 'uzs', ...planned('Collagen', 'brand_cheque2'), hint: 'Сумма первичка успешка ÷ Колич новых тран усп.', sheet: sh(2015, 'Средний чек') }, g.primaryFakt2, g.primaryOrders2),
         rateKnown ? roi : { ...dashed(roi), hint: 'Markaziy bank kursi olinmadi.' },
-        additive(clock, { key: `${k}:fakt2`, label: 'Сумма общий успешка', unit: 'uzs', ...planned('Collagen', 'funnel_fakt2'), hint: 'Collagen jamoalarining butun FAKT 2 summasi — birlamchi + БАЗА.', sheet: sh(2017, 'Сумма общий успешка') }, g.fakt2),
+        additive(clock, { key: `${k}:fakt2`, label: 'Сумма общий успешка', unit: 'uzs', ...planned('Collagen', 'funnel_fakt2'), hint: 'Collagen mahsulotlarining butun FAKT 2 summasi — birlamchi + БАЗА.', sheet: sh(2017, 'Сумма общий успешка') }, g.fakt2),
       ],
     })
   }
