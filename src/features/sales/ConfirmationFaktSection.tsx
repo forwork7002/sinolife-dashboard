@@ -415,9 +415,9 @@ export function QueueBand({
       />
       {/* The one figure on this band that is a POLICY rather than a
           measurement, so it names its own source in the hint. Null under a
-          brand slice — the ladder reads a seller's whole FAKT 2 and cannot
-          be cut by brand — and the hint says so rather than leave a dash
-          unexplained. */}
+          brand slice or a source filter — the ladder reads a seller's whole
+          FAKT 2 and cannot be cut deal by deal — and the hint says so rather
+          than leave a dash unexplained. */}
       <StatTile
         label="Bonus jamgʻarmasi"
         value={totals?.bonusPayable?.amount ?? null}
@@ -427,7 +427,7 @@ export function QueueBand({
         hint={
           totals
             ? totals.sellersInBonus === null
-              ? 'brend boʻyicha ajratilmaydi — bonus jami FAKT 2 dan'
+              ? 'brend va manba boʻyicha ajratilmaydi — bonus jami FAKT 2 dan'
               : `${formatNumber(totals.sellersInBonus)} ta sotuvchi darajani oldi`
             : undefined
         }

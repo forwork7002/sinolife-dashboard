@@ -231,9 +231,9 @@ export interface SellerBoardTotalsDto {
   /**
    * Total bonus the tiers would pay on today's standings.
    *
-   * NULL UNDER A BRAND SLICE, with `sellersInBonus`: the ladder pays on a
-   * seller's WHOLE FAKT 2 and is not linear, so it cannot be cut by brand —
-   * see `buildBoard`.
+   * NULL UNDER A BRAND SLICE OR A SOURCE FILTER, with `sellersInBonus`: the
+   * ladder pays on a seller's WHOLE FAKT 2 and is not linear, so it cannot be
+   * cut deal by deal — see `slicesSellerFakt2`.
    */
   readonly bonusPayable: MoneyDto | null
   readonly sellersInBonus: number | null
@@ -726,9 +726,9 @@ export class SellerBoardService {
       THE LADDER, PER SELLER — summed into the fund and counted, never sent
       per row: the seat chips left the television on 2026-09-07 and the
       ladder left Savdo dinamikasi on 2026-09-10. Not computed at all under a
-      brand slice; see `bonusPayable`.
+      filter that cuts a seller's FAKT 2 apart; see `bonusPayable`.
     */
-    const bonusMinor = filters.brand
+    const bonusMinor = slicesSellerFakt2(filters)
       ? null
       : rows.map((row) => bonusEarnedMinor(row.wonMinor, row.fullName))
 
@@ -801,7 +801,8 @@ export class SellerBoardService {
           ),
         ),
         /*
-          THE FUND IS NOT BRAND-KNOWABLE, so a brand slice states none.
+          THE FUND IS NOT BRAND-KNOWABLE, so a brand slice states none — and
+          nor does a source filter, which cuts the same way (2026-10-06).
 
           The client's ladder (45 / 60 / 70 mln → 1 / 1.5 / 2 mln) pays on a
           seller's WHOLE FAKT 2, and a step function of a sum is not the sum of
@@ -810,7 +811,9 @@ export class SellerBoardService {
           under «Brendsiz» — three slices adding up to 0 against 1 000 000 on
           «Hammasi», on a page whose brand slices are promised to add up. The
           unsliced fund is no answer either: every figure under the switch
-          follows it, and this one would not.
+          follows it, and this one would not. «Manba» narrows each seller's
+          FAKT 2 deal by deal too, so 30 mln from one source and 20 mln from
+          another read 0 under each.
         */
         bonusPayable:
           bonusMinor === null ? null : toMoneyDto(money(sum(bonusMinor, (b) => b), ctx.currency)),
@@ -1202,6 +1205,18 @@ function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
     sourceIds: ctx.filters.sourceIds,
     ...brandSliceOf(ctx),
   }
+}
+
+/**
+ * Whether the reader's filters cut a seller's FAKT 2 apart DEAL BY DEAL — the
+ * brand switch (`saleBrand`) and the source filter (`"sourceId"` in both
+ * repositories' filter SQL) — rather than keeping or dropping whole sellers,
+ * as the employee and department filters do. The bonus ladder pays on the
+ * WHOLE FAKT 2 and is not linear, so under such a cut it has no fund to state
+ * (`bonusPayable`). An empty `sourceIds` is no filter, as everywhere here.
+ */
+function slicesSellerFakt2(filters: SellerBoardFilters): boolean {
+  return filters.brand !== undefined || (filters.sourceIds?.length ?? 0) > 0
 }
 
 /**

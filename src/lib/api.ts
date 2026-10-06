@@ -1298,8 +1298,9 @@ export interface SellerBoardTotalsDto {
   readonly lostAfterConfirm: MoneyDto
   readonly conversionPercent: number | null
   /**
-   * Null under a brand slice, with `sellersInBonus`: the ladder pays on a
-   * seller's WHOLE FAKT 2 and is not linear, so it cannot be cut by brand.
+   * Null under a brand slice or a source filter, with `sellersInBonus`: the
+   * ladder pays on a seller's WHOLE FAKT 2 and is not linear, so it cannot be
+   * cut deal by deal.
    */
   readonly bonusPayable: MoneyDto | null
   readonly sellersInBonus: number | null

@@ -239,11 +239,11 @@ describe('the bonus fund', () => {
     expect(screen.getByText('0 ta sotuvchi darajani oldi')).toBeDefined()
   })
 
-  it('says why there is no fund under a brand slice, rather than printing a bare dash', () => {
+  it('says why there is no fund under a brand or source slice, rather than printing a bare dash', () => {
     /*
       The ladder pays on a seller's WHOLE FAKT 2 and is not linear, so a brand
-      slice carries no fund (`bonusPayable` null) — and an em dash with no word
-      beside it reads as «nothing is being paid».
+      slice or a source filter carries no fund (`bonusPayable` null) — and an
+      em dash with no word beside it reads as «nothing is being paid».
     */
     const sliced = {
       ...LIVE,
@@ -253,7 +253,7 @@ describe('the bonus fund', () => {
 
     const tile = screen.getByText('Bonus jamgʻarmasi').closest('.card')!
     expect(tile.querySelector('.figure')?.textContent).toBe('—')
-    expect(tile.textContent).toContain('brend boʻyicha ajratilmaydi — bonus jami FAKT 2 dan')
+    expect(tile.textContent).toContain('brend va manba boʻyicha ajratilmaydi — bonus jami FAKT 2 dan')
     expect(screen.queryByText(/darajani oldi/)).toBeNull()
   })
 })

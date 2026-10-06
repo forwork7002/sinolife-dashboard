@@ -400,6 +400,60 @@ describe('the bonus fund under the brand switch', () => {
 })
 
 /**
+ * …AND UNDER THE SOURCE FILTER — 2026-10-06.
+ *
+ * «Manba» narrows each seller's FAKT 2 deal by deal (`"sourceId"` in the
+ * rating's filter SQL), exactly as the brand switch does, so the ladder over it
+ * states a payout nobody receives: 30 mln from one source and 20 mln from
+ * another earn the 45 mln rung and read 0 under each. The employee and
+ * department filters keep or drop WHOLE sellers, so the fund over them holds.
+ */
+describe('the bonus fund under the other filters', () => {
+  async function boardWith(filters: Record<string, unknown>) {
+    const insights = {
+      confirmationSellerRating: async (_period: unknown, cut: { sourceIds?: readonly string[] }) => [
+        rating({
+          employeeId: 'e1',
+          // Floor 115 sits inside the ladder's 107–147 band (`bonusEligible`).
+          fullName: 'Sirojov 115 Davlatbek',
+          rop: 'Lola',
+          deliveredOrders: 1,
+          // 30 of the seller's 50 mln came through the source asked for.
+          deliveredMinor: cut.sourceIds?.length ? mln(30) : mln(50),
+        }),
+      ],
+    } as unknown as InsightsRepository
+    const service = new SellerBoardService({} as SellerBoardRepository, insights)
+    const period = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
+    const ctx = {
+      period,
+      comparison: previousEquivalent(period),
+      currency: 'UZS',
+      filters,
+      now: NOW,
+    } as unknown as AnalyticsContext
+    return service.board(ctx, 'queue')
+  }
+
+  it('states no fund under a source filter, which cuts a seller’s FAKT 2 as a brand does', async () => {
+    const { totals } = await boardWith({ sourceIds: ['instagram'] })
+
+    expect(totals.bonusPayable).toBeNull()
+    expect(totals.sellersInBonus).toBeNull()
+  })
+
+  it('pays the fund under the filters that keep whole sellers, and under an empty source list', async () => {
+    for (const filters of [{ employeeIds: ['e1'] }, { departmentIds: ['d1'] }, { sourceIds: [] }]) {
+      resetSellerBoardCache()
+      const { totals } = await boardWith(filters)
+
+      expect(totals.bonusPayable?.amount).toBe(1_000_000)
+      expect(totals.sellersInBonus).toBe(1)
+    }
+  })
+})
+
+/**
  * NO FAKT 2 TREND, AND SO NO COMPARISON READ — 2026-10-06.
  *
  * FAKT 2 is where each order stands NOW, and the comparison window is always
