@@ -242,6 +242,8 @@ describe('where a result takes you', () => {
     expect(product.href).toContain('/margin?')
     // The NAME, not the id: Yalpi marja narrows its table on what it prints.
     expect(product.href).toContain(`q=${encodeURIComponent(FOUND.products[0]!.name)}`)
+    // With no preset the screen opened on «Bugun», where a product nobody sold today is «not found».
+    expect(product.href).toContain('preset=this_year')
   })
 
   it('never sends anyone to a filter the destination does not apply', async () => {

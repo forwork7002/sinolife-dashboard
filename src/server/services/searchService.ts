@@ -161,6 +161,11 @@ export class SearchService {
       id: the destination matches on what it prints, and a reader who edits the
       box sees the list follow. The group is gated on `margin` for the same
       reason — the section that answers it is the section that must be held.
+
+      AND IT CARRIES THE ORDERS' WIDE WINDOW. An address with a query string
+      skips the remembered-window restore, so a bare `?q=` opened on «Bugun»,
+      and a product nobody sold today read «mahsulot topilmadi» under the name
+      the palette had just listed.
     */
     if (allow('margin')) {
       groups.push({
@@ -170,7 +175,7 @@ export class SearchService {
           id: `product-${p.id}`,
           label: p.name,
           hint: 'Yalpi marjada ochish',
-          href: `/margin?q=${encodeURIComponent(p.name)}`,
+          href: `/margin?${WINDOW}&q=${encodeURIComponent(p.name)}`,
         })),
       })
     }
