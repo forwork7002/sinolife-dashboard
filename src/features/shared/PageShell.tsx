@@ -435,8 +435,8 @@ export function PageShell({
           blobs and masks them away over the bottom of the band, so the
           atmosphere dies before the first chart. It lives in
           its own absolutely-positioned, overflow-hidden layer rather than
-          putting overflow-hidden on the content: the MultiSelect popovers in
-          the filter row open downward past this box and must not be clipped.
+          putting overflow-hidden on the content: the date picker's popover in
+          the filter row opens downward past this box and must not be clipped.
           The layer bleeds up into main's padding so the glow starts at the
           top of the page, not 20px into it. pointer-events-none because
           scenery must never intercept a click meant for the controls over it.

@@ -124,16 +124,99 @@ export function MultiSelect({
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  /**
+   * Where the panel is drawn, in VIEWPORT pixels — null until first measured.
+   *
+   * PORTALLED TO <body> AND FIXED, as ColumnFilter's panel is, and for two
+   * reasons production showed. It hung inside the page, and `main` is
+   * `overflow-x: hidden`: anchored to its trigger's left edge, the
+   * confirmation board's «Барча статус» — last in a right-aligned row — lost
+   * about 100px of its 240px list, and the last control of a wrapped row on a
+   * phone lost 25–55px. And it hung inside `.page-container`, which dims to
+   * 60% while the data behind it is replaced (`stale`) — exactly what ticking
+   * an option on Savdo dinamikasi or KPI does — so the list went see-through
+   * over the tiles while it was being used.
+   *
+   * IT OPENS RIGHTWARD FROM THE TRIGGER, as it always has, and ends at the
+   * trigger's right edge instead only when the viewport has no room for that;
+   * either way it is held 8px inside the screen. Below the trigger, above it
+   * only when below cannot hold it and above can.
+   */
+  const [place, setPlace] = useState<{ top: number; left: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const id = useId()
+
+  /*
+    Before paint, so the panel never flashes in the wrong place — and again on
+    every scroll (a CAPTURE listener: scroll does not bubble, and what scrolls
+    here is `main`, never the window) and resize, because a fixed panel does
+    not travel with its trigger on its own.
+  */
+  useLayoutEffect(() => {
+    if (!open) return
+
+    const measure = () => {
+      const trigger = buttonRef.current?.getBoundingClientRect()
+      if (!trigger) return
+      const width = panelRef.current?.offsetWidth || PANEL_WIDTH
+      const rightward = trigger.left + width <= window.innerWidth - 8
+      const anchored = rightward ? trigger.left : trigger.right - width
+      const left = Math.max(8, Math.min(anchored, window.innerWidth - width - 8))
+
+      const height = panelRef.current?.offsetHeight ?? 0
+      const below = window.innerHeight - trigger.bottom
+      const top =
+        below < height + 12 && trigger.top > below ? trigger.top - 4 - height : trigger.bottom + 4
+
+      setPlace((previous) =>
+        previous && previous.top === top && previous.left === left ? previous : { top, left },
+      )
+    }
+
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    if (panelRef.current) observer?.observe(panelRef.current)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+    }
+  }, [open])
+
+  /*
+    Into the list on open, back to the trigger on Escape: portalled to the end
+    of <body>, the panel no longer follows its button in the tab order. The
+    FIRST CHECKBOX, not the first control — with a selection the first control
+    is the red «Tozalash», and a Space pressed on arrival would clear it.
+    Only once placed: until then the panel is `visibility: hidden`, and a
+    browser refuses focus to a hidden element (see ColumnFilter).
+  */
+  const placed = place !== null
+  useEffect(() => {
+    if (!open || !placed) return
+    const panel = panelRef.current
+    const first =
+      panel?.querySelector<HTMLElement>('input[type="checkbox"]') ?? panel?.querySelector<HTMLElement>('button')
+    first?.focus({ preventScroll: true })
+  }, [open, placed])
 
   useEffect(() => {
     if (!open) return
+    // The panel is outside the trigger's box in the DOM now, so a press inside
+    // EITHER counts as inside.
     function onPointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (containerRef.current?.contains(target) || panelRef.current?.contains(target)) return
+      setOpen(false)
     }
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      buttonRef.current?.focus({ preventScroll: true })
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKey)
@@ -154,6 +237,7 @@ export function MultiSelect({
   return (
     <div className="relative" ref={containerRef}>
       <button
+        ref={buttonRef}
         type="button"
         disabled={disabled || options.length === 0}
         onClick={() => setOpen((v) => !v)}
@@ -183,55 +267,64 @@ export function MultiSelect({
         </svg>
       </button>
 
-      {open && (
-        <div
-          id={id}
-          role="listbox"
-          aria-multiselectable="true"
-          aria-label={label}
-          className="absolute z-30 mt-1 max-h-72 w-60 overflow-y-auto rounded-[var(--radius-panel)] border p-1"
-          style={{
-            background: 'var(--surface-raised)',
-            borderColor: 'var(--border-strong)',
-            // Floating chrome: the directional float stack in light, an
-            // offset-free halo in dark (see --shadow-ambient).
-            boxShadow: 'var(--shadow-ambient)',
-          }}
-        >
-          {selected.length > 0 && (
-            // Red, like every clear and delete in the application — the client
-            // asked on 2026-09-11 for all of them to be findable at a glance
-            // («barcha tozalash va oʻchirish funksiyalari aniqroq koʻrinsin»).
-            // As a ghost it was grey text above the list and read as a label.
-            <Button
-              variant="danger"
-              size="sm"
-              className="mb-1 w-full"
-              icon={<MultiplyGlyph size={12} />}
-              onClick={() => onChange([])}
-            >
-              Tozalash
-            </Button>
-          )}
-          {options.map((option) => (
-            <label
-              key={option.id}
-              role="option"
-              aria-selected={selected.includes(option.id)}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-[var(--grid)]"
-              style={{ color: 'var(--ink-primary)' }}
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(option.id)}
-                onChange={() => toggle(option.id)}
-                className="h-3.5 w-3.5"
-              />
-              <span className="truncate">{option.label}</span>
-            </label>
-          ))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            id={id}
+            role="listbox"
+            aria-multiselectable="true"
+            aria-label={label}
+            // `z-40`, ColumnFilter's: over the page and the mobile rail, under
+            // the command palette (50) and tooltips (60). Hidden until measured.
+            className="z-40 max-h-72 w-60 overflow-y-auto rounded-[var(--radius-panel)] border p-1"
+            style={{
+              position: 'fixed',
+              top: place?.top ?? 0,
+              left: place?.left ?? 0,
+              visibility: place ? 'visible' : 'hidden',
+              background: 'var(--surface-raised)',
+              borderColor: 'var(--border-strong)',
+              // Floating chrome: the directional float stack in light, an
+              // offset-free halo in dark (see --shadow-ambient).
+              boxShadow: 'var(--shadow-ambient)',
+            }}
+          >
+            {selected.length > 0 && (
+              // Red, like every clear and delete in the application — the client
+              // asked on 2026-09-11 for all of them to be findable at a glance
+              // («barcha tozalash va oʻchirish funksiyalari aniqroq koʻrinsin»).
+              // As a ghost it was grey text above the list and read as a label.
+              <Button
+                variant="danger"
+                size="sm"
+                className="mb-1 w-full"
+                icon={<MultiplyGlyph size={12} />}
+                onClick={() => onChange([])}
+              >
+                Tozalash
+              </Button>
+            )}
+            {options.map((option) => (
+              <label
+                key={option.id}
+                role="option"
+                aria-selected={selected.includes(option.id)}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-[var(--grid)]"
+                style={{ color: 'var(--ink-primary)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(option.id)}
+                  onChange={() => toggle(option.id)}
+                  className="h-3.5 w-3.5"
+                />
+                <span className="truncate">{option.label}</span>
+              </label>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
@@ -425,10 +518,11 @@ export function StatusBadge({ status }: { status: string }) {
  * anchored under a 32px-tall pill. A column header is 11px uppercase in a cell
  * that may be 96px wide, and the trigger has to be a mark rather than a word or
  * it becomes the widest thing in the header. What the two DO share is the
- * dismissal behaviour and the panel's surface, and those are the parts worth
- * having identical — a reader who learns that Escape closes one has learnt the
- * other. They are kept in step by sitting in one file, not by an abstraction
- * neither of them asked for.
+ * dismissal behaviour, the panel's surface and — since 2026-10-06 — where the
+ * panel is drawn (portalled to <body>, fixed, measured from the trigger), and
+ * those are the parts worth having identical — a reader who learns that
+ * Escape closes one has learnt the other. They are kept in step by sitting in
+ * one file, not by an abstraction neither of them asked for.
  *
  * THE FUNNEL IS FILLED WHEN THE FILTER IS ON, and that is the whole of the
  * state indicator. A count badge was tried and dropped: at 11px beside a
