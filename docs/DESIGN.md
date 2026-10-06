@@ -322,7 +322,8 @@ the period control and the search box. One row used to hold 28, 30, 32 and
 segment a raised glass chip with the lit top; a secondary button is a raised
 chip whose hover lays the wash over it and whose press sinks it into the well;
 the period presets lost the solid-ink active block SegmentedControl retired.
-`BrandSwitch` (features, not a shared primitive) still carries its own copy.
+`BrandSwitch`, SegmentedControl's twin with a colour dot, wears the same well
+and chip — the two share a filter row on every main screen.
 
 ---
 
