@@ -53,7 +53,7 @@ import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
 import { PrismaClient } from '../src/generated/prisma/client'
 import type { SyncEntityValue } from '../src/server/domain/types'
 import { Bitrix24CrmProvider } from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
-import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers'
+import { createSyncHandlers, SweepRefusedError } from '../src/server/integrations/crm/sync/handlers'
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
@@ -927,7 +927,8 @@ async function main() {
       SWEEP_MS > 0
         ? prisma.syncLog.findFirst({
             where: {
-              status: 'SUCCESS',
+              // PARTIAL is a sweep the guard refused — it waits a day too.
+              status: { in: ['SUCCESS', 'PARTIAL'] },
               entity: 'DEALS',
               mode: 'FULL',
               finishedAt: { gt: new Date(now - 2 * SWEEP_MS) },
@@ -1306,7 +1307,9 @@ async function main() {
 
       Guarded, because `sweepByAntiJoin` refuses to delete anything when the
       source returns nothing at all, and `listDealIds` throws rather than
-      returning a short read — a failed read must never empty the table.
+      returning a short read — a failed read must never empty the table. And
+      a read that is complete but too SHORT — a pipeline the webhook stopped
+      seeing — is refused by `sweepLimit` (2026-10-06); see the catch below.
     */
     /*
       ON THE WALL CLOCK SINCE 2026-09-17 (`schedule.ts`): the tick counter
@@ -1388,10 +1391,46 @@ async function main() {
           console.warn(`  ${stamp()} kontakt bogʻlanishi muvaffaqiyatsiz: ${(error as Error).message}`)
         }
       } catch (error) {
-        // Never fatal: a failed sweep leaves stale rows, which is the state we
-        // were already in. Losing the tick loop over it would be worse.
-        lastSweepFailedAt = new Date()
-        console.warn(`  ${stamp()} tozalash muvaffaqiyatsiz: ${(error as Error).message}`)
+        if (error instanceof SweepRefusedError) {
+          /*
+            REFUSED IS NOT FAILED, AND IT IS NOT TRIED AGAIN IN AN HOUR.
+
+            `sweepLimit` found more deals missing from the walk than a day of
+            deletions ever is, and deleted nothing. What causes that — a
+            pipeline hidden from the webhook user, most likely — does not lift
+            in an hour, and an hourly retry would walk ~9 300 invocations into
+            it every hour: the volume both portal blocks were earned with. So it
+            stands as the day's sweep — recorded PARTIAL with the would-be
+            deletions as skipped (read back at startup like a success), said
+            loudly here, tried again tomorrow. The relink waits with it.
+          */
+          lastSweepAt = new Date()
+          lastSweepFailedAt = null
+          await prisma.syncLog
+            .create({
+              data: {
+                provider: 'BITRIX24',
+                entity: 'DEALS',
+                mode: 'FULL',
+                status: 'PARTIAL',
+                startedAt: new Date(sweepStarted),
+                finishedAt: lastSweepAt,
+                recordsRead: error.seen,
+                recordsSkipped: error.gone,
+                errorMessage: error.message,
+              },
+            })
+            .catch((logError: unknown) => console.warn(`  ${stamp()} ! tozalash yozuvi saqlanmadi:`, logError))
+          console.error(
+            `  ${stamp()} ✗ tozalash rad etildi — ${error.message}. Webhook foydalanuvchisi` +
+              ' hamma voronkalarni koʻra olishini tekshiring; ertaga yana uriniladi.',
+          )
+        } else {
+          // Never fatal: a failed sweep leaves stale rows, which is the state we
+          // were already in. Losing the tick loop over it would be worse.
+          lastSweepFailedAt = new Date()
+          console.warn(`  ${stamp()} tozalash muvaffaqiyatsiz: ${(error as Error).message}`)
+        }
       }
     }
 

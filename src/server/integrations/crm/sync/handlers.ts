@@ -169,6 +169,46 @@ export function historyLeftAtSql(scoped: boolean): string {
 }
 
 /**
+ * The most one deletion sweep may remove: 500 rows, or 1% of the table if that
+ * is more.
+ *
+ * A day's real deletions are test and duplicate orders — a handful. Thousands
+ * «gone» at once is far likelier to be the webhook losing sight of a pipeline:
+ * Bitrix24 applies a role change silently, so the walk comes back complete and
+ * error-free with one pipeline's 184 000 deals missing, and the delete would
+ * cascade to their stage history, line items and owner changes, which the
+ * incremental sync never reads again. `goneLimit` in recentDeletions.ts defers
+ * to «the daily sweep, which has its own guards»; this is them. Past it the
+ * sweep deletes NOTHING and throws `SweepRefusedError`.
+ */
+export function sweepLimit(stored: number): number {
+  return Math.max(500, Math.ceil(stored * 0.01))
+}
+
+/**
+ * A deletion sweep `sweepLimit` refused. Nothing was deleted.
+ *
+ * It carries the figures because the worker records them and somebody has to
+ * decide from them: a pipeline that dropped out of the webhook's sight, or a
+ * portal that really lost that many records.
+ */
+export class SweepRefusedError extends Error {
+  constructor(
+    readonly table: string,
+    readonly seen: number,
+    readonly stored: number,
+    readonly gone: number,
+    readonly limit: number,
+  ) {
+    super(
+      `${table}: portal ${seen} ta qaytardi, bazada ${stored} ta, ${gone} tasi portalda yoʻq — ` +
+        `bu juda koʻp (chegara ${limit}), hech narsa oʻchirilmadi`,
+    )
+    this.name = 'SweepRefusedError'
+  }
+}
+
+/**
  * The most one line-item reconciliation may delete: 25 lines, or 5% of the
  * lines stored for the deals it read if that is more.
  *
@@ -1489,7 +1529,7 @@ export function createSyncHandlers(
    * Postgres cannot plan.
    */
   const sweepByAntiJoin =
-    (table: string, extraCondition = '') =>
+    (table: string, extraCondition = '', limit?: (stored: number) => number) =>
     async (seen: ReadonlySet<string>): Promise<number> => {
       // An empty read means the source returned nothing at all. Deleting the
       // entire table on that basis would be catastrophic and is almost
@@ -1535,14 +1575,32 @@ export function createSyncHandlers(
             )
           }
 
-          const deleted = await tx.$executeRawUnsafe(
-            `DELETE FROM "${table}" AS t
+          const stored = `FROM "${table}" AS t
              WHERE t."externalSource" = $1::"ExternalSource"
-               AND t."externalId" IS NOT NULL
+               AND t."externalId" IS NOT NULL`
+          const gone = `${stored}
                AND NOT EXISTS (SELECT 1 FROM "sync_live_ids" l WHERE l."externalId" = t."externalId")
-               ${extraCondition}`,
-            source,
-          )
+               ${extraCondition}`
+
+          /*
+            COUNTED BEFORE ANYTHING IS DELETED, against the very population the
+            DELETE below removes — see `sweepLimit`. A sweep within the limit
+            deletes exactly what it did before the guard existed.
+          */
+          if (limit) {
+            const [counted] = await tx.$queryRawUnsafe<{ stored: bigint; gone: bigint }[]>(
+              `SELECT (SELECT count(*) ${stored} ${extraCondition})::bigint AS stored,
+                      (SELECT count(*) ${gone})::bigint AS gone`,
+              source,
+            )
+            const total = Number(counted?.stored ?? 0)
+            const missing = Number(counted?.gone ?? 0)
+            if (missing > limit(total)) {
+              throw new SweepRefusedError(table, live.length, total, missing, limit(total))
+            }
+          }
+
+          const deleted = await tx.$executeRawUnsafe(`DELETE ${gone}`, source)
 
           await tx.$executeRawUnsafe(`DROP TABLE IF EXISTS "sync_live_ids"`)
           return deleted
@@ -1558,7 +1616,9 @@ export function createSyncHandlers(
       'customer',
       'AND NOT EXISTS (SELECT 1 FROM "deal" d WHERE d."customerId" = t."id")',
     ),
-    DEALS: sweepByAntiJoin('deal'),
+    // Guarded: the daily sweep feeds this from a walk a permission change can
+    // shorten without an error. See `sweepLimit`.
+    DEALS: sweepByAntiJoin('deal', '', sweepLimit),
     DEAL_ITEMS: sweepByAntiJoin('deal_item'),
     PAYMENTS: sweepByAntiJoin('payment'),
   }
