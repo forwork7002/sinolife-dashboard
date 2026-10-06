@@ -240,7 +240,9 @@ export function bitrixLabel(
     case 'source':
       return stated(row.sourceName)
     case 'product':
-      return brandOf(row.sourceId, row.formTitle) ?? productOfLine(row.productLine) ?? ROISTAT_NO_PRODUCT
+      // A sale carries what it was paid for (`product_line`, its line items); a lead its source or form.
+      if (row.productLine === ROISTAT_NO_PRODUCT) return ROISTAT_NO_PRODUCT
+      return productOfLine(row.productLine) ?? brandOf(row.sourceId, row.formTitle) ?? ROISTAT_NO_PRODUCT
     case 'region':
       return stated(row.region)
     case 'rop':

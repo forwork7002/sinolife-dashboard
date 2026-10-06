@@ -44,6 +44,7 @@ function bitrixRow(set: RoistatBitrixRow['set'], fields: Partial<RoistatBitrixRo
     brandSource: null,
     brandForm: null,
     brandTeam: null,
+    brandProduct: null,
     leads: 0,
     clean: 0,
     kval: 0,
@@ -298,6 +299,29 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
     expect(calls.map((c) => c.keyed)).toEqual([false, false, true, true])
   })
 
+  it('files a sale by the product it was paid for — the team only when it has no line item', async () => {
+    const sale = (brandTeam: string, brandProduct: string | null, soldMinor: bigint) =>
+      bitrixRow('total', { brandTeam, brandProduct, sold: 1, soldMinor })
+    const rows = [
+      sale('Sevinch', 'Zextra', 5_000_000_00n), // a Collagen team selling Zextra → Zextra
+      sale('Asliddin', '-', 3_000_000_00n), // a Zextra team selling Prox → «Brendsiz»
+      sale('Asliddin', null, 2_000_000_00n), // no line item → its team, Zextra
+    ]
+    const repository = {
+      bitrix: async () => rows,
+      meta: async () => [],
+      metaName: async () => null,
+      metaImportedAt: async () => null,
+    }
+    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) })
+    const z = await service.overview(PERIOD, { dim: 'days', brand: 'Zextra' }, NOW)
+    expect(z.kpi).toMatchObject({ sold: 2, soldUzs: 7_000_000 })
+    const n = await service.overview(PERIOD, { dim: 'days', brand: 'none' }, NOW)
+    expect(n.kpi).toMatchObject({ sold: 1, soldUzs: 3_000_000 })
+    const c = await service.overview(PERIOD, { dim: 'days', brand: 'Collagen' }, NOW)
+    expect(c.kpi.sold).toBe(0)
+  })
+
   it('files what neither brand claims under «Brendsiz» — Hayot\'s sale — and the three make the whole scan', async () => {
     const { service } = keyedHarness()
     const n = await service.overview(PERIOD, { dim: 'days', brand: 'none' }, NOW)
@@ -364,6 +388,6 @@ describe('RoistatRepository.bitrix — which set a row is', () => {
     await repository.bitrix(PERIOD, NOW, 'days')
     await repository.bitrix(PERIOD, NOW, 'days', true)
     expect(sql[0]).toMatch(/GROUPING SETS \(\(\),\s*\(day\)\)/)
-    expect(sql[1]).toMatch(/GROUPING SETS \(\(b_source, b_form, b_team\),\s*\(day, b_source, b_form, b_team\)\)/)
+    expect(sql[1]).toMatch(/GROUPING SETS \(\(b_source, b_form, b_team, b_product\),\s*\(day, b_source, b_form, b_team, b_product\)\)/)
   })
 })

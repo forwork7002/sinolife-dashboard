@@ -28,7 +28,7 @@
 import type { PrismaClient } from '@/generated/prisma/client'
 import { DELIVERY_PIPELINE_EXTERNAL_ID } from '@/server/integrations/crm/bitrix24/mapping'
 
-import { InsightsRepository } from './insightsRepository'
+import { type BrandSlice, InsightsRepository } from './insightsRepository'
 
 /** A money column as Postgres returns it: text, to survive the driver. */
 type MoneyText = string | null
@@ -57,14 +57,8 @@ export interface PulseDealFilters {
    * caller's own pick narrows the scope, it never widens it.
    */
   readonly restrictToEmployeeIds?: readonly string[] | null
-  /**
-   * ROP teams by name — the Collagen / Zextra switch (`brandTeams`), matched
-   * against the deal's team (`InsightsRepository.dealTeamSql`). Undefined or
-   * empty means every team, and deals on no team.
-   */
-  readonly teams?: readonly string[]
-  /** «Brendsiz»: keep the deals on NONE of `teams` (or on no team). */
-  readonly excludeTeams?: boolean
+  /** The brand switch (`BrandSlice`): one brand's orders, or «Brendsiz»; undefined is every order. */
+  readonly brand?: BrandSlice
 }
 
 /**
@@ -130,11 +124,8 @@ export class PulseRepository {
       params.push(filters.sourceIds.join(','))
       conditions.push(`${alias}."sourceId" = ANY(string_to_array($${params.length}, ','))`)
     }
-    if (filters.teams?.length) {
-      params.push([...filters.teams])
-      conditions.push(
-        InsightsRepository.teamFilterSql(InsightsRepository.dealTeamSql(alias), params.length, filters.excludeTeams === true),
-      )
+    if (filters.brand) {
+      conditions.push(InsightsRepository.brandSliceSql(alias, InsightsRepository.dealTeamSql(alias), filters.brand, params))
     }
 
     return conditions.length === 0 ? '' : ` AND ${conditions.join(' AND ')}`

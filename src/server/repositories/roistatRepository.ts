@@ -31,6 +31,7 @@
 import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import type { Period } from '@/server/domain/period/period'
+import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 
 import { InsightsRepository } from './insightsRepository'
 
@@ -73,12 +74,15 @@ export interface RoistatBitrixRow extends RoistatBitrixCounters {
    * What the Collagen / Zextra switch files the row by — filled only when the
    * scan was asked for them (`brandKeys`), null otherwise. A lead row carries
    * its own source and form (`brandTeam` null); a sale row carries the team
-   * that sold it (`brandTeam` set, the other two null). Every grouping set is
+   * that sold it (`brandTeam` set, the other two null) and what its line
+   * items say (`brandProduct`, `DealProductBrand` — the brand of a sale is
+   * its product's, the team only when it has no line). Every grouping set is
    * then split by these, so one key row can come back several times.
    */
   readonly brandSource: string | null
   readonly brandForm: string | null
   readonly brandTeam: string | null
+  readonly brandProduct: string | null
 }
 
 /** One Meta ad (or adset, or campaign) over the window, hiring not yet removed. */
@@ -141,7 +145,7 @@ export class RoistatRepository {
   ): Promise<RoistatBitrixRow[]> {
     // Sales deals open after their lead; none can belong to the window once a month has passed.
     const scanEnd = new Date(Math.min(now.getTime(), period.end.getTime() + ORIGIN_LEAD_DAYS * 86_400_000))
-    const brandColumns = ['b_source', 'b_form', 'b_team']
+    const brandColumns = ['b_source', 'b_form', 'b_team', 'b_product']
     const setColumns: readonly (readonly string[])[] = shape === 'total'
       ? [[]]
       : shape === 'days'
@@ -210,6 +214,7 @@ export class RoistatRepository {
         b_source: string | null
         b_form: string | null
         b_team: string | null
+        b_product: string | null
         leads: bigint
         clean: bigint
         kval: bigint
@@ -253,7 +258,8 @@ export class RoistatRepository {
           NULL::double precision AS deal_days,
           s."externalId" AS b_source,
           CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END AS b_form,
-          NULL::text AS b_team
+          NULL::text AS b_team,
+          NULL::text AS b_product
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
         LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
@@ -279,8 +285,13 @@ export class RoistatRepository {
             per-value fallback to the sales deal's own source would file its
             sale in another row — sales with no leads beside them, and a
             conversion that is not one. Only a sale with no lead at all reads
-            its own deal; its «Товар» likewise, so a Collagen-named product
-            line cannot pull a «Boshqa» lead's sale into Collagen.
+            its own deal.
+
+            ITS «ТОВАР» IS WHAT IT WAS PAID FOR (the client, 2026-10-06): the
+            dominant line item's brand (pb), «Boshqa» when that product is
+            neither brand's; a sale with no line item, its team's (tm against
+            $5 / $6, each brand's teams) — saleBrand's rule, the brand
+            switch's, so the «Товар» cut and the switch never disagree.
           */
           CASE WHEN o.created IS NOT NULL THEN o.source_id ELSE ss."externalId" END AS source_id,
           CASE WHEN o.created IS NOT NULL THEN o.source_name ELSE ss."name" END AS source_name,
@@ -289,13 +300,15 @@ export class RoistatRepository {
             WHEN sb."title" LIKE '%CRM-форм%' THEN sb."title"
           END AS form_title,
           CASE WHEN o.created IS NOT NULL THEN o.targetolog ELSE NULLIF(btrim(sb."targetolog"), '') END AS targetolog,
-          CASE WHEN o.created IS NULL THEN NULLIF(btrim(sb."productLine"), '') END AS product_line,
+          CASE
+            WHEN pb.brand = '-' THEN 'Boshqa'
+            WHEN pb.brand IS NOT NULL THEN pb.brand
+            WHEN tm.team = ANY($5::text[]) THEN 'Collagen'
+            WHEN tm.team = ANY($6::text[]) THEN 'Zextra'
+            ELSE 'Boshqa'
+          END AS product_line,
           NULLIF(btrim(sb."region"), '') AS region,
-          COALESCE(
-            ${InsightsRepository.ropNameSql('sb."operatorTeamSource"')},
-            ${InsightsRepository.ropNameSql('dep."name"')},
-            '${InsightsRepository.NO_ROP}'
-          ) AS rop,
+          tm.team AS rop,
           COALESCE(e."fullName", NULLIF(btrim(sb."operatorNameSource"), '')) AS seller,
           o.registrar,
           0 AS lead, 0 AS clean, 0 AS kval,
@@ -325,16 +338,19 @@ export class RoistatRepository {
           END AS deal_days,
           NULL::text AS b_source,
           NULL::text AS b_form,
-          -- The rop column again: a sale's brand is its team's (rnpSheet teamBrand).
-          COALESCE(
-            ${InsightsRepository.ropNameSql('sb."operatorTeamSource"')},
-            ${InsightsRepository.ropNameSql('dep."name"')},
-            '${InsightsRepository.NO_ROP}'
-          ) AS b_team
+          -- The rop column again: the team decides a sale with no line item (rnpSheet saleBrand).
+          tm.team AS b_team,
+          pb.brand AS b_product
         FROM sale_base sb
+        LEFT JOIN LATERAL (SELECT ${InsightsRepository.dealProductBrandSql('sb')} AS brand) pb ON true
         LEFT JOIN "sales_source" ss ON ss."id" = sb."sourceId"
         LEFT JOIN "employee" e ON e."id" = sb."operatorEmployeeId"
         LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+        LEFT JOIN LATERAL (SELECT COALESCE(
+            ${InsightsRepository.ropNameSql('sb."operatorTeamSource"')},
+            ${InsightsRepository.ropNameSql('dep."name"')},
+            '${InsightsRepository.NO_ROP}'
+          ) AS team) tm ON true
         /*
           The ORIGIN LEAD: this contact's Регистрация deal opened up to
           ${ORIGIN_LEAD_DAYS} days before the sales deal — a WON one first,
@@ -385,6 +401,8 @@ export class RoistatRepository {
       period.end,
       this.tz,
       scanEnd,
+      brandTeams('Collagen'),
+      brandTeams('Zextra'),
     )
 
     return rows.map((r) => {
@@ -421,6 +439,7 @@ export class RoistatRepository {
         brandSource: r.b_source ?? null,
         brandForm: r.b_form ?? null,
         brandTeam: r.b_team ?? null,
+        brandProduct: r.b_product ?? null,
         leads: int(r.leads),
         clean: int(r.clean),
         kval: int(r.kval),

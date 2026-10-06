@@ -108,8 +108,7 @@ export class PulseService {
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
       keyPart(filters.restrictToEmployeeIds),
-      keyPart(filters.teams),
-      filters.excludeTeams ? 'x' : '',
+      filters.brand?.slice ?? '',
     ].join('|')
     const rows = await deliveryCache.get(key, () => this.repo.deliveryBoard(filters))
     const pipelineName = rows[0]?.pipelineName ?? null

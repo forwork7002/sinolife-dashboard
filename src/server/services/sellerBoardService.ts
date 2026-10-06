@@ -52,6 +52,7 @@ import {
 import type { DeltaDto } from '@/lib/api'
 import { CONFIRMATION_OUTCOMES, type ConfirmationOutcomeValue } from '@/server/domain/types'
 import type {
+  BrandSlice,
   ConfirmationSellerRatingRow,
   ConfirmationSourceRatingRow,
   InsightsRepository,
@@ -743,8 +744,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
-      keyPart(filters.teams),
-      filters.excludeTeams ? 'x' : '',
+      filters.brand?.slice ?? '',
     ].join('|')
 
     return boardCache.get(key, () => this.buildBoard(ctx, basis, filters))
@@ -1017,8 +1017,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
-      keyPart(filters.teams),
-      filters.excludeTeams ? 'x' : '',
+      filters.brand?.slice ?? '',
     ].join('|')
 
     return recordsCache.get(key, () => this.buildRecords(ctx, period, filters))
@@ -1097,8 +1096,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
-      keyPart(filters.teams),
-      filters.excludeTeams ? 'x' : '',
+      filters.brand?.slice ?? '',
     ].join('|')
 
     return medalsCache.get(key, () => this.buildMedals(ctx, period, filters))
@@ -1149,10 +1147,7 @@ export class SellerBoardService {
         `boardFilters` is what drops the scope, in one place, for both.
       */
       const filters = boardFilters(ctx)
-      const days = await this.insights.confirmationSellerRatingDays(scopedPeriod(ctx.period, filters), employeeId, {
-        teams: filters.teams,
-        excludeTeams: filters.excludeTeams,
-      })
+      const days = await this.insights.confirmationSellerRatingDays(scopedPeriod(ctx.period, filters), employeeId, filters.brand)
       return days.map((d) => ({
         date: d.date,
         orders: d.orders,
@@ -1210,8 +1205,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
-      keyPart(filters.teams),
-      filters.excludeTeams ? 'x' : '',
+      filters.brand?.slice ?? '',
     ].join('|')
     const days = await faktDaysCache.get(key, () =>
       this.insights.confirmationFaktDays(scopedPeriod(ctx.period, filters), filters),
@@ -1285,8 +1279,7 @@ export class SellerBoardService {
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
-      keyPart(filters.teams),
-      filters.excludeTeams ? 'x' : '',
+      filters.brand?.slice ?? '',
     ].join('|')
 
     return sourcesCache.get(key, async () => {
@@ -1392,17 +1385,16 @@ function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
 }
 
 /**
- * The brand switch as a team filter: an order is the brand's when the team
- * that sold it is (`teamBrand` — the P&L's rule, so the board and RNP's
- * «Коллаген / Зехтра проект» agree). «Brendsiz» is every order on neither
- * brand's teams, a team-less one included (`excludeTeams`), so the three
- * slices add up to the whole board. Empty for «Hammasi».
+ * The brand switch as a sales filter (`BrandSlice`): an order is its
+ * product's brand (`saleBrand` — the client, 2026-10-06: «mahsulot
+ * bo'yicha»), and only an order with no line items its selling team's. «Brendsiz»
+ * is every order neither brand claims, so the three slices add up to the
+ * whole board. Empty for «Hammasi».
  */
-export function brandTeamsOf(ctx: AnalyticsContext): { teams?: readonly string[]; excludeTeams?: boolean } {
+export function brandTeamsOf(ctx: AnalyticsContext): { brand?: BrandSlice } {
   const brand = ctx.filters.brand
   if (brand === undefined || brand === 'all') return {}
-  if (brand === 'none') return { teams: [...brandTeams('Collagen'), ...brandTeams('Zextra')], excludeTeams: true }
-  return { teams: brandTeams(brand) }
+  return { brand: { slice: brand, collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') } }
 }
 
 /**

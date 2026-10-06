@@ -36,7 +36,8 @@ import {
   spendCut,
   spendTotal,
 } from '@/server/domain/roistat/roistatCuts'
-import { teamBrand } from '@/server/domain/rnp/rnpSheet'
+import type { DealProductBrand } from '@/server/domain/products/productBrand'
+import { saleBrand } from '@/server/domain/rnp/rnpSheet'
 import { type BrandFilter, brandMatches } from '@/server/domain/types'
 import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { adBudgetProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
@@ -158,14 +159,20 @@ export interface RoistatQuery {
 
 /**
  * The Bitrix scan narrowed to one brand: a lead by RNP's `leadBrand` (its
- * source, then its form), a sale by the team that sold it (`teamBrand`) — the
- * P&L's split, so the switch and RNP's «Коллаген / Зехтра проект» agree.
+ * source, then its form), a sale by the product it was paid for (`saleBrand`;
+ * its team only when it has no line item) — as RNP's «Коллаген / Зехтра
+ * проект» reads it, so the switch and the P&L agree.
  * Rows of a brand-keyed scan only (`RoistatRepository.bitrix`'s `brandKeys`).
  */
 function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: BrandFilter): Parameters<typeof bitrixCut>[1] {
   if (brand === 'all') return rows
   return narrowBitrix(rows, (row) =>
-    brandMatches(brand, row.brandTeam !== null ? teamBrand(row.brandTeam) : leadBrand(row.brandSource, row.brandForm)),
+    brandMatches(
+      brand,
+      row.brandTeam !== null
+        ? saleBrand(row.brandProduct as DealProductBrand, row.brandTeam)
+        : leadBrand(row.brandSource, row.brandForm),
+    ),
   )
 }
 

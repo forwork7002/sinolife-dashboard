@@ -51,6 +51,7 @@ import {
   type ScopedWindow,
 } from '@/server/domain/employees/branches'
 import type { Period } from '@/server/domain/period/period'
+import { type DealProductBrand, PRODUCT_BRAND_PATTERNS } from '@/server/domain/products/productBrand'
 import {
   CONFIRMATION_OUTCOMES,
   type ConfirmationOrderSortValue,
@@ -745,6 +746,17 @@ export interface ConfirmationOrderQuery {
 }
 
 /** The same shape `SellerBoardFilters` carries, kept local so the two repositories stay independent. */
+/**
+ * The brand switch on a sales reader: one brand's orders, or «Brendsiz» — an
+ * order is its product's brand, an order with no line item its team's.
+ */
+export interface BrandSlice {
+  readonly slice: 'Collagen' | 'Zextra' | 'none'
+  /** Each brand's teams (`brandTeams`), for an order with no line items. */
+  readonly collagenTeams: readonly string[]
+  readonly zextraTeams: readonly string[]
+}
+
 export interface ConfirmationSellerRatingFilters {
   readonly employeeIds?: readonly string[]
   readonly departmentIds?: readonly string[]
@@ -761,13 +773,10 @@ export interface ConfirmationSellerRatingFilters {
    */
   readonly restrictToEmployeeIds?: readonly string[] | null
   /**
-   * ROP teams by name (`c.rop`, the deal's team snapshot) — the Collagen /
-   * Zextra switch, as `brandTeams` lists a brand's teams. Undefined or empty
-   * means every team, and orders on no team.
+   * The brand switch (`BrandSlice`): orders of one brand's products, or
+   * «Brendsiz». Undefined: every order.
    */
-  readonly teams?: readonly string[]
-  /** «Brendsiz»: keep the orders on NONE of `teams` (or on no team). */
-  readonly excludeTeams?: boolean
+  readonly brand?: BrandSlice
 }
 
 /**
@@ -1080,6 +1089,11 @@ export interface RnpTeamDayRow {
   /** FAKT 1 orders now in «Отказ» (refused or cancelled, `LOGISTICS_BUCKETS`). */
   readonly refusedOrders: number
   readonly refusedMinor: bigint
+  /**
+   * What the orders' line items say (`DealProductBrand`): a team-day comes
+   * back once per value, so the brand P&L can file each order by its product.
+   */
+  readonly productBrand: DealProductBrand
 }
 
 /**
@@ -3527,16 +3541,44 @@ export class InsightsRepository {
   }
 
   /**
-   * The brand switch's team predicate over a team expression: the brand's
-   * teams, or — for «Brendsiz» (`exclude`) — every order on no brand team,
-   * a team-less one included, so the three slices partition the board.
-   * `IS NOT TRUE` takes the NULL team in with one evaluation of the
-   * expression (`dealTeamSql` carries a subquery per row).
+   * A deal's brand by its line items (`DealProductBrand`): the brand of the
+   * product carrying the most PAID money (`totalMinor`; a free gift decides
+   * nothing), `'-'` when that product is neither brand's, NULL when the deal
+   * has no line item at all. Patterns from `PRODUCT_BRAND_PATTERNS`, Zextra
+   * first, as `productBrand` reads them. One indexed probe of `deal_item`
+   * per deal.
    */
-  static teamFilterSql(expression: string, param: number, exclude: boolean): string {
-    return exclude
-      ? `(${expression} = ANY($${param}::text[])) IS NOT TRUE`
-      : `${expression} = ANY($${param}::text[])`
+  static dealProductBrandSql(alias: string): string {
+    const cases = PRODUCT_BRAND_PATTERNS.map(([brand, pattern]) => `WHEN dp."name" ~* '${pattern}' THEN '${brand}'`).join(' ')
+    return `(SELECT x.brand FROM (
+              SELECT CASE ${cases} ELSE '-' END AS brand, sum(di."totalMinor") AS paid
+              FROM "deal_item" di JOIN "product" dp ON dp."id" = di."productId"
+              WHERE di."dealId" = ${alias}."id"
+              GROUP BY 1
+            ) x ORDER BY x.paid DESC NULLS LAST, x.brand LIMIT 1)`
+  }
+
+  /**
+   * The brand switch over a sales reader (`BrandSlice`): an order's brand is
+   * its product's (`dealProductBrandSql`), and only an order with no line
+   * item falls back to the team that sold it (`teamExpression` against each
+   * brand's `brandTeams`) — `saleBrand`'s rule, in SQL. «Brendsiz» keeps the
+   * orders neither brand claims, so the three slices partition the reader.
+   * The product subquery is evaluated once (a simple CASE).
+   */
+  static brandSliceSql(alias: string, teamExpression: string, brand: BrandSlice, params: unknown[]): string {
+    params.push([...brand.collagenTeams])
+    const collagen = params.length
+    params.push([...brand.zextraTeams])
+    const zextra = params.length
+    const expression = `CASE ${InsightsRepository.dealProductBrandSql(alias)}
+          WHEN 'Collagen' THEN 'Collagen' WHEN 'Zextra' THEN 'Zextra' WHEN '-' THEN NULL
+          ELSE CASE WHEN (${teamExpression}) = ANY($${collagen}::text[]) THEN 'Collagen'
+                    WHEN (${teamExpression}) = ANY($${zextra}::text[]) THEN 'Zextra' END
+        END`
+    if (brand.slice === 'none') return `(${expression}) IS NULL`
+    params.push(brand.slice)
+    return `(${expression}) = $${params.length}`
   }
 
   /**
@@ -4843,10 +4885,7 @@ export class InsightsRepository {
       params.push(filters.sourceIds.join(','))
       conditions.push(`d."sourceId" = ANY(string_to_array($${params.length}, ','))`)
     }
-    if (filters.teams?.length) {
-      params.push([...filters.teams])
-      conditions.push(InsightsRepository.teamFilterSql('c.rop', params.length, filters.excludeTeams === true))
-    }
+    if (filters.brand) conditions.push(InsightsRepository.brandSliceSql('d', 'c.rop', filters.brand, params))
 
     return conditions.length === 0 ? '' : ` AND ${conditions.join(' AND ')}`
   }
@@ -5126,11 +5165,10 @@ export class InsightsRepository {
     period: ScopedWindow,
     employeeId: string,
     /** The brand switch, as the board row this chart hangs under narrows by it (`ratingFilterSql`). */
-    brand: { teams?: readonly string[]; excludeTeams?: boolean } = {},
+    brand?: BrandSlice,
   ): Promise<{ date: string; confirmedMinor: bigint; deliveredMinor: bigint; orders: number }[]> {
-    const teamFilter = brand.teams?.length
-      ? ` AND ${InsightsRepository.teamFilterSql('c.rop', 5, brand.excludeTeams === true)}`
-      : ''
+    const brandParams: unknown[] = [null, null, null, null]
+    const teamFilter = brand ? ` AND ${InsightsRepository.brandSliceSql('d', 'c.rop', brand, brandParams)}` : ''
     const rows = await this.prisma.$queryRawUnsafe<
       { date: string; confirmed: MoneyText; delivered: MoneyText; orders: bigint }[]
     >(
@@ -5148,7 +5186,7 @@ export class InsightsRepository {
       period.end,
       employeeId,
       InsightsRepository.scopeValue(period),
-      ...(teamFilter ? [[...brand.teams!]] : []),
+      ...brandParams.slice(4),
     )
 
     return rows.map((r) => ({
@@ -5552,6 +5590,7 @@ export class InsightsRepository {
         fakt2: MoneyText
         refused_orders: bigint
         refused: MoneyText
+        product_brand: string | null
       }[]
     >(`${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.rnpTeamDaysSql()}`, ...params)
     return rows.map((r) => ({
@@ -5563,6 +5602,7 @@ export class InsightsRepository {
       fakt2Minor: money(r.fakt2),
       refusedOrders: int(r.refused_orders),
       refusedMinor: money(r.refused),
+      productBrand: (r.product_brand ?? null) as DealProductBrand,
     }))
   }
 
@@ -5692,11 +5732,13 @@ export class InsightsRepository {
          count(*) FILTER (WHERE ${fakt2})::bigint AS fakt2_orders,
          COALESCE(sum(d."amountMinor") FILTER (WHERE ${fakt2}), 0)::text AS fakt2,
          count(*) FILTER (WHERE ${refused})::bigint AS refused_orders,
-         COALESCE(sum(d."amountMinor") FILTER (WHERE ${refused}), 0)::text AS refused
+         COALESCE(sum(d."amountMinor") FILTER (WHERE ${refused}), 0)::text AS refused,
+         pb.brand AS product_brand
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
-       GROUP BY 1, 2`
+       LEFT JOIN LATERAL (SELECT ${InsightsRepository.dealProductBrandSql('d')} AS brand) pb ON true
+       GROUP BY 1, 2, pb.brand`
   }
 
   /**

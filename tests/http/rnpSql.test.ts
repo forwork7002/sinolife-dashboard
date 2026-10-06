@@ -33,9 +33,10 @@ describe('rnpTeamDaysSql', () => {
     expect(sql).toContain(`= 'REFUSED'`)
   })
 
-  it('groups day × team only — the brand is the team\'s, decided in the domain as the sheet does', () => {
-    expect(sql).not.toContain('"deal_item"')
-    expect(sql).toMatch(/GROUP BY 1, 2\s*$/)
+  it('groups day × team × the orders\' product — the brand is the product\'s (2026-10-06), decided in the domain', () => {
+    expect(sql).toContain('FROM "deal_item" di JOIN "product" dp ON dp."id" = di."productId"')
+    expect(sql).toContain('pb.brand AS product_brand')
+    expect(sql).toMatch(/GROUP BY 1, 2, pb\.brand\s*$/)
   })
 
   it('buckets by the Tashkent queue day', () => {

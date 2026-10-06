@@ -54,45 +54,45 @@ describe('brandTeams', () => {
   it('is no filter at all for both brands', () => {
     expect(brandTeamsOf(context({}))).toEqual({})
     expect(brandTeamsOf(context({ brand: 'all' }))).toEqual({})
-    expect(brandTeamsOf(context({ brand: 'Zextra' }))).toEqual({ teams: brandTeams('Zextra') })
   })
 
-  it('is «on none of the brands\' teams» for «Brendsiz», so the three slices partition the board', () => {
-    const none = brandTeamsOf(context({ brand: 'none' }))
-    expect(none.excludeTeams).toBe(true)
-    expect([...none.teams!].sort()).toEqual([...brandTeams('Collagen'), ...brandTeams('Zextra')].sort())
+  it('is a slice carrying both brands\' teams — the fallback for an order with no line items', () => {
+    const team = { collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') }
+    expect(brandTeamsOf(context({ brand: 'Zextra' }))).toEqual({ brand: { slice: 'Zextra', ...team } })
+    expect(brandTeamsOf(context({ brand: 'none' }))).toEqual({ brand: { slice: 'none', ...team } })
   })
 })
 
 describe('the confirmation-queue readers', () => {
   const ratingFilterSql = (
     InsightsRepository as unknown as {
-      ratingFilterSql: (filters: { teams?: readonly string[] }, params: unknown[]) => string
+      ratingFilterSql: (filters: { brand?: Parameters<typeof InsightsRepository.brandSliceSql>[2] }, params: unknown[]) => string
     }
   ).ratingFilterSql
+  const slice = (s: 'Collagen' | 'Zextra' | 'none') => ({ slice: s, collagenTeams: ['Sevinch'], zextraTeams: ['Asliddin'] })
 
-  it('narrow on the cohort’s own team column, as one array parameter', () => {
+  it('narrow by the order\'s product — the team only for an order with no line items', () => {
     const params: unknown[] = ['a', 'b', 'c']
-    const clause = ratingFilterSql({ teams: ['Asliddin', 'Charos'] }, params)
-    expect(clause).toBe(' AND c.rop = ANY($4::text[])')
-    expect(params[3]).toEqual(['Asliddin', 'Charos'])
+    const clause = ratingFilterSql({ brand: slice('Zextra') }, params)
+    expect(clause).toContain('FROM "deal_item" di JOIN "product" dp ON dp."id" = di."productId"')
+    expect(clause).toContain('WHERE di."dealId" = d."id"')
+    expect(clause).toContain(`WHEN dp."name" ~* 'zextra' THEN 'Zextra'`)
+    expect(clause).toContain(`WHEN '-' THEN NULL`)
+    expect(clause).toContain('WHEN (c.rop) = ANY($4::text[]) THEN \'Collagen\'')
+    expect(clause).toContain('WHEN (c.rop) = ANY($5::text[]) THEN \'Zextra\'')
+    expect(clause.endsWith(') = $6')).toBe(true)
+    expect(params.slice(3)).toEqual([['Sevinch'], ['Asliddin'], 'Zextra'])
   })
 
-  it('keep, for «Brendsiz», the orders on none of the teams — a team-less one too', () => {
+  it('keep, for «Brendsiz», the orders neither brand claims', () => {
     const params: unknown[] = []
-    const clause = (
-      InsightsRepository as unknown as {
-        ratingFilterSql: (filters: { teams?: readonly string[]; excludeTeams?: boolean }, params: unknown[]) => string
-      }
-    ).ratingFilterSql({ teams: ['Asliddin'], excludeTeams: true }, params)
-    expect(clause).toBe(' AND (c.rop = ANY($1::text[])) IS NOT TRUE')
-    expect(params).toEqual([['Asliddin']])
+    expect(ratingFilterSql({ brand: slice('none') }, params).endsWith(') IS NULL')).toBe(true)
+    expect(params).toEqual([['Sevinch'], ['Asliddin']])
   })
 
   it('add nothing without a brand', () => {
     const params: unknown[] = []
     expect(ratingFilterSql({}, params)).toBe('')
-    expect(ratingFilterSql({ teams: [] }, params)).toBe('')
     expect(params).toEqual([])
   })
 
@@ -111,13 +111,13 @@ describe('the confirmation-queue readers', () => {
     )
     await service.faktTrend(context({ brand: 'Collagen' }))
     await service.faktTrend(context({}))
-    expect((calls[0]![1] as { teams?: string[] }).teams).toEqual(brandTeams('Collagen'))
-    expect((calls[1]![1] as { teams?: string[] }).teams).toBeUndefined()
+    expect((calls[0]![1] as { brand?: { slice: string } }).brand?.slice).toBe('Collagen')
+    expect((calls[1]![1] as { brand?: unknown }).brand).toBeUndefined()
   })
 })
 
 describe('the Доставка board', () => {
-  it('narrows the deals by their team inside the JOIN, the empty columns kept', async () => {
+  it('narrows the deals by their product inside the JOIN, the empty columns kept', async () => {
     const seen: { sql: string; params: unknown[] }[] = []
     const prisma = {
       $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
@@ -129,11 +129,11 @@ describe('the Доставка board', () => {
     await service.deliveryBoard(context({ brand: 'Zextra' }))
 
     const { sql, params } = seen[0]!
-    const condition = sql.indexOf('= ANY($2::text[])')
+    const condition = sql.indexOf('FROM "deal_item" di')
     expect(condition).toBeGreaterThan(sql.indexOf('LEFT JOIN "deal" d'))
     expect(condition).toBeLessThan(sql.indexOf('WHERE pl."externalId"'))
     expect(sql).toContain('d."operatorTeamSource"')
-    expect(params[1]).toEqual(brandTeams('Zextra'))
+    expect(params.slice(1)).toEqual([brandTeams('Collagen'), brandTeams('Zextra'), 'Zextra'])
 
     seen.length = 0
     await service.deliveryBoard(context({}))
@@ -142,7 +142,7 @@ describe('the Доставка board', () => {
 })
 
 describe('the seller\'s day chart', () => {
-  it('narrows by the brand\'s teams like the board row it opens from', async () => {
+  it('narrows by the brand like the board row it opens from', async () => {
     const calls: { sql: string; params: unknown[] }[] = []
     const prisma = {
       $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
@@ -153,10 +153,11 @@ describe('the seller\'s day chart', () => {
     const repo = new InsightsRepository(prisma)
     const period = { ...resolvePeriod('this_month', { timeZone: TZ, now: NOW }), restrictToEmployeeIds: null }
     await repo.confirmationSellerRatingDays(period, 'e1')
-    await repo.confirmationSellerRatingDays(period, 'e1', { teams: ['Asliddin'], excludeTeams: true })
+    await repo.confirmationSellerRatingDays(period, 'e1', { slice: 'none', collagenTeams: ['Sevinch'], zextraTeams: ['Asliddin'] })
     expect(calls[0]!.sql).not.toContain('$5')
     expect(calls[0]!.params).toHaveLength(4)
-    expect(calls[1]!.sql).toContain('AND (c.rop = ANY($5::text[])) IS NOT TRUE')
-    expect(calls[1]!.params[4]).toEqual(['Asliddin'])
+    expect(calls[1]!.sql).toContain('WHEN (c.rop) = ANY($5::text[])')
+    expect(calls[1]!.sql).toContain(') IS NULL')
+    expect(calls[1]!.params.slice(4)).toEqual([['Sevinch'], ['Asliddin']])
   })
 })

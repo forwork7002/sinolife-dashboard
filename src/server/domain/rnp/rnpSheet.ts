@@ -26,6 +26,7 @@
 import { RNP_GRADE_SCALES, rnpDayGrade, rnpGradeScaleText } from './rnpGrade'
 import { type RnpLine, sheetLines } from './rnpSheetView'
 import type { TargetProduct } from '../types'
+import type { DealProductBrand } from '../products/productBrand'
 
 // ---------------------------------------------------------------------------
 // DTOs — mirrored in `src/features/rnp/rnpApi.ts`
@@ -166,6 +167,8 @@ export interface RnpFaktDay {
   readonly fakt2Minor: bigint
   readonly refusedOrders: number
   readonly refusedMinor: bigint
+  /** The orders' product (`DealProductBrand`) — the brand P&L files them by it; absent reads as «no line item». */
+  readonly productBrand?: DealProductBrand
 }
 
 export interface RnpSheetInput {
@@ -268,6 +271,18 @@ export function teamBrand(team: string | null): 'Collagen' | 'Zextra' | null {
   if (team === null) return null
   const canonical = TEAM_ALIASES[team] ?? team
   return BRAND_TEAMS.Collagen.has(canonical) ? 'Collagen' : BRAND_TEAMS.Zextra.has(canonical) ? 'Zextra' : null
+}
+
+/**
+ * The brand of a SALE (the client, 2026-10-06): the product it was paid for
+ * (`DealProductBrand` — the line items' dominant product), and only for an
+ * order with no line items at all the team that sold it (`teamBrand`). An
+ * order whose biggest line is neither brand's (Prox, Tibomed …) is
+ * «Brendsiz», whichever team sold it.
+ */
+export function saleBrand(product: DealProductBrand, team: string | null): 'Collagen' | 'Zextra' | null {
+  if (product === null) return teamBrand(team)
+  return product === '-' ? null : product
 }
 
 const between = (row: number, lo: number, hi: number) => row >= lo && row <= hi
@@ -924,7 +939,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     for (const r of input.fakt) {
       const i = at.get(r.day)
       const team = canonical(r.rop)
-      const brand = teamBrand(team)
+      // An order is its product's brand (the client, 2026-10-06); the team decides only one with no line item.
+      const brand = saleBrand(r.productBrand ?? null, team)
       if (i === undefined || brand !== b) continue
       const base = isBase(team)
       g.fakt1[i]! += minorToSom(r.fakt1Minor)
