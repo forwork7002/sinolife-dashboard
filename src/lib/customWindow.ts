@@ -11,7 +11,9 @@ const MAX_SPAN_MS = 10 * 366 * 24 * 60 * 60 * 1000
  * span over ten years. A window it refuses is a 400 on every request of the
  * page, and the remembered one rides every sidebar link, so it would open
  * every screen on an error until somebody pressed a preset. Asked before a
- * window is honoured, remembered or applied. Nothing checks the mirror above.
+ * window is honoured, remembered or applied. The mirror is checked:
+ * `tests/features/dashboardFilters.test.ts` puts one table of windows to this
+ * and to `periodQuerySchema`, the ten-year edge to the day included.
  */
 export function isCustomWindow(from: string | null | undefined, to: string | null | undefined): boolean {
   if (!from || !to || !isCalendarDay(from) || !isCalendarDay(to) || to < from) return false
