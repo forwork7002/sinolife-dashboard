@@ -164,32 +164,6 @@ export class Bitrix24Error extends Error {
   }
 }
 
-/**
- * A REFUSAL THAT WILL NOT CLEAR ON ITS OWN, and that is the whole distinction.
- *
- * `OVERLOAD_LIMIT` lifts on the portal's clock, so waiting is the right act.
- * A revoked or replaced webhook never lifts: every retry until somebody
- * installs a new one is a call that CANNOT succeed, and on 2026-09-15 that was
- * twelve entities asked again every three minutes — against a portal that had
- * blocked this same integration for four hours the day before, for volume.
- *
- * So the caller backs off exactly as it does for a throttle. Nothing here
- * decides HOW long; it decides only that no amount of asking is the answer.
- *
- * ONE VOCABULARY, NOT TWO. This kept its own list of the portal's codes until
- * `refusal.ts` arrived with the same list plus the three other kinds of refusal
- * and the `null` case that must never trip anything. Two lists of the same
- * codes in one repository is the drift CLAUDE.md keeps warning about, so this
- * is now a named reading of the shared classifier — the name is worth keeping,
- * the second copy of the vocabulary is not. It takes a MESSAGE because that is
- * what survives into `sync_log` and is all a later reader has; `classifyRefusal`
- * also reads the error's own `code` field when handed a live error.
- */
-export function isCredentialFailure(message: string | null | undefined): boolean {
-  if (!message) return false
-  return classifyRefusal(message) === 'CREDENTIAL'
-}
-
 /** Rows a single list call returns. Fixed by the portal, not configurable. */
 const LIST_PAGE = 50
 /** Commands per batch request. The portal's hard limit. */
