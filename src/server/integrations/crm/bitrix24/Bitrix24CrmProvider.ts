@@ -124,6 +124,13 @@ export interface Bitrix24ProviderOptions {
    */
   readonly callHistoryMonths?: number
   readonly onProgress?: (message: string) => void
+  /**
+   * What a run survived but somebody should hear of — a deal the line-item
+   * read gave up on. Its own channel because the worker passes no
+   * `onProgress` (progress is noise there); it defaults to `onProgress`,
+   * which is where the one-shot scripts print.
+   */
+  readonly onWarning?: (message: string) => void
 }
 
 interface Bitrix24Response<T> {
@@ -171,6 +178,13 @@ const BATCH_SIZE = 50
 
 /** The method a line-item read spends — metered, held and named as itself, never as `batch`. */
 const PRODUCT_ROWS = 'crm.deal.productrows.get'
+
+/**
+ * Reads in a row one deal's product rows may go unanswered — an error about
+ * that deal, or no answer at all — before the line-item read gives it up. A
+ * deal deleted mid-tick costs two more asks; a blip gets two more chances.
+ */
+const ITEM_READ_ATTEMPTS = 3
 
 /** One row of `crm.deal.productrows.get`, as far as this file reads it. */
 interface ProductRow {
@@ -358,6 +372,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private readonly historyStages: readonly string[]
   private readonly callHistoryMonths: number
   private readonly progress: (m: string) => void
+  private readonly warn: (m: string) => void
 
   /** Deals in a REVENUE pipeline — the only ones whose line items are read. */
   /**
@@ -377,8 +392,8 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private itemDealIds: string[] = []
 
   /**
-   * Deals whose product rows a FAILED read still owes; the next read asks
-   * for them first.
+   * Deals whose product rows a read still owes, each with how many reads in a
+   * row went unanswered for it; the next read asks for them first.
    *
    * DEAL_ITEMS has no watermark: it reads the deals the same tick's DEALS pass
    * found carrying money, and the next tick's DEALS pass starts that list
@@ -386,8 +401,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * modified again — the three-minute DEALS overlap was the only retry. While
    * the method is held the read is refused locally, which costs the portal
    * nothing. In memory, like `itemDealIds`: a restart forgets it.
+   *
+   * BOUNDED PER DEAL — `ITEM_READ_ATTEMPTS`. A deal the portal answers with an
+   * error, or not at all, that many reads in a row is given up and said so
+   * (`onWarning`), and keeps the lines it has until a DEALS pass names it
+   * again. Unbounded, one command the portal never answered failed every read
+   * after it — new orders left without lines, and the worker's failure backoff
+   * held at its floor — until the next restart. A deal owed only because a
+   * refusal took the read down around it keeps its count: that was not about
+   * the deal.
    */
-  private itemDealsOwed = new Set<string>()
+  private itemDealsOwed = new Map<string, number>()
 
   // Running totals, for progress output only. The walk is stateless — every
   // page is addressed by the id it starts after — so these carry no meaning
@@ -425,6 +449,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
     this.historyStages = options.historyStages ?? [...CONFIRMATION_REFUSAL_STAGES]
     this.callHistoryMonths = options.callHistoryMonths ?? 1
     this.progress = options.onProgress ?? (() => {})
+    this.warn = options.onWarning ?? this.progress
   }
 
   // -------------------------------------------------------------------------
@@ -1959,13 +1984,14 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * any deal the sync names in `dealExternalIds` (one that just lost its money,
    * and so its lines).
    *
-   * `dealsRead` is every deal answered, a deal with no rows left included: the
-   * read is all-or-nothing (`productRows`), so each one is answered in full and
-   * the sync may drop the stored lines it no longer lists.
+   * `dealsRead` is every deal the portal answered with its rows, a deal with
+   * no rows left included: an answer is the deal's whole list, so the sync may
+   * drop the stored lines it no longer lists. A deal answered with an error is
+   * not in it and keeps its lines (`productRows`).
    */
   async fetchDealItems(options: DealItemsOptions = {}): Promise<DealItemsPage> {
     const wanted = [
-      ...new Set([...this.itemDealsOwed, ...this.itemDealIds, ...(options.dealExternalIds ?? [])]),
+      ...new Set([...this.itemDealsOwed.keys(), ...this.itemDealIds, ...(options.dealExternalIds ?? [])]),
     ]
     if (wanted.length === 0) return this.page([])
 
@@ -2029,7 +2055,8 @@ export class Bitrix24CrmProvider implements CrmProvider {
   }
 
   /**
-   * The product rows of THESE deals — every one answered, or the read fails.
+   * The product rows of THESE deals — those the portal answered with rows, or
+   * a failed read.
    *
    * `halt: 0` makes the portal answer HTTP 200 and bury a refused command in
    * `result_error`, and this read used to merge `result.result` alone. A spent
@@ -2039,21 +2066,51 @@ export class Bitrix24CrmProvider implements CrmProvider {
    *
    * - a REFUSAL (a spent basket, an overloaded or locked-out portal) is told to
    *   the gate under `crm.deal.productrows.get`, the method that was spent and
-   *   never `batch`, and stops the read;
-   * - an error about ONE deal (deleted since the DEALS pass read it) fails the
-   *   read too, but that deal is not owed again — asking every tick for a deal
-   *   that is gone would fail every tick;
-   * - a command the portal left unanswered fails it as well.
+   *   never `batch`, and fails the read;
+   * - a command the portal left UNANSWERED fails it too, unless that deal is
+   *   on its last attempt;
+   * - an error about ONE deal (deleted since the DEALS pass read it, most
+   *   likely) does not: the read keeps every deal it was answered for and
+   *   leaves that one out, so the sync neither writes nor drops its lines.
+   *   Failing the read over it threw away a one-shot read of thousands of
+   *   deals — an import, a `bitrix:resync` — for one test order deleted while
+   *   it ran.
    *
-   * Whatever a failed read did not settle stays in `itemDealsOwed` — the deals
-   * it did answer included, since a thrown read writes nothing.
+   * Whatever a read did not settle stays in `itemDealsOwed`: a deal it went
+   * unanswered for, up to `ITEM_READ_ATTEMPTS`, and after a failed read the
+   * deals it was answered for as well, since a thrown read writes nothing.
    */
   private async productRows(dealIds: readonly string[]): Promise<Map<string, ProductRow[]>> {
     const answered = new Map<string, ProductRow[]>()
-    const gone = new Set<string>()
+    /** Deals asked about and not answered with rows, and what came back instead. */
+    const missed = new Map<string, string>()
     let failure: Bitrix24Error | null = null
-    const owe = () => {
-      this.itemDealsOwed = new Set(dealIds.filter((id) => !gone.has(id)))
+    const missesOf = (id: string) => this.itemDealsOwed.get(id) ?? 0
+
+    /*
+      Settled however the read ended. A missed deal counts the miss and is
+      given up on its last; one answered by a read that then fails is owed
+      again from zero; one a refusal stopped the read before asking about
+      keeps its count.
+    */
+    const settle = (written: boolean) => {
+      const owed = new Map<string, number>()
+      for (const id of dealIds) {
+        const reason = missed.get(id)
+        if (reason !== undefined) {
+          const misses = missesOf(id) + 1
+          if (misses < ITEM_READ_ATTEMPTS) owed.set(id, misses)
+          else {
+            this.warn(
+              `  bitim ${id}: mahsulot qatorlari ${misses} marta ketma-ket oʻqilmadi (${reason}) —` +
+                ' endi soʻralmaydi, bitim oʻzgarganda qayta oʻqiladi',
+            )
+          }
+        } else if (!written) {
+          owed.set(id, answered.has(id) ? 0 : missesOf(id))
+        }
+      }
+      this.itemDealsOwed = owed
     }
 
     try {
@@ -2088,26 +2145,27 @@ export class Bitrix24CrmProvider implements CrmProvider {
           )
           const kind = error ? classifyRefusal(problem) : null
           if (kind === 'THROTTLE' || kind === 'CREDENTIAL' || kind === 'METHOD') {
+            // Not about this deal: the method, or the portal, said no.
             this.gate.trip(problem, new Date())
-          } else if (error) {
-            gone.add(id)
+            failure ??= problem
+            continue
           }
-          failure ??= problem
+
+          missed.set(id, error ? JSON.stringify(error).slice(0, 120) : 'javob yoʻq')
+          // Silence fails the read so the deal is asked again — unless it will
+          // not be. An error about the one deal never fails it.
+          if (!error && missesOf(id) + 1 < ITEM_READ_ATTEMPTS) failure ??= problem
         }
       }
     } catch (error) {
       // Refused before the portal answered — the gate, the budget, a socket.
-      // Nothing is known about any one deal, so all of them stay owed.
-      owe()
+      // Nothing is known about the deals not yet asked, so they stay owed.
+      settle(false)
       throw error
     }
 
-    if (failure) {
-      owe()
-      throw failure
-    }
-
-    this.itemDealsOwed.clear()
+    settle(failure === null)
+    if (failure) throw failure
     return answered
   }
 

@@ -743,6 +743,8 @@ async function main() {
     rateLimitRps: Number(process.env.BITRIX24_RATE_LIMIT_RPS ?? 2),
     requestTimeoutMs: Number(process.env.BITRIX24_REQUEST_TIMEOUT_MS ?? 30_000),
     callHistoryMonths: Number(process.env.BITRIX24_CALL_MONTHS ?? 1),
+    // A deal the line-item read gave up on. Progress stays silent here.
+    onWarning: (message) => console.warn(`  ${stamp()} ! ${message.trim()}`),
   })
 
   /*

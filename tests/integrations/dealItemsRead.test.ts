@@ -33,10 +33,12 @@ type Answer = readonly unknown[] | { error: string; error_description?: string }
 /**
  * A portal whose deals walk returns `deals()` and whose product rows answer
  * `rows(dealId, read)` — an array, an error, or `undefined` for a command it
- * left out. `read` counts the product-row batches, from 1.
+ * left out. `read` counts the product-row batches, from 1. `warnings` is what
+ * the provider said it gave up on.
  */
 function portal(rows: (dealId: string, read: number) => Answer, deals: () => readonly object[] = () => PAID) {
   const asked: string[][] = []
+  const warnings: string[] = []
   const json = (body: unknown) =>
     new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } })
 
@@ -66,9 +68,13 @@ function portal(rows: (dealId: string, read: number) => Answer, deals: () => rea
     fetchImpl,
     maxRetries: 0,
     rateLimitRps: 1000,
+    onWarning: (message) => warnings.push(message),
   })
-  return { provider, asked }
+  return { provider, asked, warnings }
 }
+
+/** A paid Доставка deal that is not one of `PAID`. */
+const paid = (ID: string) => ({ ...PAID[0]!, ID, TITLE: `Order ${ID}` })
 
 describe('reading line items', () => {
   it('reads every paid deal, billed to the method it spends', async () => {
@@ -135,23 +141,106 @@ describe('reading line items', () => {
     expect(asked).toHaveLength(2)
   })
 
-  it('does not ask every tick for a deal the portal says is gone', async () => {
+  /*
+    AN ERROR ABOUT ONE DEAL IS NOT A FAILED READ. A deal deleted between the
+    DEALS pass and this read answers «Not found»; failing the read over it
+    threw away every other deal's lines — in a one-shot import or resync,
+    thousands of them. It is left out of `dealsRead`, so its stored lines are
+    neither rewritten nor dropped, and asked about twice more before it is
+    given up.
+  */
+  it('keeps the deals it read when the portal says one is gone, and gives that one up', async () => {
     let quiet = false
-    const { provider, asked } = portal(
+    const { provider, asked, warnings } = portal(
       (id) => (id === '1002' ? { error: '', error_description: 'Not found' } : [LINE]),
       () => (quiet ? [] : PAID),
     )
     await provider.fetchDeals()
-    await expect(provider.fetchDealItems()).rejects.toThrow(/Not found/)
+    const page = await provider.fetchDealItems()
+
+    expect(page.items.map((i) => i.dealExternalId)).toEqual(['1001', '1003'])
+    expect(page.dealsRead).toEqual(['1001', '1003'])
     // A fact about one deal, not a refusal: nothing is held or shut.
     expect(provider.gate.hold(PRODUCT_ROWS, new Date())).toBeNull()
     expect(provider.gate.isOpen()).toBe(false)
 
+    // Quiet ticks: the deal is asked about twice more, then given up, once.
     quiet = true
+    for (let tick = 0; tick < 3; tick++) {
+      await provider.fetchDeals()
+      expect((await provider.fetchDealItems()).items).toEqual([])
+    }
+    expect(asked).toEqual([['1001', '1002', '1003'], ['1002'], ['1002']])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/1002.*Not found/)
+  })
+
+  /*
+    A COMMAND THE PORTAL NEVER ANSWERS MAY NOT FAIL EVERY READ AFTER IT.
+    Owed without a bound, it failed every later read — healthy new orders
+    included — and held the worker at its failure backoff until a restart.
+  */
+  it('gives up a deal the portal never answers, and reads the rest', async () => {
+    const walks: (readonly object[])[] = [PAID, [paid('2001')], [paid('2002')], []]
+    const { provider, asked, warnings } = portal(
+      (id) => (id === '1002' ? undefined : [LINE]),
+      () => walks.shift() ?? [],
+    )
+
+    await provider.fetchDeals()
+    await expect(provider.fetchDealItems()).rejects.toThrow(/javobsiz.*1002/)
+    await provider.fetchDeals()
+    await expect(provider.fetchDealItems()).rejects.toThrow(/javobsiz.*1002/)
+
+    // Its third miss is its last: the read stops failing and writes the rest.
     await provider.fetchDeals()
     const page = await provider.fetchDealItems()
+    expect(page.dealsRead!.slice().sort()).toEqual(['1001', '1003', '2001', '2002'])
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/1002.*javob yoʻq/)
 
-    expect(asked[1]!.sort()).toEqual(['1001', '1003'])
-    expect(page.items.map((i) => i.dealExternalId).sort()).toEqual(['1001', '1003'])
+    // And it is not asked about again.
+    await provider.fetchDeals()
+    expect((await provider.fetchDealItems()).items).toEqual([])
+    expect(asked).toHaveLength(3)
+    expect(asked.every((ids) => ids.includes('1002'))).toBe(true)
+  })
+
+  it('counts misses in a row: an answer starts them again, even in a read that fails', async () => {
+    // 1002 is silent on reads 1, 2 and 4 and answered on read 3, where 1003 is silent.
+    const { provider, warnings } = portal((id, read) => {
+      if (id === '1002') return read === 3 ? [LINE] : undefined
+      if (id === '1003') return read === 3 ? undefined : [LINE]
+      return [LINE]
+    })
+    await provider.fetchDeals()
+
+    for (let read = 1; read <= 4; read++) {
+      await expect(provider.fetchDealItems()).rejects.toThrow(/javobsiz/)
+    }
+    expect(warnings).toEqual([])
+  })
+
+  /*
+    A REFUSAL IS NOT THE DEAL'S MISS. A read the portal refused for everybody
+    leaves each deal's count where it was, so a block cannot hasten giving up
+    a deal the portal has merely not answered yet.
+  */
+  it('counts a refusal against no deal', async () => {
+    const overload = { error: 'OVERLOAD_LIMIT', error_description: 'REST API is blocked due to overload' }
+    const { provider, warnings } = portal((id, read) =>
+      read === 2 ? overload : id === '1002' ? undefined : [LINE],
+    )
+    await provider.fetchDeals()
+
+    await expect(provider.fetchDealItems()).rejects.toThrow(/javobsiz/) // 1002: its first miss
+    await expect(provider.fetchDealItems()).rejects.toThrow(/OVERLOAD_LIMIT/) // nobody's miss
+    expect(provider.gate.isOpen()).toBe(true)
+    expect(await provider.probe()).toBe(true) // the block lifts
+
+    await expect(provider.fetchDealItems()).rejects.toThrow(/javobsiz/) // its second
+    expect(warnings).toEqual([])
+    expect((await provider.fetchDealItems()).dealsRead).toEqual(['1001', '1003']) // its last
+    expect(warnings).toHaveLength(1)
   })
 })
