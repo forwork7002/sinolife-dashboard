@@ -206,9 +206,9 @@ export interface SverkaLine {
   readonly others: readonly MoyskladSide[]
   readonly issues: readonly SverkaIssue[]
   /**
-   * Queued before `MOYSKLAD_DATA_FLOOR`, past the warehouse and holding no
-   * MoySklad order: MoySklad could not have it, so it is in Bitrix24's figures
-   * and out of every comparison.
+   * A FAKT 1 or FAKT 2 deal queued before `MOYSKLAD_DATA_FLOOR`, past the
+   * warehouse and holding no MoySklad order: MoySklad could not have it, so it
+   * is in Bitrix24's figures and out of every comparison.
    */
   readonly beforeFloor: boolean
 }
@@ -391,9 +391,17 @@ export function compareDeal(bitrix: BitrixSide, orders: readonly MoyskladSide[])
       any order is not missing either: it is `beforeFloor`, compared with
       nothing. A packing order is `pending` whenever it arrived — its order is
       made when it leaves, after the floor.
+
+      Only a deal MoySklad should hold can be «before» it — one in FAKT 1 or
+      FAKT 2. An order refused at confirmation gets no MoySklad order on
+      either side of the floor, so it stays what it is after it: no issue,
+      and out of the «Ular FAKT raqamlarida bor» count, which it made untrue.
     */
     const beforeFloor =
-      phase !== 'PRE_WAREHOUSE' && bitrix.queuedAt !== null && bitrix.queuedAt < MOYSKLAD_DATA_FLOOR
+      (bitrix.fakt1 || bitrix.delivered) &&
+      phase !== 'PRE_WAREHOUSE' &&
+      bitrix.queuedAt !== null &&
+      bitrix.queuedAt < MOYSKLAD_DATA_FLOOR
     if (bitrix.fakt1 && phase !== 'PRE_WAREHOUSE' && !beforeFloor) issues.push('MISSING_IN_MS')
     return { dealId: bitrix.externalId, bitrix, moysklad: null, moyskladOrders: 0, others: [], issues, beforeFloor }
   }
