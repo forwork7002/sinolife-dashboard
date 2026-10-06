@@ -218,6 +218,26 @@ describe('LeadSplitCards', () => {
     expect(sum(posted[0]!.rows)).toBe(10_000)
   })
 
+  it('keeps a split that is not yet 100 % short of it across «Sonda» and back — Save stays off (2026-10-06 audit)', async () => {
+    data = fixture()
+    await draw()
+    fireEvent.click(screen.getByRole('button', { name: 'Taqsimotni belgilash' }))
+    fireEvent.change(screen.getByLabelText('Sevinch'), { target: { value: '50' } })
+    fireEvent.change(screen.getByLabelText('Gulzora'), { target: { value: '30' } })
+    const save = screen.getByRole('button', { name: 'Saqlash' }) as HTMLButtonElement
+    expect(save.disabled).toBe(true)
+
+    // 80 % of 289 new leads is 231 — never rescaled to the 289 nobody typed.
+    fireEvent.click(screen.getByRole('button', { name: 'Sonda' }))
+    expect((screen.getByLabelText('Sevinch') as HTMLInputElement).value).toBe('144')
+    expect((screen.getByLabelText('Gulzora') as HTMLInputElement).value).toBe('87')
+    expect(screen.getByText(/yana 58 ta taqsimlang/)).toBeTruthy()
+    expect(save.disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Foizda' }))
+    expect(save.disabled).toBe(true)
+  })
+
   it('refuses a percent finer than a basis point', async () => {
     data = fixture()
     await draw()

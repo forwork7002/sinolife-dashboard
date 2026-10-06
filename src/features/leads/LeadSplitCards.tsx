@@ -390,10 +390,18 @@ function PlanEditor({ data, rows, onDone }: { data: LeadSplitDto; rows: readonly
     },
   })
 
+  /*
+    The draft keeps its SIZE across the switch (2026-10-06 audit): 50 % + 30 %
+    of 289 new leads is 231 leads, not 289. Apportioned onto the whole target,
+    an unbalanced draft came out balanced, and Save stored shares nobody typed.
+  */
   const switchUnit = (next: Unit) => {
     if (next === unit) return
     if (!invalid && sum > 0) {
-      const converted = next === 'count' ? apportion(fresh, values) : apportion(SHARE_TOTAL_BP, values).map(pctOfBp)
+      const converted =
+        next === 'count'
+          ? apportion(Math.round((sum / 100) * fresh), values)
+          : apportion(Math.round((sum / fresh) * SHARE_TOTAL_BP), values).map(pctOfBp)
       setDraft(Object.fromEntries(rows.map((r, i) => [r.rop, values[i] ? String(converted[i]) : ''])))
     }
     setUnit(next)
