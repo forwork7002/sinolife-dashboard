@@ -142,4 +142,14 @@ describe('withinHours — the warmers’ working day (2026-10-06)', () => {
     expect(at('2026-10-06T18:00:00Z')).toBe(false) // 23:00
     expect(at('2026-10-06T21:00:00Z')).toBe(false) // 02:00
   })
+
+  it('opens a window that crosses midnight, rather than never', () => {
+    const at = (iso: string) => withinHours(new Date(iso), 'Asia/Tashkent', [22, 6])
+    expect(at('2026-10-06T16:59:59Z')).toBe(false) // 21:59:59
+    expect(at('2026-10-06T17:00:00Z')).toBe(true) // 22:00
+    expect(at('2026-10-06T21:00:00Z')).toBe(true) // 02:00
+    expect(at('2026-10-07T00:59:59Z')).toBe(true) // 05:59:59
+    expect(at('2026-10-07T01:00:00Z')).toBe(false) // 06:00
+    expect(withinHours(new Date('2026-10-06T05:00:00Z'), 'Asia/Tashkent', [7, 7])).toBe(false)
+  })
 })

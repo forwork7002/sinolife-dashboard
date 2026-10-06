@@ -50,10 +50,14 @@ export const OFF_HOURS = 'off-hours'
 /** What a warm-up answers: nothing once it has built, `OFF_HOURS` when it did not. */
 export type WarmOutcome = void | typeof OFF_HOURS
 
-/** Whether `now` is within the hours [from, to) of the day in `timeZone`. */
+/**
+ * Whether `now` is within the hours [from, to) of the day in `timeZone`. A
+ * window whose `from` is past its `to` crosses midnight — [22, 6] is 22:00
+ * to 05:59 — rather than never opening; `from` = `to` never opens.
+ */
 export function withinHours(now: Date, timeZone: string, [from, to]: readonly [number, number]): boolean {
   const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone }).format(now))
-  return hour >= from && hour < to
+  return from <= to ? hour >= from && hour < to : hour >= from || hour < to
 }
 
 /*
