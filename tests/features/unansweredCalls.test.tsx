@@ -77,8 +77,8 @@ describe('UnansweredCallsCard', () => {
 
   /*
     A callback reaches `call_record` only with the three-hourly CALLS pass; the
-    hint promised «bir-ikki daqiqa», and a colleague read a callback made at
-    10:05 as still owed until the next pass.
+    hint promised «bir-ikki daqiqa», so a reader could take a callback made,
+    say, at 10:05 for one still owed until the next pass.
   */
   it('says callbacks arrive with the three-hourly import, not within a minute or two', async () => {
     open()
