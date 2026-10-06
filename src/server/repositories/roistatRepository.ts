@@ -75,7 +75,7 @@ export interface RoistatBitrixRow extends RoistatBitrixCounters {
   /**
    * What the Collagen / Zextra switch files the row by — filled only when the
    * scan was asked for them (`brandKeys`), null otherwise. A lead row carries
-   * its own source and form (`brandTeam` null); a sale row carries the team
+   * its own source, form and «Проект» (`brandLine`; `brandTeam` null); a sale row carries the team
    * that sold it (`brandTeam` set, the other two null) and what its line
    * items say (`brandProduct`, `DealProductBrand` — the brand of a sale is
    * its product's, the team only when it has no line). Every grouping set is
@@ -83,6 +83,7 @@ export interface RoistatBitrixRow extends RoistatBitrixCounters {
    */
   readonly brandSource: string | null
   readonly brandForm: string | null
+  readonly brandLine: string | null
   readonly brandTeam: string | null
   readonly brandProduct: string | null
 }
@@ -153,7 +154,7 @@ export class RoistatRepository {
     const forms = shape === 'all' || brandKeys
     // Sales deals open after their lead; none can belong to the window once a month has passed.
     const scanEnd = new Date(Math.min(now.getTime(), period.end.getTime() + ORIGIN_LEAD_DAYS * 86_400_000))
-    const brandColumns = ['b_source', 'b_form', 'b_team', 'b_product']
+    const brandColumns = ['b_source', 'b_form', 'b_line', 'b_team', 'b_product']
     const setColumns: readonly (readonly string[])[] = shape === 'total'
       ? [[]]
       : shape === 'days'
@@ -222,6 +223,7 @@ export class RoistatRepository {
         registrar: string | null
         b_source: string | null
         b_form: string | null
+        b_line: string | null
         b_team: string | null
         b_product: string | null
         leads: bigint
@@ -249,7 +251,8 @@ export class RoistatRepository {
           s."name" AS source_name,
           ${forms ? dealFormTitleSql('d', 's', 'fa') : `CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END`} AS form_title,
           NULLIF(btrim(d."targetolog"), '') AS targetolog,
-          NULL::text AS product_line,
+          -- «Проект»: named, it is the lead's brand before its source and form (leadBrand).
+          NULLIF(btrim(d."productLine"), '') AS product_line,
           NULL::text AS region,
           NULL::text AS rop,
           NULL::text AS seller,
@@ -268,6 +271,7 @@ export class RoistatRepository {
           NULL::double precision AS deal_days,
           s."externalId" AS b_source,
           ${forms ? dealFormTitleSql('d', 's', 'fa') : 'NULL::text'} AS b_form,
+          NULLIF(btrim(d."productLine"), '') AS b_line,
           NULL::text AS b_team,
           NULL::text AS b_product
         FROM "deal" d
@@ -355,6 +359,7 @@ export class RoistatRepository {
           END AS deal_days,
           NULL::text AS b_source,
           NULL::text AS b_form,
+          NULL::text AS b_line,
           -- The rop column again: the team decides a sale with no line item (rnpSheet saleBrand).
           tm.team AS b_team,
           pb.brand AS b_product
@@ -459,6 +464,7 @@ export class RoistatRepository {
         registrar: r.registrar,
         brandSource: r.b_source ?? null,
         brandForm: r.b_form ?? null,
+        brandLine: r.b_line ?? null,
         brandTeam: r.b_team ?? null,
         brandProduct: r.b_product ?? null,
         leads: int(r.leads),

@@ -1136,6 +1136,8 @@ export interface LeadFakt1ClientRow {
   readonly source: string | null
   /** The lead's title when it names a CRM form — `RegistrationDayRow.formTitle`'s rule. */
   readonly formTitle: string | null
+  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  readonly productLine: string | null
   /** The matched phone's last nine digits: one client, however many contacts carry it. */
   readonly client: string
 }
@@ -5695,14 +5697,20 @@ export class InsightsRepository {
    */
   async leadFakt1Clients(period: Period): Promise<LeadFakt1ClientRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
-      { source_id: string | null; source: string | null; form_title: string | null; client: string }[]
+      { source_id: string | null; source: string | null; form_title: string | null; product_line: string | null; client: string }[]
     >(
       `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.leadFakt1ClientsSql()}`,
       period.start,
       period.end,
       null,
     )
-    return rows.map((r) => ({ sourceId: r.source_id, source: r.source, formTitle: r.form_title, client: r.client }))
+    return rows.map((r) => ({
+      sourceId: r.source_id,
+      source: r.source,
+      formTitle: r.form_title,
+      productLine: r.product_line,
+      client: r.client,
+    }))
   }
 
   /** Isolated so a test can pin it against the board's own predicates. */
@@ -5725,6 +5733,7 @@ export class InsightsRepository {
            s."name" AS source,
            -- A repeat lead's form from its SOURCE_DESCRIPTION (leadFormSql.ts); one per lead, min() only to aggregate.
            min(${dealFormTitleSql('l', 's', 'fa')}) AS form_title,
+           min(NULLIF(btrim(l."productLine"), '')) AS product_line,
            min(f.phone) AS client
       FROM "deal" l
       JOIN "pipeline" p ON p."id" = l."pipelineId" AND p."role" = 'LEAD'

@@ -745,7 +745,10 @@ Per-screen traps worth knowing before you touch one:
     Sadriddin (+Sevinchxon), Charos (+Malika)) — the rule from 2026-10-01
     until then. The same rule drives every screen's brand switch
     (`?brand=all|Collagen|Zextra|none`, «Brendsiz» the complement, so the
-    three slices add up to «Hammasi»); team BLOCKS stay team blocks; a LEAD's brand is its source (`LEAD_SOURCE_BRAND`, +
+    three slices add up to «Hammasi»); team BLOCKS stay team blocks; a LEAD's brand is its «Проект» field
+    first (`productLine`, UF_CRM_1750413928942 — since 2026-10-06, the
+    client's rule; «Kosmetika» or another non-brand project = none; filled on
+    ~a third of the leads so far), else its source (`LEAD_SOURCE_BRAND`, +
     collagen.sinolife and «Сммщик sinolifeuz» since 2026-10-02 — the map also
     marks «Lidlar»'s DM page rows), else its CRM form («zextra» in the name,
     then «collagen» — before the owner rule since 2026-10-02 — then a Kamron

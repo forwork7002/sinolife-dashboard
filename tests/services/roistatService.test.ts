@@ -43,6 +43,7 @@ function bitrixRow(set: RoistatBitrixRow['set'], fields: Partial<RoistatBitrixRo
     registrar: null,
     brandSource: null,
     brandForm: null,
+    brandLine: null,
     brandTeam: null,
     brandProduct: null,
     leads: 0,
@@ -407,6 +408,6 @@ describe('RoistatRepository.bitrix — which set a row is', () => {
     await repository.bitrix(PERIOD, NOW, 'days')
     await repository.bitrix(PERIOD, NOW, 'days', true)
     expect(sql[0]).toMatch(/GROUPING SETS \(\(\),\s*\(day\)\)/)
-    expect(sql[1]).toMatch(/GROUPING SETS \(\(b_source, b_form, b_team, b_product\),\s*\(day, b_source, b_form, b_team, b_product\)\)/)
+    expect(sql[1]).toMatch(/GROUPING SETS \(\(b_source, b_form, b_line, b_team, b_product\),\s*\(day, b_source, b_form, b_line, b_team, b_product\)\)/)
   })
 })

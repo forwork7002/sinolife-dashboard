@@ -224,7 +224,7 @@ export interface SpendDay {
   readonly metaLeads: number
 }
 
-/** The product a sales deal's own «Товар» field names, when it names one. */
+/** The brand a deal's «Проект» field (`productLine`) names, when it names one — a lead's first word on its brand. */
 export function productOfLine(productLine: string | null): TargetProduct | null {
   if (!productLine) return null
   if (/zextra|зекстра|зэкстра/i.test(productLine)) return 'Zextra'
@@ -251,8 +251,8 @@ const SET_OF: Partial<Record<RoistatDim, BitrixCutRow['set']>> = {
 
 /** What a cut needs from outside the domain, passed in so this file stays free of the service layer. */
 export interface RoistatLabelers {
-  /** RNP's `leadBrand`: source, then form. */
-  readonly brandOf: (sourceId: string | null, formTitle: string | null) => TargetProduct | null
+  /** RNP's `leadBrand`: «Проект», then source, then form. */
+  readonly brandOf: (sourceId: string | null, formTitle: string | null, productLine: string | null) => TargetProduct | null
   /** `leadChannel` over the portal's source vocabulary, for a lead no form opened. */
   readonly channelOf: (sourceId: string | null) => Exclude<LeadChannel, 'form'>
 }
@@ -276,9 +276,13 @@ export function bitrixLabel(dim: RoistatDim, row: BitrixCutRow, { brandOf, chann
     case 'source':
       return stated(row.sourceName)
     case 'product':
-      // A sale carries what it was paid for (`product_line`, its line items); a lead its source or form.
+      /*
+        A sale carries what it was paid for (`product_line`, its line items, as
+        a brand's name); a lead its «Проект», else its source or form — one
+        call, since `leadBrand` reads a named line first either way.
+      */
       if (row.productLine === ROISTAT_NO_PRODUCT) return ROISTAT_NO_PRODUCT
-      return productOfLine(row.productLine) ?? brandOf(row.sourceId, row.formTitle) ?? ROISTAT_NO_PRODUCT
+      return brandOf(row.sourceId, row.formTitle, row.productLine) ?? ROISTAT_NO_PRODUCT
     case 'region':
       return stated(row.region)
     case 'rop':

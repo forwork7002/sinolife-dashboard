@@ -23,9 +23,11 @@ import type { TargetProduct } from '@/server/domain/types'
 
 /*
   RNP's `leadBrand` lives in a service, which loads `env`; the cut only needs
-  a brand reader handed in, so a two-line one stands in for it here.
+  a brand reader handed in, so a short one stands in for it here — the
+  «Проект» first, as the real one reads it.
 */
-function leadBrand(_sourceId: string | null, formTitle: string | null): TargetProduct | null {
+function leadBrand(_sourceId: string | null, formTitle: string | null, productLine: string | null): TargetProduct | null {
+  if (productLine) return productOfLine(productLine)
   if (!formTitle) return null
   return /zextra/i.test(formTitle) ? 'Zextra' : 'Collagen'
 }
@@ -164,7 +166,7 @@ describe('bitrixCut', () => {
     expect(bitrixCut('form', rows, labelers).get('Sinolife (UMAR) 777')?.leads).toBe(3)
   })
 
-  it('files a sale by what it was paid for (its product_line), a lead by its source or form', () => {
+  it('files a sale by what it was paid for (its product_line), a lead by its «Проект», else its source or form', () => {
     const zextraForm = 'Заполнение CRM-формы "Kamron-zextra Zextra 6 etapli filtr forma 05.07"'
     const rows = [
       row('product', { formTitle: zextraForm, leads: 4 }),
@@ -173,9 +175,15 @@ describe('bitrixCut', () => {
       // «Boshqa» (another product) is final — the lead's brand does not overrule it.
       row('product', { formTitle: zextraForm, productLine: ROISTAT_NO_PRODUCT, sold: 1, soldMinor: 50n }),
       row('product', { productLine: 'Zextra', sold: 1, soldMinor: 30n }),
+      // A lead whose «Проект» names a brand is that brand's, whatever its form says.
+      row('product', { formTitle: zextraForm, productLine: 'Collagen Marine', leads: 2 }),
+      // A «Проект» that is neither brand («Kosmetika») is brandless, not the form's.
+      row('product', { formTitle: zextraForm, productLine: 'Kosmetika', leads: 1 }),
     ]
     const cut = bitrixCut('product', rows, labelers)
     expect(cut.get('Zextra')?.leads).toBe(4)
+    expect(cut.get('Collagen')?.leads).toBe(2)
+    expect(cut.get(ROISTAT_NO_PRODUCT)?.leads).toBe(1)
     expect(cut.get('Zextra')?.soldMinor).toBe(30n)
     expect(cut.get('Collagen')?.soldMinor).toBe(100n)
     expect(cut.get(ROISTAT_NO_PRODUCT)?.soldMinor).toBe(50n)

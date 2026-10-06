@@ -71,11 +71,11 @@ describe('RnpRepository statements', () => {
     expect(sql).toContain(`LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"`)
   })
 
-  it('reads leads and kval in one UNION of two arms, summed per day × source × form', () => {
+  it('reads leads and kval in one UNION of two arms, summed per day × source × form × «Проект»', () => {
     const sql = bare(RnpRepository.registrationDaysSql())
     expect(sql).toContain('UNION ALL')
     expect(sql).not.toContain('FULL JOIN')
-    expect(sql).toMatch(/sum\(leads\)::bigint AS leads[\s\S]*sum\(qualified\)::bigint AS qualified[\s\S]*GROUP BY 1, 2, 3\s*$/)
+    expect(sql).toMatch(/sum\(leads\)::bigint AS leads[\s\S]*sum\(qualified\)::bigint AS qualified[\s\S]*GROUP BY 1, 2, 3, 4\s*$/)
   })
 
   it('reads the window\'s deals once: the form aliases come from the rows the first arm counts', () => {

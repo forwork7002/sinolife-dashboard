@@ -28,6 +28,7 @@ import { type RnpOverviewDto, buildRnpSheet } from '@/server/domain/rnp/rnpSheet
 import { type Period, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
 import { ZEXTRA_ONLY_TARGETOLOGS, formNameOf, formOwner } from '@/server/domain/leads/leadSources'
+import { productOfLine } from '@/server/domain/roistat/roistatCuts'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
 import { adBudgetProduct } from '@/server/integrations/meta/accounts'
 import { logger } from '@/server/logging/logger'
@@ -235,7 +236,7 @@ export class RnpService {
       teams: rows.teams,
       fakt: rows.fakt,
       leads: rows.leads,
-      registration: rows.registration.map((r) => ({ ...r, brand: leadBrand(r.sourceId, r.formTitle) })),
+      registration: rows.registration.map((r) => ({ ...r, brand: leadBrand(r.sourceId, r.formTitle, r.productLine) })),
       registrarKval: rows.registrarKval,
       calls: rows.calls,
       warehouse: rows.warehouse,
@@ -361,7 +362,12 @@ export class RnpService {
 }
 
 /**
- * A Регистрация lead's brand: its source when the source is a brand's page or
+ * A Регистрация lead's brand: its «Проект» field first (`productLine`, the
+ * client's rule of 2026-10-06 — whatever the deal names, the registrar or the
+ * AI chose it; a project that is neither brand, «Kosmetika», is brandless);
+ * the portal fills it on a share of the leads so far (06.10: 315 of 930 —
+ * «Исход» repeats and part of the AI's), so an empty one falls through to
+ * the rule below. Then its source when the source is a brand's page or
  * line; else its CRM form's — «zextra» or «collagen» in the name, then a
  * Kamron or Tursunbek form (their Meta accounts are all Zextra; «Kamron 6 etap filt forma»
  * names no product); any other form sold the collagen (every form of
@@ -371,7 +377,12 @@ export class RnpService {
  * brand (an operator's outgoing call, a lead typed in by hand) — the P&L
  * prints those as «brendsiz».
  */
-export function leadBrand(sourceId: string | null, formTitle: string | null): TargetProduct | null {
+export function leadBrand(
+  sourceId: string | null,
+  formTitle: string | null,
+  productLine: string | null = null,
+): TargetProduct | null {
+  if (productLine !== null && productLine.trim() !== '') return productOfLine(productLine)
   const bySource = sourceId === null ? undefined : LEAD_SOURCE_BRAND[sourceId]
   if (bySource) return bySource
   const form = formNameOf(formTitle)

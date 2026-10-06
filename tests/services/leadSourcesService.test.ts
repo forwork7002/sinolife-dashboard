@@ -24,6 +24,7 @@ const reg = (over: Partial<RegistrationDayRow>): RegistrationDayRow => ({
   sourceId: 'REPEAT_SALE',
   source: 'Ген лид',
   formTitle: null,
+  productLine: null,
   stage: 'Сделка успешна',
   status: 'WON',
   aiQualified: false,
@@ -50,6 +51,7 @@ const fakt1 = (over: Partial<LeadFakt1ClientRow>): LeadFakt1ClientRow => ({
   sourceId: 'REPEAT_SALE',
   source: 'Ген лид',
   formTitle: UMAR_FORM,
+  productLine: null,
   client: '901234567',
   ...over,
 })
@@ -115,21 +117,21 @@ describe('leadSourcesOverview', () => {
     ],
     // WON in the window, whenever the deal arrived — 6 in all.
     qualified: [
-      { sourceId: 'REPEAT_SALE', formTitle: null, aiQualified: false, qualified: 3 },
-      { sourceId: 'UC_1X1J24', formTitle: null, aiQualified: true, qualified: 1 },
-      { sourceId: 'UC_KPZA32', formTitle: null, aiQualified: false, qualified: 1 },
-      { sourceId: null, formTitle: null, aiQualified: false, qualified: 1 },
+      { sourceId: 'REPEAT_SALE', formTitle: null, productLine: null, aiQualified: false, qualified: 3 },
+      { sourceId: 'UC_1X1J24', formTitle: null, productLine: null, aiQualified: true, qualified: 1 },
+      { sourceId: 'UC_KPZA32', formTitle: null, productLine: null, aiQualified: false, qualified: 1 },
+      { sourceId: null, formTitle: null, productLine: null, aiQualified: false, qualified: 1 },
     ],
     // «ИИ квал сана» in the window, any creation day — 6 in Регистрация (one a duplicate), 3 moved on.
     aiQualified: [
-      { registration: true, sourceId: null, formTitle: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
-      { registration: true, sourceId: null, formTitle: null, stage: 'Обработка', status: 'OPEN', leads: 3 },
-      { registration: true, sourceId: null, formTitle: null, stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 },
+      { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
+      { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 3 },
+      { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 },
       // The red «Дубликат» is no «Дубль лид» (the client, 2026-10-02): still a fresh lead here.
-      { registration: true, sourceId: null, formTitle: null, stage: 'Дубликат', status: 'OPEN', leads: 1 },
+      { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Дубликат', status: 'OPEN', leads: 1 },
       // Already in Первичный отдел / Доставка: a repeat, counted on no tile (the client, 2026-10-03).
-      { registration: false, sourceId: null, formTitle: null, stage: 'Новая', status: 'OPEN', leads: 2 },
-      { registration: false, sourceId: null, formTitle: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
+      { registration: false, sourceId: null, formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', leads: 2 },
+      { registration: false, sourceId: null, formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
     ],
     // «Сарафан маркетинг» in Ecommerce: 3 created, 2 delivered (the client, 2026-10-05).
     sarafan: { leads: 3, qualified: 2 },
@@ -175,7 +177,7 @@ describe('leadSourcesOverview', () => {
   })
 
   it('leaves the kval price unknown, not free, when no Meta spend was read', () => {
-    const noMeta = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [reg({})], triage: [], campaigns: [], fakt1: [], qualified: [{ sourceId: 'REPEAT_SALE', formTitle: null, aiQualified: false, qualified: 5 }], aiQualified: [], sarafan: NO_SARAFAN })
+    const noMeta = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [reg({})], triage: [], campaigns: [], fakt1: [], qualified: [{ sourceId: 'REPEAT_SALE', formTitle: null, productLine: null, aiQualified: false, qualified: 5 }], aiQualified: [], sarafan: NO_SARAFAN })
     expect(noMeta.funnel.costPerQualifiedUsd).toBeNull()
   })
 
@@ -388,12 +390,12 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     ],
     fakt1: [fakt1({ formTitle: KAMRON_FORM }), fakt1({ sourceId: 'UC_1X1J24', formTitle: null, client: '907654321' })],
     qualified: [
-      { sourceId: 'REPEAT_SALE', formTitle: KAMRON_FORM, aiQualified: false, qualified: 2 },
-      { sourceId: 'UC_1X1J24', formTitle: null, aiQualified: false, qualified: 1 },
+      { sourceId: 'REPEAT_SALE', formTitle: KAMRON_FORM, productLine: null, aiQualified: false, qualified: 2 },
+      { sourceId: 'UC_1X1J24', formTitle: null, productLine: null, aiQualified: false, qualified: 1 },
     ],
     aiQualified: [
-      { registration: true, sourceId: 'UC_A8LE21', formTitle: null, stage: 'Обработка', status: 'OPEN', leads: 1 },
-      { registration: true, sourceId: null, formTitle: null, stage: 'Обработка', status: 'OPEN', leads: 2 },
+      { registration: true, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 1 },
+      { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 2 },
     ],
     sarafan: { leads: 3, qualified: 2 },
     inboundCalls: 9,
@@ -429,6 +431,12 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     expect(zextra.tiles.rows.find((r) => r.tile === 'sarafan')!.leads).toBe(0)
     expect(all.inboundCalls).toBe(9)
     expect(zextra.inboundCalls).toBeNull()
+  })
+
+  it('reads a lead\'s «Проект» before its source: an «Исход» call the floor marked Zextra is Zextra\'s', () => {
+    const marked = { ...input, registration: [...input.registration, reg({ sourceId: 'UC_KPZA32', source: 'Исход', productLine: 'Zextra sure', leads: 2 })] }
+    expect(leadSourcesOverview({ ...marked, brand: 'Zextra' }).funnel.total).toBe(zextra.funnel.total + 2)
+    expect(leadSourcesOverview({ ...marked, brand: 'none' }).funnel.total).toBe(7)
   })
 
   it('files what no brand claims under «Brendsiz» — the three add up to «Hammasi»', () => {

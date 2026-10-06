@@ -20,6 +20,8 @@ export interface RegistrationDayRow {
    * the domain's to read (`formNameOf`) — one regex, one home.
    */
   readonly formTitle: string | null
+  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  readonly productLine: string | null
   readonly stage: string
   /** DealStatus: OPEN, WON or LOST. */
   readonly status: string
@@ -33,6 +35,8 @@ export interface QualifiedSourceRow {
   readonly sourceId: string | null
   /** The deal's title when it names a CRM form — what the Collagen / Zextra switch reads after the source. */
   readonly formTitle: string | null
+  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  readonly productLine: string | null
   readonly aiQualified: boolean
   readonly qualified: number
 }
@@ -44,6 +48,8 @@ export interface AiQualifiedStageRow {
   /** Source and CRM-form title — for the Collagen / Zextra switch (`leadBrand`). */
   readonly sourceId: string | null
   readonly formTitle: string | null
+  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  readonly productLine: string | null
   readonly stage: string
   /** DealStatus: OPEN, WON or LOST. */
   readonly status: string
@@ -90,6 +96,7 @@ export class LeadSourcesRepository {
         source_id: string | null
         source: string | null
         form_title: string | null
+        product_line: string | null
         stage: string | null
         status: string
         ai_qualified: boolean
@@ -104,7 +111,7 @@ export class LeadSourcesRepository {
       */
       WITH reg AS MATERIALIZED (
         SELECT d."createdAtSource" AS created, d."title" AS title, ${sourceDescriptionSql('d')} AS sd,
-               d."sourceId", d."stageId", d."status", d."aiQualifiedAt"
+               d."sourceId", d."stageId", d."status", d."aiQualifiedAt", NULLIF(btrim(d."productLine"), '') AS product_line
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
         WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
@@ -126,6 +133,7 @@ export class LeadSourcesRepository {
           (leadFormSql.ts).
         */
         ${leadFormTitleSql('r.title', 'r.sd', 's."externalId"', 'fa.title')} AS form_title,
+        r.product_line,
         st."name" AS stage,
         r."status"::text AS status,
         (r."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
@@ -134,7 +142,7 @@ export class LeadSourcesRepository {
       LEFT JOIN "deal_stage" st ON st."id" = r."stageId"
       LEFT JOIN "sales_source" s ON s."id" = r."sourceId"
       LEFT JOIN form_alias fa ON fa.sd = r.sd
-      GROUP BY 1, 2, 3, 4, 5, 6, 7
+      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
       `,
       period.start,
       period.end,
@@ -145,6 +153,7 @@ export class LeadSourcesRepository {
       sourceId: r.source_id,
       source: r.source,
       formTitle: r.form_title,
+      productLine: r.product_line,
       stage: r.stage ?? '—',
       status: r.status,
       aiQualified: r.ai_qualified,
@@ -163,13 +172,14 @@ export class LeadSourcesRepository {
    */
   async qualifiedSources(period: Period): Promise<QualifiedSourceRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
-      { source_id: string | null; form_title: string | null; ai_qualified: boolean; qualified: bigint }[]
+      { source_id: string | null; form_title: string | null; product_line: string | null; ai_qualified: boolean; qualified: bigint }[]
     >(
       `
       WITH ${formAliasCteSql('$1', '$2')}
       SELECT
         s."externalId" AS source_id,
         ${dealFormTitleSql('d', 's', 'fa')} AS form_title,
+        NULLIF(btrim(d."productLine"), '') AS product_line,
         (d."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
         count(*)::bigint AS qualified
       FROM "deal" d
@@ -177,7 +187,7 @@ export class LeadSourcesRepository {
       LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
       ${formAliasJoinSql('d', 'fa')}
       WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2
-      GROUP BY 1, 2, 3
+      GROUP BY 1, 2, 3, 4
       `,
       period.start,
       period.end,
@@ -185,6 +195,7 @@ export class LeadSourcesRepository {
     return rows.map((r) => ({
       sourceId: r.source_id,
       formTitle: r.form_title,
+      productLine: r.product_line,
       aiQualified: r.ai_qualified,
       qualified: Number(r.qualified),
     }))
@@ -248,6 +259,7 @@ export class LeadSourcesRepository {
         registration: boolean
         source_id: string | null
         form_title: string | null
+        product_line: string | null
         stage: string | null
         status: string
         leads: bigint
@@ -258,6 +270,7 @@ export class LeadSourcesRepository {
         COALESCE(p."role" = 'LEAD', false) AS registration,
         s."externalId" AS source_id,
         CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END AS form_title,
+        NULLIF(btrim(d."productLine"), '') AS product_line,
         st."name" AS stage,
         d."status"::text AS status,
         count(*)::bigint AS leads
@@ -266,7 +279,7 @@ export class LeadSourcesRepository {
       LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
       LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
       WHERE d."aiQualifiedAt" >= $1 AND d."aiQualifiedAt" < $2
-      GROUP BY 1, 2, 3, 4, 5
+      GROUP BY 1, 2, 3, 4, 5, 6
       `,
       period.start,
       period.end,
@@ -275,6 +288,7 @@ export class LeadSourcesRepository {
       registration: r.registration,
       sourceId: r.source_id,
       formTitle: r.form_title,
+      productLine: r.product_line,
       stage: r.stage ?? '—',
       status: r.status,
       leads: Number(r.leads),

@@ -267,6 +267,18 @@ describe('leadBrand', () => {
     expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Kamron-zextra 01.10»')).toBe('Zextra')
   })
 
+  it('takes the «Проект» field before the page and the form (2026-10-06)', () => {
+    expect(leadBrand('REPEAT_SALE', null, 'Collagen Marine')).toBe('Collagen')
+    expect(leadBrand('REPEAT_SALE', null, 'Sinolife collagen tabletka')).toBe('Collagen')
+    expect(leadBrand('UC_1X1J24', null, 'Zextra sure')).toBe('Zextra')
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Zextra Umar 3»', 'Collagen Marine')).toBe('Collagen')
+    // A project that is neither brand is brandless, not its page's.
+    expect(leadBrand('UC_1X1J24', null, 'Kosmetika')).toBeNull()
+    // Empty, it decides nothing.
+    expect(leadBrand('UC_AA84D0', null, '  ')).toBe('Zextra')
+    expect(leadBrand('UC_AA84D0', null, null)).toBe('Zextra')
+  })
+
   it('brands the Sinolife pages added on 2026-10-02, and a form title with no closing quote', () => {
     expect(leadBrand('UC_NBCV5K', null)).toBe('Collagen') // collagen.sinolife
     expect(leadBrand('UC_5JW4YK', null)).toBe('Collagen') // Сммщик sinolifeuz

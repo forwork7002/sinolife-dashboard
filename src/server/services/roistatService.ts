@@ -171,7 +171,7 @@ export interface RoistatQuery {
 
 /**
  * The Bitrix scan narrowed to one brand: a lead by RNP's `leadBrand` (its
- * source, then its form), a sale by the product it was paid for (`saleBrand`;
+ * «Проект», then its source, then its form), a sale by the product it was paid for (`saleBrand`;
  * its team only when it has no line item) — as RNP's «Коллаген / Зехтра
  * проект» reads it, so the switch and the P&L agree on every sale and on
  * every lead whose title names its form. A repeat lead («Такрор - обработка»)
@@ -187,7 +187,7 @@ function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: BrandFilter): P
       brand,
       row.brandTeam !== null
         ? saleBrand(row.brandProduct as DealProductBrand, row.brandTeam)
-        : leadBrand(row.brandSource, row.brandForm),
+        : leadBrand(row.brandSource, row.brandForm, row.brandLine),
     ),
   )
 }

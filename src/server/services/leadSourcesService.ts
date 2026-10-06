@@ -341,7 +341,7 @@ type LeadSourcesInput = Parameters<typeof leadSourcesOverview>[0]
 /**
  * The tab's inputs narrowed to one brand — RNP's rules, so the switch agrees
  * with RNP's «Коллаген / Зехтра проект»: a lead (and its kval, its FAKT 1
- * client, the AI's mark) by `leadBrand` — its source, then its form; a chat
+ * client, the AI's mark) by `leadBrand` — its «Проект», then its source, then its form; a chat
  * by its page; Meta money by its ad budget (`adBudgetProduct`). What
  * nothing ties to a brand — an outgoing call, a hand-typed lead, a page no
  * brand claims, hiring money — is «Brendsiz», and so are «Сарафан» and the
@@ -349,8 +349,8 @@ type LeadSourcesInput = Parameters<typeof leadSourcesOverview>[0]
  * tab, so Collagen + Zextra + Brendsiz is «Hammasi» on every count.
  */
 function ofBrand(input: LeadSourcesInput, brand: Exclude<BrandFilter, 'all'>): LeadSourcesInput {
-  const lead = (row: { sourceId: string | null; formTitle: string | null }) =>
-    brandMatches(brand, leadBrand(row.sourceId, row.formTitle))
+  const lead = (row: { sourceId: string | null; formTitle: string | null; productLine: string | null }) =>
+    brandMatches(brand, leadBrand(row.sourceId, row.formTitle, row.productLine))
   const brandless = brand === 'none'
   return {
     ...input,

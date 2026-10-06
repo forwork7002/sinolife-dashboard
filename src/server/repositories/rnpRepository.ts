@@ -49,6 +49,8 @@ export interface RnpRegistrationDayRow {
   /** The lead's SOURCE_ID, and the CRM form's full title when it came from one — what decides its brand. */
   readonly sourceId: string | null
   readonly formTitle: string | null
+  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  readonly productLine: string | null
   /** Регистрация deals created, «Дубликат (лид)» excluded (the red «Дубликат» is a lead). */
   readonly leads: number
   readonly duplicates: number
@@ -209,6 +211,7 @@ export class RnpRepository {
       day: string
       source_id: string | null
       form_title: string | null
+      product_line: string | null
       leads: bigint
       duplicates: bigint
       qualified: bigint
@@ -228,6 +231,7 @@ export class RnpRepository {
       day: r.day,
       sourceId: r.source_id,
       formTitle: r.form_title,
+      productLine: r.product_line,
       leads: Number(r.leads),
       duplicates: Number(r.duplicates),
       qualified: Number(r.qualified),
@@ -253,7 +257,7 @@ export class RnpRepository {
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
     const hi = `(($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
     /*
-      Grouped by source and CRM-form title as well as the day, so the P&L can
+      Grouped by source, CRM-form title and «Проект» as well as the day, so the P&L can
       tell a Collagen lead from a Zextra one — the SAME scan, which is the
       whole cost of this statement; a form's deals share one title, so the
       rows stay a few hundred. Two arms UNIONed and summed rather than a FULL
@@ -272,7 +276,8 @@ export class RnpRepository {
     return `
       WITH reg AS MATERIALIZED (
         SELECT d."createdAtSource" AS created, p."role"::text AS role, st."name" AS stage,
-               s."externalId" AS source_id, d."title" AS title, ${sourceDescriptionSql('d')} AS sd
+               s."externalId" AS source_id, d."title" AS title, ${sourceDescriptionSql('d')} AS sd,
+               NULLIF(btrim(d."productLine"), '') AS product_line
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" IN ('LEAD', 'AI_TRIAGE')
         LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
@@ -284,32 +289,34 @@ export class RnpRepository {
         SELECT ${day('r.created')} AS day,
                r.source_id,
                ${leadFormTitleSql('r.title', 'r.sd', 'r.source_id', 'fa.title')} AS form_title,
+               r.product_line,
                count(*) FILTER (WHERE r.role = 'LEAD' AND NOT ${duplicate}) AS leads,
                count(*) FILTER (WHERE r.role = 'LEAD' AND ${duplicate}) AS duplicates,
                0::bigint AS qualified,
                count(*) FILTER (WHERE r.role = 'AI_TRIAGE') AS ai
         FROM reg r
         LEFT JOIN form_alias fa ON fa.sd = r.sd
-        GROUP BY 1, 2, 3
+        GROUP BY 1, 2, 3, 4
         UNION ALL
         SELECT ${day('d."closedAt"')} AS day,
                s."externalId" AS source_id,
                ${dealFormTitleSql('d', 's', 'fa')} AS form_title,
+               NULLIF(btrim(d."productLine"), '') AS product_line,
                0, 0, count(*), 0
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
         LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
         ${formAliasJoinSql('d', 'fa')}
         WHERE d."status" = 'WON' AND d."closedAt" >= ${lo} AND d."closedAt" < ${hi}
-        GROUP BY 1, 2, 3
+        GROUP BY 1, 2, 3, 4
       )
-      SELECT day::text AS day, source_id, form_title,
+      SELECT day::text AS day, source_id, form_title, product_line,
              sum(leads)::bigint AS leads,
              sum(duplicates)::bigint AS duplicates,
              sum(qualified)::bigint AS qualified,
              sum(ai)::bigint AS ai
       FROM arms
-      GROUP BY 1, 2, 3`
+      GROUP BY 1, 2, 3, 4`
   }
 
   async callDays(from: string, to: string): Promise<RnpCallDayRow[]> {
