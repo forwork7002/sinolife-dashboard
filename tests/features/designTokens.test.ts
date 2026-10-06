@@ -372,29 +372,10 @@ describe('muted ink holds 4.5:1 wherever it lands', () => {
   })
 
   /*
-    The title band: html's series-1 pool, the aurora's accent blob and the
-    grain all paint under PageShell's 12px muted lead line. The shares are
-    the geometry .page-atmosphere::before's comment derives — at most 0.77 of
-    the pool reaches the screen, at most 0.45 of the blob reaches that line,
-    and the grain averages half its opacity of mid-grey. The first version of
-    that check left the pool out and read the line as passing.
+    The title band — the backdrop, the aurora and the grain under PageShell's
+    lead line — moved to glassContrast.test.ts with the rest of the
+    backdrop's arithmetic when glass went in.
   */
-  it('under the title band at its worst, for every pool accent', () => {
-    const POOL_SHARE = 0.77
-    const BLOB_SHARE = 0.45
-    const pool = fraction(/html\s*\{[^}]*?color-mix\(in oklab, var\(--accent\) ([\d.]+%), transparent\)/.exec(CSS)![1]!)
-    for (const theme of THEMES) {
-      const atmos = fraction(token(theme, '--atmos-mix-accent'))
-      const grain = Number(token(theme, '--grain-alpha')) / 2
-      for (const slot of ACCENT_POOL) {
-        let ground = colour(theme, 'var(--page)')
-        ground = over(colour(theme, 'var(--series-1)'), pool * POOL_SHARE, ground)
-        ground = over(colour(theme, `var(--series-${slot})`), atmos * BLOB_SHARE, ground)
-        ground = over([128, 128, 128], grain, ground)
-        expect(contrast(colour(theme, 'var(--ink-muted)'), ground), `${theme} slot ${slot}`).toBeGreaterThanOrEqual(4.5)
-      }
-    }
-  })
 })
 
 describe('floating chrome and modal scrims', () => {

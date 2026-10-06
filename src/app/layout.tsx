@@ -32,8 +32,8 @@ export const viewport: Viewport = {
     `tests/features/theme.test.ts` now pins them to globals.css.
   */
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#edf0fa' },
-    { media: '(prefers-color-scheme: dark)', color: '#070b1c' },
+    { media: '(prefers-color-scheme: light)', color: '#edf1fb' },
+    { media: '(prefers-color-scheme: dark)', color: '#060a1a' },
   ],
 }
 

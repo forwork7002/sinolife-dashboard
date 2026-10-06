@@ -54,9 +54,15 @@
   color-scheme: light;
 
   /* --- Surfaces and ink ------------------------------------------------- */
-  --page: #edf0fa;
+  /* The ground under the backdrop's four pools (--backdrop, «Shisha» below). */
+  --page: #edf1fb;
   --surface: #f7f8fd;
-  --surface-raised: #ffffff;
+  /* OPAQUE, and it stays opaque: the colour of everything that must never be
+     see-through — pinned table cells and every table's ground, tooltips, the
+     org chart, the TV board. It is the glass card (--glass-card) composited
+     over the bare --page, so an opaque part sits inside a glass one as the
+     same colour wherever the backdrop is unlit. */
+  --surface-raised: #fbfcfe;
   /* Sunken: table headers, inset panels, the well behind a chart. */
   --surface-sunken: #e8ebf6;
   --ink-primary: #0f1533;
@@ -65,21 +71,22 @@
    * Chosen against the WORST surface it lands on, not against white.
    *
    * It carries every label, column header and hint in the application, and it
-   * appears on three light surfaces. Picked against `--surface` alone it
-   * cleared 4.83:1 there and 4.24:1 on `--surface-sunken`, which is the table
-   * header — the place a column label most needs to be legible.
+   * appears on every surface there is. Picked against `--surface` alone it
+   * once cleared 4.83:1 there and 4.24:1 on `--surface-sunken`, which is the
+   * table header — the place a column label most needs to be legible.
    *
-   *   on --raised  #ffffff        5.79:1
-   *   on --page    #edf0fa        5.09:1
-   *   on --sunken  #e8ebf6        4.87:1
-   *   on --grid    #e1e5f2        4.61:1   ← the one that decides the value
+   *   on --raised  #fbfcfe                       6.28:1
+   *   on --sunken  #e8ebf6                       5.41:1
+   *   on --grid    #e1e5f2                       5.12:1
+   *   on the page, under two pools at 60%        5.04:1
+   *   under the title band's worst light         4.86:1   ← the one that decides
    *
-   * --grid is a surface too: the palette's active row, a hovered filter
-   * option and the quiet rank chips put muted text on it. At #5c6785 it read
-   * 4.47:1 there, and 4.45:1 under the title band's worst light (see
-   * .page-atmosphere::before); two steps darker clears both.
+   * Glass moved the floor: the backdrop's pools darken the light page, and
+   * the page is a surface text sits on (titles, lead lines, the filter row).
+   * #5a6583 read 4.53:1 on the pooled page; #535e7c keeps a margin there and
+   * under the title band, where the aurora darkens it a little further.
    */
-  --ink-muted: #5a6583;
+  --ink-muted: #535e7c;
   --grid: #e1e5f2;
   /* What an empty track is drawn in. Same as --grid in light; dark needs its
      own step because --grid on a raised card measured 1.07:1 there — a ring's
@@ -117,7 +124,12 @@
   --series-1: #2f66f0; /* blue */
   --series-2: #ca4c07; /* orange */
   --series-3: #00897d; /* teal */
-  --series-4: #be8b1e; /* amber */
+  /* Amber, and the darkest of the eight on purpose: #be8b1e was 3.04:1 on
+     white and under 3:1 on every other light surface (2.38 on the page under
+     two pools). #a07410 clears 3:1 on all of them — 3.29 at the worst — and
+     re-passes the validator (CVD ΔE 10.6, normal ΔE 17.2). It sits 7.7 ΔE
+     from --status-warning, the distance dark mode's pair has always had. */
+  --series-4: #a07410; /* amber */
   --series-5: #e93882; /* pink */
   --series-6: #528118; /* olive */
   --series-7: #8749fb; /* violet */
@@ -131,14 +143,18 @@
   --seq-650: #1538bc;
 
   /* --- Status — reserved, never reused as a series colour ---------------- */
-  /* Each step clears 4.5:1 on the card and the page, so a status may carry
-     TEXT and not only a mark (tightest: light critical, 5.34 on the card and
-     4.69 on the page). Not on a recess: on --surface-sunken light critical is
-     4.49:1 and on --grid 4.24 — keep status text off those. It still ships
-     with an icon or a word; colour alone is not a channel. */
+  /* Each step clears 4.5:1 on every surface status text can land on — the
+     page and the glass card over every pool of the backdrop, the chrome, a
+     floating panel, the sunken band and the hero's bloom — so a status may
+     carry TEXT and not only a mark (tightest: warning 4.66 and good 4.68 on
+     the page under two pools). Glass moved two of them: warning from #915c00
+     (4.40:1 on the pooled page) and critical from #d02222 (4.18 there, 4.49
+     on --surface-sunken). Still not on --grid or a control's well; keep
+     status text off those. It ships with an icon or a word; colour alone is
+     not a channel. */
   --status-good: #00733a;
-  --status-warning: #915c00;
-  --status-critical: #d02222;
+  --status-warning: #8d5800;
+  --status-critical: #c50f16;
 
   --delta-up: #006a31;
   --delta-down: #c31d1d;
@@ -251,10 +267,10 @@
    * NO ONE INK CLEARS 4.5:1 ON EVERY SLOT, so there are two, measured per slot:
    *
    *   --ink-on-series         slots 1, 2, 6, 7, 8 (and --ink-muted as a fill)
-   *     light #ffffff    4.91 · 4.62 · 4.65 · 4.80 · 4.78   (muted 5.79)
+   *     light #ffffff    4.91 · 4.62 · 4.65 · 4.80 · 4.78   (muted 6.44)
    *     dark  #02040c    6.31 · 5.24 · 4.59 · 5.78 · 5.07   (muted 7.47)
    *   --ink-on-series-bright  slots 3, 4, 5 — teal, amber, pink
-   *     #02040c, both    light 4.75 · 6.73 · 5.22   dark 9.89 · 6.65 · 6.00
+   *     #02040c, both    light 4.75 · 4.88 · 5.22   dark 9.89 · 6.65 · 6.00
    *
    * This was one theme-free #fff said to clear every slot in both modes. In
    * light it failed teal, amber and pink (4.31 / 3.04 / 3.92); in dark it
@@ -309,9 +325,10 @@
 
   /* Film grain strength. Doubled in dark, where a flat hex wall is most
      visibly flat. 2% is a ceiling, not a taste: the worst-case contrast
-     check on .page-atmosphere::before folds the grain in and leaves light
-     --ink-muted 4.58:1 against its 4.5:1 floor. Raising this re-opens that
-     check. */
+     check on .page-atmosphere::before folds the grain in, and the title
+     band is the tightest place light --ink-muted sits. Raising this
+     re-opens that check. Glass lets it through a card at a fifth of this
+     in light and a third in dark — under a percent either way. */
   --grain-alpha: 0.02;
 
   /* Hero-number glow strength — 0% in light: a glow in daylight is smudge,
@@ -323,24 +340,106 @@
      corner. Its own strength since 2026-10-06; it borrowed --atmos-mix-accent,
      which the «koʻk» pass raised to 22% in dark for the aurora, and the
      aurora sits on the bare page while the bloom sits under the card's own
-     text: muted text read 4.00:1 on cyan pages. 16% in dark keeps --ink-muted
-     at 4.59:1 or better on the bloom's very peak for every pool accent; light
-     keeps the 5% it always had (5.42:1). */
+     text: muted text read 4.00:1 on cyan pages. The hero is glass now, so the
+     bloom lands on the backdrop's light as well as on the card: 8% in dark
+     keeps every status step at 4.5:1 or better on its peak over the brightest
+     pool, for every pool accent (16% read 3.71); light keeps its 5%. */
   --hero-bloom-mix: 5%;
 
   /**
    * «Koʻk» finish (2026-09-28) — the client's reference boards are navy glass
-   * with a lit top edge and neon plot lines. Two strengths, both 0 in light:
-   * a card's top-edge sheen (ink mixed over the card, so it is white on the
-   * navy card and would be a smudge on a white one) and the glow under a
-   * plot line — a mix percentage, not a finished shadow, because each line
-   * glows in its OWN series colour and that colour is only known at the line
-   * (`.glow-series-N`, ANALYSIS INDICATORS). The gradient behind the active
-   * rail item is theme-free: white text on both stops measures 4.9:1 and 5.9:1.
+   * with a lit top edge and neon plot lines. One strength, 0 in light: the
+   * glow under a plot line — a mix percentage, not a finished shadow, because
+   * each line glows in its OWN series colour and that colour is only known at
+   * the line (`.glow-series-N`, ANALYSIS INDICATORS). The card's sheen it also
+   * carried is --glass-card-top below. The gradient behind the active rail
+   * item is theme-free: white text on both stops measures 4.9:1 and 5.9:1.
    */
-  --card-sheen: 0%;
   --line-glow-mix: 0%;
   --rail-active-bg: linear-gradient(135deg, #2f66f0, #6a3df0);
+
+  /**
+   * «SHISHA» — GLASS (2026-10-06). The client: «shaffof, yoqimli, eng kuchli
+   * dizayn» — translucent and pleasant — and fast.
+   *
+   * THESE ARE FILLS, NOT FILTERS. The document never scrolls: the Shell is
+   * 100dvh and only <main> scrolls, so what lies behind every card, the
+   * header and the rail is html's own background — --page and the pools of
+   * --backdrop, static. A translucent fill over a static backdrop that is
+   * already soft looks like a backdrop-filter blur and costs nothing; a blur
+   * there would cost a layer and a render pass per element for no difference
+   * anyone can see. Live content moves under exactly two kinds of thing:
+   * pinned table cells, which are OPAQUE (--surface-raised, and every table
+   * in a card is laid on that ground), and the floating panels, the only
+   * place a real blur (--glass-frost) is spent, and only while one is open.
+   *
+   * EVERY VALUE IS A LITERAL rgba, never a color-mix: the floor's television
+   * runs an old Chromium that can drop a color-mix stop (see the MEDALS
+   * note). And every glass surface reads one of these tokens — a class or a
+   * var(), never a colour written into a component — so the one transparency
+   * fallback (the block at the end of BASE) makes all of them opaque by
+   * pointing each token at its solid twin.
+   *
+   *   token              light                       dark                     solid twin
+   *   --glass-card       white 80%                   navy 64%                 --surface-raised
+   *   --glass-card-top   white 50% (top 42%)         white 2.5%               none
+   *   --glass-chrome     white 62%                   navy 62%                 --surface
+   *   --glass-float      white 90% + frost           navy 92% + frost         --surface-raised
+   *   --glass-well       ink 6%                      black 40%                --surface-sunken
+   *   --glass-raised     white 90%                   blue 28%                 --surface-raised
+   *   --glass-hover      ink 7%                      blue-white 10%           --grid
+   *
+   * The sheen is faint on purpose and the light goes on the EDGE instead
+   * (--glass-highlight): in dark a brighter fill is lower contrast for every
+   * ink, and a 5% sheen took --status-critical to 4.13:1 at the top of a card.
+   *
+   * MEASURED, every ink over every surface over every sample of the backdrop
+   * — the bare page, each pool at its peak, each pair at 60% — in both themes
+   * (floors: --ink-primary 7, secondary / muted / status 4.5, a series 3):
+   *
+   *   worst over the samples   page   card   card top  chrome  raised  sunken
+   *   light --ink-muted        5.04   6.14   6.29      5.88    6.28    5.41
+   *   light status (warning)   4.66   5.68   5.81      5.43    5.80    5.00
+   *   light series (pink)      3.07   3.74   3.83      3.58    3.82    3.30
+   *   dark --ink-muted         5.44   5.97   5.61      6.36    6.62    7.03
+   *   dark status (critical)   5.17   5.67   5.34      6.05    6.29    6.68
+   *   dark series (olive)      3.34   3.67   3.45      3.91    4.07    4.32
+   *
+   * `tests/features/glassContrast.test.ts` re-measures all of it from this
+   * file, so changing a value here re-runs the check rather than this table.
+   */
+  --glass-card: rgba(255, 255, 255, 0.8);
+  --glass-card-top: rgba(255, 255, 255, 0.5);
+  --glass-chrome: rgba(255, 255, 255, 0.62);
+  --glass-float: rgba(255, 255, 255, 0.9);
+  --glass-well: rgba(30, 50, 120, 0.06);
+  --glass-raised: rgba(255, 255, 255, 0.9);
+  --glass-hover: rgba(30, 50, 120, 0.07);
+  --glass-edge: rgba(30, 50, 120, 0.1);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --glass-shadow: 0 1px 2px rgba(20, 30, 80, 0.05), 0 8px 24px -14px rgba(30, 50, 120, 0.22);
+  /* Theme-free, and spent only on --glass-float: see .glass-float. */
+  --glass-frost: blur(18px) saturate(1.4);
+
+  /**
+   * The backdrop — four soft pools of light over --page, painted by `html`.
+   *
+   * Blue from the top-left corner, violet from the top-right, cyan from the
+   * bottom-left, indigo from the bottom-right, each an ellipse nearly the
+   * viewport's size (percentages of the viewport, which is the box a
+   * `background-attachment: fixed` gradient is sized against), falling to
+   * 40% of its peak at 45% of its reach and to nothing at the edge. The old
+   * two pools reached the top ~300px only, so a glass card anywhere below
+   * the title had nothing but a flat --page to show; these meet in the
+   * middle at about a fifth of their peaks, so every card has colour behind
+   * it. No filter — a radial gradient is already as soft as a blur of one.
+   * Literal colours, chrome only: no mark that encodes a value reads them.
+   */
+  --backdrop:
+    radial-gradient(95% 90% at 0% 0%, rgba(76, 120, 255, 0.11), rgba(76, 120, 255, 0.044) 45%, rgba(76, 120, 255, 0) 100%),
+    radial-gradient(90% 85% at 100% 0%, rgba(150, 110, 255, 0.09), rgba(150, 110, 255, 0.036) 45%, rgba(150, 110, 255, 0) 100%),
+    radial-gradient(85% 85% at 0% 100%, rgba(20, 184, 200, 0.07), rgba(20, 184, 200, 0.028) 45%, rgba(20, 184, 200, 0) 100%),
+    radial-gradient(90% 85% at 100% 100%, rgba(99, 102, 241, 0.07), rgba(99, 102, 241, 0.028) 45%, rgba(99, 102, 241, 0) 100%);
 
   /**
    * House radii, deliberately NOT named --radius-sm / --radius-lg.
@@ -396,15 +495,17 @@
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
 
-    --page: #070b1c;
+    --page: #060a1a;
     --surface: #0c1229;
-    --surface-raised: #121a38;
+    /* The glass card over the bare --page — see the light block. */
+    --surface-raised: #0d142e;
     --surface-sunken: #080d20;
     --ink-primary: #f2f5ff;
     --ink-secondary: #aab4d4;
-    /* 6.75 surface · 6.22 raised · 7.03 sunken · 7.13 page. Raised decides it:
-       a card in dark mode is the lightest surface, and the previous value
-       cleared only 4.32:1 there. */
+    /* 6.62 raised · 7.03 sunken · 5.97 on the glass card and 5.44 on the
+       page under the brightest pool, which decides it now: glass lets the
+       backdrop's light under the text, and light is what a light ink loses
+       contrast to. It cleared only 4.32:1 on the old raised card once. */
     --ink-muted: #8f9bc4;
     --grid: #1d2649;
     --track: #2a3563;
@@ -442,13 +543,16 @@
 
     --status-good: #2fb862;
     --status-warning: #d9a01c;
-    --status-critical: #f0524e;
+    /* Lighter than the #f0524e it was: on the page under the brightest pool
+       that read 4.28:1, on a glass card's sheen 4.13. #ff655e clears 4.5:1
+       on every surface in the light block's list (5.17 at the worst). */
+    --status-critical: #ff655e;
 
     --delta-up: #2fb862;
-    /* Lighter than --status-critical on purpose: delta text sits ON a 12%
-       tint of itself, which raises the backdrop above the bare card — #f0524e
-       measures 4.34:1 there, under the 4.5:1 text minimum. Same hue, 5.01:1
-       on the tint, 5.82:1 on the card (re-measured on the navy card). */
+    /* Lighter than the old --status-critical on purpose: delta text sits ON a
+       12% tint of itself, which raises the backdrop above the bare card —
+       #f0524e measured 4.34:1 there, under the 4.5:1 text minimum. Same hue,
+       4.83:1 on the tint over the glass card at its brightest. */
     --delta-down: #f56b62;
 
     /* Medal chrome, re-anchored for the dark surface — see the light block. */
@@ -525,22 +629,41 @@
        canvas is where a flat hex wall is most visibly flat; the hero number
        gains its whisper of glow. See the light block for what each does. */
     --shadow-ambient: 0 0 15px rgba(0, 0, 0, 0.35), 0 0 3px rgba(0, 0, 0, 0.5);
-    --atmos-mix-accent: 22%;
-    --atmos-mix-violet: 18%;
+    /* The aurora steps down from the «koʻk» 22% / 18%: the backdrop's blue
+       pool now lies under the title band too, and at 22% the 12px muted
+       lead line read 4.44:1 over it on a cyan page (16%: 4.68). */
+    --atmos-mix-accent: 16%;
+    --atmos-mix-violet: 13%;
     --grain-alpha: 0.04;
     --glow-hero-mix: 40%;
-    --hero-bloom-mix: 16%;
-    --card-sheen: 5%;
+    --hero-bloom-mix: 8%;
     --line-glow-mix: 55%;
+
+    /* «Shisha» on the dark ground — see the light block. */
+    --glass-card: rgba(17, 25, 58, 0.64);
+    --glass-card-top: rgba(242, 245, 255, 0.025);
+    --glass-chrome: rgba(10, 16, 40, 0.62);
+    --glass-float: rgba(14, 21, 50, 0.92);
+    --glass-well: rgba(2, 6, 22, 0.4);
+    --glass-raised: rgba(70, 92, 170, 0.28);
+    --glass-hover: rgba(130, 155, 255, 0.1);
+    --glass-edge: rgba(140, 165, 255, 0.16);
+    --glass-highlight: inset 0 1px 0 rgba(170, 195, 255, 0.16);
+    --glass-shadow: 0 1px 2px rgba(2, 5, 20, 0.5), 0 10px 30px -14px rgba(4, 10, 40, 0.7);
+    --backdrop:
+      radial-gradient(95% 90% at 0% 0%, rgba(56, 108, 255, 0.26), rgba(56, 108, 255, 0.104) 45%, rgba(56, 108, 255, 0) 100%),
+      radial-gradient(90% 85% at 100% 0%, rgba(140, 82, 255, 0.2), rgba(140, 82, 255, 0.08) 45%, rgba(140, 82, 255, 0) 100%),
+      radial-gradient(85% 85% at 0% 100%, rgba(34, 199, 207, 0.12), rgba(34, 199, 207, 0.048) 45%, rgba(34, 199, 207, 0) 100%),
+      radial-gradient(90% 85% at 100% 100%, rgba(79, 70, 229, 0.16), rgba(79, 70, 229, 0.064) 45%, rgba(79, 70, 229, 0) 100%);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --page: #070b1c;
+  --page: #060a1a;
   --surface: #0c1229;
-  --surface-raised: #121a38;
+  --surface-raised: #0d142e;
   --surface-sunken: #080d20;
   --ink-primary: #f2f5ff;
   --ink-secondary: #aab4d4;
@@ -575,7 +698,7 @@
 
   --status-good: #2fb862;
   --status-warning: #d9a01c;
-  --status-critical: #f0524e;
+  --status-critical: #ff655e;
 
   --delta-up: #2fb862;
   --delta-down: #f56b62;
@@ -650,13 +773,29 @@
 
   /* Night physics — kept in lockstep with the media-query block above. */
   --shadow-ambient: 0 0 15px rgba(0, 0, 0, 0.35), 0 0 3px rgba(0, 0, 0, 0.5);
-  --atmos-mix-accent: 22%;
-  --atmos-mix-violet: 18%;
+  --atmos-mix-accent: 16%;
+  --atmos-mix-violet: 13%;
   --grain-alpha: 0.04;
   --glow-hero-mix: 40%;
-  --hero-bloom-mix: 16%;
-  --card-sheen: 5%;
+  --hero-bloom-mix: 8%;
   --line-glow-mix: 55%;
+
+  /* «Shisha» — kept in lockstep with the media-query block above. */
+  --glass-card: rgba(17, 25, 58, 0.64);
+  --glass-card-top: rgba(242, 245, 255, 0.025);
+  --glass-chrome: rgba(10, 16, 40, 0.62);
+  --glass-float: rgba(14, 21, 50, 0.92);
+  --glass-well: rgba(2, 6, 22, 0.4);
+  --glass-raised: rgba(70, 92, 170, 0.28);
+  --glass-hover: rgba(130, 155, 255, 0.1);
+  --glass-edge: rgba(140, 165, 255, 0.16);
+  --glass-highlight: inset 0 1px 0 rgba(170, 195, 255, 0.16);
+  --glass-shadow: 0 1px 2px rgba(2, 5, 20, 0.5), 0 10px 30px -14px rgba(4, 10, 40, 0.7);
+  --backdrop:
+    radial-gradient(95% 90% at 0% 0%, rgba(56, 108, 255, 0.26), rgba(56, 108, 255, 0.104) 45%, rgba(56, 108, 255, 0) 100%),
+    radial-gradient(90% 85% at 100% 0%, rgba(140, 82, 255, 0.2), rgba(140, 82, 255, 0.08) 45%, rgba(140, 82, 255, 0) 100%),
+    radial-gradient(85% 85% at 0% 100%, rgba(34, 199, 207, 0.12), rgba(34, 199, 207, 0.048) 45%, rgba(34, 199, 207, 0) 100%),
+    radial-gradient(90% 85% at 100% 100%, rgba(79, 70, 229, 0.16), rgba(79, 70, 229, 0.064) 45%, rgba(79, 70, 229, 0) 100%);
 }
 
 /**
@@ -738,24 +877,20 @@
  *
  * Both live on `html`, not on `body::before`. A pseudo-element at
  * `z-index: -1` sits behind its own element's background, and body had one —
- * so the two accent pools were painted and then covered by the flat page
- * colour, every time, invisibly. Layering the gradients over the colour on one
- * element cannot fail that way, and `background-attachment: fixed` keeps them
- * behaving like light in a room rather than like content that scrolls.
+ * so the accent pools were painted and then covered by the flat page colour,
+ * every time, invisibly. Layering the gradients over the colour on one element
+ * cannot fail that way.
+ *
+ * The light is --backdrop's four pools (the token says why four, and why so
+ * wide). This is what every glass surface shows through, and it never moves:
+ * in the Shell the document does not scroll, so a card scrolling inside
+ * <main> passes over a still sky. `background-attachment: fixed` is for the
+ * pages that DO scroll the document — /login — where it keeps the pools in
+ * the window like light in a room rather than like content.
  */
 html {
   background-color: var(--page);
-  background-image:
-    radial-gradient(
-      60rem 40rem at 12% -10%,
-      color-mix(in oklab, var(--accent) 7%, transparent),
-      transparent 60%
-    ),
-    radial-gradient(
-      48rem 34rem at 100% 0%,
-      color-mix(in oklab, var(--series-7) 5%, transparent),
-      transparent 60%
-    );
+  background-image: var(--backdrop);
   background-attachment: fixed;
   background-repeat: no-repeat;
 }
@@ -1012,8 +1147,8 @@ body {
  * flagship panel. All of it is STATIC — this is a work tool, and the sky
  * must not drift while someone reads a number — and none of it may cover a
  * figure, intercept a click, or tint a plot area. The aurora and the grain
- * enforce that by painting in the negative z phase, under every opaque
- * surface; the brackets paint above their panel but are four pointer-inert
+ * enforce that by painting in the negative z phase, under every surface;
+ * the brackets paint above their panel but are four pointer-inert
  * hairlines pinned 6px into its padding, where no content sits.
  * ======================================================================== */
 
@@ -1071,28 +1206,33 @@ body {
  * page's aurora follows its own accent (strengths live in --atmos-mix-*, and
  * the note there says why the split exists). Series-7 is chrome here in the
  * same sense the html backdrop already uses it: nothing that encodes a value
- * reads either colour. The peaks sit ABOVE the canvas edge, like the html
+ * reads either colour. The peaks sit ABOVE the canvas edge, like the
  * backdrop's own pools, so the tint under the actual title line is already
- * decaying — and the -80px overdraw gives the 70px blur material past the
- * clip, so the band cannot vignette against its own edges.
+ * decaying.
+ *
+ * NO FILTER. This was blurred 70px and saturated 1.3 — a blur of a radial
+ * gradient, which is a wider radial gradient — rasterised again on every
+ * navigation, resize, theme flip and stale dim. The ellipses are 70px wider
+ * and run further before they reach nothing instead; the -80px overdraw that
+ * fed the blur is kept, so the percentages place the peaks where they were.
  *
  * CONTRAST, checked rather than assumed — the title block sits on this.
  * The binding text is PageShell's 12px muted lead line. Its worst realistic
- * backdrop, composited over --page: html's own series-1 pool (7%, at most
- * 0.77 of it on screen — its centre is above the viewport), the accent blob
- * at most 0.45 of --atmos-mix-* where that line sits (its falloff times this
- * band's mask), the violet blob's residual (none on the left, where the line
- * is) and the grain's mean (half its opacity, mid-grey); worst pool accent:
+ * backdrop: the page under the backdrop's brightest sample (a pool at its
+ * peak, or two at 60% — the blue pool's corner is right there), the accent
+ * blob at most 0.45 of --atmos-mix-* where that line sits (its falloff times
+ * this band's mask), the violet blob's residual (none on the left, where
+ * the line is) and the grain's mean (half its opacity, mid-grey); worst
+ * pool accent:
  *
- *   light:  --ink-primary 14.1:1 · --ink-secondary 6.33:1 · --ink-muted 4.58:1
- *   dark:   --ink-primary 14.2:1 · --ink-secondary 7.52:1 · --ink-muted 5.65:1
+ *   light:  --ink-primary 13.5:1 · --ink-secondary 6.04:1 · --ink-muted 4.86:1
+ *   dark:   --ink-primary 11.8:1 · --ink-secondary 6.22:1 · --ink-muted 4.68:1
  *
- * Every ink holds its 4.5:1 floor. Light muted is the tight one. The figures
- * first written here left html's pool out (it paints under this band too)
- * and quoted 4.5:1; with it, the old muted read 4.45:1, which is half of why
- * --ink-muted moved two steps darker on 2026-10-06. That margin is why
- * --atmos-mix-* light stays at 5% and the light grain at 2%. Anyone raising
- * either re-runs this arithmetic.
+ * Every ink holds its 4.5:1 floor, and that is why dark's --atmos-mix-* came
+ * down from 22% to 16% when the backdrop went in (the pool and the aurora
+ * both lighten the same corner), and why light's stays at 5% and the light
+ * grain at 2%. `tests/features/designTokens.test.ts` re-runs this; anyone
+ * raising either changes it there first.
  */
 .page-atmosphere::before {
   content: "";
@@ -1100,16 +1240,15 @@ body {
   inset: -80px;
   background-image:
     radial-gradient(
-      48rem 30rem at 16% -18%,
+      52.5rem 34.5rem at 16% -18%,
       color-mix(in oklab, var(--accent) var(--atmos-mix-accent), transparent),
-      transparent 62%
+      transparent 68%
     ),
     radial-gradient(
-      40rem 26rem at 84% -32%,
+      44.5rem 30.5rem at 84% -32%,
       color-mix(in oklab, var(--series-7) var(--atmos-mix-violet), transparent),
-      transparent 60%
+      transparent 66%
     );
-  filter: blur(70px) saturate(1.3);
 }
 
 /**
@@ -1119,8 +1258,9 @@ body {
  * enough to read as paper rather than noise. z-index -1 is the safety: the
  * grain paints UNDER every piece of in-flow content — cards, tables, text,
  * plots — so it can neither cover an interactive element (pointer-events
- * none besides) nor dirty a plot area. Cards are opaque surface tokens and
- * simply blot it out.
+ * none besides) nor dirty a plot area. A glass card lets a fifth of it
+ * through in light and a third in dark (0.4% and 1.4% — paper, not a
+ * texture on a plot), and a table's opaque ground blots it out entirely.
  *
  * Visible by agreement with the chrome: Shell's root div deliberately
  * paints NO background of its own (see the comment on its root element) —
@@ -1244,14 +1384,10 @@ body::after {
  */
 .card {
   /* The sheen is the second «koʻk» cue after the lit edge: the top ~40% of
-     the card is a whisper brighter, as glass is where the light lands. It
-     mixes to nothing in light (--card-sheen 0%). */
+     the card is a whisper brighter, as glass is where the light lands. A
+     literal per theme (--glass-card-top), faint on purpose — see the token. */
   background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--ink-primary) var(--card-sheen), transparent),
-      transparent 42%
-    ),
+    linear-gradient(180deg, var(--glass-card-top), transparent 42%),
     var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-panel);
