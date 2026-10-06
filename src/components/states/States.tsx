@@ -153,14 +153,9 @@ export function EmptyState({
 
 export function ErrorState({
   message,
-  correlationId,
-  hint,
   onRetry,
 }: {
   message?: string
-  correlationId?: string
-  /** One-line suggestion beyond retrying, when the caller knows one. */
-  hint?: ReactNode
   onRetry?: () => void
 }) {
   return (
@@ -175,16 +170,6 @@ export function ErrorState({
       <p className="max-w-sm text-xs" style={{ color: 'var(--ink-secondary)' }}>
         {message ?? t.state.errorBody}
       </p>
-      {hint && (
-        <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-          {hint}
-        </p>
-      )}
-      {correlationId && (
-        <p className="tabular text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          ID: {correlationId}
-        </p>
-      )}
       {onRetry && (
         <Button variant="secondary" size="sm" className="mt-1.5" onClick={onRetry}>
           {t.state.retry}
