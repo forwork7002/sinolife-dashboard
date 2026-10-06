@@ -258,11 +258,15 @@ to appear. `Tooltip` works on hover (~150ms delay), focus and tap, gains
 is `--shadow-ambient`: the directional float stack in light, an offset-free
 halo in dark, because a night room has no sun and a directional shadow there
 reads as a rendering artefact. Decorative `title`s that only repeat the
-visible word may stay.
+visible word may stay. The same shadow goes on **every** floating panel — the
+MultiSelect and column-filter dropdowns, the date picker, the org chart's
+floating controls and roster panel, the skip link; `--shadow-float` is left to
+a selected card, which is not chrome.
 
-The palette scrim is tinted from `--page`, not black: a black scrim in light
-mode turns the app into a different, darker room for the duration of a search,
-while a page-coloured frost dims without changing the room.
+Every modal scrim is `.backdrop-dim` — the palette's and the Users dialog's —
+tinted from `--page`, not black: a black scrim in light mode turns the app into
+a different, darker room for as long as the modal is open, while a
+page-coloured frost dims without changing the room.
 `prefers-reduced-transparency` trades the blur for opacity; reduced motion
 reduces both entrances to fades by keyframe redefinition.
 

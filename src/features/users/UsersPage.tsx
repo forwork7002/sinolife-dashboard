@@ -548,10 +548,12 @@ function UserDialog({
 
   return (
     // A modal, because this is a decision that should not be half-made while
-    // the table behind it changes under a refetch.
+    // the table behind it changes under a refetch. The house scrim
+    // (`.backdrop-dim`): page-tinted, not black — a black one turned the light
+    // app into a darker room — and denser, unblurred, under reduced
+    // transparency.
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
-      style={{ background: 'color-mix(in oklab, black 55%, transparent)' }}
+      className="backdrop-dim fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       role="dialog"
       aria-modal="true"
       aria-label={title}

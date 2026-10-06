@@ -288,7 +288,8 @@ function PeriodPicker({
       style={{
         background: 'var(--surface-raised)',
         borderColor: 'var(--border-strong)',
-        boxShadow: 'var(--shadow-float)',
+        // Floating chrome — see --shadow-ambient.
+        boxShadow: 'var(--shadow-ambient)',
       }}
     >
       <div

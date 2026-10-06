@@ -381,3 +381,34 @@ describe('muted ink holds 4.5:1 wherever it lands', () => {
     }
   })
 })
+
+describe('floating chrome and modal scrims', () => {
+  /*
+    --shadow-ambient is the one shadow for anything that floats over the page:
+    the float stack in light, an offset-free halo in dark, where a directional
+    shadow under a popover reads as a rendering artefact. Only the tooltip,
+    the chart tooltip and the palette read it; the dropdowns, the date picker,
+    the org chart's panels and the skip link still cast the night's 0.8-black
+    directional shadow. And the Users dialog dimmed the page with black, the
+    scrim the house rules out (a light app turned into a darker room).
+  */
+  it('never casts the directional float shadow from a component', () => {
+    const offenders = [...COMPONENTS].filter(([, source]) => source.includes('var(--shadow-float)'))
+    expect(offenders.map(([file]) => file)).toEqual([])
+  })
+
+  it('leaves --shadow-float in the stylesheet only on a selected card, which is not chrome', () => {
+    const readers = [...CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, selector, body]) => /var\(--shadow-float\)/.test(body!) && !selector!.includes(':root'))
+      .map(([, selector]) => selector!.trim())
+    expect(readers).toEqual(['.org-card[data-selected]'])
+  })
+
+  it('dims behind a modal with the page-tinted scrim, never black', () => {
+    const black = [...COMPONENTS].filter(([, source]) => /color-mix\(in oklab,\s*black/.test(source))
+    expect(black.map(([file]) => file)).toEqual([])
+    for (const file of ['src/features/users/UsersPage.tsx', 'src/components/ui/CommandPalette.tsx']) {
+      expect(COMPONENTS.get(file), file).toMatch(/className="backdrop-dim /)
+    }
+  })
+})

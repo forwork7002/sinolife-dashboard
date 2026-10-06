@@ -193,7 +193,9 @@ export function MultiSelect({
           style={{
             background: 'var(--surface-raised)',
             borderColor: 'var(--border-strong)',
-            boxShadow: 'var(--shadow-float)',
+            // Floating chrome: the directional float stack in light, an
+            // offset-free halo in dark (see --shadow-ambient).
+            boxShadow: 'var(--shadow-ambient)',
           }}
         >
           {selected.length > 0 && (
@@ -639,7 +641,7 @@ export function ColumnFilter({
               visibility: place ? 'visible' : 'hidden',
               background: 'var(--surface-raised)',
               borderColor: 'var(--border-strong)',
-              boxShadow: 'var(--shadow-float)',
+              boxShadow: 'var(--shadow-ambient)',
             }}
           >
             {children(() => setOpen(false))}
