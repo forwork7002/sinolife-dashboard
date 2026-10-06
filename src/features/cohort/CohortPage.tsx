@@ -689,13 +689,18 @@ export function CohortPage() {
           THE WINDOW IS THE SERVER'S. It is printed from `meta.period`, not
           from the ninety the route defaults to, so if that default is ever
           changed the sentence follows it instead of contradicting it.
+
+          AND ITS LAST DAY IS `end` LESS ONE MILLISECOND. `end` is exclusive —
+          `trailingDays` ends at tonight's midnight — so printed as it comes
+          the band named TOMORROW as its last day every day, a day past the
+          concentration caption below, which subtracts the same millisecond.
         */}
         <SectionHeader
           title="Mijozlar oqimi"
           hint={
             flowPeriod
-              ? `Buyurtma berilgan sana boʻyicha · ${formatDate(flowPeriod.start)} — ${formatDate(
-                  flowPeriod.end,
+              ? `Buyurtma berilgan sana boʻyicha · ${formatDate(flowPeriod.start)} – ${formatDate(
+                  new Date(new Date(flowPeriod.end).getTime() - 1).toISOString(),
                 )}`
               : 'Buyurtma berilgan sana boʻyicha · soʻnggi 90 kun'
           }

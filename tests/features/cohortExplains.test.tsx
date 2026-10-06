@@ -167,6 +167,18 @@ const FLOW = {
   },
 }
 
+/*
+  The band's window, as the route resolves it: `trailingDays(90)` read at
+  14:00 on 6 October in Tashkent — `end` is tonight's midnight, EXCLUSIVE.
+*/
+const FLOW_PERIOD = {
+  preset: 'custom',
+  start: '2026-07-08T19:00:00.000Z',
+  end: '2026-10-06T19:00:00.000Z',
+  timeZone: 'Asia/Tashkent',
+  days: 90,
+}
+
 function mockFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
@@ -177,10 +189,11 @@ function mockFetch() {
         : url.includes('/insights/customers')
           ? FLOW
           : {}
+    const meta = url.includes('/insights/customers') ? { ...META, period: FLOW_PERIOD } : META
     return {
       ok: true,
       status: 200,
-      json: async () => ({ data, meta: META }),
+      json: async () => ({ data, meta }),
     } as unknown as Response
   })
 }
@@ -352,6 +365,21 @@ describe('the matrix and «База» already name their own clock', () => {
 
     expect(screen.getByText(/Buyurtma berilgan sana boʻyicha/i)).toBeDefined()
     expect(screen.getByText(/Yetkazilgan sana boʻyicha/i)).toBeDefined()
+  })
+
+  /*
+    THE BAND'S LAST DAY IS TODAY, NOT TOMORROW.
+
+    `meta.period.end` is exclusive — tonight's midnight — so printed as it
+    comes the header named tomorrow as the window's last day, every day, and
+    disagreed by a day with the concentration caption on the same screen.
+  */
+  it('prints the window’s last day inclusively', async () => {
+    await openPage()
+
+    const band = await screen.findByText(/Buyurtma berilgan sana boʻyicha · 9-iyl 2026/)
+    expect(band.textContent).toContain('6-okt 2026')
+    expect(band.textContent).not.toContain('7-okt 2026')
   })
 
   /*
