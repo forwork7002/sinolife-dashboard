@@ -75,6 +75,18 @@ describe('UnansweredCallsCard', () => {
     expect(screen.getByText('Ulanmadi · 1')).toBeTruthy()
   })
 
+  /*
+    A callback reaches `call_record` only with the three-hourly CALLS pass; the
+    hint promised «bir-ikki daqiqa», and a colleague read a callback made at
+    10:05 as still owed until the next pass.
+  */
+  it('says callbacks arrive with the three-hourly import, not within a minute or two', async () => {
+    open()
+    await screen.findByText('+998901110003')
+    expect(screen.getByText(/qayta qoʻngʻiroq ham — Bitrix24 dan har ~3 soatda keladi/)).toBeTruthy()
+    expect(screen.queryByText(/bir-ikki daqiqa/)).toBeNull()
+  })
+
   it('reads the other states and narrows by group', async () => {
     open()
     await screen.findByText('+998901110003')
