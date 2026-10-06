@@ -100,7 +100,6 @@ function board(over: {
       lostAfterConfirmOrders: over.lostAfterConfirmOrders,
       lostAfterConfirm: money(over.lostAfterConfirm),
       conversionPercent: 72.4,
-      wonDelta: { kind: 'unchanged' },
       bonusPayable: money(0),
       sellersInBonus: 0,
       teamlessSellers: 0,

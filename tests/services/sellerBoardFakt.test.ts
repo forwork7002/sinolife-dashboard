@@ -402,3 +402,41 @@ describe('the bonus fund under the brand switch', () => {
     }
   })
 })
+
+/**
+ * NO FAKT 2 TREND, AND SO NO COMPARISON READ — 2026-10-06.
+ *
+ * FAKT 2 is where each order stands NOW, and the comparison window is always
+ * the OLDER cohort: «Shu oy» on 6 October set Oct 1–6, its last days still
+ * undelivered, against Sep 1–6 with a month behind it, so the arrow read a fall
+ * for a floor at an unchanged pace. The board reads its own window and nothing
+ * else until a comparison can be read at the same age.
+ */
+describe('the board against the window before it', () => {
+  it('reads only its own window, and carries no FAKT 2 trend', async () => {
+    const asked: { start: Date; end: Date }[] = []
+    const insights = {
+      confirmationSellerRating: async (period: { start: Date; end: Date }) => {
+        asked.push(period)
+        return [rating({ employeeId: 'a', rop: 'Lola', deliveredOrders: 1, deliveredMinor: mln(10) })]
+      },
+    } as unknown as InsightsRepository
+    const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
+    const service = new SellerBoardService({} as SellerBoardRepository, insights, reference)
+    const period = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
+    const ctx = {
+      period,
+      comparison: previousEquivalent(period),
+      currency: 'UZS',
+      filters: {},
+      now: NOW,
+    } as unknown as AnalyticsContext
+
+    const board = await service.board(ctx, 'queue')
+
+    expect(asked).toHaveLength(1)
+    expect(asked[0]!.start.toISOString()).toBe(period.start.toISOString())
+    expect(asked[0]!.end.toISOString()).toBe(period.end.toISOString())
+    expect('wonDelta' in board.totals).toBe(false)
+  })
+})

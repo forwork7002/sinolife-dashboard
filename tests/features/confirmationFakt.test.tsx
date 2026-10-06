@@ -85,7 +85,6 @@ function board(over: {
       wonOrders: over.wonOrders,
       open: money(over.open),
       conversionPercent: null,
-      wonDelta: { kind: 'unchanged' },
       bonusPayable: money(0),
       sellersInBonus: 0,
       plan: { amount: null, percent: null, basis: null },
@@ -131,8 +130,8 @@ describe('FAKT 2 on a window younger than the delivery', () => {
   it('drops the trend, because zero against zero explains nothing', () => {
     render(<FaktHeadline data={YOUNG} status="ready" />)
 
-    // «oʻzgarishsiz» is what `wonDelta: unchanged` renders. It is true and
-    // useless beside the very figure the reader is questioning.
+    // «oʻzgarishsiz» is what a trend of zero against zero rendered. It was
+    // true and useless beside the very figure the reader is questioning.
     expect(screen.queryByText(/oʻzgarishsiz/)).toBeNull()
   })
 
@@ -144,11 +143,19 @@ describe('FAKT 2 on a window younger than the delivery', () => {
 })
 
 describe('FAKT 2 once the couriers have arrived', () => {
-  it('counts the deliveries and keeps the comparison', () => {
-    render(<FaktHeadline data={MATURE} status="ready" />)
+  it('counts the deliveries, and sets no trend against an older cohort', () => {
+    const { container } = render(<FaktHeadline data={MATURE} status="ready" />)
 
     expect(screen.getByText('73 ta yakunlangan buyurtma')).toBeDefined()
-    expect(screen.getByText(/oʻzgarishsiz/)).toBeDefined()
     expect(screen.queryByText(/yoʻlda/)).toBeNull()
+    /*
+      NO ARROW, 2026-10-06. The trend set this cohort's FAKT 2 against the
+      window before it — and FAKT 2 being where each order stands NOW, that
+      older cohort had always had longer to be delivered, so a floor at an
+      unchanged pace read a fall on every running window. The board no longer
+      reads a comparison, and the figure draws no trend of any kind.
+    */
+    expect(screen.queryByText(/oʻzgarishsiz|baza yoʻq|baza kichik|maʼlumot yoʻq/)).toBeNull()
+    expect(container.querySelector('svg')).toBeNull()
   })
 })

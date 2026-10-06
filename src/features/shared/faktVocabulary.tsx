@@ -1,7 +1,5 @@
 'use client'
 
-import type React from 'react'
-
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { formatFullUzs } from '@/lib/format'
 
@@ -33,13 +31,11 @@ export function FaktFigure({
   label,
   value,
   hint,
-  context,
   status,
 }: {
   label: string
   value: number | null
   hint?: string
-  context?: React.ReactNode
   status: 'loading' | 'error' | 'ready'
 }) {
   return (
@@ -83,7 +79,6 @@ export function FaktFigure({
           {hint}
         </p>
       )}
-      {context && <div className="mt-1">{context}</div>}
     </div>
   )
 }

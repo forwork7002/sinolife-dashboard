@@ -73,7 +73,7 @@ const schema = analyticsQuerySchema.and(
       IT REPLACES the board in the response rather than riding beside it. The
       caller that wants records is a second react-query key with its own
       staleTime, and it has no use for a board it already holds — building one
-      anyway would be two full cohort constructions thrown away every ten
+      anyway would be a full cohort construction thrown away every ten
       minutes, per reader.
     */
     /*

@@ -69,13 +69,15 @@ function rating(employeeId: string, rop: string, minor: bigint): ConfirmationSel
 }
 
 /**
- * ONE BOARD IS TWO COHORT CONSTRUCTIONS — the window and the comparison it is
- * measured against — so a build shows up here as two calls, not one. The
- * constant is named rather than folded into each expectation: if the service
- * ever stops fetching the comparison, these counts must fail loudly instead of
- * quietly meaning half of what they say.
+ * ONE BOARD IS ONE COHORT CONSTRUCTION — the window. It was two until
+ * 2026-10-06, the window and the comparison the FAKT 2 trend was measured
+ * against; that trend compared cohorts of different ages and went, and the
+ * comparison read with it (see `buildBoard`). The constant is named rather
+ * than folded into each expectation: if a second read per build ever comes
+ * back, these counts must fail loudly instead of quietly meaning twice what
+ * they say.
  */
-const CALLS_PER_BUILD = 2
+const CALLS_PER_BUILD = 1
 
 /**
  * A service whose repository answers a DIFFERENT board on every build, and
@@ -94,7 +96,8 @@ function tracked() {
     // period before it is passed. See `sellerBoardService.sellerRows`.
     confirmationSellerRating: async (period: { restrictToEmployeeIds?: readonly string[] | null }) => {
       scopes.push(period?.restrictToEmployeeIds)
-      if (scopes.length % CALLS_PER_BUILD === 1) builds += 1
+      // The first call of each build starts a new one.
+      if ((scopes.length - 1) % CALLS_PER_BUILD === 0) builds += 1
       return [rating(`seller-${builds}`, `rop-${builds}`, BigInt(builds) * 100n)]
     },
   } as unknown as InsightsRepository
@@ -154,7 +157,7 @@ describe('the sellers board, company-wide by decision', () => {
     const [a, b, c] = await Promise.all([board(null), board(null), board(null)])
 
     // The case the memo exists for: the floor opens this screen together, and
-    // each build is two full cohort constructions on a one-vCPU database.
+    // each build is a full cohort construction on a one-vCPU database.
     expect(buildCount()).toBe(1)
     expect(a.rows[0]!.employeeId).toBe('seller-1')
     expect(b.rows[0]!.employeeId).toBe('seller-1')

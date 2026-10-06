@@ -22,13 +22,7 @@
  * target", which is a different and much louder claim than "no target set".
  */
 
-import {
-  SHARE_DECIMALS,
-  growth,
-  ratePercent,
-  roundPercent,
-  toDeltaDto,
-} from '@/server/domain/analytics/metrics'
+import { SHARE_DECIMALS, ratePercent, roundPercent } from '@/server/domain/analytics/metrics'
 import type { KpiDefinition } from '@/server/domain/analytics/performance'
 import {
   fullUnitWindow,
@@ -49,7 +43,6 @@ import {
   sinceMonth,
   zonedDateKey,
 } from '@/server/domain/period/period'
-import type { DeltaDto } from '@/lib/api'
 import { CONFIRMATION_OUTCOMES, type ConfirmationOutcomeValue } from '@/server/domain/types'
 import type {
   BrandSlice,
@@ -330,8 +323,6 @@ export interface SellerBoardTotalsDto {
   readonly lostAfterConfirmOrders: number
   readonly lostAfterConfirm: MoneyDto
   readonly conversionPercent: number | null
-  /** Won intake vs the comparison window's, on the same clock. */
-  readonly wonDelta: DeltaDto
   /**
    * Total bonus the tiers would pay on today's standings.
    *
@@ -700,10 +691,10 @@ export class SellerBoardService {
    *
    * This screen is the floor's, and the floor opens it together — the same
    * arrival pattern the command centre's cache was written for. Each build is
-   * TWO full confirmation-cohort constructions (the window and the comparison,
-   * both through `queueSql` + the rating aggregate) plus the KPI read, and the
-   * route passes `ctx.query` and never `ctx.scope`, so every one of those
-   * readers was paying for an identical answer.
+   * a full confirmation-cohort construction (`queueSql` + the rating
+   * aggregate) plus the KPI read, and the route passes `ctx.query` and never
+   * `ctx.scope`, so every one of those readers was paying for an identical
+   * answer.
    *
    * NO SCOPE IN THE KEY, BECAUSE THERE IS NO SCOPE IN THE ANSWER. This board
    * is company-wide for every caller by decision — the client's, stated on
@@ -727,11 +718,14 @@ export class SellerBoardService {
    * `undefined` and `[]` distinct, since an empty array reads as "no filter"
    * in every repository here and widens back to the whole company.
    *
-   * THE PRESET IS IN THE KEY, and it is not decoration. `ctx.comparison` is
-   * derived from the preset, so on a Monday «Bugun» and «Shu hafta» resolve to
-   * one window and demand different comparison rows; without the preset they
-   * would share an entry and swap each other's deltas. That exact bug is
+   * THE PRESET IS IN THE KEY, and it is not decoration. The run-rate projects
+   * to the preset's own calendar unit (`fullUnitWindow`), so on a Monday
+   * «Bugun» and «Shu hafta» resolve to one window and still project to a day
+   * and to a week; without the preset they would share an entry and swap each
+   * other's forecasts. The same class of bug — a key without its preset — is
    * documented, with its measured numbers, in `ttlCache.ts`.
+   *
+   * NO COMPARISON WINDOW IN THE KEY, because none is read — see `buildBoard`.
    */
   async board(ctx: AnalyticsContext, basis: SellerBoardBasisValue = 'queue'): Promise<SellerBoardDto> {
     const filters = boardFilters(ctx)
@@ -741,11 +735,6 @@ export class SellerBoardService {
       ctx.period.preset,
       ctx.period.start.toISOString(),
       ctx.period.end.toISOString(),
-      // The comparison is derived, but it is also TRUNCATED for a to-date
-      // window — two questions can share a preset and a window and still want
-      // different previous spans, so it is named rather than assumed.
-      ctx.comparison.start.toISOString(),
-      ctx.comparison.end.toISOString(),
       ctx.currency,
       keyPart(filters.employeeIds),
       keyPart(filters.departmentIds),
@@ -763,14 +752,26 @@ export class SellerBoardService {
   ): Promise<SellerBoardDto> {
 
     /*
-      All three reads at once. The comparison exists only to give the total a
-      delta, and the targets only to give the plan column a denominator; a
-      second round trip for either could straddle a sync and score one
+      Both reads at once. The targets exist only to give the plan column a
+      denominator; a second round trip could straddle a sync and score one
       window's money against another's cohort.
+
+      NO COMPARISON WINDOW, AND SO NO FAKT 2 TREND (2026-10-06). The board
+      used to read `ctx.comparison` through the same cohort and print FAKT 2
+      against it — but FAKT 2 is where each order stands NOW, and the
+      comparison is always the OLDER cohort: on 6 October, Sep 1–6 has had a
+      month to be delivered and Oct 1–6 a few days, while delivery lags the
+      arrival by about two days (by arrival day on 2026-09-04: 04-sen 79
+      confirmed / 0 delivered, 03-sen 94 / 0, 02-sen 80 / 20, 31-avg 99 / 73).
+      So the arrow read as a fall on «Shu oy», «Shu hafta», «Kecha» and every
+      custom window for a floor working at an unchanged pace. Payroll left the
+      queue clock for the same lean (7fdadaf). A trend comes back only with
+      the comparison read AS OF THE SAME AGE — a comparison delivery counted
+      only if it landed within (now − period.start) of comparison.start —
+      and until then the second cohort construction per build bought nothing.
     */
-    const [{ rows, teamSlices }, { rows: previous }, kpis] = await Promise.all([
+    const [{ rows, teamSlices }, kpis] = await Promise.all([
       this.rowsFor(ctx.period, basis, filters),
-      this.rowsFor(ctx.comparison, basis, filters),
       this.reference.findKpisForPeriod(ctx.period),
     ])
 
@@ -778,7 +779,6 @@ export class SellerBoardService {
 
     const totalWonMinor = sum(rows, (r) => r.wonMinor)
     const totalOrderedMinor = sum(rows, (r) => r.orderedMinor)
-    const previousWonMinor = sum(previous, (r) => r.wonMinor)
 
     /*
       ONE ELAPSED FRACTION FOR EVERY PROJECTION ON THE PAYLOAD.
@@ -958,7 +958,6 @@ export class SellerBoardService {
             rows.reduce((a, r) => a + r.wonOrders + r.lostOrders, 0),
           ),
         ),
-        wonDelta: toDeltaDto(growth(Number(totalWonMinor), Number(previousWonMinor))),
         /*
           THE FUND IS NOT BRAND-KNOWABLE, so a brand slice states none.
 
