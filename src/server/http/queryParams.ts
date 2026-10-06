@@ -115,6 +115,15 @@ export const periodQuerySchema = z
     }
   })
 
+/** Free text reaching a WHERE clause: trimmed, bounded, empty means absent. */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((value) => (value ? value : undefined))
+
 const filterQuerySchema = z.object({
   employeeIds: idList,
   departmentIds: idList,
@@ -122,8 +131,15 @@ const filterQuerySchema = z.object({
   productIds: idList,
   sourceIds: idList,
   status: z.enum(DEAL_STATUSES).optional(),
-  /** Free-text search. Bounded so it cannot become a scan of arbitrary length. */
-  q: z.string().trim().min(1).max(120).optional(),
+  /**
+   * Free-text search. Bounded so it cannot become a scan of arbitrary length.
+   *
+   * A term of nothing but spaces is NO term, not a bad one: it was `min(1)`
+   * after the trim, so a space typed into Тасдиклаш's box and left for the
+   * debounce answered 400 on every request of the page — the table, all six
+   * tiles and the region list — until the box was cleared.
+   */
+  q: optionalText(120),
 })
 
 export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
@@ -333,15 +349,6 @@ export const brandFilter = z.enum(BRAND_FILTERS).default('all')
 
 /** «Reklama samarasi»: the window and the brand switch. */
 export const reklamaOverviewQuerySchema = periodQuerySchema.and(z.object({ brand: brandFilter }))
-
-/** Free text reaching a WHERE clause: trimmed, bounded, empty means absent. */
-const optionalText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max)
-    .optional()
-    .transform((value) => (value ? value : undefined))
 
 export const targetOverviewQuerySchema = periodQuerySchema.and(
   z.object({ scope: targetScope, product: targetProduct }),

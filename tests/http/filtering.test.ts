@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import { rowScopeFor, type Principal } from '@/server/auth/rbac'
-import { analyticsQuerySchema, searchParamsToObject } from '@/server/http/queryParams'
+import {
+  analyticsQuerySchema,
+  confirmationOrdersQuerySchema,
+  searchParamsToObject,
+} from '@/server/http/queryParams'
 
 /**
  * Query-contract and scoping tests.
@@ -125,6 +129,15 @@ describe('filter parsing end to end', () => {
   it('trims and bounds free-text search', () => {
     expect(buildFilters('q=%20%20Oq%20%20', manager).q).toBe('Oq')
     expect(() => buildFilters(`q=${'x'.repeat(200)}`, manager)).toThrow()
+  })
+
+  it('reads a search of nothing but spaces as no search, never as a 400', () => {
+    // A space left in Тасдиклаш's box turned the whole board into a 400.
+    expect(buildFilters('q=%20', manager).q).toBeUndefined()
+    expect(buildFilters('q=%20%20%09', manager).q).toBeUndefined()
+    expect(
+      confirmationOrdersQuerySchema.parse(searchParamsToObject(new URLSearchParams('preset=today&q=%20'))).q,
+    ).toBeUndefined()
   })
 
   it('applies defaults for an empty query string', () => {
