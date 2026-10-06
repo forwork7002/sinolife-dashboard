@@ -60,7 +60,7 @@ import {
   type LogisticsRoleValue,
 } from '@/server/domain/types'
 
-import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql } from './leadFormSql'
+import { formAliasOverSql, leadFormTitleSql, sourceDescriptionSql } from './leadFormSql'
 
 /** A money column as Postgres returns it: text, to survive the driver. */
 type MoneyText = string | null
@@ -5728,21 +5728,28 @@ export class InsightsRepository {
          AND ${nine('x.phone')} !~ '^([0-9])\\1{8}$'
        GROUP BY 1
     ),
-    ${formAliasCteSql('$1', '$2')}
+    -- ONE READ OF THE WINDOW'S LEADS (2026-10-06 audit): the form aliases come from the rows
+    -- matched here, as in the registration scan; the alias CTE read the same deals a second time.
+    lw AS MATERIALIZED (
+      SELECT d."id", d."customerId", d."sourceId", d."title", ${sourceDescriptionSql('d')} AS sd,
+             d."productLine", d."createdAtSource"
+        FROM "deal" d
+        JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+       WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+    ),
+    ${formAliasOverSql('(SELECT w.sd, w.title FROM lw w) fd')}
     SELECT s."externalId" AS source_id,
            s."name" AS source,
            -- A repeat lead's form from its SOURCE_DESCRIPTION (leadFormSql.ts); one per lead, min() only to aggregate.
-           min(${dealFormTitleSql('l', 's', 'fa')}) AS form_title,
+           min(${leadFormTitleSql('l."title"', 'l.sd', 's."externalId"', 'fa.title')}) AS form_title,
            min(NULLIF(btrim(l."productLine"), '')) AS product_line,
            min(f.phone) AS client
-      FROM "deal" l
-      JOIN "pipeline" p ON p."id" = l."pipelineId" AND p."role" = 'LEAD'
+      FROM lw l
       JOIN "customer" cu ON cu."id" = l."customerId"
       CROSS JOIN LATERAL unnest(cu."phones" || cu."phone") AS x(phone)
       JOIN fakt1_phone f ON f.phone = ${nine('x.phone')} AND f.created_at > l."createdAtSource"
       LEFT JOIN "sales_source" s ON s."id" = l."sourceId"
-      ${formAliasJoinSql('l', 'fa')}
-     WHERE l."createdAtSource" >= $1 AND l."createdAtSource" < $2
+      LEFT JOIN form_alias fa ON fa.sd = l.sd
      GROUP BY l."id", s."externalId", s."name"`
   }
 
