@@ -43,6 +43,7 @@ function declarations(selector: string): Map<string, string> {
 
 const LIGHT = declarations(':root')
 const DARK = declarations(':root:where(:not([data-theme="light"]))')
+const FORCED_DARK = declarations(':root[data-theme="dark"]')
 
 type Theme = 'light' | 'dark'
 const THEMES: readonly Theme[] = ['light', 'dark']
@@ -303,5 +304,80 @@ describe('line glow', () => {
   it('collapses to nothing in light and shows in dark', () => {
     expect(fraction(token('light', '--line-glow-mix'))).toBe(0)
     expect(fraction(token('dark', '--line-glow-mix'))).toBeGreaterThan(0)
+  })
+})
+
+describe('the two dark blocks', () => {
+  /*
+    Dark is written twice — the `prefers-color-scheme` block for «Tizim»
+    readers and `[data-theme="dark"]` for a forced choice — and the two were
+    kept in step by comments alone. One drift already shipped: --kbd-edge was
+    missing from the media block, so «Tizim» readers at night got the light
+    block's ink mix, a key lit from below.
+  */
+  it('declare the same tokens with the same values', () => {
+    expect(Object.fromEntries(FORCED_DARK)).toEqual(Object.fromEntries(DARK))
+    expect(DARK.size).toBeGreaterThan(90)
+  })
+
+  it('only override what the light block declares', () => {
+    const orphans = [...DARK.keys()].filter((name) => !LIGHT.has(name))
+    expect(orphans).toEqual([])
+  })
+})
+
+describe('muted ink holds 4.5:1 wherever it lands', () => {
+  /*
+    It carries almost every label, header and hint, so its floor is the floor
+    of the whole interface. --grid counts: the palette's active row, a hovered
+    filter option and the quiet rank chips put muted text on it (4.47:1 before
+    2026-10-06).
+  */
+  it('on every surface in both themes', () => {
+    for (const theme of THEMES) {
+      for (const surface of ['--surface-raised', '--page', '--surface', '--surface-sunken', '--grid']) {
+        expect(contrast(colour(theme, 'var(--ink-muted)'), colour(theme, `var(${surface})`)), `${theme} ${surface}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  /*
+    The hero card's bloom pools the page accent under the card's own text.
+    It borrowed the aurora's strength, and when the «koʻk» pass raised that to
+    22% in dark, muted text on cyan pages read 4.00:1 at the bloom's peak.
+  */
+  it('on the hero bloom at its peak, for every pool accent', () => {
+    for (const theme of THEMES) {
+      const bloom = fraction(token(theme, '--hero-bloom-mix'))
+      for (const slot of ACCENT_POOL) {
+        const ground = over(colour(theme, `var(--series-${slot})`), bloom, colour(theme, 'var(--surface-raised)'))
+        expect(contrast(colour(theme, 'var(--ink-muted)'), ground), `${theme} slot ${slot}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
+  })
+
+  /*
+    The title band: html's series-1 pool, the aurora's accent blob and the
+    grain all paint under PageShell's 12px muted lead line. The shares are
+    the geometry .page-atmosphere::before's comment derives — at most 0.77 of
+    the pool reaches the screen, at most 0.45 of the blob reaches that line,
+    and the grain averages half its opacity of mid-grey. The first version of
+    that check left the pool out and read the line as passing.
+  */
+  it('under the title band at its worst, for every pool accent', () => {
+    const POOL_SHARE = 0.77
+    const BLOB_SHARE = 0.45
+    const pool = fraction(/html\s*\{[^}]*?color-mix\(in oklab, var\(--accent\) ([\d.]+%), transparent\)/.exec(CSS)![1]!)
+    for (const theme of THEMES) {
+      const atmos = fraction(token(theme, '--atmos-mix-accent'))
+      const grain = Number(token(theme, '--grain-alpha')) / 2
+      for (const slot of ACCENT_POOL) {
+        let ground = colour(theme, 'var(--page)')
+        ground = over(colour(theme, 'var(--series-1)'), pool * POOL_SHARE, ground)
+        ground = over(colour(theme, `var(--series-${slot})`), atmos * BLOB_SHARE, ground)
+        ground = over([128, 128, 128], grain, ground)
+        expect(contrast(colour(theme, 'var(--ink-muted)'), ground), `${theme} slot ${slot}`).toBeGreaterThanOrEqual(4.5)
+      }
+    }
   })
 })

@@ -49,7 +49,10 @@ both modes:
 | Contrast vs surface | **all 8 ≥ 3:1** | all 8 ≥ 3:1 |
 
 The set it replaced cleared CVD at 9.1 and left three slots *below* 3:1, so
-every figure above is an improvement rather than a repaint. **The slot order is
+every figure above is an improvement rather than a repaint. Re-measured on the
+«koʻk» navy surfaces (2026-10-06): on the **card** every slot still clears 3:1
+in both themes (dark 3.82–8.24, light 3.04–4.91); off it, amber does not —
+2.67:1 on the light page, 2.56 on the sunken band. **The slot order is
 unchanged** — blue, orange, teal, amber, pink, olive, violet, red — because the
 order is the colourblind-safety mechanism, not a style choice. Nothing that
 already reads a slot changed meaning.
@@ -176,7 +179,7 @@ them.
 
 `.page-atmosphere` paints two blurred radial pools — the page's own `--accent`
 and `--series-7`, mixed at `--atmos-mix-*` strengths (5% both in light,
-12%/11% in dark), blur 70px — behind the page title. It mounts in **exactly
+22%/18% in dark), blur 70px — behind the page title. It mounts in **exactly
 one place**: PageShell's title band, inside the accent subtree. Mixing at the
 element rather than on `:root` is what lets each page's aurora follow its own
 accent; a token derived on `:root` would freeze to series-1 for every page.
@@ -190,10 +193,11 @@ and read as a darker box on any viewport wider than the container. The sky is
 also **static**: this is a work tool, and the sky must not drift while someone
 reads a number.
 
-The strengths are load-bearing, not taste. The worst-case backdrop — one
-blob's on-canvas peak, the other's cross-residual, the grain's mean
-contribution — keeps every ink at its 4.5:1 floor, with light-mode
-`--ink-muted` the tight one. Raising `--atmos-mix-*` or `--grain-alpha`
+The strengths are load-bearing, not taste. The worst-case backdrop under the
+12px lead line — html's own pool, the accent blob where that line sits, the
+grain's mean — keeps every ink at its 4.5:1 floor, with light-mode
+`--ink-muted` the tight one (4.58:1). The first version of that arithmetic
+left html's pool out; with it the old muted read 4.45:1. Raising `--atmos-mix-*` or `--grain-alpha`
 re-runs that arithmetic or does not happen. Under
 `prefers-reduced-transparency`, `prefers-contrast: more` and forced colours
 the atmosphere degrades to nothing, never to less-legible.
@@ -213,7 +217,11 @@ canvas, never on the data.
 **gradient** (`--edge-hero-top` → `--edge-hero-bottom`, riding in as a second
 background clipped to the border box) so the top edge is visibly brighter than
 the bottom. At most **one per page** — two of these on a screen is not two
-heroes, it is none. Its number is the page's single `.figure-hero`.
+heroes, it is none. Its number is the page's single `.figure-hero`. Its
+top-left corner holds a bloom of the page accent at `--hero-bloom-mix` — 5% in
+light, 16% in dark, the most that keeps the card's muted text at 4.5:1 on the
+bloom's peak for every pool accent (it borrowed the aurora's 22% and read
+4.00:1 on cyan pages).
 
 `.brackets` draws two 12px L-corners in `--border-strong` at opposing corners,
 6px inside the edge — the registration marks of an instrument that has been
@@ -222,7 +230,7 @@ both to decoration. The corners are the element's own `::before` and
 `::after`, so anything else that draws a pseudo-element goes on a wrapper.
 
 In dark mode the hero figure carries a 24px halo of the page accent at
-`--glow-hero-mix` (18% dark, 0% light — the mix collapses to transparent, so
+`--glow-hero-mix` (40% dark, 0% light — the mix collapses to transparent, so
 there is no rule to un-set). The digits stay in ink; the glow is the panel's
 backlight leaking around the figure, constant and therefore unable to encode
 anything. A whisper, not neon — glow-on-every-card is the gallery cliché this
@@ -283,13 +291,13 @@ either.
 
 One easing curve, `--ease-out`, a decelerating cubic-bezier: things arrive
 quickly and settle. Three durations, and their asymmetry is deliberate —
-`--duration-exit` (140ms) is shorter than `--duration-enter` (220ms) so the old
+`--duration-exit` (120ms) is shorter than `--duration-enter` (180ms) so the old
 view stops competing for attention before the new one asks for it.
 
 | Helper | What it does |
 |---|---|
 | `.rise` | a single element arrives, 6px up and fading |
-| `.stagger` | children arrive in sequence — set `--i` per child, capped at 8 |
+| `.stagger` | children arrive in sequence, indexed by `nth-child` (nothing to set per child), capped at 8 |
 | `.grow-x` | a bar scales from its baseline, so the length reads as a value arriving |
 
 Nothing here carries information the static rendering does not. Motion is the
@@ -423,5 +431,5 @@ confident statement about something nobody knew.
 **A cap on every table whose length comes from the data.** The leaderboard was
 17,400px and the employee list 16,605px because nothing bounded them.
 
-**`--ink-muted` carries almost every label, so it clears 4.5:1.** It was
-3.38:1.
+**`--ink-muted` carries almost every label, so it clears 4.5:1** — on every
+surface it lands on, `--grid` included (4.61:1 light). It was 3.38:1.

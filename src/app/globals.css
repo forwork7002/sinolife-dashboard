@@ -32,8 +32,12 @@
  * glass, electric blue and cyan): every SURFACE moved to a navy hue, and
  * three slots moved with it — 1 (blue) brighter, 3 (teal → cyan) and 7
  * (violet) lighter — so the marks keep their hue family on the new ground.
- * Re-measured on the new surfaces: every series slot ≥ 4.7:1 on the dark
- * raised card and ≥ 3.6:1 on the light page; the slot ORDER is unchanged.
+ * Re-measured on the new surfaces (2026-10-06; the figures first written
+ * here were not what the tokens give): on the CARD every slot clears the
+ * 3:1 a mark needs — dark 3.82 (olive) to 8.24, light 3.04 (amber) to 4.91.
+ * Off the card it does not always: amber reads 2.67:1 on the light page and
+ * 2.56 on the sunken band, which is one more reason marks sit on cards. The
+ * slot ORDER is unchanged.
  *
  * The previous set cleared CVD at 9.1 and left three slots below 3:1 contrast,
  * so every one of those numbers is an improvement rather than a repaint. The
@@ -65,11 +69,17 @@
    * cleared 4.83:1 there and 4.24:1 on `--surface-sunken`, which is the table
    * header — the place a column label most needs to be legible.
    *
-   *   on --raised  #ffffff        5.62:1
-   *   on --page    #edf0fa        4.94:1
-   *   on --sunken  #e8ebf6        4.73:1   ← the one that decides the value
+   *   on --raised  #ffffff        5.79:1
+   *   on --page    #edf0fa        5.09:1
+   *   on --sunken  #e8ebf6        4.87:1
+   *   on --grid    #e1e5f2        4.61:1   ← the one that decides the value
+   *
+   * --grid is a surface too: the palette's active row, a hovered filter
+   * option and the quiet rank chips put muted text on it. At #5c6785 it read
+   * 4.47:1 there, and 4.45:1 under the title band's worst light (see
+   * .page-atmosphere::before); two steps darker clears both.
    */
-  --ink-muted: #5c6785;
+  --ink-muted: #5a6583;
   --grid: #e1e5f2;
   /* What an empty track is drawn in. Same as --grid in light; dark needs its
      own step because --grid on a raised card measured 1.07:1 there — a ring's
@@ -121,9 +131,11 @@
   --seq-650: #1538bc;
 
   /* --- Status — reserved, never reused as a series colour ---------------- */
-  /* Each step clears 4.5:1 on its surface, so a status may carry TEXT and not
-     only a mark. It still ships with an icon or a word; colour alone is not a
-     channel. */
+  /* Each step clears 4.5:1 on the card and the page, so a status may carry
+     TEXT and not only a mark (tightest: light critical, 5.34 on the card and
+     4.69 on the page). Not on a recess: on --surface-sunken light critical is
+     4.49:1 and on --grid 4.24 — keep status text off those. It still ships
+     with an icon or a word; colour alone is not a channel. */
   --status-good: #00733a;
   --status-warning: #915c00;
   --status-critical: #d02222;
@@ -297,14 +309,24 @@
 
   /* Film grain strength. Doubled in dark, where a flat hex wall is most
      visibly flat. 2% is a ceiling, not a taste: the worst-case contrast
-     check on .page-atmosphere::before folds the grain in and lands exactly
-     on --ink-muted's 4.5:1 floor. Raising this re-opens that check. */
+     check on .page-atmosphere::before folds the grain in and leaves light
+     --ink-muted 4.58:1 against its 4.5:1 floor. Raising this re-opens that
+     check. */
   --grain-alpha: 0.02;
 
   /* Hero-number glow strength — 0% in light: a glow in daylight is smudge,
      not atmosphere. Dark raises it to a whisper. Read in exactly one place:
      .card-hero .figure-hero. */
   --glow-hero-mix: 0%;
+
+  /* The hero card's bloom — the page accent pooled in `.card-hero`'s top-left
+     corner. Its own strength since 2026-10-06; it borrowed --atmos-mix-accent,
+     which the «koʻk» pass raised to 22% in dark for the aurora, and the
+     aurora sits on the bare page while the bloom sits under the card's own
+     text: muted text read 4.00:1 on cyan pages. 16% in dark keeps --ink-muted
+     at 4.59:1 or better on the bloom's very peak for every pool accent; light
+     keeps the 5% it always had (5.42:1). */
+  --hero-bloom-mix: 5%;
 
   /**
    * «Koʻk» finish (2026-09-28) — the client's reference boards are navy glass
@@ -411,7 +433,7 @@
        The old dark ramp reused the light one, so "further along the funnel"
        meant "darker" — and against a near-black page the last step fell to
        1.8:1 and simply disappeared. Re-derived and re-validated: monotone,
-       ΔL ≥ 0.06 throughout, light end 2.36:1 on the surface. */
+       ΔL ≥ 0.06 throughout, light end 2.34:1 on the surface. */
     --seq-250: #1c43c4;
     --seq-350: #3462e4;
     --seq-450: #5081ff;
@@ -425,8 +447,8 @@
     --delta-up: #2fb862;
     /* Lighter than --status-critical on purpose: delta text sits ON a 12%
        tint of itself, which raises the backdrop above the bare card — #f0524e
-       measured 4.11:1 there, under the 4.5:1 text minimum. Same hue, 4.73:1
-       on the tint, 5.57:1 on the card. */
+       measures 4.34:1 there, under the 4.5:1 text minimum. Same hue, 5.01:1
+       on the tint, 5.82:1 on the card (re-measured on the navy card). */
     --delta-down: #f56b62;
 
     /* Medal chrome, re-anchored for the dark surface — see the light block. */
@@ -507,6 +529,7 @@
     --atmos-mix-violet: 18%;
     --grain-alpha: 0.04;
     --glow-hero-mix: 40%;
+    --hero-bloom-mix: 16%;
     --card-sheen: 5%;
     --line-glow-mix: 55%;
   }
@@ -631,6 +654,7 @@
   --atmos-mix-violet: 18%;
   --grain-alpha: 0.04;
   --glow-hero-mix: 40%;
+  --hero-bloom-mix: 16%;
   --card-sheen: 5%;
   --line-glow-mix: 55%;
 }
@@ -1049,18 +1073,20 @@ body {
  * clip, so the band cannot vignette against its own edges.
  *
  * CONTRAST, checked rather than assumed — the title block sits on this.
- * Worst realistic backdrop = one blob's full on-canvas peak + the other's
- * cross-residual (opposite corners never fully coincide) + the grain's mean
- * contribution, composited over --page:
+ * The binding text is PageShell's 12px muted lead line. Its worst realistic
+ * backdrop, composited over --page: html's own series-1 pool (7%, at most
+ * 0.77 of it on screen — its centre is above the viewport), the accent blob
+ * at most 0.45 of --atmos-mix-* where that line sits (its falloff times this
+ * band's mask), the violet blob's residual (none on the left, where the line
+ * is) and the grain's mean (half its opacity, mid-grey); worst pool accent:
  *
- *   light (≈#EBEEF9 at the accent peak):
- *     --ink-primary 16.7:1 · --ink-secondary 6.8:1 · --ink-muted 4.5:1
- *   dark  (≈#1C1C3E at the accent peak):
- *     --ink-primary 15.1:1 · --ink-secondary 7.5:1 · --ink-muted 5.1:1
+ *   light:  --ink-primary 14.1:1 · --ink-secondary 6.33:1 · --ink-muted 4.58:1
+ *   dark:   --ink-primary 14.2:1 · --ink-secondary 7.52:1 · --ink-muted 5.65:1
  *
- * Every ink holds its 4.5:1 floor. Light-mode muted is the tight one — it
- * lands where its own token comment already lives (4.61 on --surface-sunken),
- * so the aurora never becomes a new worst backdrop — and that margin is why
+ * Every ink holds its 4.5:1 floor. Light muted is the tight one. The figures
+ * first written here left html's pool out (it paints under this band too)
+ * and quoted 4.5:1; with it, the old muted read 4.45:1, which is half of why
+ * --ink-muted moved two steps darker on 2026-10-06. That margin is why
  * --atmos-mix-* light stays at 5% and the light grain at 2%. Anyone raising
  * either re-runs this arithmetic.
  */
@@ -1174,8 +1200,8 @@ body::after {
  * in light (the mix collapses to transparent — no rule to un-set, no theme
  * drift). The digits themselves stay in ink: the glow is the panel's
  * backlight leaking around the figure, not a colour channel — it is constant,
- * so it cannot encode anything, and at 18% it is a whisper. Neon is the
- * gallery cliché this file explicitly refuses.
+ * so it cannot encode anything, and spread over 24px even dark's 40% is a
+ * whisper. Neon is the gallery cliché this file explicitly refuses.
  */
 .card-hero .figure-hero {
   text-shadow: 0 0 24px
@@ -1252,14 +1278,15 @@ body::after {
   border: 1px solid transparent;
   border-radius: var(--radius-panel-lg);
   /* The «koʻk» bloom: the page's accent pooled in the top-left corner, at
-     the atmosphere's own strength (--atmos-mix-accent — 5% in light, so it
-     reads as the hint of a light source; 22% in dark, where it is the
-     reference boards' backlit hero card). Read at the element, so it follows
-     the page accent PageShell sets, like the aurora above the title. */
+     --hero-bloom-mix — 5% in light, so it reads as the hint of a light
+     source; 16% in dark, the reference boards' backlit hero card, and the
+     most that keeps the card's muted text at 4.5:1 on its peak (see the
+     token). Read at the element, so it follows the page accent PageShell
+     sets, like the aurora above the title. */
   background:
     radial-gradient(
         42rem 18rem at 0% 0%,
-        color-mix(in oklab, var(--accent) var(--atmos-mix-accent), transparent),
+        color-mix(in oklab, var(--accent) var(--hero-bloom-mix), transparent),
         transparent 70%
       )
       padding-box,
