@@ -83,6 +83,9 @@ function board(over: {
   open: number
   openOrders: number
   projected?: number | null
+  /** How much of the period is gone, and where it ends — September's by default. */
+  elapsedPercent?: number
+  windowEnd?: string
 }): SellerBoardDto {
   return {
     rows: [],
@@ -106,8 +109,9 @@ function board(over: {
       teamlessSellers: 0,
     },
     forecast: {
-      elapsedPercent: 27.9,
-      windowEnd: '2026-10-01T00:00:00.000Z',
+      elapsedPercent: over.elapsedPercent ?? 27.9,
+      // 1 October in Tashkent — the first instant NOT projected.
+      windowEnd: over.windowEnd ?? '2026-09-30T19:00:00.000Z',
       /* FAKT 1 rides beside FAKT 2 since 2026-09-16 — the band still reads
          only the second, and `ForecastSection` is where both are printed. */
       fakt1: over.projected === undefined ? money(3_100_000_000) : null,
@@ -196,11 +200,48 @@ describe('«confirmed, then cancelled»', () => {
 })
 
 describe('the FAKT 2 run-rate', () => {
-  it('projects the month once something has landed', () => {
+  it('projects the period once something has landed, and names where it ends', () => {
     render(<QueueBand data={LIVE} status="ready" />)
 
     expect(figure(formatFullUzs(2_389_000_000))).toBe(1)
-    expect(screen.getByText('Oyning 28% qismi oʻtdi — shu surʼatda davom etsa')).toBeDefined()
+    expect(
+      screen.getByText('Davrning 28% qismi oʻtdi — 30-sen gacha, shu surʼatda davom etsa'),
+    ).toBeDefined()
+  })
+
+  it('never calls a window that is not a month the month end', () => {
+    /*
+      «Sana → Yil → 2026» on 6 October sends a CUSTOM window ending tonight,
+      which `fullUnitWindow` passes through unchanged: 99.9% elapsed, and a
+      projection to tonight. The tile printed «FAKT 2 · oy yakuni prognozi»
+      with «Oyning 100% qismi oʻtdi» over it. «Bugun» did the same with the
+      day's pace.
+    */
+    render(
+      <QueueBand
+        data={board({
+          orders: 669,
+          cohortOrders: 811,
+          wonOrders: 411,
+          lostOrders: 156,
+          lostAfterConfirmOrders: 29,
+          lostAfterConfirm: 46_350_000,
+          open: 390_540_001,
+          openOrders: 233,
+          elapsedPercent: 99.9,
+          // 7 October 00:00 in Tashkent: the window ends tonight.
+          windowEnd: '2026-10-06T19:00:00.000Z',
+        })}
+        status="ready"
+      />,
+    )
+
+    expect(screen.queryByText(/oy yakuni/)).toBeNull()
+    expect(screen.queryByText(/Oyning/)).toBeNull()
+    expect(screen.getByText('FAKT 2 · davr yakuni prognozi')).toBeDefined()
+    expect(
+      screen.getByText('Davrning 100% qismi oʻtdi — 6-okt gacha, shu surʼatda davom etsa'),
+    ).toBeDefined()
   })
 
   it('refuses to project from a cohort nothing has been delivered out of', () => {
