@@ -795,4 +795,39 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
       expect(peak).toBe(2)
     })
   })
+
+  it('fills the memos the routes read — `instrumentation.ts` runs its own copy of this module (2026-10-06 audit)', async () => {
+    const warmers = await import('@/server/services/leadSourcesService')
+    const now = new Date('2026-06-16T05:00:00Z') // 10:00 Tashkent
+    const reads: string[] = []
+    const read = <T,>(name: string, rows: T) => async () => {
+      reads.push(name)
+      return rows
+    }
+    const service = (Service: typeof warmers.LeadSourcesService) =>
+      new Service(
+        {
+          registrationDays: read('registrationDays', [reg({ day: '2026-06-16', formTitle: UMAR_FORM, leads: 4 })]),
+          triageDays: read('triageDays', []),
+          qualifiedSources: read('qualifiedSources', []),
+          aiQualifiedStages: read('aiQualifiedStages', []),
+          pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
+          inboundCallCount: read('inboundCallCount', null),
+        } as never,
+        { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+        { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
+      )
+    await service(warmers.LeadSourcesService).warm(now, 'Asia/Tashkent')
+    expect(reads).toHaveLength(14)
+
+    // A second instance of the module, as the route handlers' bundle holds one.
+    vi.resetModules()
+    const routes = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    expect(routes.LeadSourcesService).not.toBe(warmers.LeadSourcesService)
+    reads.length = 0
+    const today = await service(routes.LeadSourcesService).overview(resolvePeriod('today', { timeZone: 'Asia/Tashkent', now }), 'Asia/Tashkent')
+    expect(reads).toEqual([])
+    expect(today.funnel.total).toBe(4)
+  })
 })

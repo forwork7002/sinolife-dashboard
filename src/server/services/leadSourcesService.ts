@@ -816,6 +816,19 @@ export function leadSourcesOverview(all: {
 }
 
 /*
+  THE MEMOS LIVE ON `globalThis`, ONE PER PROCESS (2026-10-06 audit).
+  `src/instrumentation.ts` and the route handlers are separate bundles in one
+  process, each with its own copy of this module: as module variables, the
+  warmer's builds filled memos no route read, and «Lidlar» stayed cold for
+  its readers all the same. `FIRST_WARM` in `rnpWarmer.ts` is held this way
+  for the same reason; `Symbol.for` hands both copies the one key.
+*/
+function processWide<T>(name: string, make: () => T): T {
+  const g = globalThis as Record<symbol, unknown>
+  return (g[Symbol.for(`sinolife.leads.${name}`)] ??= make()) as T
+}
+
+/*
   The Регистрация scan alone: «Targetologlar · kunlik» needs nothing else,
   and must not wait on the other scans — the FAKT 1 phone match can run into
   the 20 s statement timeout on a month (prod 2026-10-06), and one failed scan
@@ -828,7 +841,7 @@ export function leadSourcesOverview(all: {
   сони» by a rebuild for good, and «Targetologlar · kunlik», which reads this
   memo directly, showed more form leads than «Lidlar» for the same window.
 */
-const registrationCache = ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE)
+const registrationCache = processWide('registrationCache', () => ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE))
 
 /*
   «Факт1 мижоз» on its own memo, and never awaited past `FAKT1_WAIT_MS`: the
@@ -837,7 +850,7 @@ const registrationCache = ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE)
   arrives first gets the tab without it; the query keeps running and fills
   the memo for the next poll. A failure is evicted, so the next one retries.
 */
-const fakt1Cache = ttlCache<LeadFakt1ClientRow[]>(120_000, LIVE_CACHE)
+const fakt1Cache = processWide('fakt1Cache', () => ttlCache<LeadFakt1ClientRow[]>(120_000, LIVE_CACHE))
 const FAKT1_WAIT_MS = 8_000
 /** Still waited for when the other scans alone took past `FAKT1_WAIT_MS`. */
 const FAKT1_GRACE_MS = 1_000
@@ -868,7 +881,7 @@ interface WindowScans {
   sarafan: PipelineSourceCount
   inboundCalls: number | null
 }
-const scanCache = ttlCache<WindowScans>(120_000, LIVE_CACHE)
+const scanCache = processWide('scanCache', () => ttlCache<WindowScans>(120_000, LIVE_CACHE))
 
 /*
   KEPT WARM (2026-10-06, «Lidlar juda sekin ochilayapti»). The memos above
