@@ -51,6 +51,42 @@ describe('staleWhileRevalidate', () => {
     expect(await memo.get('k', build)).toBe(3) // too old: built in the open
   })
 
+  it('a reader past the hard limit shares the rebuild already on its way — never a second build beside it (2026-10-06)', async () => {
+    let now = 0
+    let builds = 0
+    let release!: (value: number) => void
+    const memo = staleWhileRevalidate<number>(4 * 60_000, () => now, 30 * 60_000) // monthCache's ttl and hard limit
+    const build = () => (++builds === 2 ? new Promise<number>((resolve) => (release = resolve)) : Promise.resolve(builds))
+    expect(await memo.get('k', build)).toBe(1)
+    now = 27 * 60_000
+    expect(await memo.get('k', build)).toBe(1) // stale: handed back, rebuilt behind the reader
+    now = 30 * 60_000 + 1
+    const late = memo.get('k', build)
+    await flush()
+    expect(builds).toBe(2)
+    release(2)
+    expect(await late).toBe(2)
+    expect(builds).toBe(2)
+  })
+
+  it('a reader past the hard limit whose shared rebuild fails builds in the open, once', async () => {
+    let now = 0
+    let builds = 0
+    let fail!: (error: Error) => void
+    const memo = staleWhileRevalidate<number>(4 * 60_000, () => now, 30 * 60_000, () => undefined)
+    expect(await memo.get('k', () => Promise.resolve(++builds))).toBe(1)
+    now = 27 * 60_000
+    await memo.get('k', () => {
+      builds++
+      return new Promise<number>((_, reject) => (fail = reject))
+    })
+    now = 30 * 60_000 + 1
+    const late = memo.get('k', () => Promise.resolve(++builds))
+    fail(new Error('canceling statement due to statement timeout'))
+    expect(await late).toBe(3)
+    expect(builds).toBe(3)
+  })
+
   it('keeps the old answer when a rebuild fails, and forgets a first build that failed', async () => {
     let now = 0
     const memo = staleWhileRevalidate<number>(1_000, () => now)

@@ -176,8 +176,13 @@ export function staleWhileRevalidate<T>(
   const memo = {
     get(key: string, build: () => Promise<T>): Promise<T> {
       const found = entries.get(key)
-      // Too old to show even while rebuilding: drop it and build in the open.
+      // Too old to show even while rebuilding: drop it and build in the open…
       const hit = found && clock() - found.at >= maxStaleMs ? undefined : found
+      if (found && !hit && found.rebuilding) {
+        // …unless its rebuild is already on the way: wait for that one, never a second full build beside it (2026-10-06).
+        const again = () => memo.get(key, build)
+        return found.rebuilding.then(again, again)
+      }
       if (!hit) {
         const value = build()
         const entry: Entry = { at: clock(), value, rebuilding: null }
