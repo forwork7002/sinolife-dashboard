@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { cleanup, render, screen } from '@testing-library/react'
-import type { ReactElement } from 'react'
+import { useEffect, type ReactElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -28,10 +28,13 @@ const { Providers } = await import('@/app/providers')
 afterEach(cleanup)
 
 /** The client every screen reads, caught by the screen that reads it. */
-let client: QueryClient | undefined
+const caught: { client?: QueryClient } = {}
 
 function Board({ read }: { read: () => Promise<string> }) {
-  client = useQueryClient()
+  const client = useQueryClient()
+  useEffect(() => {
+    caught.client = client
+  }, [client])
   const board = useQuery({ queryKey: ['sellers', 'board'], queryFn: read })
   return <p>{board.data ?? 'skeleton'}</p>
 }
@@ -57,7 +60,7 @@ describe('the query cache across accounts', () => {
 
     // The session was revoked: the guard sends the tab to /login.
     go('/login', adminBoard, rerender)
-    expect(client!.getQueryCache().getAll()).toHaveLength(0)
+    expect(caught.client!.getQueryCache().getAll()).toHaveLength(0)
 
     // A ROP signs in on the same tab; their own answer has not landed yet.
     go('/sellers', neverAnswers, rerender)
