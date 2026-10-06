@@ -5,8 +5,8 @@
  *
  * WHY. A month's rows come from seven scans (the queue cohort, a month of
  * leads, calls, stage history, registration …). Served from the memo the page
- * answers in ~0.1 s; cold — the first reader after a deploy, or after ten
- * quiet minutes past the memo's hard limit — it took ~17 s on production
+ * answers in ~0.1 s; cold — the first reader after a deploy, or after a
+ * quiet half hour, the memo's hard limit — it took ~17 s on production
  * (2026-09-30). The client asked for the section to open fast.
  *
  * THE CADENCE, 4 MINUTES: the memo's TTL, well under its 30-minute hard limit, so an idle
@@ -14,12 +14,16 @@
  * (`WARM_HOURS`). One build at a time — a slow tick is skipped over,
  * never stacked.
  *
- * EACH TICK IS A REAL BUILD, WAITED FOR (`RnpService.warm`, 2026-10-02): it
- * used to take the memo's answer and rebuild behind it, so «rnp warmed»
- * logged 0 ms and a failed build was never heard of. Now `ms` is the build's
- * own time and a failure is the warn below. In a month's first week the
- * month that just ended is built once too: a closed month has no hard limit
- * (it is served however old, and rebuilt behind its reader).
+ * EACH TICK OF THE WORKING DAY IS A REAL BUILD, WAITED FOR
+ * (`RnpService.warm`, 2026-10-02): it used to take the memo's answer and
+ * rebuild behind it, so «rnp warmed» logged 0 ms and a failed build was
+ * never heard of. Now `ms` is the build's own time and a failure is the warn
+ * below. A tick outside `WARM_HOURS` builds nothing: `warm` answers
+ * `OFF_HOURS` and the tick logs «rnp warm skipped — outside working hours»
+ * at debug (2026-10-06) — as «rnp warmed» it read 0 ms every four minutes
+ * all night, the very log the 2026-10-02 change took away. In a month's
+ * first week the month that just ended is built once too: a closed month has
+ * no hard limit (it is served however old, and rebuilt behind its reader).
  *
  * Started once per server by `src/instrumentation.ts`, Node runtime only.
  */
@@ -36,10 +40,15 @@ export const RNP_WARM_EVERY_MS = 4 * 60_000
   one-core database, beside the worker's night jobs (`DEALS_BACKFILL`
   01:00–06:00, the deletion sweep). The 07:00 tick builds before the morning;
   a night reader waits for one cold build, as after any quiet half hour.
-  Each `warm` checks it and returns, so a night deploy's first-build flag
-  still clears.
+  Each `warm` checks it and answers `OFF_HOURS` at once, so a night deploy's
+  first-build flag still clears.
 */
 export const WARM_HOURS = [7, 23] as const
+
+/** A warm-up's answer when the hour is outside `WARM_HOURS`: it built nothing. */
+export const OFF_HOURS = 'off-hours'
+/** What a warm-up answers: nothing once it has built, `OFF_HOURS` when it did not. */
+export type WarmOutcome = void | typeof OFF_HOURS
 
 /** Whether `now` is within the hours [from, to) of the day in `timeZone`. */
 export function withinHours(now: Date, timeZone: string, [from, to]: readonly [number, number]): boolean {
@@ -80,13 +89,14 @@ interface Timers {
 /**
  * Builds once now — or once `after` has settled — then every `everyMs`,
  * without holding the process open. One build at a time — a slow tick is
- * skipped over, never stacked. Logs «<name> warmed» with the build's time; a
+ * skipped over, never stacked. Logs «<name> warmed» with the build's time,
+ * or «<name> warm skipped» at debug when `warm` answers `OFF_HOURS`; a
  * failure is a warn, and the next tick tries again. Counts as pending for
  * `/api/health` from this call, not from its first tick.
  */
 export function startWarmer(
   name: string,
-  warm: () => Promise<void>,
+  warm: () => Promise<WarmOutcome>,
   everyMs: number,
   timers: Timers = globalThis as unknown as Timers,
   after: Promise<unknown> = Promise.resolve(),
@@ -97,7 +107,11 @@ export function startWarmer(
     if (running) return running
     const started = Date.now()
     running = warm()
-      .then(() => logger.info({ ms: Date.now() - started }, `${name} warmed`))
+      .then((outcome) =>
+        outcome === OFF_HOURS
+          ? logger.debug(`${name} warm skipped — outside working hours`)
+          : logger.info({ ms: Date.now() - started }, `${name} warmed`),
+      )
       .catch((error: unknown) => logger.warn({ err: error }, `${name} warm-up failed; the next tick tries again`))
       .finally(() => {
         running = null
@@ -110,6 +124,6 @@ export function startWarmer(
   return tick
 }
 
-export function startRnpWarmer(warm: () => Promise<void>, timers?: Timers): () => Promise<void> {
+export function startRnpWarmer(warm: () => Promise<WarmOutcome>, timers?: Timers): () => Promise<void> {
   return startWarmer('rnp', warm, RNP_WARM_EVERY_MS, timers)
 }

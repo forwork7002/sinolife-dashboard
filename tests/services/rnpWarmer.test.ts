@@ -1,11 +1,11 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_URL ??= 'postgresql://test@127.0.0.1:5432/test'
 process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { RNP_WARM_EVERY_MS, WARM_HOURS, firstWarmPending, startRnpWarmer, startWarmer, withinHours } = await import(
+const { OFF_HOURS, RNP_WARM_EVERY_MS, WARM_HOURS, firstWarmPending, startRnpWarmer, startWarmer, withinHours } = await import(
   '@/server/services/rnpWarmer'
 )
 const { logger } = await import('@/server/logging/logger')
@@ -107,6 +107,28 @@ describe('startRnpWarmer', () => {
     const leadsFirst = leads()
     finishLeads()
     await leadsFirst
+    expect(firstWarmPending()).toBe(false)
+  })
+})
+
+/*
+  A night tick builds nothing (`WARM_HOURS`), and said so as «rnp warmed»
+  with 0 ms every four minutes until the morning — the log 2026-10-02 had
+  taken away. It is a skip now, at debug, and the first-build flag clears.
+*/
+describe('startWarmer — a tick outside working hours (2026-10-06)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('logs a skip at debug, not «warmed», and still lets /api/health stop waiting', async () => {
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined)
+    const debug = vi.spyOn(logger, 'debug').mockImplementation(() => undefined)
+    const { timers } = fakeTimers()
+    const tick = startRnpWarmer(async () => OFF_HOURS, timers)
+    await tick()
+    expect(debug).toHaveBeenCalledWith('rnp warm skipped — outside working hours')
+    expect(info).not.toHaveBeenCalled()
     expect(firstWarmPending()).toBe(false)
   })
 })

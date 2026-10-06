@@ -166,6 +166,7 @@ describe('staleWhileRevalidate', () => {
 
 const { RnpService } = await import('@/server/services/rnpService')
 const { logger } = await import('@/server/logging/logger')
+const { OFF_HOURS } = await import('@/server/services/rnpWarmer')
 
 const TZ = 'Asia/Tashkent'
 /** 10:00 in Tashkent, 2 October 2026. */
@@ -295,10 +296,11 @@ describe('RnpService — the month memo (2026-10-02)', () => {
         return days.map(() => 12_000)
       },
     })
-    await service.warm(new Date('2027-09-14T22:00:00Z'), TZ) // 03:00 on the 15th
-    await service.warm(new Date('2027-09-15T18:00:00Z'), TZ) // 23:00
+    // Each says so — `OFF_HOURS` — so the warmer logs a skip rather than «rnp warmed» with 0 ms.
+    expect(await service.warm(new Date('2027-09-14T22:00:00Z'), TZ)).toBe(OFF_HOURS) // 03:00 on the 15th
+    expect(await service.warm(new Date('2027-09-15T18:00:00Z'), TZ)).toBe(OFF_HOURS) // 23:00
     expect([scans, asked]).toEqual([[], []])
-    await service.warm(new Date('2027-09-15T02:00:00Z'), TZ) // 07:00, the first tick of the day
+    expect(await service.warm(new Date('2027-09-15T02:00:00Z'), TZ)).toBeUndefined() // 07:00, the first tick of the day
     expect([scans, asked]).toEqual([['2027-09'], ['2027-09']])
   })
 })

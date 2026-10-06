@@ -672,6 +672,7 @@ describe('LeadSourcesService.overview — a slow «Факт1 мижоз»', () =
 describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', () => {
   it('builds «Bugun» then «Shu oy» by working hours, through the reader\'s own memo keys, and nothing at night', async () => {
     const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { OFF_HOURS } = await import('@/server/services/rnpWarmer')
     const windows: string[] = []
     const service = new LeadSourcesService(
       {
@@ -688,11 +689,11 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
       { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
       { leadFakt1Clients: async () => [] } as never,
     )
-    // 03:00 Tashkent: nobody reads it.
-    await service.warm(new Date('2026-05-11T22:00:00Z'), 'Asia/Tashkent')
+    // 03:00 Tashkent: nobody reads it — and it says so, for the warmer's log.
+    expect(await service.warm(new Date('2026-05-11T22:00:00Z'), 'Asia/Tashkent')).toBe(OFF_HOURS)
     expect(windows).toEqual([])
     // 10:00 Tashkent.
-    await service.warm(new Date('2026-05-12T05:00:00Z'), 'Asia/Tashkent')
+    expect(await service.warm(new Date('2026-05-12T05:00:00Z'), 'Asia/Tashkent')).toBeUndefined()
     expect(windows).toEqual(['today', 'this_month'])
   })
 })
