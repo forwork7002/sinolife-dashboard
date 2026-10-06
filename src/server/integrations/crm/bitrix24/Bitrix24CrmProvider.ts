@@ -423,8 +423,15 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private historyRead = 0
   private callsRead = 0
 
-  /** Resolved once from `crm.deal.fields`: field name → item id → label. */
+  /**
+   * From `crm.deal.fields`: field name → item id → label. Read once, and again
+   * when a deal names an item it does not hold — see `toRawDeals`.
+   */
   private enumLabels: Map<string, Map<string, string>> | undefined
+  /** `field:id` pairs the page being mapped named and `enumLabels` lacked. */
+  private readonly labelMisses = new Set<string>()
+  /** Pairs a fresh `crm.deal.fields` did not know either: deleted items, never re-read for. */
+  private readonly deadLabels = new Set<string>()
   private grantedScopes: Set<string> | undefined
 
   constructor(options: Bitrix24ProviderOptions) {
@@ -1030,7 +1037,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
    *
    * The custom fields arrive as numeric item ids ("98"), not text. Resolving
    * them from the portal rather than a hardcoded table means an operator who
-   * adds a region next month gets the right name without a redeploy.
+   * adds a region next month gets the right name without a redeploy — which
+   * held only for a worker STARTED after the item was added: the memo lived
+   * for the process, and every deal naming a new targetolog, registrar, region
+   * or «Проект» was written NULL until the next deploy. `toRawDeals` re-reads
+   * it when a row names an item it lacks.
    */
   private async loadEnumLabels(): Promise<Map<string, Map<string, string>>> {
     if (this.enumLabels) return this.enumLabels
@@ -1050,9 +1061,52 @@ export class Bitrix24CrmProvider implements CrmProvider {
     return map
   }
 
+  /**
+   * Read the labels again, keeping the ones we have if the portal refuses.
+   *
+   * A refusal is told to the gate by `call()` as always; the deals in hand are
+   * then written with the labels this process already knew, as before.
+   */
+  private async reloadEnumLabels(): Promise<boolean> {
+    const previous = this.enumLabels
+    this.enumLabels = undefined
+    try {
+      await this.loadEnumLabels()
+      return true
+    } catch {
+      this.enumLabels = previous
+      return false
+    }
+  }
+
+  /**
+   * Rows as RawDeals — with the labels re-read ONCE when a row names an
+   * enumeration item the memo does not hold, and the rows mapped again.
+   *
+   * Only a NEW miss asks: a pair a fresh read did not know either is a deleted
+   * item that old deals still carry, and asking for it every page would be a
+   * `crm.deal.fields` per tick for nothing. An idle tick names nothing, so it
+   * costs nothing — `portalBudget.test.ts`'s pinned hour is unchanged.
+   */
+  private async toRawDeals(rows: readonly Record<string, string>[]): Promise<RawDeal[]> {
+    this.labelMisses.clear()
+    let deals = rows.map((d) => this.toRawDeal(d))
+
+    if ([...this.labelMisses].some((miss) => !this.deadLabels.has(miss)) && (await this.reloadEnumLabels())) {
+      this.labelMisses.clear()
+      deals = rows.map((d) => this.toRawDeal(d))
+      for (const miss of this.labelMisses) this.deadLabels.add(miss)
+    }
+
+    this.labelMisses.clear()
+    return deals
+  }
+
   private label(field: string, value: unknown): string | undefined {
     if (value === null || value === undefined || value === '') return undefined
-    return this.enumLabels?.get(field)?.get(String(value)) ?? undefined
+    const found = this.enumLabels?.get(field)?.get(String(value))
+    if (found === undefined) this.labelMisses.add(`${field}:${String(value)}`)
+    return found
   }
 
   /**
@@ -1073,7 +1127,12 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }
     if (value === null || value === undefined || value === '') return undefined
     const items = this.enumLabels?.get(field)
-    if (items && items.size > 0) return items.get(String(value)) ?? nonEmpty(value)
+    if (items && items.size > 0) {
+      const found = items.get(String(value))
+      // An enumeration naming an item we do not hold is a new item, not text.
+      if (found === undefined) this.labelMisses.add(`${field}:${String(value)}`)
+      return found ?? nonEmpty(value)
+    }
     return nonEmpty(value)
   }
 
@@ -1647,7 +1706,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
   async fetchDealsByIds(ids: readonly string[]): Promise<RawDeal[]> {
     await this.loadEnumLabels()
     const rows = await this.dealsById<Record<string, string>>(ids, DEAL_SELECT, 'qayta oʻqish')
-    return rows.map((d) => this.toRawDeal(d))
+    return this.toRawDeals(rows)
   }
 
   /**
@@ -1749,13 +1808,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
       afterId,
     )
 
-    const deals: RawDeal[] = []
-
     for (const d of rows) {
       // Money, not pipeline: see `itemDealIds`.
       if (toMinorUnits(d.OPPORTUNITY) > 0n) this.itemDealIds.push(String(d.ID))
-      deals.push(this.toRawDeal(d))
     }
+    const deals = await this.toRawDeals(rows)
 
     this.dealsRead += rows.length
     this.progress(`  deals: ${this.dealsRead}`)
