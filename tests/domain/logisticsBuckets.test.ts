@@ -1,13 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  LOGISTICS_BUCKETS,
-  LOGISTICS_BUCKET_KEYS,
-  UNMAPPED_BUCKET,
-  bucketColour,
-  bucketForRole,
-  bucketLabel,
-} from '@/lib/logisticsBuckets'
+import { LOGISTICS_BUCKETS, UNMAPPED_BUCKET, bucketColour, bucketLabel } from '@/lib/logisticsBuckets'
 import { DELIVERY_STAGE_ROLES } from '@/server/integrations/crm/bitrix24/mapping'
 
 /**
@@ -27,6 +20,18 @@ import { DELIVERY_STAGE_ROLES } from '@/server/integrations/crm/bitrix24/mapping
 
 /** Every stage of the Доставка funnel, by its Bitrix24 STATUS_ID. */
 const C6_STAGES = Object.entries(DELIVERY_STAGE_ROLES).filter(([id]) => id.startsWith('C6:'))
+
+/**
+ * Which column a `logisticsRole` falls in — the rule the repository's `CASE`
+ * is generated from, read off `LOGISTICS_BUCKETS` the same way. Kept here and
+ * not in `src/lib`: no screen derives a bucket (the reconciliation table gets
+ * its own on the payload), so this is the test's way of reading the table.
+ */
+function bucketForRole(role: string | null): string {
+  if (!role) return UNMAPPED_BUCKET
+  const bucket = LOGISTICS_BUCKETS.find((b) => (b.roles as readonly string[]).includes(role))
+  return bucket?.key ?? UNMAPPED_BUCKET
+}
 
 describe('the client-approved logistics columns', () => {
   it('covers the whole Доставка funnel, with nothing left over', () => {
@@ -111,7 +116,7 @@ describe('the client-approved logistics columns', () => {
       'Отказ',
       'Успешно',
     ])
-    expect(LOGISTICS_BUCKET_KEYS).toEqual([
+    expect(LOGISTICS_BUCKETS.map((bucket) => bucket.key)).toEqual([
       'PREPARING',
       'WAREHOUSE',
       'IN_TRANSIT',

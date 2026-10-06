@@ -8,7 +8,6 @@ import {
 import {
   buildPagination,
   failure,
-  isSuccess,
   serialise,
   success,
   type ResponseMeta,
@@ -55,7 +54,7 @@ describe('error taxonomy', () => {
 describe('response envelope', () => {
   it('wraps success data with meta', () => {
     const envelope = success({ revenue: 42 }, meta)
-    expect(isSuccess(envelope)).toBe(true)
+    expect(envelope.data).toEqual({ revenue: 42 })
     expect(envelope.meta.dataSource).toBe('DEMO')
   })
 
@@ -67,7 +66,6 @@ describe('response envelope', () => {
 
     expect(json).not.toContain('hunter2')
     expect(json).not.toContain('/src/db.ts')
-    expect(isSuccess(envelope)).toBe(false)
   })
 
   it('carries validation details to the client', () => {
