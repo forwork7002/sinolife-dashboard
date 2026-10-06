@@ -83,8 +83,11 @@ async function readEnvelope<B>(response: Response): Promise<B> {
 /**
  * Fetch and unwrap the envelope.
  *
- * An error envelope becomes a typed throw carrying the correlation id, so the
- * UI can show the user something quotable without ever seeing a stack trace.
+ * An error envelope becomes a typed throw, `ApiClientError`: the code, the
+ * status and the server's own message, which is what the screens print —
+ * never a stack trace. It carries the correlation id as well, and no screen
+ * shows that: the server logs the failure under the response's
+ * `meta.correlationId`, which is where the id is for.
  */
 export async function apiGet<T>(
   path: string,
