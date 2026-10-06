@@ -324,7 +324,9 @@ the period control and the search box. One row used to hold 28, 30, 32 and
 34px controls at 6, 8 and 12px corners. A track is the glass well, the chosen
 segment a raised glass chip with the lit top; a secondary button is a raised
 chip whose hover lays the wash over it and whose press sinks it into the well;
-the period presets lost the solid-ink active block SegmentedControl retired.
+an input is a well. A bordered control keeps `--border-strong` — its boundary
+is how it reads as a control — while `--glass-edge` is for surfaces. The
+period presets lost the solid-ink active block SegmentedControl retired.
 `BrandSwitch`, SegmentedControl's twin with a colour dot, wears the same well
 and chip — the two share a filter row on every main screen.
 

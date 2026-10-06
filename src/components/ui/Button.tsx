@@ -90,15 +90,17 @@ const VARIANT_CLASSES: Record<Variant, string> = {
     'active:bg-[color-mix(in_oklab,var(--ink-primary)_72%,var(--surface))]',
   ].join(' '),
   /*
-    A raised chip of glass («Shisha»): the --glass-raised fill, the glass edge
-    and the lit top, like the segmented control's chip. The hover lays the
-    glass wash OVER the fill as an image — darker in light, lighter in dark,
-    so it reads as "toward the cursor" in both without a per-theme branch —
-    and a press sinks the button into the well a track is made of. Both are
-    translucent: an opaque --grid hover read as a hole in the glass.
+    A raised chip of glass («Shisha»): the --glass-raised fill and the lit top,
+    like the segmented control's chip, inside the --border-strong edge a
+    control keeps so it reads as one (a card's quieter --glass-edge is for
+    surfaces). The hover lays the glass wash OVER the fill as an image —
+    darker in light, lighter in dark, so it reads as "toward the cursor" in
+    both without a per-theme branch — and a press sinks the button into the
+    well a track is made of. Both are translucent: an opaque --grid hover read
+    as a hole in the glass.
   */
   secondary: [
-    'border border-[var(--glass-edge)] bg-[var(--glass-raised)] text-[var(--ink-primary)] shadow-[var(--glass-highlight)]',
+    'border border-[var(--border-strong)] bg-[var(--glass-raised)] text-[var(--ink-primary)] shadow-[var(--glass-highlight)]',
     'hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))]',
     'active:bg-[var(--glass-well)]',
   ].join(' '),

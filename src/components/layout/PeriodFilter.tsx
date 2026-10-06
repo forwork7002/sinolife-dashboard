@@ -184,7 +184,7 @@ export function PeriodFilter({
           // inline: the hover wash is an image layer a shorthand would wipe.
           className="focusable flex h-10 shrink-0 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] sm:h-8 sm:text-xs"
           style={{
-            borderColor: value === 'custom' ? 'var(--accent)' : 'var(--glass-edge)',
+            borderColor: value === 'custom' ? 'var(--accent)' : 'var(--border-strong)',
             backgroundColor: value === 'custom' ? 'var(--accent-soft)' : 'var(--glass-raised)',
             boxShadow: value === 'custom' ? 'none' : 'var(--glass-highlight)',
             color: value === 'custom' ? 'var(--ink-primary)' : 'var(--ink-secondary)',
@@ -404,7 +404,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         unstyled: no border, no radius, no padding, browser default size.
       */}
       <div
-        className="mt-1 [&>*]:h-8 [&>*]:w-full [&>*]:rounded-[var(--radius-panel-sm)] [&>*]:border [&>*]:border-[var(--glass-edge)] [&>*]:bg-[var(--glass-well)] [&>*]:px-2.5 [&>*]:text-xs [&>*]:outline-none [&>*]:focusable"
+        className="mt-1 [&>*]:h-8 [&>*]:w-full [&>*]:rounded-[var(--radius-panel-sm)] [&>*]:border [&>*]:border-[var(--border-strong)] [&>*]:bg-[var(--glass-well)] [&>*]:px-2.5 [&>*]:text-xs [&>*]:outline-none [&>*]:focusable"
         style={{
           colorScheme: 'light dark',
         }}

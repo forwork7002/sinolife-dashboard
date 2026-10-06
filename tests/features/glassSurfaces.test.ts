@@ -226,7 +226,8 @@ describe('the controls are glass, at one radius and two heights', () => {
   it('builds the button variants from glass tokens', () => {
     const variant = (name: string) => new RegExp(`${name}: \\[([\\s\\S]*?)\\]\\.join`).exec(button)![1]!
     expect(variant('secondary')).toMatch(/bg-\[var\(--glass-raised\)\]/)
-    expect(variant('secondary')).toMatch(/border-\[var\(--glass-edge\)\]/)
+    // A control keeps the strong edge it was designed with; a card's quieter glass edge is for surfaces.
+    expect(variant('secondary')).toMatch(/border-\[var\(--border-strong\)\]/)
     expect(variant('secondary')).toMatch(/shadow-\[var\(--glass-highlight\)\]/)
     expect(variant('secondary')).toMatch(/hover:bg-\[image:linear-gradient\(var\(--glass-hover\),var\(--glass-hover\)\)\]/)
     expect(variant('secondary')).toMatch(/active:bg-\[var\(--glass-well\)\]/)

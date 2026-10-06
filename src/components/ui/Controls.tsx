@@ -73,7 +73,7 @@ export function SearchInput({
         }`}
         style={{
           backgroundColor: 'var(--glass-well)',
-          borderColor: 'var(--glass-edge)',
+          borderColor: 'var(--border-strong)',
           color: 'var(--ink-primary)',
         }}
       />
@@ -258,7 +258,7 @@ export function MultiSelect({
         className="focusable flex h-8 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-xs font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] disabled:opacity-50"
         style={{
           backgroundColor: selected.length ? 'var(--glass-well)' : 'var(--glass-raised)',
-          borderColor: 'var(--glass-edge)',
+          borderColor: 'var(--border-strong)',
           boxShadow: selected.length ? 'none' : 'var(--glass-highlight)',
           color: 'var(--ink-primary)',
         }}
@@ -811,7 +811,7 @@ export function ColumnFilterList({
           className="focusable mb-1 h-7 w-full rounded-[var(--radius-panel-sm)] border px-2 text-xs outline-none"
           style={{
             background: 'var(--glass-well)',
-            borderColor: 'var(--glass-edge)',
+            borderColor: 'var(--border-strong)',
             color: 'var(--ink-primary)',
           }}
         />
@@ -935,7 +935,7 @@ export function ColumnFilterRange({
   const box = 'focusable tabular h-7 w-full rounded-[var(--radius-panel-sm)] border px-2 text-xs outline-none'
   const boxStyle = {
     background: 'var(--glass-well)',
-    borderColor: 'var(--glass-edge)',
+    borderColor: 'var(--border-strong)',
     color: 'var(--ink-primary)',
   }
 
