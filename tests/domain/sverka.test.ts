@@ -206,6 +206,37 @@ describe('compareDeal — before MoySklad held any order', () => {
     expect(line.beforeFloor).toBe(false)
     expect(sverkaTotals([line]).pending.orders).toBe(1)
   })
+
+  /*
+    Only a FAKT 1 or FAKT 2 deal is one MoySklad should hold. A refusal never
+    gets an order, before the floor or after it, and counted as «before» it
+    the page told the reader it was in the FAKT figures — the probe that found
+    it: one refused and one delivered May deal read 2 there against FAKT 1's 1.
+  */
+  it('leaves an old order refused at confirmation as it is — not before anything, not in any FAKT figure', () => {
+    // C4:LOSE is where the refusal is picked; C12:UC_1OM8B2 is where it comes to rest.
+    for (const stageExternalId of ['C4:LOSE', 'C12:UC_1OM8B2']) {
+      const refused = compareDeal(
+        bitrix({ externalId: 'refused', queuedAt: may, fakt1: false, delivered: false, logisticsRole: 'CANCELLED_EARLY', stageExternalId }),
+        [],
+      )
+      expect(refused.issues).toEqual([])
+      expect(refused.beforeFloor).toBe(false)
+
+      const totals = sverkaTotals([refused, compareDeal(bitrix({ ...delivered, queuedAt: may }), [])])
+      expect(totals.beforeFloor).toEqual(totals.fakt1.beforeFloor)
+      expect(totals.beforeFloor.orders).toBe(1)
+    }
+  })
+
+  it('still sets aside an old delivered order outside FAKT 1 — FAKT 2 counts it', () => {
+    const line = compareDeal(bitrix({ ...delivered, fakt1: false, queuedAt: may }), [])
+    expect(line.beforeFloor).toBe(true)
+    const totals = sverkaTotals([line])
+    expect(totals.fakt2.beforeFloor.orders).toBe(1)
+    expect(totals.fakt1.beforeFloor.orders).toBe(0)
+    expect(totals.beforeFloor.orders).toBe(1)
+  })
 })
 
 describe('regionKey / ropKey', () => {
