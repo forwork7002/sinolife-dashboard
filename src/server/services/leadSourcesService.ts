@@ -68,6 +68,7 @@ import type { CampaignDayRow, ReklamaRepository } from '@/server/repositories/re
 
 import { calendarDays } from './reklamaService'
 import { leadBrand } from './rnpService'
+import { WARM_HOURS, withinHours } from './rnpWarmer'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -924,8 +925,7 @@ export class LeadSourcesService {
 
   /** Builds the windows the tab opens on into the memos, one after another — see `LEADS_WARM_EVERY_MS`. */
   async warm(now: Date, timeZone: string): Promise<void> {
-    const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone }).format(now))
-    if (hour < LEADS_WARM_HOURS[0] || hour >= LEADS_WARM_HOURS[1]) return
+    if (!withinHours(now, timeZone, WARM_HOURS)) return
     // One at a time: two cold months side by side would take the pool from every other screen.
     for (const preset of LEADS_WARM_PRESETS) await this.overview(resolvePeriod(preset, { timeZone, now }), timeZone)
   }

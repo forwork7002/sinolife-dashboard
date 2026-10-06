@@ -43,7 +43,7 @@ import type {
   RnpTeam,
   RnpWarehouseDayRow,
 } from '@/server/repositories/rnpRepository'
-import { RNP_WARM_EVERY_MS, RNP_WARM_HOURS, withinHours } from './rnpWarmer'
+import { RNP_WARM_EVERY_MS, WARM_HOURS, withinHours } from './rnpWarmer'
 
 /** Every day of a `YYYY-MM` month, as `YYYY-MM-DD`. */
 export function monthDays(month: string): string[] {
@@ -282,11 +282,11 @@ export class RnpService {
    * beside it (two cold months at once would fill the pool) — so its first
    * reader after a deploy or on the 1st does not wait; readers keep it fresh.
    *
-   * Working hours only (`RNP_WARM_HOURS`, 2026-10-06): at night it returns
+   * Working hours only (`WARM_HOURS`, 2026-10-06): at night it returns
    * at once — no build, no bank — and the warmer's tick still resolves.
    */
   async warm(now: Date, timeZone: string): Promise<void> {
-    if (!withinHours(now, timeZone, RNP_WARM_HOURS)) return
+    if (!withinHours(now, timeZone, WARM_HOURS)) return
     const today = zonedDateKey(now, timeZone)
     const month = today.slice(0, 7)
     const days = monthDays(month)

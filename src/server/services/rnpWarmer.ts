@@ -11,7 +11,7 @@
  *
  * THE CADENCE, 4 MINUTES: the memo's TTL, well under its 30-minute hard limit, so an idle
  * sheet is never older than that and never cold — in working hours
- * (`RNP_WARM_HOURS`). One build at a time — a slow tick is skipped over,
+ * (`WARM_HOURS`). One build at a time — a slow tick is skipped over,
  * never stacked.
  *
  * EACH TICK IS A REAL BUILD, WAITED FOR (`RnpService.warm`, 2026-10-02): it
@@ -29,15 +29,17 @@ import { logger } from '@/server/logging/logger'
 export const RNP_WARM_EVERY_MS = 4 * 60_000
 
 /*
-  WORKING HOURS ONLY (2026-10-06): Tashkent [7, 23), the «Lidlar» warmer's
-  hours (`LEADS_WARM_HOURS`). Round the clock it was ~120 month builds a
-  night nobody asked for, each up to ~80 s of database time on the one-core
-  database, beside the worker's night jobs (`DEALS_BACKFILL` 01:00–06:00, the
-  deletion sweep). The 07:00 tick builds before the morning; a night reader
-  waits for one cold build, as after any quiet half hour. `RnpService.warm`
-  checks it and returns, so a night deploy's first-build flag still clears.
+  WORKING HOURS ONLY (2026-10-06): Tashkent [7, 23), for both warmers — this
+  one and «Lidlar»'s (`LeadSourcesService.warm`) read this one constant, so
+  the two never keep different days. Round the clock it was ~120 month
+  builds a night nobody asked for, each up to ~80 s of database time on the
+  one-core database, beside the worker's night jobs (`DEALS_BACKFILL`
+  01:00–06:00, the deletion sweep). The 07:00 tick builds before the morning;
+  a night reader waits for one cold build, as after any quiet half hour.
+  Each `warm` checks it and returns, so a night deploy's first-build flag
+  still clears.
 */
-export const RNP_WARM_HOURS = [7, 23] as const
+export const WARM_HOURS = [7, 23] as const
 
 /** Whether `now` is within the hours [from, to) of the day in `timeZone`. */
 export function withinHours(now: Date, timeZone: string, [from, to]: readonly [number, number]): boolean {

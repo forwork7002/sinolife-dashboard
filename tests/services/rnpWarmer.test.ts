@@ -5,7 +5,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { RNP_WARM_EVERY_MS, RNP_WARM_HOURS, firstWarmPending, startRnpWarmer, startWarmer, withinHours } = await import(
+const { RNP_WARM_EVERY_MS, WARM_HOURS, firstWarmPending, startRnpWarmer, startWarmer, withinHours } = await import(
   '@/server/services/rnpWarmer'
 )
 const { logger } = await import('@/server/logging/logger')
@@ -113,7 +113,7 @@ describe('startRnpWarmer', () => {
 
 describe('withinHours — the warmers’ working day (2026-10-06)', () => {
   it('opens at 07:00 and closes at 23:00 in Tashkent, whatever the server’s own zone', () => {
-    const at = (iso: string) => withinHours(new Date(iso), 'Asia/Tashkent', RNP_WARM_HOURS)
+    const at = (iso: string) => withinHours(new Date(iso), 'Asia/Tashkent', WARM_HOURS)
     expect(at('2026-10-06T01:59:59Z')).toBe(false) // 06:59:59
     expect(at('2026-10-06T02:00:00Z')).toBe(true) // 07:00
     expect(at('2026-10-06T17:59:59Z')).toBe(true) // 22:59:59
