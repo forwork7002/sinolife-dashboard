@@ -922,8 +922,12 @@ export interface ConfirmationOrderDto {
   readonly dealId: string
   /** РОП — the sales group, as the floor names it: "Sevinch", "Lola", "Baza". */
   readonly rop: string | null
-  /** № — the order's place in ITS ROP's queue day, restarting each morning. */
-  readonly dailyNo: number
+  /**
+   * № — the order's place in ITS ROP's queue day, restarting each morning.
+   * Null on the backlog board (`?queue=backlog`), whose cohort holds only the
+   * orders still waiting and so could number only the leftovers.
+   */
+  readonly dailyNo: number | null
   /** Id сделки — the Bitrix24 deal id. */
   readonly bitrixId: string | null
   /** `bx…` order code parsed from the title, when the title carries one. */

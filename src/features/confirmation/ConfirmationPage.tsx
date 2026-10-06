@@ -199,14 +199,7 @@ const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
     header: '№',
     width: '58px',
     numeric: true,
-    // Zero-padded to three, as the floor writes it. It is an identifier for
-    // the day's Nth order, not a quantity, so it never gets a thousands
-    // separator and never changes when the table is re-sorted.
-    render: (row) => (
-      <span className="tabular text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
-        {String(row.dailyNo).padStart(3, '0')}
-      </span>
-    ),
+    render: (row) => <DailyNumber value={row.dailyNo} />,
   },
   {
     key: 'date',
@@ -373,6 +366,28 @@ const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
     ),
   },
 ]
+
+/**
+ * № — the order's place in its ROP's queue day.
+ *
+ * Zero-padded to three, as the floor writes it. It is an identifier for the
+ * day's Nth order, not a quantity, so it never gets a thousands separator and
+ * never changes when the table is re-sorted.
+ *
+ * AN EM DASH ON THE BACKLOG BOARD, where the server sends none: that cohort
+ * holds only the orders still waiting, so a number minted over it would call
+ * the floor's «010» «003». `String(null)` would have printed «null» here —
+ * which is why this is a component with a test rather than a padStart inline.
+ *
+ * Exported for `tests/features/confirmationDailyNumber.test.tsx`.
+ */
+export function DailyNumber({ value }: { value: number | null }) {
+  return (
+    <span className="tabular text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
+      {value === null ? NO_VALUE : String(value).padStart(3, '0')}
+    </span>
+  )
+}
 
 export function ConfirmationPage() {
   const { filters, update, apiParams } = useDashboardFilters()

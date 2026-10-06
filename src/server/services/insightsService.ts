@@ -777,8 +777,15 @@ export interface ConfirmationOrderDto {
   readonly dealId: string
   /** РОП */
   readonly rop: string | null
-  /** № — position in this ROP's day, restarting each morning. */
-  readonly dailyNo: number
+  /**
+   * № — position in this ROP's day, restarting each morning.
+   *
+   * NULL ON THE BACKLOG BOARD. That cohort holds only the orders still
+   * waiting, so a number minted over it counts leftovers — «003» for the order
+   * the floor and the window board call «010» — on a label people read out
+   * loud. No number is the honest one there.
+   */
+  readonly dailyNo: number | null
   /** Id сделки — the Bitrix24 id, the key both systems look an order up by. */
   readonly bitrixId: string | null
   readonly orderCode: string | null
@@ -2099,7 +2106,8 @@ export class InsightsService {
       items: page.rows.map((r: ConfirmationOrderRow) => ({
         dealId: r.dealId,
         rop: r.rop,
-        dailyNo: r.dailyNo,
+        // See `ConfirmationOrderDto.dailyNo`: the backlog numbers only what is left.
+        dailyNo: mode === 'backlog' ? null : r.dailyNo,
         bitrixId: r.bitrixId,
         orderCode: r.orderCode,
         title: r.title,

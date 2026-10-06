@@ -3678,9 +3678,12 @@ export class InsightsRepository {
    *               the header and the rows behind it are the same set.
    *
    * ONE DEFINITION, TWO COHORTS. Everything below the cohort — the latest
-   * signal, the UNCONFIRMED_SHIPPED refinement, the ROP name, the Tashkent
-   * daily number — is shared, so the two readings can never drift apart in
-   * how they classify an order. Only which orders enter differs.
+   * signal, the UNCONFIRMED_SHIPPED refinement, the ROP name — is shared, so
+   * the two readings can never drift apart in how they classify an order.
+   * Only which orders enter differs. The Tashkent daily number is the same
+   * SQL too, but a number counts whoever ENTERED: over the backlog's waiting
+   * orders alone it is not the floor's №, so `confirmationQueue` sends none in
+   * that mode.
    */
   /**
    * The SQL fragment that narrows this whole board to one caller's people.
@@ -4161,6 +4164,12 @@ export class InsightsRepository {
       admits some of those people and not the others slices it, and the whole
       reason the operator column exists is that this portal parks reassigned
       work in exactly those units.
+
+      ALL OF THIS HOLDS IN WINDOW MODE. The backlog cohort holds only the
+      orders still waiting — a decided order never enters it — so there the
+      same row_number() counts leftovers: the third of three still waiting
+      reads 003 where the floor and the window board read 010. The service
+      sends no number in that mode rather than that one.
 
       It costs nothing for the readings that do not show a number. They select
       from scoped, which never mentions numbered, and Postgres does not
