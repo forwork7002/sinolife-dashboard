@@ -210,15 +210,24 @@ export interface EntitySyncHandler<T = unknown> {
   deleteMissing?(seenExternalIds: ReadonlySet<string>): Promise<number>
 
   /**
-   * Derive whatever can only be computed once every page has landed.
+   * Whatever can only be done once every page has landed.
    *
    * Optional, and called only when the run read everything without a fatal
-   * error — a derivation over half the rows would be worse than none.
+   * error — a derivation over half the rows would be worse than none, and a
+   * deletion decided on half a read would remove what still exists.
    *
    * Stage history is the reason this exists: the portal reports when a deal
    * ENTERED a stage and never when it left, so the duration of each stay is
    * the gap to the next entry. That is a window function over the finished
    * table, not something a page-at-a-time writer can know.
+   *
+   * SINCE 2026-10-06 IT ALSO REMOVES, on INCREMENTAL runs too, what only a
+   * complete answer can vouch for: DEAL_ITEMS drops the stored lines the
+   * portal no longer lists for the deals it read in full, and DEPARTMENTS
+   * retires the units `department.get` no longer returns. Each counts first
+   * and refuses past its own limit (`surplusLineLimit`, `retireLimit`) by
+   * throwing — and a throw from here leaves the run PARTIAL, its message in
+   * `errorMessage`.
    */
   finalize?(): Promise<void>
 }
@@ -413,18 +422,21 @@ export class SyncEngine {
      * produce confidently wrong durations, which is worse than none at all.
      *
      * A failure here degrades the run to PARTIAL rather than FAILED. The rows
-     * are written and correct; one computed column is stale, and the log says
-     * which — so the next run fixes it without re-reading the portal.
+     * are written and correct; what finalize did not do — a computed column,
+     * a deletion its guard refused — waits for a later run, and the run's
+     * `errorMessage` says why. Without it a refusal read in `sync_log` as an
+     * ordinary PARTIAL — on DEAL_ITEMS, the same as a run that skipped a line.
      */
-    let derivationFailed = false
+    let derivation: string | undefined
     if (!fatal && handler.finalize) {
       try {
         await handler.finalize()
       } catch (error) {
-        derivationFailed = true
+        derivation = error instanceof Error ? error.message : String(error)
         this.log.warn({ entity, error: String(error) }, 'finalize failed')
       }
     }
+    const derivationFailed = derivation !== undefined
 
     const status: SyncStatusValue = fatal
       ? 'FAILED'
@@ -488,7 +500,7 @@ export class SyncEngine {
       recordsUpdated: updated,
       recordsSkipped: skipped,
       recordsFailed: failed,
-      errorMessage: fatal,
+      errorMessage: fatal ?? derivation,
     })
 
     return {
@@ -501,7 +513,7 @@ export class SyncEngine {
       recordsSkipped: skipped,
       recordsFailed: failed,
       recordsDeleted: deleted,
-      errorMessage: fatal,
+      errorMessage: fatal ?? derivation,
       skippedUnsupported: false,
     }
   }

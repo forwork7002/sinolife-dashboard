@@ -164,8 +164,10 @@ describe('line items follow the portal', () => {
 
     expect(db.lines.size).toBe(40)
     expect(db.statements.some((s) => s.startsWith('DELETE'))).toBe(false)
-    // Written, then refused: the run reports it rather than calling it clean.
+    // Written, then refused: the run reports it rather than calling it clean,
+    // and says why.
     expect(r.status).toBe('PARTIAL')
+    expect(r.errorMessage).toMatch(/juda koʻp.*hech narsa oʻchirilmadi/)
   })
 
   it('counts and deletes ONE population, keyed by the lines the portal listed', async () => {

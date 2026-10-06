@@ -145,8 +145,10 @@ describe('a unit the portal no longer returns', () => {
     const r = await pass(db, [raw('1'), raw('2')])
 
     expect([...db.rows.values()].every((u) => u.isActive)).toBe(true)
-    // Written, then refused: the run says so rather than calling it clean.
+    // Written, then refused: the run says so rather than calling it clean,
+    // and says why.
     expect(r.status).toBe('PARTIAL')
+    expect(r.errorMessage).toMatch(/juda koʻp.*nofaol qilinmadi/)
   })
 
   it('may be half the active units, never fewer than two', () => {

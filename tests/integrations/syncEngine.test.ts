@@ -337,6 +337,27 @@ describe('failure isolation', () => {
     expect((await engine.runEntity('EMPLOYEES', 'FULL')).status).toBe('PARTIAL')
   })
 
+  /*
+    A FINALIZE THAT REFUSES SAYS WHY. The line-item reconciliation and the
+    department retire refuse by throwing from it; the run was PARTIAL with no
+    message, which on DEAL_ITEMS read exactly like a run that skipped a line.
+  */
+  it('keeps the reason a finalize gave on the run it degraded', async () => {
+    const { engine, store } = engineWith([
+      makeHandler('EMPLOYEES', rows(3), new FakeTable(), {
+        async finalize() {
+          throw new Error('bu juda koʻp (chegara 2), hech biri nofaol qilinmadi')
+        },
+      }),
+    ])
+
+    const result = await engine.runEntity('EMPLOYEES', 'INCREMENTAL')
+
+    const expected = { status: 'PARTIAL', errorMessage: 'bu juda koʻp (chegara 2), hech biri nofaol qilinmadi' }
+    expect(result).toMatchObject(expected)
+    expect(store.runs[0]).toMatchObject(expected)
+  })
+
   it('records a fetch failure as FAILED without throwing', async () => {
     const table = new FakeTable()
     const handler = makeHandler('EMPLOYEES', rows(3), table, {
