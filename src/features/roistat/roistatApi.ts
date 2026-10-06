@@ -11,8 +11,6 @@
  * ratios.
  */
 
-import type { PeriodDto } from '@/lib/api'
-
 /**
  * The table's cut. `camp` → `adset` → `ad` drill into each other through
  * `parent`; the rest are flat. `days` is not a tab here: it is «Kunlar
@@ -119,7 +117,6 @@ export interface RoistatOverviewDto {
   readonly kpi: RoistatCountersDto
   /** The same, over the equal-length window just before — the tiles' deltas. */
   readonly kpiPrevious: RoistatCountersDto
-  readonly previousPeriod: PeriodDto
   /** Oldest first, every day of the window — the spend / ROAS chart. */
   readonly daily: readonly RoistatDayDto[]
   /** CBU so'm per dollar, for the window's last day; null when CBU could not be read. */

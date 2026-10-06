@@ -18,8 +18,7 @@
  * on the server.
  */
 
-import { type Period, previousEquivalent, toPeriodDto, zonedDateKey } from '@/server/domain/period/period'
-import type { PeriodDto } from '@/server/domain/period/period'
+import { type Period, previousEquivalent, zonedDateKey } from '@/server/domain/period/period'
 import {
   type RoistatColumns,
   type RoistatCounters,
@@ -96,7 +95,6 @@ export interface RoistatOverviewDto {
   readonly total: RoistatCountersDto
   readonly kpi: RoistatCountersDto
   readonly kpiPrevious: RoistatCountersDto
-  readonly previousPeriod: PeriodDto
   readonly daily: readonly { readonly date: string; readonly spendUsd: number; readonly soldUzs: number }[]
   readonly rate: { readonly uzsPerUsd: number; readonly date: string } | null
   readonly freshFrom: string
@@ -334,7 +332,6 @@ export class RoistatService {
         dim === 'ad' && parentName ? { key: parentName.campaignId, label: parentName.campaignName } : null,
       kpi: toCountersDto(kpi),
       kpiPrevious: toCountersDto(kpiPrevious),
-      previousPeriod: toPeriodDto(previous),
       daily,
       metaImportedAt: importedAt ? importedAt.toISOString() : null,
       campaignSpendUsd: dollars(budget.spendMicroUsd),

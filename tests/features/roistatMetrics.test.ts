@@ -1,21 +1,31 @@
 import { describe, expect, it } from 'vitest'
 
 import type { RoistatCountersDto } from '@/features/roistat/roistatApi'
-import {
-  ZERO_COUNTERS,
-  deltaPercent,
-  deriveMetrics,
-  fromUsd,
-  fromUzs,
-  roasOf,
-  sumCounters,
-  toDelta,
-} from '@/features/roistat/roistatMetrics'
+import { deltaPercent, deriveMetrics, fromUsd, fromUzs, roasOf, toDelta } from '@/features/roistat/roistatMetrics'
 
 const RATE = 12_000
 
+// Every counter named, so the type checker refuses this fixture the day the DTO gains one.
+const ZERO: RoistatCountersDto = {
+  spendUsd: 0,
+  impressions: 0,
+  reach: 0,
+  clicks: 0,
+  metaLeads: 0,
+  leads: 0,
+  clean: 0,
+  kval: 0,
+  orders: 0,
+  orderedUzs: 0,
+  sold: 0,
+  soldUzs: 0,
+  newCustomers: 0,
+  dealDaysSum: 0,
+  dealCount: 0,
+}
+
 function counters(over: Partial<RoistatCountersDto>): RoistatCountersDto {
-  return { ...ZERO_COUNTERS, ...over }
+  return { ...ZERO, ...over }
 }
 
 const SAMPLE = counters({
@@ -59,7 +69,7 @@ describe('deriveMetrics', () => {
   })
 
   it('answers null — never zero — when a divisor is zero', () => {
-    const empty = deriveMetrics(ZERO_COUNTERS, RATE)
+    const empty = deriveMetrics(ZERO, RATE)
     for (const value of Object.values(empty)) expect(value).toBeNull()
   })
 
@@ -108,27 +118,6 @@ describe('currency', () => {
     expect(fromUzs(24_000, 'uzs', RATE)).toBe(24_000)
     expect(fromUzs(24_000, 'usd', null)).toBeNull()
     expect(fromUzs(null, 'uzs', RATE)).toBeNull()
-  })
-})
-
-describe('sumCounters', () => {
-  it('sums field by field and ignores labels', () => {
-    const a = { ...counters({ leads: 3, soldUzs: 100, spendUsd: 1.5 }), key: 'a', label: 'A' }
-    const b = { ...counters({ leads: 4, soldUzs: 50, spendUsd: 2.25 }), key: 'b', label: 'B' }
-    const total = sumCounters([a, b])
-    expect(total.leads).toBe(7)
-    expect(total.soldUzs).toBe(150)
-    expect(total.spendUsd).toBe(3.75)
-    expect('key' in total).toBe(false)
-  })
-
-  it('is all zeros for no rows', () => {
-    expect(sumCounters([])).toEqual(ZERO_COUNTERS)
-  })
-
-  it('gives a total whose ratio is the ratio of the sums, not the mean of ratios', () => {
-    const rows = [counters({ leads: 10, kval: 5 }), counters({ leads: 90, kval: 9 })]
-    expect(deriveMetrics(sumCounters(rows), RATE).ql).toBeCloseTo(14) // not (50 + 10) / 2
   })
 })
 
