@@ -669,6 +669,53 @@ describe('LeadSourcesService.overview — a slow «Факт1 мижоз»', () =
   })
 })
 
+describe('LeadSourcesService.overview — the leads and their kval from one rebuild (2026-10-06 audit)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('never pairs the previous rebuild\'s leads with this one\'s kval, and agrees with «Targetologlar · kunlik»', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-03-10T00:00:00Z'),
+      customEnd: new Date('2026-03-11T00:00:00Z'),
+    })
+    // Each scan answers with how many times it has been read: the n-th rebuild says n.
+    let registrations = 0
+    let kvals = 0
+    const service = new LeadSourcesService(
+      {
+        registrationDays: async () => [reg({ day: '2026-03-10', formTitle: UMAR_FORM, leads: ++registrations })],
+        triageDays: async () => [],
+        qualifiedSources: async () => [
+          { sourceId: 'REPEAT_SALE', formTitle: UMAR_FORM, productLine: null, aiQualified: false, qualified: ++kvals },
+        ],
+        aiQualifiedStages: async () => [],
+        pipelineSourceCount: async () => NO_SARAFAN,
+        inboundCallCount: async () => null,
+      } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { leadFakt1Clients: async () => [] } as never,
+    )
+
+    const first = await service.overview(period, 'Asia/Tashkent')
+    expect([first.funnel.total, first.funnel.qualified]).toEqual([1, 1])
+
+    // Past the TTL: the old answer at once, every memo rebuilt behind it.
+    vi.advanceTimersByTime(180_000)
+    await service.overview(period, 'Asia/Tashkent')
+    await vi.runAllTimersAsync()
+
+    const second = await service.overview(period, 'Asia/Tashkent')
+    expect([second.funnel.total, second.funnel.qualified]).toEqual([2, 2])
+    const sheet = await service.targetologForms(period, 'Asia/Tashkent')
+    expect(sheet.forms.outcome.leads).toBe(second.forms.outcome.leads)
+  })
+})
+
 describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', () => {
   it('builds «Bugun» then «Shu oy» by working hours, through the reader\'s own memo keys, and nothing at night', async () => {
     const { LeadSourcesService } = await import('@/server/services/leadSourcesService')

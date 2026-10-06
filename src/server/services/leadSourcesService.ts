@@ -816,10 +816,17 @@ export function leadSourcesOverview(all: {
 }
 
 /*
-  The Регистрация scan alone, under the full memo below too: «Targetologlar ·
-  kunlik» needs nothing else, and must not wait on the other scans — the
-  FAKT 1 phone match can run into the 20 s statement timeout on a month (prod
-  2026-10-06), and one failed scan took the whole sheet down with it.
+  The Регистрация scan alone: «Targetologlar · kunlik» needs nothing else,
+  and must not wait on the other scans — the FAKT 1 phone match can run into
+  the 20 s statement timeout on a month (prod 2026-10-06), and one failed scan
+  took the whole sheet down with it.
+
+  BESIDE THE SCAN MEMO, NEVER INSIDE IT (2026-10-06 audit). The overview read
+  it from within `scanCache`'s build, and the two memos expire together: a
+  rebuild of the scans took this memo's stale rows (rebuilding them behind)
+  and stored them with fresh kval. So «Жами лидлар» trailed «Квал лидлар
+  сони» by a rebuild for good, and «Targetologlar · kunlik», which reads this
+  memo directly, showed more form leads than «Lidlar» for the same window.
 */
 const registrationCache = ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE)
 
@@ -850,12 +857,11 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 }
 
 /*
-  One memo per window in front of the three deal scans. Company-wide by
-  construction — both routes that read it (`/leads/overview`,
-  `/reklama/targetologs`) refuse a narrowed account — so no scope reaches it.
+  One memo per window in front of the other deal scans. Company-wide by
+  construction — both routes that read these memos (`/leads/overview`,
+  `/reklama/targetologs`) refuse a narrowed account — so no scope reaches them.
 */
 const scanCache = ttlCache<{
-  registration: RegistrationDayRow[]
   triage: TriageDayRow[]
   qualified: QualifiedSourceRow[]
   aiQualified: AiQualifiedStageRow[]
@@ -900,17 +906,17 @@ export class LeadSourcesService {
         throw error
       }),
     )
-    const [scans, campaigns, importedAt] = await Promise.all([
+    const [registration, scans, campaigns, importedAt] = await Promise.all([
+      this.registrationDays(period),
       scanCache.get(key, async () => {
-        const [registration, triage, qualified, aiQualified, sarafan, inboundCalls] = await Promise.all([
-          this.registrationDays(period),
+        const [triage, qualified, aiQualified, sarafan, inboundCalls] = await Promise.all([
           this.repository.triageDays(period),
           this.repository.qualifiedSources(period),
           this.repository.aiQualifiedStages(period),
           this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
           this.repository.inboundCallCount(period),
         ])
-        return { registration, triage, qualified, aiQualified, sarafan, inboundCalls }
+        return { triage, qualified, aiQualified, sarafan, inboundCalls }
       }),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),
@@ -919,7 +925,7 @@ export class LeadSourcesService {
     const fakt1 = await within(fakt1Scan, Math.max(FAKT1_GRACE_MS, FAKT1_WAIT_MS - (Date.now() - started)))
 
     // Narrowed after the memo: one scan serves both brands and the whole.
-    return leadSourcesOverview({ window, ...scans, fakt1, campaigns, importedAt, brand })
+    return leadSourcesOverview({ window, registration, ...scans, fakt1, campaigns, importedAt, brand })
   }
 
   /** Builds the windows the tab opens on into the memos, one after another — see `LEADS_WARM_EVERY_MS`. */
