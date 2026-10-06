@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   type ContactHistory,
   type InboundCall,
+  callbackOf,
   inboundGroup,
   inboundReport,
   phoneKey,
+  telTarget,
+  unansweredCallers,
 } from '@/server/domain/calls/inboundCalls'
 
 const T = new Date('2026-10-01T10:00:00Z')
@@ -106,5 +109,114 @@ describe('inboundReport', () => {
   it('counts a number as unreached only when no call in the window had a second of talk', () => {
     const r = inboundReport(calls, contacts, new Map(), ['2026-10-01', '2026-10-02'])
     expect(r.total.unreached).toMatchObject({ fresh: 0, buyer: 1 })
+  })
+})
+
+describe('unansweredCallers', () => {
+  const contacts = new Map<string, ContactHistory>([
+    ['new', { createdAt: min(0), deals: [] }],
+    ['buyer', { createdAt: min(-10_000), deals: [deal('6', 'C6:WON', min(-9_000))] }],
+  ])
+  const call = (phone: string | null, at: Date, durationSec: number, customerId: string | null, operator?: string): InboundCall => ({
+    phone,
+    startedAt: at,
+    durationSec,
+    customerId,
+    day: '2026-10-01',
+    operator,
+  })
+
+  it('lists the numbers that never got a second, one row each, as many as the tile says', () => {
+    const calls = [
+      call('+998935554433', min(30), 0, 'buyer', 'Aziza'),
+      call('998935554433', min(10), 0, null, 'Bekzod'),
+      // Talked once: not unanswered, however many misses around it.
+      call('+998901112233', min(0), 0, 'new'),
+      call('901112233', min(5), 25, 'new'),
+      // No usable number: nobody can ring it back.
+      call(null, min(40), 0, null),
+    ]
+    const rows = unansweredCallers(calls, contacts)
+    expect(rows).toEqual([
+      {
+        key: '935554433',
+        phone: '+998935554433',
+        tel: '+998935554433',
+        group: 'buyer',
+        customerId: 'buyer',
+        calls: 2,
+        firstCallAt: min(10),
+        lastCallAt: min(30),
+        operator: 'Aziza',
+      },
+    ])
+    const report = inboundReport(calls, contacts, new Map(), ['2026-10-01'])
+    // The no-number call is unreached on the tile but cannot be listed.
+    expect(report.total.unreached.buyer).toBe(rows.filter((r) => r.group === 'buyer').length)
+  })
+
+  it('is as long as every tile says, group by group, once the undiallable are set aside', () => {
+    const many = [
+      call('+998901000001', min(0), 0, 'new'),
+      call('+998901000002', min(1), 0, null),
+      call('+998901000003', min(2), 0, 'buyer'),
+      call('+998901000003', min(3), 0, null),
+      call('+998901000004', min(4), 9, 'buyer'),
+      call('+7 916 123 45 67', min(5), 0, null),
+    ]
+    const rows = unansweredCallers(many, contacts)
+    const tiles = inboundReport(many, contacts, new Map(), ['2026-10-01']).total.unreached
+    for (const g of ['fresh', 'notReached', 'talkedNoBuy', 'buyer', 'noDeal'] as const) {
+      expect(rows.filter((r) => r.group === g).length).toBe(tiles[g])
+    }
+  })
+
+  it('leaves out an internal extension', () => {
+    expect(unansweredCallers([call('101', min(0), 0, null)], contacts)).toEqual([])
+  })
+})
+
+describe('callbackOf', () => {
+  const caller = {
+    key: '935554433',
+    phone: '+998935554433',
+    tel: '+998935554433',
+    group: 'fresh' as const,
+    customerId: null,
+    calls: 1,
+    firstCallAt: min(0),
+    lastCallAt: min(10),
+    operator: null,
+  }
+  const out = (at: Date, durationSec: number, key = '935554433') => ({ key, startedAt: at, durationSec, operator: 'Aziza' })
+
+  it('is null when nobody rang back after the latest call', () => {
+    expect(callbackOf(caller, [out(min(5), 60), out(min(20), 60, '901112233')])).toBeNull()
+  })
+
+  it('shows the first callback that got through, counting every attempt', () => {
+    expect(callbackOf(caller, [out(min(50), 0), out(min(30), 40), out(min(20), 0)])).toEqual({
+      at: min(30),
+      talked: true,
+      operator: 'Aziza',
+      attempts: 3,
+    })
+  })
+
+  it('shows the latest attempt when none got through', () => {
+    expect(callbackOf(caller, [out(min(20), 0), out(min(50), 0)])).toMatchObject({ at: min(50), talked: false, attempts: 2 })
+  })
+})
+
+describe('telTarget', () => {
+  it('dials a local number with +998 and an international one as written', () => {
+    expect(telTarget('901112233')).toBe('+998901112233')
+    expect(telTarget('+998 90 111 22 33')).toBe('+998901112233')
+    expect(telTarget('998901112233')).toBe('+998901112233')
+    // Never +998 on the last nine digits of a foreign number.
+    expect(telTarget('+7 916 123 45 67')).toBe('+79161234567')
+  })
+  it('dials nothing for an extension', () => {
+    expect(telTarget('101')).toBeNull()
   })
 })

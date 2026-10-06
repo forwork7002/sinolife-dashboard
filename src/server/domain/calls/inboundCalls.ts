@@ -40,6 +40,8 @@ export interface InboundCall {
   readonly customerId: string | null
   /** Tashkent date key of `startedAt`, `YYYY-MM-DD`. */
   readonly day: string
+  /** Who the PBX put the call through to; null when it reached nobody's line. */
+  readonly operator?: string | null
 }
 
 export interface ContactDeal {
@@ -120,9 +122,19 @@ interface Callers {
   readonly numbers: number
 }
 
+interface Numbers {
+  readonly first: Map<string, InboundCall>
+  readonly last: Map<string, InboundCall>
+  readonly calls: Map<string, number>
+  readonly contactOf: Map<string, string>
+  readonly talked: Set<string>
+}
+
 /** `calls` must be in start order: the first one seen per number is its first call. */
-function callers(calls: readonly InboundCall[], contacts: ReadonlyMap<string, ContactHistory>): Callers {
+function byNumber(calls: readonly InboundCall[]): Numbers {
   const first = new Map<string, InboundCall>()
+  const last = new Map<string, InboundCall>()
+  const count = new Map<string, number>()
   /*
     The number's contact: the first one ANY of its calls names. A first call
     the sync could not link yet must not make a known buyer «fresh» when a
@@ -134,9 +146,17 @@ function callers(calls: readonly InboundCall[], contacts: ReadonlyMap<string, Co
     // A call with no usable number is its own caller rather than everybody's.
     const key = phoneKey(call.phone) ?? `#${index}`
     if (!first.has(key)) first.set(key, call)
+    last.set(key, call)
+    count.set(key, (count.get(key) ?? 0) + 1)
     if (call.customerId && !contactOf.has(key)) contactOf.set(key, call.customerId)
     if (call.durationSec > 0) talked.add(key)
   })
+  return { first, last, calls: count, contactOf, talked }
+}
+
+/** `calls` must be in start order: the first one seen per number is its first call. */
+function callers(calls: readonly InboundCall[], contacts: ReadonlyMap<string, ContactHistory>): Callers {
+  const { first, contactOf, talked } = byNumber(calls)
 
   const groups = zeroGroups()
   const unreached = zeroGroups()
@@ -188,4 +208,100 @@ export function inboundReport(
       unreached: all.unreached,
     },
   }
+}
+
+/**
+ * One number that rang in the window and never got a second of conversation —
+ * the people behind «N tasi javobsiz qoldi», to be called back.
+ */
+export interface UnansweredCaller {
+  /** `phoneKey` — the last nine digits. */
+  readonly key: string
+  /** As the PBX wrote it on the latest call. */
+  readonly phone: string
+  /** `telTarget(phone)` — what a tap dials. */
+  readonly tel: string | null
+  readonly group: InboundGroup
+  readonly customerId: string | null
+  readonly calls: number
+  readonly firstCallAt: Date
+  readonly lastCallAt: Date
+  /** Whose line the latest call rang on. */
+  readonly operator: string | null
+}
+
+/**
+ * A dialable `tel:` target from the number as the PBX wrote it: a local nine
+ * digits gains +998, anything longer is already international. Never built
+ * from `phoneKey` — the last nine digits of +7 916 123 45 67 are not an Uzbek
+ * number. Null under nine digits (an extension).
+ */
+export function telTarget(raw: string): string | null {
+  const digits = raw.replace(/\D/g, '')
+  if (digits.length < 9) return null
+  return digits.length === 9 ? `+998${digits}` : `+${digits}`
+}
+
+/**
+ * The tile's «javobsiz qoldi», number by number: grouped exactly as
+ * `inboundReport`'s total is (the period's first call, the same contact), so
+ * a group's list is as long as its tile says. A call with no usable number
+ * (none, or an internal extension) cannot be called back and is left out.
+ */
+export function unansweredCallers(
+  calls: readonly InboundCall[],
+  contacts: ReadonlyMap<string, ContactHistory>,
+): UnansweredCaller[] {
+  const ordered = [...calls].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
+  const { first, last, calls: count, contactOf, talked } = byNumber(ordered)
+  const out: UnansweredCaller[] = []
+  for (const [key, call] of first) {
+    // No number, or an internal extension: there is nobody to ring back.
+    if (talked.has(key) || key.length < 9 || key.startsWith('#')) continue
+    const customerId = contactOf.get(key) ?? null
+    const latest = last.get(key)!
+    out.push({
+      key,
+      phone: latest.phone ?? call.phone ?? key,
+      tel: telTarget(latest.phone ?? call.phone ?? key),
+      group: inboundGroup(call.startedAt, customerId ? contacts.get(customerId) : undefined),
+      customerId,
+      calls: count.get(key) ?? 1,
+      firstCallAt: call.startedAt,
+      lastCallAt: latest.startedAt,
+      operator: latest.operator ?? null,
+    })
+  }
+  return out
+}
+
+/** An outbound call to a number, `phoneKey`ed. */
+export interface CallbackCall {
+  readonly key: string
+  readonly startedAt: Date
+  readonly durationSec: number
+  readonly operator: string | null
+}
+
+export interface Callback {
+  /** The call shown: the first one that got through, else the latest attempt. */
+  readonly at: Date
+  readonly talked: boolean
+  readonly operator: string | null
+  /** Outbound calls to the number after its latest unanswered call. */
+  readonly attempts: number
+}
+
+/**
+ * Whether anyone rang the caller back: outbound calls to the number AFTER its
+ * latest inbound call — an earlier one answered nothing they asked. A callback
+ * that got through wins over the attempts around it.
+ */
+export function callbackOf(caller: UnansweredCaller, outbound: readonly CallbackCall[]): Callback | null {
+  const after = outbound
+    .filter((c) => c.key === caller.key && c.startedAt.getTime() > caller.lastCallAt.getTime())
+    .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
+  if (after.length === 0) return null
+  const shown = after.find((c) => c.durationSec > 0) ?? after[after.length - 1]!
+  return { at: shown.startedAt, talked: shown.durationSec > 0, operator: shown.operator, attempts: after.length }
 }

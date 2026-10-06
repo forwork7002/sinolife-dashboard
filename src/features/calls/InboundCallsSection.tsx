@@ -1,12 +1,15 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 
 import { ChartCard } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { StatTile } from '@/components/ui/Stat'
 import { apiGet } from '@/lib/api'
 import { NO_VALUE, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
+
+import { UnansweredCallsCard } from './UnansweredCallsCard'
 
 /**
  * «Kiruvchi qoʻngʻiroqlar» — the client's inbound-call report, 2026-10-05.
@@ -127,6 +130,7 @@ export function InboundCallsSection({ windowParams }: { windowParams: Record<str
       status={status}
       errorMessage={query.error instanceof Error ? query.error.message : undefined}
       onRetry={() => void query.refetch()}
+      unanswered={<UnansweredCallsCard windowParams={windowParams} groupLabel={GROUP_LABEL} />}
     />
   )
 }
@@ -136,11 +140,14 @@ export function InboundCalls({
   status,
   errorMessage,
   onRetry,
+  unanswered,
 }: {
   data: InboundCallsDto | undefined
   status: 'loading' | 'error' | 'ready'
   errorMessage?: string
   onRetry?: () => void
+  /** «Javobsiz qolgan raqamlar», under the tiles it opens up. */
+  unanswered?: ReactNode
 }) {
   const total = data?.total
   const rows: Row[] = data
@@ -214,8 +221,10 @@ export function InboundCalls({
       </div>
       <p className="text-[11px] leading-snug" style={muted}>
         «Javobsiz qoldi» — guruhdagi raqamlardan davr ichida bironta ham qoʻngʻirogʻi ulanmaganlari (suhbat 0 soniya):
-        hech kim koʻtarmagan yoki mijoz ulanmasdan qoʻyib qoʻygan. Bularga qayta qoʻngʻiroq qilish kerak.
+        hech kim koʻtarmagan yoki mijoz ulanmasdan qoʻyib qoʻygan. Bularga qayta qoʻngʻiroq qilish kerak — roʻyxati
+        quyida.
       </p>
+      {unanswered}
 
       {data && data.undatedContacts > 0 && (
         <p className="text-xs" style={{ color: 'var(--status-warning)' }} data-testid="inbound-undated">
