@@ -467,7 +467,12 @@ export function Meter({
   label,
   width = 'w-full',
 }: {
-  /** Percentage, 0–100. */
+  /**
+   * Percentage. Over 100 is printed as it is; only the bar stops at full.
+   * Logistika's «Qamrov» (FAKT 2 ÷ FAKT 1) passes 100 by design, and a row
+   * printing «100.0%» for 104 — under a hero ring printing 104% — hid the one
+   * team that most needed explaining.
+   */
   value: number | null
   /**
    * `auto` grades against the thresholds below; `neutral` states the magnitude
@@ -513,6 +518,7 @@ export function Meter({
     )
   }
 
+  // The bar and its tone stop at full; the printed figure does not (see `value`).
   const clamped = Math.min(100, value)
 
   /**
@@ -535,7 +541,7 @@ export function Meter({
         className={`h-1.5 ${width} overflow-hidden rounded-full`}
         style={{ background: 'var(--track)' }}
         role="img"
-        aria-label={`${label ? `${label}: ` : ''}${formatPercent(clamped)}`}
+        aria-label={`${label ? `${label}: ` : ''}${formatPercent(value)}`}
       >
         <div
           className="h-full rounded-full"
@@ -552,7 +558,7 @@ export function Meter({
         className="tabular shrink-0 text-xs font-medium"
         style={{ color: 'var(--ink-secondary)' }}
       >
-        {formatPercent(clamped)}
+        {formatPercent(value)}
       </span>
     </div>
   )
