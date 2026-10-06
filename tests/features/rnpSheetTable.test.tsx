@@ -885,6 +885,10 @@ describe('RnpSheetTable — a line keeps its key through the brand and ROP cuts'
   )
   const labels = (container: HTMLElement) => bodyRows(container).map((tr) => tr.querySelector('th')!.textContent)
 
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('hands a line the brand cut keeps its own row, not the one that stood at its index', () => {
     const { container, rerender } = render(view(brandLines(CUT, 'all')))
     const lids = rowNamed(container, 'Продажа (первичка) факт1')
@@ -901,6 +905,5 @@ describe('RnpSheetTable — a line keeps its key through the brand and ROP cuts'
     expect(labels(container).filter((label) => label === 'Лола РОП — ROP bloki')).toHaveLength(2)
     expect(labels(container)).toHaveLength(7)
     expect(error.mock.calls.filter(([message]) => String(message).includes('same key'))).toEqual([])
-    error.mockRestore()
   })
 })
