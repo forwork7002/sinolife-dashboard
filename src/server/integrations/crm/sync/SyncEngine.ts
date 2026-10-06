@@ -61,7 +61,7 @@ import type { CrmProvider, FetchOptions, Page } from '@/server/integrations/crm/
  * past both of them, so a skip that waited for the scheduled pass was a skip
  * for good — the deal until somebody touched it again, its C4:NEW arrival
  * forever. A DEALS run that skips now has the worker re-read what a deal waits
- * on (`RESOLVE` in syncWorker.ts) on the next tick, at most once per
+ * on (`RESOLVE` in schedule.ts) on the next tick, at most once per
  * `RESOLVE_GAP_MS` (twenty minutes). Ninety-five minutes covers that wait with
  * room for slow ticks — a tick is at least the interval and has no ceiling —
  * and it costs nothing to be generous: over five hours of production, DEALS

@@ -1,3 +1,5 @@
+import type { SyncEntityValue } from '@/server/domain/types'
+
 import type { SyncResult } from './SyncEngine'
 
 /**
@@ -68,6 +70,42 @@ export function isResolvePassDue(
   const times = lastPasses.filter((at): at is Date => at !== null).map((at) => at.getTime())
   return isPassDue(times.length > 0 ? new Date(Math.max(...times)) : null, now, RESOLVE_GAP_MS)
 }
+
+/**
+ * What a deal the DEALS pass had to SKIP is waiting for — run ahead of the
+ * schedule when it skips (`isResolvePassDue`), on the worker's next tick.
+ *
+ * A deal is skipped when its employee or its stage is unknown, and both arrive
+ * only with the reference pass, every three hours — well past the 95 / 35
+ * minutes the watermark rewinds after a skip. So a seller hired at ten whose
+ * first order went straight into C4:NEW lost the deal row until somebody
+ * touched it again and the arrival row for good: off Тасдиқлаш and FAKT 1, the
+ * bug class of 935632 and 1050732. SOURCES rides along because it is one
+ * request.
+ *
+ * DEPARTMENTS LEADS IT, as it leads the full pass, for the reason
+ * `pendingHeads` in handlers.ts gives: an employee points at a unit. The
+ * EMPLOYEES pass writes each person's unit — NULL when it does not resolve —
+ * and REPLACES their memberships with the units that do, so run without it
+ * during a reorganisation it took everybody in a unit newer than the last full
+ * pass out of that unit for up to three hours. It costs one `department.get`.
+ * And because this list now opens the way the full pass does, the full pass is
+ * dated at startup by `REFERENCE_MARKER`, not by its first entity.
+ */
+export const RESOLVE: readonly SyncEntityValue[] = ['DEPARTMENTS', 'EMPLOYEES', 'STAGES', 'SOURCES']
+
+/**
+ * The entity whose `sync_log` row dates the full reference pass when the next
+ * process starts: one of the worker's `REFERENCE` that `RESOLVE` never runs, so
+ * a forced pass is never read back as the scheduled one — which would put the
+ * full pass off for three hours after every skip.
+ *
+ * It was `REFERENCE[0]`, DEPARTMENTS, until that opened `RESOLVE` too.
+ * PRODUCTS comes two entities later, seconds on a three-hour clock, and its row
+ * is written whatever became of the two before it: `runAll` runs every entity
+ * in turn.
+ */
+export const REFERENCE_MARKER: SyncEntityValue = 'PRODUCTS'
 
 /**
  * How long a FAILED sweep waits before it is tried again.

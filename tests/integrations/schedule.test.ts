@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
+import { SYNC_ORDER } from '@/server/domain/types'
 import type { SyncResult } from '@/server/integrations/crm/sync/SyncEngine'
 import {
   isBackfillDue,
   isPassDue,
   isResolvePassDue,
+  REFERENCE_MARKER,
+  RESOLVE,
   RESOLVE_GAP_MS,
   runOneOff,
 } from '@/server/integrations/crm/sync/schedule'
@@ -101,6 +104,29 @@ describe('isResolvePassDue — what a skipped deal asks for', () => {
   it('stays inside the shortest skip window, so the arrival row is still re-read', () => {
     // STAGE_HISTORY rewinds 35 minutes after a skip; the gap plus a slow tick fits.
     expect(RESOLVE_GAP_MS + 5 * 60_000).toBeLessThan(35 * 60_000)
+  })
+})
+
+/**
+ * THE FORCED PASS RUNS IN THE FULL PASS'S ORDER, AND NEVER DATES IT.
+ *
+ * EMPLOYEES writes each person's unit and replaces their memberships with the
+ * units it can resolve. Run without DEPARTMENTS in front of it, a forced pass
+ * during a reorganisation would set everybody in a unit newer than the last
+ * full pass to no unit at all, for up to three hours.
+ */
+describe('RESOLVE — what a skipped deal brings forward', () => {
+  it('re-reads what a skipped deal waits on: its seller and its stage', () => {
+    expect(RESOLVE).toEqual(expect.arrayContaining(['EMPLOYEES', 'STAGES']))
+  })
+
+  it('writes the units before the people who point at them', () => {
+    expect(RESOLVE).toContain('DEPARTMENTS')
+    expect(RESOLVE).toEqual(SYNC_ORDER.filter((entity) => RESOLVE.includes(entity)))
+  })
+
+  it('never writes the row that dates the full pass at startup', () => {
+    expect(RESOLVE).not.toContain(REFERENCE_MARKER)
   })
 })
 

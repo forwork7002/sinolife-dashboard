@@ -68,6 +68,8 @@ import {
   isBackfillDue,
   isPassDue,
   isResolvePassDue,
+  REFERENCE_MARKER,
+  RESOLVE,
   runOneOff,
   SWEEP_RETRY_MS,
 } from '../src/server/integrations/crm/sync/schedule'
@@ -344,22 +346,6 @@ const REFERENCE: SyncEntityValue[] = [
   'SOURCES',
   'CALLS',
 ]
-
-/**
- * What a deal the DEALS pass had to SKIP is waiting for — run ahead of the
- * schedule when it skips (`isResolvePassDue`, `RESOLVE_GAP_MS`).
- *
- * A deal is skipped when its employee or its stage is unknown, and both arrive
- * only with the reference pass, every three hours — well past the 95 / 35
- * minutes the watermark rewinds after a skip. So a seller hired at ten whose
- * first order went straight into C4:NEW lost the deal row until somebody
- * touched it again and the arrival row for good: off Тасдиқлаш and FAKT 1, the
- * bug class of 935632 and 1050732. SOURCES rides along because it is one
- * request. DEPARTMENTS does not: a pass is dated by its first entity
- * (`REFERENCE[0]`) when the next process starts, and this one must not pass
- * for the full one; a new hire's new unit waits for that.
- */
-const RESOLVE: SyncEntityValue[] = ['EMPLOYEES', 'STAGES', 'SOURCES']
 
 const url: string = DATABASE_URL
 const webhook: string = WEBHOOK_URL
@@ -896,10 +882,14 @@ async function main() {
     bounded to twice their period so they stay short walks of the
     `[status, finishedAt DESC]` index on a log of 120 000 rows.
 
-    A reference pass is dated by its FIRST entity, whatever became of the rest:
-    that is the moment the pass was attempted, which is what the tick counter
-    measured too. Dating it by a later entity that failed would re-run the whole
-    pass on every tick for as long as that one entity kept failing.
+    A reference pass is dated by its `REFERENCE_MARKER` row (PRODUCTS),
+    whatever became of the entities before it: seconds after the moment the
+    pass was attempted, which is what the tick counter measured too. It was the
+    FIRST entity until that one opened the forced `RESOLVE` pass as well
+    (2026-10-06) — dated by a row the forced pass also writes, a skip would put
+    the full pass off for three hours. A marker that keeps FAILING re-runs the
+    pass after each restart, as a failing first entity always did; never on
+    every tick, because the loop stamps the attempt itself.
 
     The sweep writes its own `DEALS` / `FULL` row (below), because until now it
     left no trace in the database at all.
@@ -919,7 +909,7 @@ async function main() {
         ? prisma.syncLog.findFirst({
             where: {
               status: { in: ['SUCCESS', 'PARTIAL'] },
-              entity: REFERENCE[0],
+              entity: REFERENCE_MARKER,
               finishedAt: { gt: new Date(now - 2 * REFERENCE_MS) },
             },
             orderBy: { finishedAt: 'desc' },
