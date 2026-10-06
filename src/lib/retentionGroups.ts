@@ -76,8 +76,6 @@ export const RETENTION_GROUPS = [
   colour: string
 }[]
 
-export type RetentionGroupKey = (typeof RETENTION_GROUPS)[number]['key']
-
 /**
  * База stages that are not customers of the base at all, and are left out of
  * every count on the card — bars and base alike.
