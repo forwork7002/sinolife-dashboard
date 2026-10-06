@@ -133,6 +133,23 @@ describe('«Qoʻngʻiroqlar»', () => {
     expect(when).toContain('oxirgi yozilgan qoʻngʻiroq: 16-sen, 11:48')
   })
 
+  /*
+    The tile read `operators.length`: everyone with a call leg, connected or
+    not, plus the bucket of calls that reached nobody's line — 41 «who talked»
+    on a day 37 did.
+  */
+  it('counts as «Gaplashgan» only operators with a connected call, and their teams', () => {
+    const unknown = row('', { label: 'Nomaʼlum xodim', team: '(jamoasiz)', calls: 9, connected: 4, talkSec: 300 })
+    const data = { ...activity(false), operators: [...OPERATORS, unknown] }
+    render(<CallActivity data={data} period={TODAY} status="ready" />)
+
+    const tile = screen.getByText('Gaplashgan operatorlar').closest('.card')!
+    expect(tile.querySelector('.figure')?.textContent).toBe('1')
+    expect(tile.textContent).toContain('1 ta komandadan')
+    // The table still lists every row, the one that reached nobody included.
+    expect(screen.getByRole('rowheader', { name: /Karimov Aziz/ })).toBeTruthy()
+  })
+
   it('names the data floor only when the window reached below it', () => {
     const { rerender } = render(
       <CallActivity data={activity(true)} period={TODAY} status="ready" />,
