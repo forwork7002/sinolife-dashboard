@@ -16,10 +16,6 @@ export const ERROR_CODES = [
   'UNAUTHENTICATED',
   'FORBIDDEN',
   'NOT_FOUND',
-  'CONFLICT',
-  'RATE_LIMITED',
-  'DATA_SOURCE_UNAVAILABLE',
-  'INTEGRATION_PENDING',
   'INTERNAL_ERROR',
 ] as const
 
@@ -30,12 +26,6 @@ const STATUS_BY_CODE: Readonly<Record<ErrorCode, number>> = Object.freeze({
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
   NOT_FOUND: 404,
-  CONFLICT: 409,
-  RATE_LIMITED: 429,
-  DATA_SOURCE_UNAVAILABLE: 503,
-  // Not an error in the usual sense: the feature exists but its data source is
-  // not connected yet. 501 keeps it distinguishable from a genuine failure.
-  INTEGRATION_PENDING: 501,
   INTERNAL_ERROR: 500,
 })
 
@@ -82,18 +72,6 @@ export class ApiError extends Error {
 
   static notFound(what = 'Soʻralgan maʼlumot topilmadi.'): ApiError {
     return new ApiError('NOT_FOUND', what)
-  }
-
-  /**
-   * The feature is built but its data source is not connected yet.
-   * Used for anything gated on BITRIX24_INTEGRATION_PENDING, so the UI can say
-   * "not connected" instead of rendering a confident zero.
-   */
-  static integrationPending(what: string): ApiError {
-    return new ApiError(
-      'INTEGRATION_PENDING',
-      `${what} hali ulanmagan (BITRIX24_INTEGRATION_PENDING).`,
-    )
   }
 
   static internal(cause: unknown): ApiError {

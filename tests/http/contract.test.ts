@@ -34,14 +34,6 @@ describe('error taxonomy', () => {
     expect(statusForCode('INTERNAL_ERROR')).toBe(500)
   })
 
-  it('distinguishes a pending integration from a real failure', () => {
-    // 501, not 500: the feature works, its data source just is not connected.
-    const error = ApiError.integrationPending('Toʻlovlar')
-    expect(error.status).toBe(501)
-    expect(error.code).toBe('INTEGRATION_PENDING')
-    expect(error.message).toContain('BITRIX24_INTEGRATION_PENDING')
-  })
-
   it('wraps an unknown throw without losing the cause', () => {
     const original = new Error('connect ECONNREFUSED 127.0.0.1:5432')
     const wrapped = toApiError(original)
