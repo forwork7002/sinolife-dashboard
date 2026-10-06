@@ -127,9 +127,15 @@ export function PeriodFilter({
     */
     <div ref={container} className="relative w-full sm:w-auto">
       <div className="flex w-full items-center gap-1.5 sm:w-auto">
+        {/*
+          SegmentedControl's look, not its own: a glass well with the chosen
+          preset as the raised chip. It wore the solid-ink block that control
+          retired — the heaviest mark on the row — beside BrandSwitch's chip,
+          and a border that made it 34px in a row of 32s.
+        */}
         <div
-          className="flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5"
-          style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
+          className="flex shrink-0 items-center gap-0.5 rounded-[var(--radius-panel-sm)] p-0.5"
+          style={{ background: 'var(--glass-well)' }}
           role="group"
           aria-label={t.period.label}
         >
@@ -141,12 +147,14 @@ export function PeriodFilter({
                 type="button"
                 onClick={() => onChange({ preset })}
                 aria-pressed={active}
-                // Taller under a thumb than under a pointer: 36px on a phone is
-                // the smallest target that is reliably hit, 28px suits a mouse.
-                className="focusable rounded-md px-2.5 py-2 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-1.5 sm:text-xs"
+                // Taller under a thumb than under a pointer: a 36px chip in
+                // the well (40px with it) on a phone, the smallest target
+                // that is reliably hit; 28px (32) suits a mouse.
+                className="focusable h-9 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:h-7 sm:text-xs"
                 style={{
-                  background: active ? 'var(--ink-primary)' : 'transparent',
-                  color: active ? 'var(--surface)' : 'var(--ink-secondary)',
+                  background: active ? 'var(--glass-raised)' : 'transparent',
+                  boxShadow: active ? 'var(--glass-highlight), var(--shadow-card)' : 'none',
+                  color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
                 }}
               >
                 {t.period[preset]}
@@ -171,10 +179,14 @@ export function PeriodFilter({
           aria-haspopup="dialog"
           aria-label={`${t.period.label}: ${label}`}
           title={t.period.pick}
-          className="focusable flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:py-2 sm:text-xs"
+          // A raised glass chip, the well's height beside it; the page's
+          // accent wash while a custom window is on. Colour, not `background`,
+          // inline: the hover wash is an image layer a shorthand would wipe.
+          className="focusable flex h-10 shrink-0 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] sm:h-8 sm:text-xs"
           style={{
-            borderColor: value === 'custom' ? 'var(--accent)' : 'var(--border)',
-            background: value === 'custom' ? 'var(--accent-soft)' : 'var(--surface-raised)',
+            borderColor: value === 'custom' ? 'var(--accent)' : 'var(--glass-edge)',
+            backgroundColor: value === 'custom' ? 'var(--accent-soft)' : 'var(--glass-raised)',
+            boxShadow: value === 'custom' ? 'none' : 'var(--glass-highlight)',
             color: value === 'custom' ? 'var(--ink-primary)' : 'var(--ink-secondary)',
           }}
         >
@@ -293,8 +305,8 @@ function PeriodPicker({
       }}
     >
       <div
-        className="mb-3 flex gap-0.5 rounded-lg p-0.5"
-        style={{ background: 'var(--grid)' }}
+        className="mb-3 flex gap-0.5 rounded-[var(--radius-panel-sm)] p-0.5"
+        style={{ background: 'var(--glass-well)' }}
         role="tablist"
       >
         {MODES.map((option) => (
@@ -304,9 +316,10 @@ function PeriodPicker({
             role="tab"
             aria-selected={mode === option.id}
             onClick={() => setMode(option.id)}
-            className="focusable flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition-colors"
+            className="focusable h-7 flex-1 rounded-[calc(var(--radius-panel-sm)-2px)] px-2 text-[11px] font-medium transition-colors"
             style={{
-              background: mode === option.id ? 'var(--surface-raised)' : 'transparent',
+              background: mode === option.id ? 'var(--glass-raised)' : 'transparent',
+              boxShadow: mode === option.id ? 'var(--glass-highlight), var(--shadow-card)' : 'none',
               color: mode === option.id ? 'var(--ink-primary)' : 'var(--ink-secondary)',
             }}
           >
@@ -391,7 +404,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         unstyled: no border, no radius, no padding, browser default size.
       */}
       <div
-        className="mt-1 [&>*]:w-full [&>*]:rounded-[var(--radius-panel-sm)] [&>*]:border [&>*]:px-2.5 [&>*]:py-1.5 [&>*]:text-xs [&>*]:outline-none [&>*]:focusable"
+        className="mt-1 [&>*]:h-8 [&>*]:w-full [&>*]:rounded-[var(--radius-panel-sm)] [&>*]:border [&>*]:border-[var(--glass-edge)] [&>*]:bg-[var(--glass-well)] [&>*]:px-2.5 [&>*]:text-xs [&>*]:outline-none [&>*]:focusable"
         style={{
           colorScheme: 'light dark',
         }}

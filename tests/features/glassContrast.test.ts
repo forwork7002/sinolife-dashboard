@@ -287,6 +287,28 @@ describe('the rest of what glass puts text on', () => {
   })
 
   /*
+    The danger button's label is --status-critical on a tint of itself mixed
+    into the glass card (Button.tsx): at rest, hovered and pressed, on the
+    page and on a card. A red veil over bare glass read 3.94:1 on the pooled
+    light page.
+  */
+  it('keeps the danger button\'s label at 4.5:1 at rest, hovered and pressed', () => {
+    const button = readFileSync(join(process.cwd(), 'src/components/ui/Button.tsx'), 'utf8')
+    const shares = [...button.matchAll(/var\(--status-critical\)_(\d+)%,var\(--glass-card\)/g)].map((m) => Number(m[1]) / 100)
+    expect(shares).toHaveLength(3)
+    for (const theme of THEMES) {
+      const critical = opaque(theme, '--status-critical')
+      for (const share of shares) {
+        const tint = mixInOklab({ rgb: critical, alpha: 1 }, share, paint(token(theme, '--glass-card')))
+        for (const on of ['page', 'glass card'] as const) {
+          const { ratio, at } = worst(theme, '--status-critical', (ground) => over(tint, surfaces(theme, ground)[on]!))
+          expect(ratio, `${theme} at ${share * 100}% on the ${on} over ${at}`).toBeGreaterThanOrEqual(4.5)
+        }
+      }
+    }
+  })
+
+  /*
     The title band: the backdrop, the aurora's accent blob and the grain all
     paint under PageShell's 12px muted lead line. The blob's share is the
     geometry .page-atmosphere::before's comment derives — at most 0.45 of it

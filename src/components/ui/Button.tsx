@@ -90,31 +90,38 @@ const VARIANT_CLASSES: Record<Variant, string> = {
     'active:bg-[color-mix(in_oklab,var(--ink-primary)_72%,var(--surface))]',
   ].join(' '),
   /*
-    Hover steps to --grid — the mid-tone between surfaces — which is darker
-    than the card in light mode and lighter than it in dark, so the state
-    reads as "raised toward the cursor" in both without a per-theme branch.
+    A raised chip of glass («Shisha»): the --glass-raised fill, the glass edge
+    and the lit top, like the segmented control's chip. The hover lays the
+    glass wash OVER the fill as an image — darker in light, lighter in dark,
+    so it reads as "toward the cursor" in both without a per-theme branch —
+    and a press sinks the button into the well a track is made of. Both are
+    translucent: an opaque --grid hover read as a hole in the glass.
   */
   secondary: [
-    'border border-[var(--border-strong)] bg-[var(--surface-raised)] text-[var(--ink-primary)]',
-    'hover:bg-[var(--grid)]',
-    'active:bg-[var(--track)]',
+    'border border-[var(--glass-edge)] bg-[var(--glass-raised)] text-[var(--ink-primary)] shadow-[var(--glass-highlight)]',
+    'hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))]',
+    'active:bg-[var(--glass-well)]',
   ].join(' '),
   ghost: [
     'bg-transparent text-[var(--ink-secondary)]',
-    'hover:bg-[var(--grid)] hover:text-[var(--ink-primary)]',
-    'active:bg-[var(--track)]',
+    'hover:bg-[var(--glass-hover)] hover:text-[var(--ink-primary)]',
+    'active:bg-[var(--glass-well)]',
   ].join(' '),
   /*
     A tint and a ring of --status-critical, deepening on hover — never a solid
     red fill, which would out-shout the one primary action a screen may have.
-    The text is the token itself: on its own 10% tint it clears AA in both
-    themes, where a solid fill would need a second text colour per theme.
+    The text is the token itself, and the tint is mixed into the glass card
+    rather than into nothing: a red veil over bare glass sat on whatever the
+    backdrop lit, and on the pooled light page the label read 3.94:1 (3.45
+    hovered). On 8 / 12 / 16% of the glass card it holds 4.5:1 at rest,
+    hovered and pressed over every sample of the backdrop in both themes
+    (glassContrast.test.ts).
   */
   danger: [
     'border border-[color:color-mix(in_oklab,var(--status-critical)_45%,transparent)]',
-    'bg-[color-mix(in_oklab,var(--status-critical)_10%,transparent)] text-[var(--status-critical)]',
-    'hover:bg-[color-mix(in_oklab,var(--status-critical)_18%,transparent)]',
-    'active:bg-[color-mix(in_oklab,var(--status-critical)_26%,transparent)]',
+    'bg-[color-mix(in_oklab,var(--status-critical)_8%,var(--glass-card))] text-[var(--status-critical)]',
+    'hover:bg-[color-mix(in_oklab,var(--status-critical)_12%,var(--glass-card))]',
+    'active:bg-[color-mix(in_oklab,var(--status-critical)_16%,var(--glass-card))]',
   ].join(' '),
 }
 

@@ -58,19 +58,22 @@ export function SearchInput({
 
           The browser's own ✕ is hidden: in Chrome it is a 9px grey mark the
           client never found, and it cleared through the debounce. The red one
-          below replaces it. */}
+          below replaces it.
+
+          A sunken well of glass, the controls' one radius and their two
+          heights: 40px under a thumb, 32px on a desk (see SegmentedControl). */}
       <input
         type="search"
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className={`focusable w-full rounded-lg border py-2 pl-8 text-[13px] outline-none sm:min-w-[200px] sm:py-1.5 sm:text-xs [&::-webkit-search-cancel-button]:appearance-none ${
+        className={`focusable h-10 w-full rounded-[var(--radius-panel-sm)] border pl-8 text-[13px] outline-none sm:h-8 sm:min-w-[200px] sm:text-xs [&::-webkit-search-cancel-button]:appearance-none ${
           local ? 'pr-8' : 'pr-2.5'
         }`}
         style={{
-          background: 'var(--surface-raised)',
-          borderColor: 'var(--border-strong)',
+          backgroundColor: 'var(--glass-well)',
+          borderColor: 'var(--glass-edge)',
           color: 'var(--ink-primary)',
         }}
       />
@@ -246,10 +249,17 @@ export function MultiSelect({
         // document is a dangling reference, not a relationship.
         aria-controls={open ? id : undefined}
         aria-haspopup="listbox"
-        className="focusable flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-50"
+        /*
+          A raised chip of glass, like a secondary Button — and SUNK into the
+          well while it holds a selection, the state the count badge names.
+          Colour, not `background`, inline: the hover wash is an image layer a
+          shorthand would wipe.
+        */
+        className="focusable flex h-8 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-xs font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] disabled:opacity-50"
         style={{
-          background: selected.length ? 'var(--grid)' : 'var(--surface-raised)',
-          borderColor: 'var(--border-strong)',
+          backgroundColor: selected.length ? 'var(--glass-well)' : 'var(--glass-raised)',
+          borderColor: 'var(--glass-edge)',
+          boxShadow: selected.length ? 'none' : 'var(--glass-highlight)',
           color: 'var(--ink-primary)',
         }}
       >
@@ -333,12 +343,21 @@ export function MultiSelect({
 /**
  * Single-choice segmented control.
  *
- * The active segment is a raised chip — `--surface-raised` with the card
- * shadow — sitting in a `--grid` well, the same recipe the period picker's
- * tablist already used. The previous solid-ink block was the heaviest mark
- * on any toolbar it appeared in, which handed the strongest ink on the
- * screen to a CONTROL; the chip says "you are here" with elevation instead
- * of weight, and the well provides the boundary the border used to.
+ * The active segment is a raised chip sitting in a sunken well, the same
+ * recipe the period presets and the date picker's tabs use. The previous
+ * solid-ink block was the heaviest mark on any toolbar it appeared in, which
+ * handed the strongest ink on the screen to a CONTROL; the chip says "you are
+ * here" with elevation instead of weight, and the well provides the boundary
+ * the border used to.
+ *
+ * GLASS («Shisha», 2026-10-06): the well is --glass-well and the chip
+ * --glass-raised with the lit top, so the control is a pane on the card or
+ * the page and not an opaque patch. ONE RADIUS for every control,
+ * --radius-panel-sm (the Button's), the chip two pixels less inside the
+ * well's two-pixel padding; TWO HEIGHTS, 32px — this, a Button, MultiSelect,
+ * the period control and the search box on a desk — and 40px for the period
+ * control and the search box under a thumb. They were 28, 30, 32 and 34px in
+ * one filter row, at 6, 8 and 12px corners.
  *
  * Semantics stay native: real buttons with `aria-pressed`, so Tab reaches
  * every option and Space/Enter work for free.
@@ -358,8 +377,8 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="flex items-center gap-0.5 rounded-lg p-0.5"
-      style={{ background: 'var(--grid)' }}
+      className="flex items-center gap-0.5 rounded-[var(--radius-panel-sm)] p-0.5"
+      style={{ background: 'var(--glass-well)' }}
     >
       {options.map((option) => {
         const active = option.value === value
@@ -369,10 +388,10 @@ export function SegmentedControl<T extends string>({
             type="button"
             aria-pressed={active}
             onClick={() => onChange(option.value)}
-            className="focusable rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+            className="focusable h-7 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-xs font-medium whitespace-nowrap transition-colors"
             style={{
-              background: active ? 'var(--surface-raised)' : 'transparent',
-              boxShadow: active ? 'var(--shadow-card)' : 'none',
+              background: active ? 'var(--glass-raised)' : 'transparent',
+              boxShadow: active ? 'var(--glass-highlight), var(--shadow-card)' : 'none',
               color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
             }}
           >
@@ -789,10 +808,10 @@ export function ColumnFilterList({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Qidirish…"
           aria-label="Roʻyxatdan qidirish"
-          className="focusable mb-1 w-full rounded-md border px-2 py-1.5 text-xs outline-none"
+          className="focusable mb-1 h-7 w-full rounded-[var(--radius-panel-sm)] border px-2 text-xs outline-none"
           style={{
-            background: 'var(--surface)',
-            borderColor: 'var(--border-strong)',
+            background: 'var(--glass-well)',
+            borderColor: 'var(--glass-edge)',
             color: 'var(--ink-primary)',
           }}
         />
@@ -912,10 +931,11 @@ export function ColumnFilterRange({
     return /^\d+$/.test(digits) ? Number(digits) : null
   }
 
-  const box = 'focusable tabular w-full rounded-md border px-2 py-1.5 text-xs outline-none'
+  // The search box's well, at the Button's small height inside the panel.
+  const box = 'focusable tabular h-7 w-full rounded-[var(--radius-panel-sm)] border px-2 text-xs outline-none'
   const boxStyle = {
-    background: 'var(--surface)',
-    borderColor: 'var(--border-strong)',
+    background: 'var(--glass-well)',
+    borderColor: 'var(--glass-edge)',
     color: 'var(--ink-primary)',
   }
 

@@ -211,3 +211,64 @@ describe('floating panels are frosted, and nothing else is blurred', () => {
     expect(source('src/features/sellers/MedalTip.tsx')).toMatch(/className="tip medal-tip"/)
   })
 })
+
+describe('the controls are glass, at one radius and two heights', () => {
+  const button = source('src/components/ui/Button.tsx')
+  const controls = source('src/components/ui/Controls.tsx')
+  const period = source('src/components/layout/PeriodFilter.tsx')
+
+  /*
+    A secondary button is a raised chip of glass; its hover is the glass wash
+    laid OVER the fill as an image (an opaque --grid hover read as a hole in
+    the pane) and a press sinks it into the well. The danger tint is mixed
+    into the glass card, not into nothing — glassContrast.test.ts measures it.
+  */
+  it('builds the button variants from glass tokens', () => {
+    const variant = (name: string) => new RegExp(`${name}: \\[([\\s\\S]*?)\\]\\.join`).exec(button)![1]!
+    expect(variant('secondary')).toMatch(/bg-\[var\(--glass-raised\)\]/)
+    expect(variant('secondary')).toMatch(/border-\[var\(--glass-edge\)\]/)
+    expect(variant('secondary')).toMatch(/shadow-\[var\(--glass-highlight\)\]/)
+    expect(variant('secondary')).toMatch(/hover:bg-\[image:linear-gradient\(var\(--glass-hover\),var\(--glass-hover\)\)\]/)
+    expect(variant('secondary')).toMatch(/active:bg-\[var\(--glass-well\)\]/)
+    expect(variant('ghost')).toMatch(/hover:bg-\[var\(--glass-hover\)\]/)
+    expect(variant('danger').match(/var\(--status-critical\)_\d+%,var\(--glass-card\)/g)).toHaveLength(3)
+    expect(button).not.toMatch(/var\(--grid\)|var\(--track\)|var\(--surface-raised\)/)
+  })
+
+  /*
+    One filter row held 28, 30, 32 and 34px controls at 6, 8 and 12px
+    corners. Every control now takes the Button's --radius-panel-sm (a chip
+    two pixels less inside its well) and is 32px on a desk; the two a phone
+    reader thumbs most — the period control and the search box — are 40px
+    there. Tracks are the glass well, chips the raised glass.
+  */
+  it('gives every shared control the one radius token and the desk height of 32px', () => {
+    const search = /<input\s+type="search"\s+value=\{local\}[\s\S]*?className=\{`([^`]*)`\}[\s\S]*?style=\{\{([\s\S]*?)\}\}/.exec(controls)!
+    expect(search[1]).toMatch(/h-10 .*sm:h-8/)
+    expect(search[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\]/)
+    expect(search[2]).toMatch(/var\(--glass-well\)/)
+
+    const trigger = /aria-haspopup="listbox"[\s\S]*?className="([^"]*)"[\s\S]*?style=\{\{([\s\S]*?)\}\}/.exec(controls)!
+    expect(trigger[1]).toMatch(/\bh-8\b/)
+    expect(trigger[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\]/)
+    expect(trigger[2]).toMatch(/var\(--glass-raised\)/)
+
+    const segmented = /export function SegmentedControl[\s\S]*?className="([^"]*)"\s+style=\{\{ background: 'var\(--glass-well\)' \}\}[\s\S]*?className="([^"]*)"/.exec(controls)!
+    expect(segmented[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\] p-0\.5/)
+    expect(segmented[2]).toMatch(/\bh-7\b/)
+    expect(segmented[2]).toMatch(/rounded-\[calc\(var\(--radius-panel-sm\)-2px\)\]/)
+
+    const presets = /role="group"\s+aria-label=\{t\.period\.label\}[\s\S]*?className="([^"]*)"/.exec(period)!
+    expect(presets[1]).toMatch(/h-9 .*sm:h-7/)
+    expect(period).toMatch(/className="flex shrink-0 items-center gap-0\.5 rounded-\[var\(--radius-panel-sm\)\] p-0\.5"\s+style=\{\{ background: 'var\(--glass-well\)' \}\}/)
+    const picker = /title=\{t\.period\.pick\}[\s\S]*?className="([^"]*)"/.exec(period)!
+    expect(picker[1]).toMatch(/h-10 .*sm:h-8/)
+    expect(picker[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\]/)
+
+    // The retired solid-ink active segment, and the 8px / 6px corners, are gone from both files.
+    for (const [name, file] of [['Controls', controls], ['PeriodFilter', period]] as const) {
+      expect(file, name).not.toMatch(/background: active \? 'var\(--ink-primary\)'/)
+      expect(file, name).not.toMatch(/var\(--grid\)' \}\}|background: 'var\(--grid\)'/)
+    }
+  })
+})
