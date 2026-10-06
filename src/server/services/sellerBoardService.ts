@@ -1030,9 +1030,19 @@ export class SellerBoardService {
     const filters = boardFilters(ctx)
     const period = recordWindow(ctx.now, ctx.period.timeZone)
 
+    /*
+      NO `period.end` IN THE KEY — the trap `medals()` documents below, and
+      the one this memo sat in until 2026-10-06. `recordWindow` builds the end
+      from `ctx.now`, a fresh `new Date()` per request, so the key changed
+      every millisecond: the wall — the widest cohort on the landing page,
+      re-asked by every open television every ten minutes — was rebuilt on
+      every request, and readers arriving together never shared a build. The
+      start (`RECORDS_FROM`), the zone, the currency and the filters name the
+      question; the ten-minute TTL bounds how old the answer is, which at a
+      month's turn means `running` may lag the calendar by that much.
+    */
     const key = [
       period.start.toISOString(),
-      period.end.toISOString(),
       period.timeZone,
       ctx.currency,
       keyPart(filters.employeeIds),
@@ -1090,8 +1100,8 @@ export class SellerBoardService {
    * narsa emas — aks holda filtr motivatsiyani o'chirib qo'yadigan tugmaga
    * aylanardi. Devor ham aynan shu sababdan o'z oynasida yashaydi.
    *
-   * Kesh kaliti `records()` ning kalitidan ATAYLAB bitta joyda farq qiladi —
-   * pastdagi izohga qarang.
+   * Kesh kaliti `records()` ning kaliti bilan bir xil — ikkalasida ham
+   * `period.end` ATAYLAB yo'q; pastdagi izohga qarang.
    */
   async medals(ctx: AnalyticsContext): Promise<SellerMedalsDto> {
     const filters = boardFilters(ctx)

@@ -165,3 +165,42 @@ describe('what the wall says about the span it covers', () => {
     expect(narrowed.months).toEqual(wide.months)
   })
 })
+
+describe('the wall’s memo', () => {
+  it('is shared by two requests whose clocks differ by milliseconds', async () => {
+    /*
+      Every request brings its own `ctx.now`, and the wall's window ENDS at
+      it. With the end in the key the memo never hit: the widest cohort on
+      the landing page was rebuilt on every request, the televisions' ten-
+      minute poll included. One `ctx` asked twice could not catch that — two
+      clocks 37 ms apart, as two real requests arrive, do.
+    */
+    let calls = 0
+    const insights = {
+      confirmationSellerRecords: async () => {
+        calls += 1
+        return [row({ month: '2026-09-01', confirmedMinor: mln(44) })]
+      },
+    } as unknown as InsightsRepository
+    const service = new SellerBoardService(
+      {} as SellerBoardRepository,
+      insights,
+      { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository,
+    )
+    const at = (now: Date) => {
+      const period = resolvePeriod('today', { timeZone: TZ, now })
+      return {
+        period,
+        comparison: previousEquivalent(period),
+        currency: 'UZS',
+        filters: { restrictToEmployeeIds: null },
+        now,
+      } as unknown as AnalyticsContext
+    }
+
+    await service.records(at(new Date('2026-09-08T09:00:00.000+05:00')))
+    await service.records(at(new Date('2026-09-08T09:00:00.037+05:00')))
+
+    expect(calls).toBe(1)
+  })
+})
