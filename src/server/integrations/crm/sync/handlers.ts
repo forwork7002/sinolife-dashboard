@@ -225,12 +225,19 @@ export function createSyncHandlers(
   const ids = (batch: readonly { externalId: string }[]) => batch.map((r) => r.externalId)
 
   /**
-   * Floor badge to employee, read once and kept for the run.
+   * Floor badge to employee, read once and kept until the roster changes.
    *
    * The roster is ~290 rows and every DEALS batch needs the same map, so
-   * fetching it per batch would be 175 identical queries on a full pass. It is
-   * deliberately NOT cached across runs: a resync after a hiring change must
-   * see the new people.
+   * fetching it per batch would be 175 identical queries on a full pass. It
+   * must NOT outlive a hiring change: the EMPLOYEES pass drops it, so the next
+   * deals batch reads the roster it just wrote.
+   *
+   * It used to say «not cached across runs» and was in fact cached for the
+   * PROCESS — the worker builds these handlers once and nothing reset it. A
+   * seller imported by the three-hourly reference pass then had every order
+   * written with `operatorEmployeeId` NULL until the next deploy, and the
+   * readers' COALESCE credited those orders to whoever owned the deal: the
+   * sellers board, the queue, payroll and the ROP's TEAM rows.
    */
   let operatorIndex: Map<number, string> | null = null
   const floorNumberIndex = async (): Promise<Map<number, string>> => {
@@ -351,6 +358,8 @@ export function createSyncHandlers(
       }
 
       resolver.invalidate('employee')
+      // A hire, a rename or a reused badge is in the roster now; see `operatorIndex`.
+      operatorIndex = null
 
       /*
         MEMBERSHIP IS MANY-TO-MANY, AND ONLY THE ORG CHART READS IT.
