@@ -183,6 +183,32 @@ describe('RnpRepository.savePlanCells', () => {
   })
 })
 
+/*
+  A save waits for a connection as long as a read does (2026-10-06): with
+  Prisma's 2 s default a typed cell failed (P2028) while the pool kept every
+  read on the page queued — and answered — for 20 s.
+*/
+describe('RnpRepository — every typed save waits the pool’s 20 s for a connection, not Prisma’s 2 s', () => {
+  it('passes maxWait to the plan, cost and «Ходим сони» transactions', async () => {
+    const options: unknown[] = []
+    const { client } = fakePrisma()
+    const recording = {
+      ...client,
+      rnpManualCost: { deleteMany: () => 'delete', upsert: () => 'upsert' },
+      rnpManualHeadcount: { deleteMany: () => 'delete', upsert: () => 'upsert' },
+      $transaction: async (work: unknown, o: unknown) => {
+        options.push(o)
+        return typeof work === 'function' ? (work as (tx: unknown) => Promise<unknown>)(client) : work
+      },
+    }
+    const repo = new RnpRepository(recording as never)
+    await repo.savePlanCells('2026-10', [{ team: 'Lola', metric: 'plan_pct', value: 80 }], 'u1')
+    await repo.saveManualCosts([{ day: '2026-10-01', project: 'Collagen', line: 'bloggers', value: 1_000_000 }], 'u1')
+    await repo.saveManualHeadcount([{ day: '2026-10-01', rop: 'Lola', value: 12 }], 'u1')
+    expect(options).toEqual([{ maxWait: 20_000, timeout: 15_000 }, { maxWait: 20_000 }, { maxWait: 20_000 }])
+  })
+})
+
 describe('RnpRepository.plans — the lead value a month inherits', () => {
   it('keeps each team\'s last value, team by team, where the month has none of its own', async () => {
     const { client } = fakePrisma({

@@ -119,6 +119,16 @@ export interface RnpTeamFaktPlan {
 const monthDate = (month: string) => new Date(`${month}-01T00:00:00Z`)
 
 /*
+  A SAVE QUEUES FOR A CONNECTION AS LONG AS A READ DOES (2026-10-06). Prisma
+  gives a transaction 2 s to get one (`maxWait`'s default); the pool lets
+  every other query queue for 20 s (`connectionTimeoutMillis`, prisma.ts).
+  With all eight connections busy for over 2 s — a cold month build beside
+  another screen — a typed plan, cost or «Ходим сони» failed with P2028 and
+  its cell turned red, while every read on the page waited and succeeded.
+*/
+const SAVE_MAX_WAIT_MS = 20_000
+
+/*
   EVERY BOUND IS A NAIVE UTC TIMESTAMP, like the columns it is compared with.
   Prisma's DateTime columns are `timestamp(3)` holding UTC, so a Tashkent
   midnight is written `(date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC'`:
@@ -502,6 +512,7 @@ export class RnpRepository {
               update: { amountSom: BigInt(c.value), updatedBy: by },
             })
       }),
+      { maxWait: SAVE_MAX_WAIT_MS },
     )
   }
 
@@ -527,6 +538,7 @@ export class RnpRepository {
               update: { heads: c.value, updatedBy: by },
             })
       }),
+      { maxWait: SAVE_MAX_WAIT_MS },
     )
   }
 
@@ -600,7 +612,7 @@ export class RnpRepository {
             update: { valueCenti: centi(c.value), updatedBy: by },
           })
       }
-    }, { timeout: 15_000 })
+    }, { maxWait: SAVE_MAX_WAIT_MS, timeout: 15_000 })
   }
 }
 
