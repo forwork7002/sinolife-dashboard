@@ -5,7 +5,9 @@
  * every FAKT figure: the cohort's deals are taken whole and each is looked up
  * in MoySklad by its id, whenever the warehouse dated its order. So «FAKT 1»
  * here is Savdo dinamikasi's FAKT 1 to the soʻm, and MoySklad's column is the
- * same deals as the warehouse sees them.
+ * same deals as the warehouse sees them. A deal queued before MoySklad held
+ * any order stays in those figures and leaves the comparison
+ * (`MOYSKLAD_DATA_FLOOR`) — the window is never clamped.
  *
  * THE OTHER DIRECTION — MoySklad orders DATED in the window whose deal is not
  * in this cohort — is read too, because that is where an order with no
@@ -22,7 +24,9 @@ import {
   type SverkaIssue,
   type SverkaItem,
   type SverkaLine,
+  type SverkaPair,
   type SverkaPhase,
+  MOYSKLAD_DATA_FLOOR,
   bitrixPhase,
   compareDeal,
   moyskladPhase,
@@ -67,6 +71,12 @@ export interface SverkaSideDto {
 export interface SverkaPairDto {
   readonly bitrix: SverkaSideDto
   readonly moysklad: SverkaSideDto
+  /**
+   * The part of `bitrix` queued before MoySklad's first order and holding
+   * none (`MOYSKLAD_DATA_FLOOR`): inside Bitrix24's figure, which stays Savdo
+   * dinamikasi's, and outside the comparison.
+   */
+  readonly beforeFloor: SverkaSideDto
 }
 
 export interface SverkaItemDto {
@@ -165,6 +175,8 @@ export interface SverkaOverviewDto {
     readonly clean: number
     /** Every deal in the window's queue cohort. */
     readonly cohortOrders: number
+    /** Every cohort deal MoySklad could not hold (see `SverkaPairDto.beforeFloor`) — compared with nothing. */
+    readonly beforeFloor: SverkaSideDto
   }
   /** Deals per issue, over every line (not only the ones sent). */
   readonly issueCounts: Readonly<Record<SverkaIssue, number>>
@@ -184,6 +196,8 @@ export interface SverkaOverviewDto {
   readonly teams: readonly SverkaTeamDto[]
   readonly moysklad: {
     readonly orders: number
+    /** `MOYSKLAD_DATA_FLOOR` — the first day MoySklad holds orders for. */
+    readonly since: string
     /** The import's last successful run; null before the first. */
     readonly lastSuccessAt: string | null
     /** The last failure, when it is newer than the last success. */
@@ -270,9 +284,10 @@ function stakeOf(line: SverkaLine, issue: SverkaIssue): bigint {
   return amountOf(line)
 }
 
-const pair = (p: { bitrix: { orders: number; amountMinor: bigint }; moysklad: { orders: number; amountMinor: bigint } }) => ({
+const pair = (p: SverkaPair): SverkaPairDto => ({
   bitrix: { orders: p.bitrix.orders, amount: som(p.bitrix.amountMinor) },
   moysklad: { orders: p.moysklad.orders, amount: som(p.moysklad.amountMinor) },
+  beforeFloor: { orders: p.beforeFloor.orders, amount: som(p.beforeFloor.amountMinor) },
 })
 
 /** Orders grouped by deal, keeping the repository's newest-first order. */
@@ -387,6 +402,7 @@ export class SverkaService {
         pending: { orders: totals.pending.orders, amount: som(totals.pending.amountMinor) },
         clean: totals.clean,
         cohortOrders: cohort.length,
+        beforeFloor: { orders: totals.beforeFloor.orders, amount: som(totals.beforeFloor.amountMinor) },
       },
       issueCounts,
       issueAmounts,
@@ -411,6 +427,7 @@ export class SverkaService {
       })),
       moysklad: {
         orders: freshness.orders,
+        since: MOYSKLAD_DATA_FLOOR.toISOString(),
         lastSuccessAt: freshness.lastSuccessAt?.toISOString() ?? null,
         lastError:
           freshness.lastError && freshness.lastErrorAt &&

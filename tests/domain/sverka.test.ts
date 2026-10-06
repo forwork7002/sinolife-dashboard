@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type BitrixSide,
   type MoyskladSide,
+  MOYSKLAD_DATA_FLOOR,
   bitrixPhase,
   compareDeal,
   moyskladPhase,
@@ -170,6 +171,43 @@ describe('compareDeal', () => {
   })
 })
 
+/*
+  MoySklad holds no order dated before 2026-06-15: a «Yil» window used to turn
+  every January–June FAKT 1 order into «MoySkladʼda yoʻq».
+*/
+describe('compareDeal — before MoySklad held any order', () => {
+  const may = new Date('2026-05-10T07:00:00Z')
+  const delivered = { logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON', delivered: true }
+
+  it('the floor is 2026-06-15 00:00 in Tashkent', () => {
+    expect(MOYSKLAD_DATA_FLOOR.toISOString()).toBe('2026-06-14T19:00:00.000Z')
+  })
+
+  it('does not call an order older than MoySklad missing — it is compared with nothing', () => {
+    const line = compareDeal(bitrix({ ...delivered, queuedAt: may }), [])
+    expect(line.issues).toEqual([])
+    expect(line.beforeFloor).toBe(true)
+  })
+
+  it('still calls an order from the floor on missing, the floor itself included', () => {
+    const line = compareDeal(bitrix({ ...delivered, queuedAt: MOYSKLAD_DATA_FLOOR }), [])
+    expect(line.issues).toEqual(['MISSING_IN_MS'])
+    expect(line.beforeFloor).toBe(false)
+  })
+
+  it('compares an old order that does have a MoySklad order, as any other', () => {
+    const line = compareDeal(bitrix({ queuedAt: may }), [moysklad({ sumMinor: 180_000_000n })])
+    expect(line.issues).toEqual(['SUM'])
+    expect(line.beforeFloor).toBe(false)
+  })
+
+  it('keeps an old order still being packed pending — its MoySklad order is made when it leaves', () => {
+    const line = compareDeal(bitrix({ queuedAt: may, logisticsRole: 'PREPARING', stageExternalId: 'C6:NEW' }), [])
+    expect(line.beforeFloor).toBe(false)
+    expect(sverkaTotals([line]).pending.orders).toBe(1)
+  })
+})
+
 describe('regionKey / ropKey', () => {
   it('reads the portal\'s fourteen regions and their other spellings as one', () => {
     expect(regionKey('Ташкент г.')).toBe('TASHKENT_CITY')
@@ -320,6 +358,25 @@ describe('sverkaTotals', () => {
   it('ignores orphan lines — they have no Bitrix24 side', () => {
     expect(sverkaTotals([orphanLine(null, 'NO_DEAL', [moysklad()])]).fakt1.moysklad.orders).toBe(0)
   })
+
+  it('keeps an order older than MoySklad in Bitrix24\'s figures and names its share of each', () => {
+    const may = new Date('2026-05-10T07:00:00Z')
+    const lines = [
+      compareDeal(bitrix(), [moysklad()]),
+      compareDeal(bitrix({ externalId: 'old-delivered', queuedAt: may, delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' }), []),
+      compareDeal(bitrix({ externalId: 'old-refused', queuedAt: may, logisticsRole: 'REFUSED', stageExternalId: 'C6:LOSE' }), []),
+    ]
+    const totals = sverkaTotals(lines)
+    // FAKT 1 is still the whole cohort's — Savdo dinamikasi's to the soʻm.
+    expect(totals.fakt1.bitrix).toEqual({ orders: 3, amountMinor: 480_000_000n })
+    expect(totals.fakt1.beforeFloor).toEqual({ orders: 2, amountMinor: 320_000_000n })
+    expect(totals.fakt2.bitrix.orders).toBe(1)
+    expect(totals.fakt2.beforeFloor.orders).toBe(1)
+    expect(totals.returned.beforeFloor.orders).toBe(1)
+    expect(totals.transit.beforeFloor.orders).toBe(0)
+    expect(totals.beforeFloor).toEqual({ orders: 2, amountMinor: 320_000_000n })
+    expect(totals.clean).toBe(1)
+  })
 })
 
 describe('productRows / teamRows', () => {
@@ -335,5 +392,13 @@ describe('productRows / teamRows', () => {
       ['Shohjaxon', 1, 1, 0],
       ['(ROP yoʻq)', 1, 0, 1],
     ])
+  })
+
+  it('sets no order older than MoySklad against MoySklad, by product or by team', () => {
+    const old = compareDeal(bitrix({ externalId: 'old', queuedAt: new Date('2026-05-10T07:00:00Z') }), [])
+    const lines = [compareDeal(bitrix(), [moysklad()]), old]
+    expect(old.beforeFloor).toBe(true)
+    expect(productRows(lines).find((r) => r.code === COLLAGEN)).toMatchObject({ bitrixQuantity: 2, moyskladQuantity: 2 })
+    expect(teamRows(lines, '(ROP yoʻq)').map((r) => [r.team, r.bitrix.orders, r.moysklad.orders])).toEqual([['Shohjaxon', 1, 1]])
   })
 })
