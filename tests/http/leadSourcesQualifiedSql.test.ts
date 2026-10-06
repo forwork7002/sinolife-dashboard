@@ -6,7 +6,7 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { LeadSourcesRepository } = await import('@/server/repositories/leadSourcesRepository')
-const { dealFormTitleSql } = await import('@/server/repositories/leadFormSql')
+const { dealFormTitleSql, leadFormTitleSql, sourceDescriptionSql } = await import('@/server/repositories/leadFormSql')
 
 /*
   «Квал лидлар сони» on «Lidlar» — a Регистрация deal WON in the window, by
@@ -80,6 +80,9 @@ describe('LeadSourcesRepository.aiQualifiedStages', () => {
     expect(sql).toMatch(/p\."role" = 'LEAD'/)
     expect(sql).not.toMatch(/WHERE[\s\S]*role/)
     expect(sql).not.toMatch(/createdAtSource/)
+    // The form the way the registration and kval reads name it — a renamed repeat lead's from its
+    // SOURCE_DESCRIPTION — so «Сммщик ии» files it under the same brand (2026-10-06 audit).
+    expect(sql).toContain(`${leadFormTitleSql('d."title"', sourceDescriptionSql('d'), 's."externalId"', 'NULL')} AS form_title`)
     expect(params).toEqual([start, end])
   })
 })

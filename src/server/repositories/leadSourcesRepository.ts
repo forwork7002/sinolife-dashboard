@@ -269,7 +269,14 @@ export class LeadSourcesRepository {
       SELECT
         COALESCE(p."role" = 'LEAD', false) AS registration,
         s."externalId" AS source_id,
-        CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END AS form_title,
+        /*
+          The form as every other read names it (leadFormSql.ts, 2026-10-06
+          audit): a renamed repeat lead keeps its form, and so its brand,
+          here too. No short-name alias: those come from the window's
+          Регистрация deals by creation, and this read takes any pipeline and
+          any creation day.
+        */
+        ${leadFormTitleSql('d."title"', sourceDescriptionSql('d'), 's."externalId"', 'NULL')} AS form_title,
         NULLIF(btrim(d."productLine"), '') AS product_line,
         st."name" AS stage,
         d."status"::text AS status,
