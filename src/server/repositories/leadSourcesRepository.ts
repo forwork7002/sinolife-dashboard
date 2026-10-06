@@ -239,8 +239,8 @@ export class LeadSourcesRepository {
    * Every deal whose «ИИ квал сана» falls in the window, whatever its pipeline
    * or creation day — the portal's own filter on that field (01.10.2026: 89 =
    * 72 Регистрация + 13 Первичный отдел + 4 Доставка), flagged by whether it
-   * is in Регистрация. No index on the column: a sequential scan of `deal`,
-   * behind the overview's 60-second memo.
+   * is in Регистрация. Read through `deal_aiQualifiedAt_idx` (2026-10-06);
+   * it was a sequential scan of the whole table on every build.
    */
   async aiQualifiedStages(period: Period): Promise<AiQualifiedStageRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<

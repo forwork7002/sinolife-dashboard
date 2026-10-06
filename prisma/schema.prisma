@@ -951,6 +951,8 @@ model Deal {
   /// «Lid kogortasi» reads an arrival window and a distribution window.
   @@index([leadArrivedAt])
   @@index([leadDistributedOn])
+  /// «Lidlar»'s «Сммщик ии» reads a «ИИ квал сана» window over every pipeline.
+  @@index([aiQualifiedAt])
   @@map("deal")
 }
 
