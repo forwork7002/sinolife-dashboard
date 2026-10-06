@@ -54,6 +54,12 @@ export interface SearchDealRow {
    * there by its own id. A База twin or a Регистрация lead never arrives.
    */
   readonly queued: boolean
+  /**
+   * Whether ANY deal of the deal's customer ever arrived there — what a link
+   * by the customer's phone can find. False for a customer whose every deal is
+   * a lead that never reached the queue, and for a deal with no customer.
+   */
+  readonly customerQueued: boolean
 }
 
 export interface SearchCustomerRow {
@@ -195,6 +201,7 @@ export class SearchRepository {
         stage_name: string
         employee_name: string | null
         queued: boolean
+        customer_queued: boolean
       }[]
     >(
       `
@@ -220,7 +227,18 @@ export class SearchRepository {
           SELECT 1 FROM "deal_stage_history" sh
             JOIN "deal_stage" ss ON ss."id" = sh."stageId"
            WHERE sh."dealId" = d."id" AND ss."confirmationSignal" = 'CONFIRM_NEW'
-        ) AS queued
+        ) AS queued,
+        /*
+          The same arrival for any deal of the customer: what the queue can
+          show for a link by phone. Probed on (customerId), then on
+          (dealId, enteredAt), and it stops at the first arrival it meets.
+        */
+        EXISTS (
+          SELECT 1 FROM "deal" cd
+            JOIN "deal_stage_history" ch ON ch."dealId" = cd."id"
+            JOIN "deal_stage" cs ON cs."id" = ch."stageId"
+           WHERE cd."customerId" = d."customerId" AND cs."confirmationSignal" = 'CONFIRM_NEW'
+        ) AS customer_queued
       FROM hits h
       JOIN "deal" d ON d."id" = h."id"
       JOIN "deal_stage" st ON st."id" = d."stageId"
@@ -246,6 +264,7 @@ export class SearchRepository {
       stageName: r.stage_name,
       employeeName: r.employee_name,
       queued: r.queued,
+      customerQueued: r.customer_queued,
     }))
   }
 

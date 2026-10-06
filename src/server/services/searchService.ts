@@ -65,10 +65,21 @@ const WINDOW = 'preset=this_year'
  * family, the twin's Доставка original included. The order code is second: it
  * is matched as a substring there, so «bx10043» also finds «bx100431». The id
  * is last, as before.
+ *
+ * A CUSTOMER THE QUEUE NEVER SAW has nothing there for any link to find — the
+ * usual fresh lead, whose every deal is still in Регистрация. Its row stays,
+ * because a phone search is also how somebody checks whether a number is
+ * already a lead, and says so (`notQueuedHint`) before it is opened.
  */
 function queueTerm(d: SearchDealRow): string {
   if (d.queued) return d.bitrixId ?? d.title
   return d.customerPhone ?? d.orderCode ?? d.bitrixId ?? d.title
+}
+
+/** What a deal row adds to its hint when the queue holds nothing of its customer. */
+function notQueuedHint(d: SearchDealRow): string | null {
+  // `queued` too: a deal with no customer can be queued itself, and `customerQueued` is then false.
+  return d.queued || d.customerQueued ? null : 'Tasdiqlashga tushmagan'
 }
 
 export class SearchService {
@@ -100,6 +111,7 @@ export class SearchService {
             d.customerPhone,
             d.stageName,
             d.employeeName,
+            notQueuedHint(d),
           ]
             .filter(Boolean)
             .join(' · '),

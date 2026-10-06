@@ -135,6 +135,16 @@ describe('the deal hits', () => {
       )
     }
   })
+
+  it('say whether ANY deal of the customer arrived there — what a link by phone can find', async () => {
+    for (const term of ['925842', 'Dilnoza']) {
+      const calls: Call[] = []
+      await repositoryCapturing(calls).search(term, null)
+      expect(stripped(calls[0]!.sql)).toMatch(
+        /EXISTS \(\s*SELECT 1 FROM "deal" cd[\s\S]*cd\."customerId" = d\."customerId"[\s\S]*"confirmationSignal" = 'CONFIRM_NEW'\s*\) AS customer_queued/,
+      )
+    }
+  })
 })
 
 describe('scope', () => {
