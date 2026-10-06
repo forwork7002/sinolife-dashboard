@@ -175,7 +175,7 @@ export interface SverkaOverviewDto {
     readonly clean: number
     /** Every deal in the window's queue cohort. */
     readonly cohortOrders: number
-    /** Every cohort deal MoySklad could not hold (see `SverkaPairDto.beforeFloor`) — compared with nothing. */
+    /** Every FAKT 1 / FAKT 2 cohort deal MoySklad could not hold (see `SverkaPairDto.beforeFloor`) — compared with nothing. */
     readonly beforeFloor: SverkaSideDto
   }
   /** Deals per issue, over every line (not only the ones sent). */
@@ -196,7 +196,7 @@ export interface SverkaOverviewDto {
   readonly teams: readonly SverkaTeamDto[]
   readonly moysklad: {
     readonly orders: number
-    /** `MOYSKLAD_DATA_FLOOR` — the first day MoySklad holds orders for. */
+    /** `MOYSKLAD_DATA_FLOOR` — the day MoySklad's orders are taken to begin (its first order is on or before it). */
     readonly since: string
     /** The import's last successful run; null before the first. */
     readonly lastSuccessAt: string | null
