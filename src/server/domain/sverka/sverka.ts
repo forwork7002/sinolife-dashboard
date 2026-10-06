@@ -39,9 +39,10 @@ export const SUM_TOLERANCE_MINOR = 100n
  * MISSING — as far as was measured, MoySklad held nothing then — and it is not
  * clean either: it is compared with nothing (`beforeFloor`). Without the floor
  * a «Yil» window made every January–June FAKT 1 order a critical «MoySkladʼda
- * yoʻq» line, put tens of mlrd soʻm on that chip and pushed the real
- * differences out of the 3 000-line list. A deal queued before the floor that
- * DOES have an order is compared as usual.
+ * yoʻq» line — tens of mlrd soʻm on that chip by an estimate from the monthly
+ * volume, not a measurement — and pushed the real differences out of the
+ * 3 000-line list. A deal queued before the floor that DOES have an order is
+ * compared as usual.
  *
  * SO THE FLOOR CAN ONLY BE TOO LATE, AND TOO LATE HIDES MISSES: a deal queued
  * between MoySklad's real first order and this day, holding none, reads as
