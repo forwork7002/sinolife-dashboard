@@ -149,7 +149,7 @@ describe('registrationDays — the history scan gets its own statement timeout',
     const calls: string[] = []
     const client = {
       $queryRawUnsafe: async (sql: string) => {
-        calls.push(sql.includes('WITH arms') ? 'query' : sql)
+        calls.push(sql.includes('arms AS (') ? 'query' : sql)
         return [row]
       },
       $executeRawUnsafe: async (sql: string) => {

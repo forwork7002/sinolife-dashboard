@@ -10,6 +10,7 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
+const { dealFormTitleSql, formAliasJoinSql } = await import('@/server/repositories/leadFormSql')
 
 /*
   «Факт1 мижоз» on «Barcha manbalar · Регистрация». Run against a local
@@ -43,7 +44,9 @@ describe('leadFakt1ClientsSql', () => {
   })
 
   it('names the form exactly as the registration scan does, one row per lead', () => {
-    expect(sql).toContain(`CASE WHEN l."title" LIKE '%CRM-форм%' THEN l."title" END AS form_title`)
-    expect(sql).toMatch(/GROUP BY l\."id", s\."externalId", s\."name", l\."title"\s*$/)
+    // leadFormSql.ts: the title, else a repeat lead's SOURCE_DESCRIPTION.
+    expect(sql).toContain(`min(${dealFormTitleSql('l', 's', 'fa')}) AS form_title`)
+    expect(sql).toContain(formAliasJoinSql('l', 'fa'))
+    expect(sql).toMatch(/GROUP BY l\."id", s\."externalId", s\."name"\s*$/)
   })
 })

@@ -34,6 +34,7 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
+import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql } from './leadFormSql'
 import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
 
 /** Deals handed to one ROP on one day. `rop` null: not handed to a ROP team. */
@@ -257,12 +258,15 @@ export class RnpRepository {
       whole cost of this statement; a form's deals share one title, so the
       rows stay a few hundred. Two arms UNIONed and summed rather than a FULL
       JOIN: the join key would hold nulls, and a FULL JOIN will not hash on
-      IS NOT DISTINCT FROM.
+      IS NOT DISTINCT FROM. A repeat lead's form comes from its
+      SOURCE_DESCRIPTION (leadFormSql.ts), so it is not brandless here while
+      «Roistat» and «Lidlar» give it a brand.
     */
-    const form = `CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END`
+    const form = dealFormTitleSql('d', 's', 'fa')
     const duplicate = `COALESCE(st."name", '') ~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'`
     return `
-      WITH arms AS (
+      WITH ${formAliasCteSql(lo, hi)},
+      arms AS (
         SELECT ${day('d."createdAtSource"')} AS day,
                s."externalId" AS source_id,
                ${form} AS form_title,
@@ -274,6 +278,7 @@ export class RnpRepository {
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" IN ('LEAD', 'AI_TRIAGE')
         LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
         LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
+        ${formAliasJoinSql('d', 'fa')}
         WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
         GROUP BY 1, 2, 3
         UNION ALL
@@ -284,6 +289,7 @@ export class RnpRepository {
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
         LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
+        ${formAliasJoinSql('d', 'fa')}
         WHERE d."status" = 'WON' AND d."closedAt" >= ${lo} AND d."closedAt" < ${hi}
         GROUP BY 1, 2, 3
       )

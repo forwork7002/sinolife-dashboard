@@ -59,6 +59,9 @@ import {
   type ConfirmationQueueMode,
   type LogisticsRoleValue,
 } from '@/server/domain/types'
+
+import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql } from './leadFormSql'
+
 /** A money column as Postgres returns it: text, to survive the driver. */
 type MoneyText = string | null
 
@@ -5706,10 +5709,12 @@ export class InsightsRepository {
          AND length(${nine('x.phone')}) = 9
          AND ${nine('x.phone')} !~ '^([0-9])\\1{8}$'
        GROUP BY 1
-    )
+    ),
+    ${formAliasCteSql('$1', '$2')}
     SELECT s."externalId" AS source_id,
            s."name" AS source,
-           CASE WHEN l."title" LIKE '%CRM-форм%' THEN l."title" END AS form_title,
+           -- A repeat lead's form from its SOURCE_DESCRIPTION (leadFormSql.ts); one per lead, min() only to aggregate.
+           min(${dealFormTitleSql('l', 's', 'fa')}) AS form_title,
            min(f.phone) AS client
       FROM "deal" l
       JOIN "pipeline" p ON p."id" = l."pipelineId" AND p."role" = 'LEAD'
@@ -5717,8 +5722,9 @@ export class InsightsRepository {
       CROSS JOIN LATERAL unnest(cu."phones" || cu."phone") AS x(phone)
       JOIN fakt1_phone f ON f.phone = ${nine('x.phone')} AND f.created_at > l."createdAtSource"
       LEFT JOIN "sales_source" s ON s."id" = l."sourceId"
+      ${formAliasJoinSql('l', 'fa')}
      WHERE l."createdAtSource" >= $1 AND l."createdAtSource" < $2
-     GROUP BY l."id", s."externalId", s."name", l."title"`
+     GROUP BY l."id", s."externalId", s."name"`
   }
 
   /** Isolated so a test can pin it against the board's own predicates. */

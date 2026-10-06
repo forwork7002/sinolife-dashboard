@@ -6,6 +6,7 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { LeadSourcesRepository } = await import('@/server/repositories/leadSourcesRepository')
+const { dealFormTitleSql } = await import('@/server/repositories/leadFormSql')
 
 /*
   «Квал лидлар сони» on «Lidlar» — a Регистрация deal WON in the window, by
@@ -40,8 +41,10 @@ describe('LeadSourcesRepository.qualifiedSources', () => {
     expect(sql).toMatch(/LEFT JOIN "sales_source" s ON s\."id" = d\."sourceId"/)
     expect(sql).toMatch(/s\."externalId" AS source_id/)
     // The form title, so the Collagen / Zextra switch reads a form kval's brand.
-    expect(sql).toMatch(/CASE WHEN d\."title" LIKE '%CRM-форм%' THEN d\."title" END AS form_title/)
-    expect(sql).not.toMatch(/createdAtSource/)
+    // leadFormSql.ts: the title, else a repeat lead's SOURCE_DESCRIPTION.
+    expect(sql).toContain(`${dealFormTitleSql('d', 's', 'fa')} AS form_title`)
+    // Only the form aliases are read by creation; the kval itself is by closedAt.
+    expect(sql.slice(sql.indexOf('FROM "deal" d'))).not.toMatch(/createdAtSource/)
     expect(params).toEqual([start, end])
   })
 })

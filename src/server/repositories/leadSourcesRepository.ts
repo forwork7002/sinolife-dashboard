@@ -3,6 +3,8 @@ import { env } from '@/server/config/env'
 import { CALL_DATA_FLOOR, callWindowStart } from '@/lib/callQuality'
 import type { Period } from '@/server/domain/period/period'
 
+import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql } from './leadFormSql'
+
 /**
  * Регистрация deals created on one day, from one source, sitting in one stage
  * now — with the CRM form's title when a form opened the deal.
@@ -95,6 +97,7 @@ export class LeadSourcesRepository {
       }[]
     >(
       `
+      WITH ${formAliasCteSql('$1', '$2')}
       SELECT
         /*
           ::text, never a bare ::date — node-postgres builds a DATE at LOCAL
@@ -107,9 +110,10 @@ export class LeadSourcesRepository {
           The whole title, and only for a form: every deal one form opened
           carries the same title, so this groups to a handful of rows, while
           the other deals' titles (a name, a phone number) would not group at
-          all.
+          all. A repeat lead's form comes from its SOURCE_DESCRIPTION
+          (leadFormSql.ts).
         */
-        CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END AS form_title,
+        ${dealFormTitleSql('d', 's', 'fa')} AS form_title,
         st."name" AS stage,
         d."status"::text AS status,
         (d."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
@@ -118,6 +122,7 @@ export class LeadSourcesRepository {
       JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
       LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
       LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
+      ${formAliasJoinSql('d', 'fa')}
       WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       GROUP BY 1, 2, 3, 4, 5, 6, 7
       `,
@@ -151,14 +156,16 @@ export class LeadSourcesRepository {
       { source_id: string | null; form_title: string | null; ai_qualified: boolean; qualified: bigint }[]
     >(
       `
+      WITH ${formAliasCteSql('$1', '$2')}
       SELECT
         s."externalId" AS source_id,
-        CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END AS form_title,
+        ${dealFormTitleSql('d', 's', 'fa')} AS form_title,
         (d."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
         count(*)::bigint AS qualified
       FROM "deal" d
       JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
       LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
+      ${formAliasJoinSql('d', 'fa')}
       WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2
       GROUP BY 1, 2, 3
       `,

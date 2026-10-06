@@ -33,9 +33,9 @@ import { env } from '@/server/config/env'
 import type { Period } from '@/server/domain/period/period'
 import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { ROISTAT_NO_PRODUCT } from '@/server/domain/roistat/roistatCuts'
-import { LEAD_SOURCE_VOCABULARY } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
+import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, leadFormTitleSql, sourceDescriptionSql } from './leadFormSql'
 
 /** How far after the window a sales deal may open and still be the window's lead's. */
 const ORIGIN_LEAD_DAYS = 30
@@ -118,47 +118,6 @@ function int(value: unknown): number {
 }
 
 export class RoistatRepository {
-  /**
-   * The CRM form a Регистрация deal came from, as a title `formNameOf` reads —
-   * `<alias>.form_title`, null when no form can be named.
-   *
-   * THE TITLE IS NOT ENOUGH (measured on the portal, 01–06.10.2026). A
-   * returning contact's form lead is renamed «Такрор - обработка» by the
-   * portal's robot, and its form survives only in SOURCE_DESCRIPTION
-   * (`metadata.utm`): 1 750 of 6 320 Регистрация deals that week, which the
-   * «Форма» cut printed as «— не указано —» and the targetolog cut credited
-   * to nobody. The description comes in three spellings, tried in order:
-   *
-   *   «Qayta zayavka (forma akt #…) Заполнена CRM-форма "<form>"» — the form
-   *       whole (1 259 of them);
-   *   «AI targetolog YF / forma: <form> / <campaign>» — the AI targetolog's
-   *       own integration, which never writes a CRM-form title (43);
-   *   «<short name>» — the name Meta knows the form by, which an ordinary
-   *       form deal also carries beside its title: `form_alias` maps it back
-   *       to that title (452). Only for a «Ген лид» deal — what a form files
-   *       under — and only a short name that names ONE form in the scan: an
-   *       «Исход» or a DM-page lead never borrows a form, and two targetologs
-   *       naming their Meta forms alike make the name nobody's.
-   *
-   * 31 of the week's «Ген лид» deals were left with no form — typed in by hand.
-   * The cuts that group no form («Kunlar boʻyicha», the previous window's
-   * tiles) read the title alone and skip the lookup.
-   */
-  static formTitleSql(title: string, sd: string, sourceId: string, aliasTitle: string): string {
-    return `CASE
-            WHEN ${title} LIKE '%CRM-форм%' THEN ${title}
-            WHEN ${sd} LIKE '%CRM-форм%' THEN ${sd}
-            WHEN ${sd} ILIKE 'AI targetolog%forma:%'
-              THEN 'CRM-формы «AI targetolog · ' || btrim(substring(${sd} from '[Ff]orma:([^/]*)')) || '»'
-            WHEN ${sourceId} = '${LEAD_SOURCE_VOCABULARY.generated}' THEN ${aliasTitle}
-          END`
-  }
-
-  /** The deal's SOURCE_DESCRIPTION, as the sync keeps it (`dealUtm`). */
-  static sourceDescriptionSql(deal: string): string {
-    return `${deal}."metadata"->'utm'->>'SOURCE_DESCRIPTION'`
-  }
-
   private readonly tz: string
 
   constructor(private readonly prisma: PrismaClient) {
@@ -186,9 +145,12 @@ export class RoistatRepository {
     shape: 'all' | 'days' | 'total' = 'all',
     brandKeys = false,
   ): Promise<RoistatBitrixRow[]> {
-    // The form is grouped by the full scan and read by the brand switch; nothing else pays for its recovery.
+    /*
+      The form (leadFormSql.ts — a repeat lead's from its SOURCE_DESCRIPTION)
+      is grouped by the full scan and read by the brand switch; «Kunlar
+      boʻyicha» and the previous window's tiles group none and skip it.
+    */
     const forms = shape === 'all' || brandKeys
-    const sd = RoistatRepository.sourceDescriptionSql
     // Sales deals open after their lead; none can belong to the window once a month has passed.
     const scanEnd = new Date(Math.min(now.getTime(), period.end.getTime() + ORIGIN_LEAD_DAYS * 86_400_000))
     const brandColumns = ['b_source', 'b_form', 'b_team', 'b_product']
@@ -275,17 +237,7 @@ export class RoistatRepository {
       }[]
     >(
       `
-      WITH ${forms ? `form_alias AS MATERIALIZED (
-        SELECT ${sd('d')} AS sd, min(d."title") AS title
-        FROM "deal" d
-        JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
-        WHERE d."createdAtSource" >= $7 AND d."createdAtSource" < $4
-          AND d."title" LIKE '%CRM-форм%'
-          AND ${sd('d')} IS NOT NULL
-        GROUP BY 1
-        -- One form per short name, its NBSP and quote spellings folded; an ambiguous name is nobody's.
-        HAVING count(DISTINCT btrim(translate(substring(d."title" from 'CRM-форм[аы][[:space:]]*[«"“]([^»"”]+)'), chr(160), ' '))) = 1
-      ),` : ''}
+      WITH ${forms ? `${formAliasCteSql('$7', '$4')},` : ''}
       lead_rows AS (
         SELECT
           /*
@@ -295,7 +247,7 @@ export class RoistatRepository {
           (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
           s."externalId" AS source_id,
           s."name" AS source_name,
-          ${forms ? RoistatRepository.formTitleSql('d."title"', sd('d'), 's."externalId"', 'fa.title') : `CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END`} AS form_title,
+          ${forms ? dealFormTitleSql('d', 's', 'fa') : `CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END`} AS form_title,
           NULLIF(btrim(d."targetolog"), '') AS targetolog,
           NULL::text AS product_line,
           NULL::text AS region,
@@ -315,14 +267,14 @@ export class RoistatRepository {
           0 AS new_customer,
           NULL::double precision AS deal_days,
           s."externalId" AS b_source,
-          ${forms ? RoistatRepository.formTitleSql('d."title"', sd('d'), 's."externalId"', 'fa.title') : 'NULL::text'} AS b_form,
+          ${forms ? dealFormTitleSql('d', 's', 'fa') : 'NULL::text'} AS b_form,
           NULL::text AS b_team,
           NULL::text AS b_product
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
         LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
         LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
-        ${forms ? `LEFT JOIN form_alias fa ON fa.sd = ${sd('d')}` : ''}
+        ${forms ? formAliasJoinSql('d', 'fa') : ''}
         WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       ),
       /*
@@ -361,7 +313,7 @@ export class RoistatRepository {
           CASE WHEN o.created IS NOT NULL THEN o.source_id ELSE ss."externalId" END AS source_id,
           CASE WHEN o.created IS NOT NULL THEN o.source_name ELSE ss."name" END AS source_name,
           CASE
-            WHEN o.created IS NOT NULL THEN ${forms ? RoistatRepository.formTitleSql('o.title', 'o.sd', 'o.source_id', 'ofa.title') : `CASE WHEN o.title LIKE '%CRM-форм%' THEN o.title END`}
+            WHEN o.created IS NOT NULL THEN ${forms ? leadFormTitleSql('o.title', 'o.sd', 'o.source_id', 'ofa.title') : `CASE WHEN o.title LIKE '%CRM-форм%' THEN o.title END`}
             WHEN sb."title" LIKE '%CRM-форм%' THEN sb."title"
           END AS form_title,
           CASE WHEN o.created IS NOT NULL THEN o.targetolog ELSE NULLIF(btrim(sb."targetolog"), '') END AS targetolog,
@@ -427,7 +379,7 @@ export class RoistatRepository {
             ls."externalId" AS source_id,
             ls."name" AS source_name,
             l."title" AS title,
-            ${sd('l')} AS sd,
+            ${sourceDescriptionSql('l')} AS sd,
             NULLIF(btrim(l."targetolog"), '') AS targetolog,
             NULLIF(btrim(l."registrar"), '') AS registrar
           FROM "deal" l
