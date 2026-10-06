@@ -11,7 +11,7 @@ import {
   confirmedRateSeries,
   describeRateSpread,
 } from '@/features/sales/confirmationOutcomes'
-import { trendGranularity } from '@/features/sales/trendGranularity'
+import { type TrendGranularity, trendGranularity } from '@/features/sales/trendGranularity'
 import { QUEUE_BASIS } from '@/features/shared/faktVocabulary'
 import type { FaktTrendPointDto, SellerBoardTotalsDto } from '@/lib/api'
 import { formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
@@ -55,13 +55,14 @@ export function ConfirmationOutcomeSection({
   const { query, data, status } = useFaktBoard()
   const totals = data?.totals
   const series = useMemo(() => confirmedRateSeries(points), [points])
-  const spread = describeRateSpread(series)
   /*
     The same reading the FAKT chart above captions itself with: a point is a
     day only up to two months — «Yil → 2026» draws weeks. See
-    `trendGranularity`.
+    `trendGranularity`. The heading, the sub-caption, the chart's legend and
+    the spread under it all say it.
   */
   const granularity = trendGranularity(points)
+  const spread = describeRateSpread(series, granularity)
 
   return (
     <section
@@ -122,8 +123,8 @@ export function ConfirmationOutcomeSection({
             Тасдиқланиш %{granularity !== null && ` ${t.chart.buckets[granularity]}`}
           </h3>
           <p className="mt-0.5 mb-3 text-xs" style={{ color: 'var(--ink-muted)' }}>
-            Punktir chiziq — davr oʻrtachasi: davrning barcha buyurtmalari boʻyicha, kunlar
-            oʻrtachasi emas
+            Punktir chiziq — davr oʻrtachasi: davrning barcha buyurtmalari boʻyicha,{' '}
+            {granularity === null ? 'nuqtalar' : MEAN_OF[granularity]} oʻrtachasi emas
           </p>
           {trendStatus === 'loading' ? (
             <ChartSkeleton height={240} />
@@ -154,6 +155,16 @@ export function ConfirmationOutcomeSection({
       </Card>
     </section>
   )
+}
+
+/**
+ * «… oʻrtachasi emas» — what the dashed line is NOT the mean of, in the unit
+ * the line is drawn in. It said «kunlar» under forty-one weekly points.
+ */
+const MEAN_OF: Record<TrendGranularity, string> = {
+  day: 'kunlar',
+  week: 'haftalar',
+  month: 'oylar',
 }
 
 /**

@@ -19,6 +19,13 @@ import type { TrendGranularity } from '@/features/sales/trendGranularity'
 import { formatDateShort, formatNumber, formatPercent } from '@/lib/format'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 
+/** «har bir … uchun» — what one point of the line divides. */
+const PER_BUCKET: Record<TrendGranularity, string> = {
+  day: 'har bir kun uchun',
+  week: 'har bir hafta uchun',
+  month: 'har bir oy uchun',
+}
+
 /**
  * «Тасдиқланиш %» over time — the confirmation queue's rate, bucket by bucket,
  * with the period's own rate drawn across it.
@@ -44,13 +51,6 @@ import { useReducedMotion } from '@/lib/useReducedMotion'
  * total — because a low point raises exactly one question (refusals up, or
  * intake down?) and the point already holds the answer.
  */
-/** «har bir … uchun» — what one point of the line divides. */
-const PER_BUCKET: Record<TrendGranularity, string> = {
-  day: 'har bir kun uchun',
-  week: 'har bir hafta uchun',
-  month: 'har bir oy uchun',
-}
-
 export function ConfirmedRateChart({
   data,
   granularity,
