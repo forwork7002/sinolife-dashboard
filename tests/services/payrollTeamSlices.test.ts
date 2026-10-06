@@ -245,3 +245,42 @@ describe('payroll growth and ROP cards', () => {
     expect(dto.previous.sellers).toBe(0)
   })
 })
+
+/**
+ * THE RUNNING PERIOD IS READ ONCE ACROSS POLLS — 2026-10-06.
+ *
+ * The payroll memo is keyed on the comparison window as well, and while a
+ * period runs that window moves with the clock, so a poll regularly meets a key
+ * nothing has built. The rebuild used to scan the CURRENT window again too,
+ * although its start and end had not moved; its rows have their own memo now.
+ */
+describe('the payroll memo across polls', () => {
+  it('reads the running week once while the comparison window moves on', async () => {
+    const TZ = 'Asia/Tashkent'
+    const asked: string[] = []
+    const insights = {
+      deliveredSellerRows: async (window: { start: Date; end: Date }) => {
+        asked.push(`${window.start.toISOString()}|${window.end.toISOString()}`)
+        return [slice('a', 'Lola', 20, 10)]
+      },
+    } as unknown as InsightsRepository
+    const service = new PayrollService(insights)
+    // A week no other case asks for: the memos are module state.
+    const week = payrollWeekPeriod('2026-11-02', TZ)
+    const weekBefore = payrollWeekPeriod('2026-10-26', TZ)
+    const poll = (instant: string) => {
+      const now = new Date(instant)
+      return service.weekly(week, comparablePayrollPeriod(week, weekBefore, now), 'UZS', now)
+    }
+
+    // Twelve minutes apart: the comparison's ten-minute step has moved on.
+    const first = await poll('2026-11-04T06:00:00Z')
+    const later = await poll('2026-11-04T06:12:00Z')
+
+    const current = `${week.start.toISOString()}|${week.end.toISOString()}`
+    expect(asked.filter((key) => key === current)).toHaveLength(1)
+    // Two comparison windows, each read once.
+    expect(asked.filter((key) => key !== current)).toHaveLength(2)
+    expect(later.totals.fakt2.amount).toBe(first.totals.fakt2.amount)
+  })
+})

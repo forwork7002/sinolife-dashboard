@@ -333,7 +333,7 @@ describe('the comparison window', () => {
     expect(iso(compared.end)).toBe(iso(previous.end))
   })
 
-  it('cuts the previous period to the elapsed time while this one runs, to the minute', () => {
+  it('cuts the previous period to the elapsed time while this one runs, to ten minutes', () => {
     const current = payrollPeriod('2026-10', 'full', TZ)
     const previous = payrollPeriod('2026-09', 'full', TZ)
     // 4 days, 11 hours, 30 minutes and 42 seconds into October, Tashkent.
@@ -341,6 +341,21 @@ describe('the comparison window', () => {
     const compared = comparablePayrollPeriod(current, previous, now)
     expect(iso(compared.start)).toBe('2026-08-31T19:00:00.000Z')
     expect(iso(compared.end)).toBe('2026-09-05T06:30:00.000Z')
+  })
+
+  it('holds the cut still across the screen’s two-minute polls', () => {
+    /*
+      The window is the payroll memo's key. Floored to the minute it moved
+      between every two 120 s polls, so every poll of a running period was a
+      miss that paid the delivered-rows scans in front of the reader.
+    */
+    const current = payrollPeriod('2026-10', 'full', TZ)
+    const previous = payrollPeriod('2026-09', 'full', TZ)
+    const at = (instant: string) => iso(comparablePayrollPeriod(current, previous, new Date(instant)).end)
+    expect(at('2026-10-05T06:30:00.000Z')).toBe('2026-09-05T06:30:00.000Z')
+    expect(at('2026-10-05T06:32:00.000Z')).toBe('2026-09-05T06:30:00.000Z')
+    expect(at('2026-10-05T06:39:59.999Z')).toBe('2026-09-05T06:30:00.000Z')
+    expect(at('2026-10-05T06:40:00.000Z')).toBe('2026-09-05T06:40:00.000Z')
   })
 
   it('never runs the cut past the previous period’s own end', () => {
