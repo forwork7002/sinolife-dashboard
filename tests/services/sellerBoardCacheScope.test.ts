@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
 import type { ConfirmationSellerRatingRow, InsightsRepository } from '@/server/repositories/insightsRepository'
-import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
 import { SellerBoardService, resetSellerBoardCache } from '@/server/services/sellerBoardService'
@@ -101,8 +100,7 @@ function tracked() {
       return [rating(`seller-${builds}`, `rop-${builds}`, BigInt(builds) * 100n)]
     },
   } as unknown as InsightsRepository
-  const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
-  const service = new SellerBoardService({} as SellerBoardRepository, insights, reference)
+  const service = new SellerBoardService({} as SellerBoardRepository, insights)
 
   // Built by hand rather than through `AnalyticsService.context`, whose module
   // reads `env` at import and would make this a test of the environment.
@@ -176,7 +174,6 @@ describe('the sellers board, company-wide by decision', () => {
       board filtered to one team must not be served to somebody who asked for
       all of them.
     */
-    const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
     let calls = 0
     const counting = {
       confirmationSellerRating: async () => {
@@ -184,7 +181,7 @@ describe('the sellers board, company-wide by decision', () => {
         return [rating(`s${calls}`, 'Alfa', BigInt(calls) * 100n)]
       },
     } as unknown as InsightsRepository
-    const counted = new SellerBoardService({} as SellerBoardRepository, counting, reference)
+    const counted = new SellerBoardService({} as SellerBoardRepository, counting)
 
     const ctxWith = (employeeIds?: readonly string[]) => {
       const period = resolvePeriod('today', { timeZone: TZ, now: NOW })

@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
-import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
 import { resetFaktTrendCache, SellerBoardService } from '@/server/services/sellerBoardService'
@@ -57,8 +56,7 @@ function serviceOver(rows: readonly FaktDayRow[]) {
       return rows.map((row) => ({ ...row, byOutcome: { ...NONE, ...row.byOutcome } }))
     },
   } as unknown as InsightsRepository
-  const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
-  const service = new SellerBoardService({} as SellerBoardRepository, insights, reference)
+  const service = new SellerBoardService({} as SellerBoardRepository, insights)
 
   // Built by hand rather than through `AnalyticsService.context`, whose module
   // reads `env` at import and would make this a test of the environment.

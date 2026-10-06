@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import type { PrismaClient } from '@/generated/prisma/client'
 import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
 import { brandTeams, teamBrand } from '@/server/domain/rnp/rnpSheet'
-import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
 
@@ -107,7 +106,6 @@ describe('the confirmation-queue readers', () => {
     const service = new SellerBoardService(
       {} as SellerBoardRepository,
       insights,
-      { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository,
     )
     await service.faktTrend(context({ brand: 'Collagen' }))
     await service.faktTrend(context({}))

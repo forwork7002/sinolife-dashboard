@@ -138,11 +138,7 @@ export const registrationService = new RegistrationService(new RegistrationRepos
   «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.
 */
 export const leadCohortService = new LeadCohortService(new LeadCohortRepository(prisma))
-export const sellerBoardService = new SellerBoardService(
-  sellerBoardRepository,
-  insightsRepository,
-  referenceRepository,
-)
+export const sellerBoardService = new SellerBoardService(sellerBoardRepository, insightsRepository)
 
 /*
   «Sverka» (2026-10-06) — the queue cohort (insightsRepository, so FAKT 1 /

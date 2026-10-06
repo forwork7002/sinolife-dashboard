@@ -51,7 +51,6 @@ describe('medal servisi', () => {
     const service = new SellerBoardService(
       {} as never,
       repoWith(months, [], calls) as never,
-      {} as never,
     )
     const dto = await service.medals(contextAt(new Date('2026-09-15T06:00:00Z')))
     const row = dto.sellers.find((s) => s.employeeId === 'e1')!
@@ -90,7 +89,6 @@ describe('medal servisi', () => {
     const service = new SellerBoardService(
       {} as never,
       repoWith(tiny, [], { n: 0 }) as never,
-      {} as never,
     )
     const dto = await service.medals(contextAt(new Date('2026-09-15T06:00:00Z')))
     const row = dto.sellers.find((s) => s.employeeId === 'e2')!
@@ -110,7 +108,6 @@ describe('medal servisi', () => {
     const service = new SellerBoardService(
       {} as never,
       repoWith(idle, [], { n: 0 }) as never,
-      {} as never,
     )
     const dto = await service.medals(contextAt(new Date('2026-09-15T06:00:00Z')))
     expect(dto.sellers).toEqual([{ employeeId: 'e3', medals: [] }])
@@ -121,7 +118,6 @@ describe('medal servisi', () => {
     const service = new SellerBoardService(
       {} as never,
       repoWith(months, [], calls) as never,
-      {} as never,
     )
     const dto = await service.medals(contextAt(new Date('2026-09-15T06:00:00Z')))
     expect(dto.from).toBe(new Date('2026-07-31T19:00:00.000Z').toISOString())
@@ -132,7 +128,6 @@ describe('medal servisi', () => {
     const service = new SellerBoardService(
       {} as never,
       repoWith(months, [], calls) as never,
-      {} as never,
     )
     const ctx = contextAt(new Date('2026-09-15T06:00:00Z'))
     await service.medals(ctx)
@@ -154,7 +149,6 @@ describe('medal servisi', () => {
     const service = new SellerBoardService(
       {} as never,
       repoWith(months, [], calls) as never,
-      {} as never,
     )
     await service.medals(contextAt(new Date('2026-09-15T06:00:00.000Z')))
     await service.medals(contextAt(new Date('2026-09-15T06:00:00.037Z')))

@@ -87,7 +87,6 @@ function board(over: {
       conversionPercent: null,
       bonusPayable: money(0),
       sellersInBonus: 0,
-      plan: { amount: null, percent: null, basis: null },
     },
     forecast: { elapsedPercent: 77.8, projected: null },
   } as unknown as SellerBoardDto

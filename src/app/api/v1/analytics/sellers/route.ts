@@ -12,19 +12,19 @@ export const dynamic = 'force-dynamic'
  * Who reaches this endpoint: the capability, then the screens it feeds.
  *
  * TWO SECTIONS since 2026-09-07. The board itself is the sellers' television;
- * its totals — FAKT 1 / FAKT 2, conversion, the bonus fund and ladder — are
- * read on Savdo dinamikasi (`ConfirmationFaktSection`), so an account that
+ * its totals — FAKT 1 / FAKT 2, conversion, the bonus fund — are read on
+ * Savdo dinamikasi (`ConfirmationFaktSection`), so an account that
  * holds that screen and not the board must still be answered. Any-of, the
  * same shape as `/analytics/employees`. The scope below narrows either
  * caller the same way.
  *
  * WHAT THE SECOND SECTION GRANTS, STATED SO AN ADMINISTRATOR KNOWS: the whole
  * board, not a totals-only shape. An account ticked «sales» and not «sellers»
- * receives every seller row — name, FAKT 1, FAKT 2, bonus position — within
- * its data scope. Deliberate, for two reasons. The section's own tiles are
- * built FROM those rows (the conversion denominator, the ladder's counts and
- * its «Eng yaqini»), so a stripped payload would blank the very screen the
- * widening exists to serve. And this is the board `ROLE_NAV` already hands
+ * receives every seller row — name, team, FAKT 1, FAKT 2, rank — within its
+ * data scope. Deliberate, for two reasons. The section reads those rows
+ * itself (`ForecastSection`'s per-seller projection) and its totals are summed
+ * from them, so a stripped payload would blank the very screen the widening
+ * exists to serve. And this is the board `ROLE_NAV` already hands
  * to every salesperson by default, on the stated ground that it exposes only
  * aggregate per-seller figures — no deals, no costs, no headcount. Un-ticking
  * «sellers» therefore hides the television and its link; it does not withhold

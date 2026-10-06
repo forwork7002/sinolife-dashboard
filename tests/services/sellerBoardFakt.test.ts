@@ -5,7 +5,6 @@ import type {
   ConfirmationSellerRatingRow,
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
-import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
 import { SellerBoardService, resetSellerBoardCache } from '@/server/services/sellerBoardService'
@@ -82,8 +81,7 @@ async function boardOver(
   const insights = {
     confirmationSellerRating: async () => [...rows],
   } as unknown as InsightsRepository
-  const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
-  const service = new SellerBoardService({} as SellerBoardRepository, insights, reference)
+  const service = new SellerBoardService({} as SellerBoardRepository, insights)
   // Built by hand rather than through `AnalyticsService.context`, whose module
   // reads `env` at import and would make this a test of the environment.
   const period = resolvePeriod(preset, { timeZone: TZ, now: NOW })
@@ -323,8 +321,7 @@ describe('the totals keep the five queue states apart', () => {
         },
       ],
     } as unknown as SellerBoardRepository
-    const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
-    const service = new SellerBoardService(repo, {} as InsightsRepository, reference)
+    const service = new SellerBoardService(repo, {} as InsightsRepository)
     const period = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
     const ctx = {
       period,
@@ -373,8 +370,7 @@ describe('the bonus fund under the brand switch', () => {
         }),
       ],
     } as unknown as InsightsRepository
-    const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
-    const service = new SellerBoardService({} as SellerBoardRepository, insights, reference)
+    const service = new SellerBoardService({} as SellerBoardRepository, insights)
     const period = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
     const ctx = {
       period,
@@ -421,8 +417,7 @@ describe('the board against the window before it', () => {
         return [rating({ employeeId: 'a', rop: 'Lola', deliveredOrders: 1, deliveredMinor: mln(10) })]
       },
     } as unknown as InsightsRepository
-    const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
-    const service = new SellerBoardService({} as SellerBoardRepository, insights, reference)
+    const service = new SellerBoardService({} as SellerBoardRepository, insights)
     const period = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
     const ctx = {
       period,
@@ -438,5 +433,35 @@ describe('the board against the window before it', () => {
     expect(asked[0]!.start.toISOString()).toBe(period.start.toISOString())
     expect(asked[0]!.end.toISOString()).toBe(period.end.toISOString())
     expect('wonDelta' in board.totals).toBe(false)
+  })
+})
+
+/**
+ * WHAT THE BOARD NO LONGER CARRIES — 2026-10-06.
+ *
+ * `plan` (from a `kpi` table nothing writes to), `leads`, `leadConversionPercent`
+ * and `fot` (always null) and the per-seller bonus ladder rode every row, team
+ * and total for columns the television dropped on 2026-09-07 and a ladder
+ * Savdo dinamikasi dropped on 2026-09-10 — and every build paid a KPI query for
+ * the plan. Only the fund and its headcount are read.
+ */
+describe('what the board does not carry', () => {
+  it('sends no plan, lead, fot or per-seller ladder, and still pays the fund', async () => {
+    const board = await boardOver([
+      rating({ employeeId: 'a', fullName: 'Sirojov 115 Davlatbek', rop: 'Lola', deliveredOrders: 1, deliveredMinor: mln(50) }),
+    ])
+
+    for (const key of ['plan', 'leads', 'leadConversionPercent', 'fot', 'bonus']) {
+      expect(key in board.rows[0]!).toBe(false)
+    }
+    for (const key of ['plan', 'leads', 'leadConversionPercent']) {
+      expect(key in board.teams[0]!).toBe(false)
+    }
+    for (const key of ['plan', 'sellersWithPlan', 'sellersEligibleForBonus', 'leads', 'leadConversionPercent']) {
+      expect(key in board.totals).toBe(false)
+    }
+    expect('planWindow' in board).toBe(false)
+    expect(board.totals.bonusPayable?.amount).toBe(1_000_000)
+    expect(board.totals.sellersInBonus).toBe(1)
   })
 })
