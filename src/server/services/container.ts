@@ -7,7 +7,7 @@
  * is a one-line change.
  */
 
-import { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
+import { sharedCbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { env } from '@/server/config/env'
 import { prisma } from '@/server/db/prisma'
 import { DealRepository } from '@/server/repositories/dealRepository'
@@ -118,9 +118,10 @@ export const leadSourcesService = new LeadSourcesService(new LeadSourcesReposito
 const rnpRepository = new RnpRepository(prisma)
 /*
   ONE bank-rate cache for the two screens that convert dollars, so a day
-  read for one is not asked of cbu.uz again for the other.
+  read for one is not asked of cbu.uz again for the other — and one for the
+  process, so the RNP warmer's bundle and the routes' share it too.
 */
-const cbuUsdRates = new CbuUsdRates()
+const cbuUsdRates = sharedCbuUsdRates()
 export const rnpService = new RnpService(insightsRepository, rnpRepository, reklamaRepository, cbuUsdRates)
 /*
   «Roistat» (2026-10-05) — Meta's ad-level rows and the Регистрация lead

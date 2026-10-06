@@ -137,9 +137,10 @@ const T0 = Date.parse('2026-10-02T05:00:00Z')
 
 /**
  * The service over fakes that answer nothing; `scan` stands for a month's
- * scans — told the month, it may hold the build open or fail it.
+ * scans — told the month, it may hold the build open or fail it. `Service`:
+ * another copy of the class, as another bundle loads it.
  */
-function serviceOver(scan: (month: string) => Promise<void>) {
+function serviceOver(scan: (month: string) => Promise<void>, Service: typeof RnpService = RnpService) {
   const none = async () => []
   const repository = {
     leadDays: async (from: string) => {
@@ -156,7 +157,7 @@ function serviceOver(scan: (month: string) => Promise<void>) {
     manualHeadcount: none,
   }
   const usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) }
-  return new RnpService({ rnpTeamDays: none } as never, repository as never, { campaignDays: none } as never, usd)
+  return new Service({ rnpTeamDays: none } as never, repository as never, { campaignDays: none } as never, usd)
 }
 
 const read = (service: ReturnType<typeof serviceOver>, month: string) =>
@@ -244,6 +245,32 @@ describe('RnpService — the month memo (2026-10-02)', () => {
     // From the 8th the month that ended is left to its readers.
     await service.warm(new Date('2027-05-08T05:00:00Z'), TZ)
     expect(scans.slice(3)).toEqual(['2027-05'])
+  })
+})
+
+/*
+  The warmer runs in `instrumentation.ts`'s bundle and /rnp in the route's,
+  each with its own copy of this module (Turbopack's build, 2026-10-06): the
+  memos are the process's, so the route is served what the warmer built.
+*/
+describe('RnpService — one memo per process, whichever bundle reads it (2026-10-06)', () => {
+  afterEach(() => {
+    movedNow = null
+  })
+
+  it('serves a second copy of the module, at once and with no scan, the month the first copy warmed', async () => {
+    movedNow = Date.parse('2027-08-20T05:00:00Z') // 10:00 in Tashkent
+    const warmed: string[] = []
+    await serviceOver(async (month) => void warmed.push(month)).warm(new Date(Date.now()), TZ)
+    expect(warmed).toEqual(['2027-08'])
+
+    vi.resetModules()
+    const copy = await import('@/server/services/rnpService')
+    expect(copy.RnpService).not.toBe(RnpService) // a second module instance, as the route's bundle has
+    const scanned: string[] = []
+    const route = serviceOver(async (month) => void scanned.push(month), copy.RnpService)
+    expect(await servedAtOnce(read(route, '2027-08'))).toBe(true)
+    expect(scanned).toEqual([])
   })
 })
 

@@ -94,3 +94,19 @@ export class CbuUsdRates {
     return hit?.rate ?? null
   }
 }
+
+/*
+  ONE PER PROCESS, ON `globalThis` (2026-10-06). `instrumentation.ts` and the
+  route handlers are separate bundles, each building its own container, so
+  the RNP warmer read the month's rates into a cache no screen asked, and the
+  first /rnp after a deploy asked the bank for the whole month again (30
+  days, five at a time). Whichever bundle asks first makes it; the other is
+  handed the same one.
+*/
+const SHARED_RATES = Symbol.for('sinolife.cbu.usdRates')
+
+/** The process's one `CbuUsdRates` — the container's. */
+export function sharedCbuUsdRates(): CbuUsdRates {
+  const g = globalThis as { [SHARED_RATES]?: CbuUsdRates }
+  return (g[SHARED_RATES] ??= new CbuUsdRates())
+}

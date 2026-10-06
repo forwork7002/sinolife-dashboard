@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { CbuUsdRates, parseCbuRate } from '@/server/integrations/cbu/cbuRates'
+import { CbuUsdRates, parseCbuRate, sharedCbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 
 const answer = (rate: string) => [{ Ccy: 'USD', Rate: rate, Date: '29.09.2026' }]
 
@@ -80,5 +80,20 @@ describe('CbuUsdRates', () => {
     now = 65 * 60_000
     expect(await usd.forDays(['2026-09-02'], '2026-09-02')).toEqual([11910])
     expect(asked).toHaveLength(2)
+  })
+})
+
+/*
+  The RNP warmer's bundle and the routes' each load this module (2026-10-06):
+  one cache for the process, so a day the warmer read is not asked again.
+*/
+describe('sharedCbuUsdRates', () => {
+  it('hands a second copy of the module — another bundle’s — the same rates', async () => {
+    const first = sharedCbuUsdRates()
+    expect(sharedCbuUsdRates()).toBe(first)
+    vi.resetModules()
+    const copy = await import('@/server/integrations/cbu/cbuRates')
+    expect(copy.CbuUsdRates).not.toBe(CbuUsdRates)
+    expect(copy.sharedCbuUsdRates()).toBe(first)
   })
 })
