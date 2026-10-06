@@ -2,6 +2,12 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { CbuUsdRates, parseCbuRate, sharedCbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 
+// The container, imported below, reads `env` as it loads.
+process.env.DATABASE_URL ??= 'postgresql://test@127.0.0.1:5432/test'
+process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
+process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
+process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
+
 const answer = (rate: string) => [{ Ccy: 'USD', Rate: rate, Date: '29.09.2026' }]
 
 function bank(rates: Record<string, unknown>) {
@@ -95,5 +101,16 @@ describe('sharedCbuUsdRates', () => {
     const copy = await import('@/server/integrations/cbu/cbuRates')
     expect(copy.CbuUsdRates).not.toBe(CbuUsdRates)
     expect(copy.sharedCbuUsdRates()).toBe(first)
+  })
+
+  it('is what the container hands «RNP jadvali» and «Roistat», whichever bundle builds the container', async () => {
+    const routes = await import('@/server/services/container')
+    vi.resetModules()
+    const warmer = await import('@/server/services/container')
+    expect(warmer.rnpService).not.toBe(routes.rnpService) // two containers, as the two bundles build them
+    const usd = (service: object) => (service as { usd?: unknown }).usd
+    expect(usd(routes.rnpService)).toBeDefined()
+    expect(usd(warmer.rnpService)).toBe(usd(routes.rnpService))
+    expect(usd(warmer.roistatService)).toBe(usd(routes.rnpService))
   })
 })

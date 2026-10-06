@@ -175,12 +175,20 @@ const T0 = Date.parse('2026-10-02T05:00:00Z')
 /**
  * The service over fakes that answer nothing; `scan` stands for a month's
  * scans — told the month, it may hold the build open or fail it. `Service`:
- * another copy of the class, as another bundle loads it.
+ * another copy of the class, as another bundle loads it; `registrationDays`
+ * hears every Регистрация read, the closed days' and today's.
  */
 function serviceOver(
   scan: (month: string) => Promise<void>,
-  Service: typeof RnpService = RnpService,
-  usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) },
+  {
+    Service = RnpService,
+    usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) },
+    registrationDays = async () => [],
+  }: {
+    Service?: typeof RnpService
+    usd?: { forDays: (days: readonly string[]) => Promise<number[]> }
+    registrationDays?: (from: string, to: string) => Promise<never[]>
+  } = {},
 ) {
   const none = async () => []
   const repository = {
@@ -188,7 +196,7 @@ function serviceOver(
       await scan(from.slice(0, 7))
       return []
     },
-    registrationDays: none,
+    registrationDays,
     registrarKvalDays: none,
     callDays: none,
     warehouseDays: none,
@@ -290,10 +298,12 @@ describe('RnpService — the month memo (2026-10-02)', () => {
   it('warm(): working hours only — at 03:00 in Tashkent it builds nothing and asks the bank nothing (2026-10-06)', async () => {
     const scans: string[] = []
     const asked: string[] = []
-    const service = serviceOver(async (month) => void scans.push(month), RnpService, {
-      forDays: async (days: readonly string[]) => {
-        asked.push(days[0]!.slice(0, 7))
-        return days.map(() => 12_000)
+    const service = serviceOver(async (month) => void scans.push(month), {
+      usd: {
+        forDays: async (days: readonly string[]) => {
+          asked.push(days[0]!.slice(0, 7))
+          return days.map(() => 12_000)
+        },
       },
     })
     // Each says so — `OFF_HOURS` — so the warmer logs a skip rather than «rnp warmed» with 0 ms.
@@ -315,19 +325,36 @@ describe('RnpService — one memo per process, whichever bundle reads it (2026-1
     movedNow = null
   })
 
-  it('serves a second copy of the module, at once and with no scan, the month the first copy warmed', async () => {
-    movedNow = Date.parse('2027-08-20T05:00:00Z') // 10:00 in Tashkent
+  it('serves a second copy of the module, at once and with no scan, the months the first copy warmed — and its Регистрация history', async () => {
+    const tenOnTheFifth = Date.parse('2027-08-05T05:00:00Z') // 10:00 in Tashkent, in the month's first week
+    movedNow = tenOnTheFifth
     const warmed: string[] = []
     await serviceOver(async (month) => void warmed.push(month)).warm(new Date(Date.now()), TZ)
-    expect(warmed).toEqual(['2027-08'])
+    expect(warmed).toEqual(['2027-08', '2027-07']) // the month (`monthCache`), then the one that ended (`pastMonthCache`)
 
     vi.resetModules()
     const copy = await import('@/server/services/rnpService')
     expect(copy.RnpService).not.toBe(RnpService) // a second module instance, as the route's bundle has
     const scanned: string[] = []
-    const route = serviceOver(async (month) => void scanned.push(month), copy.RnpService)
+    const registrationReads: string[] = []
+    const route = serviceOver(async (month) => void scanned.push(month), {
+      Service: copy.RnpService,
+      registrationDays: async (from, to) => {
+        registrationReads.push(`${from}|${to}`)
+        return []
+      },
+    })
     expect(await servedAtOnce(read(route, '2027-08'))).toBe(true)
+    expect(await servedAtOnce(read(route, '2027-07'))).toBe(true)
     expect(scanned).toEqual([])
+
+    // Five minutes on, the month is past its TTL: the route's copy rebuilds it behind its reader, and
+    // the closed days' Регистрация (`registrationHistory`, half an hour) is the warmer's read, not a new one.
+    movedNow = tenOnTheFifth + 5 * 60_000
+    await read(route, '2027-08')
+    await flush()
+    expect(scanned).toEqual(['2027-08'])
+    expect(registrationReads).toEqual(['2027-08-05|2027-08-05']) // today's own read, live as ever
   })
 })
 
