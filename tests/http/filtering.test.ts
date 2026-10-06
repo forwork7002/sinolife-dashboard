@@ -126,6 +126,15 @@ describe('filter parsing end to end', () => {
     expect(() => buildFilters('preset=custom', manager)).toThrow()
   })
 
+  it('refuses a date the calendar does not have, rather than rolling it into the next month', () => {
+    // A leap-day link reused in 2026 answered 1 March's numbers with a 200.
+    for (const day of ['2026-02-29', '2026-02-30', '2026-04-31', '2026-13-01', '2026-00-10']) {
+      expect(() => buildFilters(`preset=custom&from=${day}&to=${day}`, manager), day).toThrow()
+    }
+    const leap = buildFilters('preset=custom&from=2024-02-29&to=2024-02-29', manager)
+    expect(leap.from?.toISOString()).toBe('2024-02-29T00:00:00.000Z')
+  })
+
   it('trims and bounds free-text search', () => {
     expect(buildFilters('q=%20%20Oq%20%20', manager).q).toBe('Oq')
     expect(() => buildFilters(`q=${'x'.repeat(200)}`, manager)).toThrow()

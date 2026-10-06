@@ -60,12 +60,22 @@ const nameList = z
   )
   .pipe(z.array(z.string().min(1).max(200)).max(40).optional())
 
-/** A calendar date, `YYYY-MM-DD`, interpreted in the app timezone downstream. */
+/**
+ * A calendar date, `YYYY-MM-DD`, interpreted in the app timezone downstream.
+ *
+ * «2026-02-30» is refused, not rolled over: `Date` turns it into 2 March, and
+ * a reused leap-day link answered 1 March's numbers with a 200 under a picker
+ * that said 29.02. The string has to come back unchanged from its own date —
+ * the check `registration/schema.ts` and `rnp/costs/schema.ts` already make.
+ */
 const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date in YYYY-MM-DD format')
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`)
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  }, 'Not a valid calendar date')
   .transform((value) => new Date(`${value}T00:00:00.000Z`))
-  .refine((date) => !Number.isNaN(date.getTime()), 'Not a valid calendar date')
 
 /** Ten years, in milliseconds. See the span check in `periodQuerySchema`. */
 const MAX_CUSTOM_RANGE_MS = 10 * 366 * 24 * 60 * 60 * 1000
