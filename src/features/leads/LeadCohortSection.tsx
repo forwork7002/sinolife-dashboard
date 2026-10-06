@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { MultiSelect, SegmentedControl } from '@/components/ui/Controls'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
+import { isOneBrand } from '@/features/shared/BrandSwitch'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet } from '@/lib/api'
 import { formatDate, formatNumber, formatPercent } from '@/lib/format'
@@ -239,7 +240,7 @@ function Tiles({
 }) {
   const k = data?.kpi
   const of = ropName ? ` · ${ropName}` : ''
-  const oneBrand = brand === 'Collagen' || brand === 'Zextra'
+  const oneBrand = isOneBrand(brand)
   return (
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <StatTile

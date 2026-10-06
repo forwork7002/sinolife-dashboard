@@ -1050,6 +1050,22 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   const handedTo = (rop: string) => grid.get(rop)?.leads ?? zeros()
   const otherTeams = total((t) => t.leads, (rop) => !groupTeams.has(rop))
   const otherNames = teamNames.filter((rop) => !groupTeams.has(rop) && sum(grid.get(rop)!.leads) > 0).map(labelOf)
+  /*
+    The same row cut by brand, for the brand switch only: the «Boshqa» teams
+    are of both brands and of neither (Шохжахон, Маржона, Baza are Collagen;
+    Ҳаёт, Kompaniya «Brendsiz»), so under one slice the groups and this add
+    up to the leads handed to that slice's teams.
+  */
+  const otherOf = (b: 'Collagen' | 'Zextra' | 'none') => (rop: string) => !groupTeams.has(rop) && (teamBrand(rop) ?? 'none') === b
+  const otherBrandRows = (['Collagen', 'Zextra', 'none'] as const).map((b) => {
+    const names = teamNames.filter((rop) => otherOf(b)(rop) && sum(grid.get(rop)!.leads) > 0).map(labelOf)
+    return additive(clock, {
+      key: `reg:group:none:qualified:${b}`,
+      label: b === 'none' ? 'Brendsiz jamoalar — квал' : 'Boshqa jamoalar — квал',
+      unit: 'count',
+      hint: `Guruh qatori yoʻq ${b === 'none' ? 'brendsiz' : b} ROP jamoalariga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha: ${names.length > 0 ? names.join(', ') : 'bu oy yoʻq'}.`,
+    }, total((t) => t.leads, otherOf(b)))
+  })
   blocks.push({
     id: 'registration',
     kind: 'registration',
@@ -1068,6 +1084,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `${labelOf(GROUP_TEAM[g])} jamoasiga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha; ROP blokidagi «Квал лид сони» bilan bir xil.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, handedTo(GROUP_TEAM[g])),
       ),
       additive(clock, { key: 'reg:group:none:qualified', label: 'Boshqa jamoalar — квал', unit: 'count', hint: `Guruh qatori yoʻq ROP jamoalariga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha: ${otherNames.length > 0 ? otherNames.join(', ') : 'bu oy yoʻq'}.` }, otherTeams),
+      ...otherBrandRows,
       additive(clock, { key: 'reg:distributed', label: 'РОП ларга тарқатилди', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: '«Лид таркатилган сана» shu kun va «РОП (Первичка)» ROP jamoasi boʻlgan bitimlar, shu sanadan oldingi 30 kun ichida yaratilganlari.' }, ropLeads),
       additive(clock, { key: 'reg:undistributed', label: UNDISTRIBUTED, unit: 'count', better: 'down', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: 'Tarqatilgan sanasi bor, lekin «РОП (Первичка)» da ROP emas (masalan Регистрация boshligʻi) yoki boʻsh.' }, undistributed),
       additive(clock, { key: 'reg:difference', label: 'Разница (РОП лид − квал лид)', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM }, difference),

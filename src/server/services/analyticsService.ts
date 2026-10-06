@@ -33,7 +33,7 @@ import type { DealFilters } from '@/server/repositories/dealRepository'
  * the query to the whole company. See `NO_EMPLOYEE_IN_SCOPE`.
  */
 export interface AnalyticsFilters extends DealFilters, EmployeeScopeFilter {
-  /** The Collagen / Zextra switch, on the screens that honour it; both when absent. */
+  /** The brand switch (`BRAND_FILTERS`), on the screens that honour it; both brands when absent. */
   readonly brand?: BrandFilter
 }
 

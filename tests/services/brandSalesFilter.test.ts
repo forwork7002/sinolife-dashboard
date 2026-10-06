@@ -85,7 +85,7 @@ describe('the confirmation-queue readers', () => {
         ratingFilterSql: (filters: { teams?: readonly string[]; excludeTeams?: boolean }, params: unknown[]) => string
       }
     ).ratingFilterSql({ teams: ['Asliddin'], excludeTeams: true }, params)
-    expect(clause).toBe(' AND (c.rop IS NULL OR NOT (c.rop = ANY($1::text[])))')
+    expect(clause).toBe(' AND (c.rop = ANY($1::text[])) IS NOT TRUE')
     expect(params).toEqual([['Asliddin']])
   })
 
@@ -138,5 +138,25 @@ describe('the Доставка board', () => {
     seen.length = 0
     await service.deliveryBoard(context({}))
     expect(seen[0]!.sql).not.toContain('::text[]')
+  })
+})
+
+describe('the seller\'s day chart', () => {
+  it('narrows by the brand\'s teams like the board row it opens from', async () => {
+    const calls: { sql: string; params: unknown[] }[] = []
+    const prisma = {
+      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
+        calls.push({ sql, params })
+        return []
+      },
+    } as unknown as PrismaClient
+    const repo = new InsightsRepository(prisma)
+    const period = { ...resolvePeriod('this_month', { timeZone: TZ, now: NOW }), restrictToEmployeeIds: null }
+    await repo.confirmationSellerRatingDays(period, 'e1')
+    await repo.confirmationSellerRatingDays(period, 'e1', { teams: ['Asliddin'], excludeTeams: true })
+    expect(calls[0]!.sql).not.toContain('$5')
+    expect(calls[0]!.params).toHaveLength(4)
+    expect(calls[1]!.sql).toContain('AND (c.rop = ANY($5::text[])) IS NOT TRUE')
+    expect(calls[1]!.params[4]).toEqual(['Asliddin'])
   })
 })

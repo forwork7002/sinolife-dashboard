@@ -8,10 +8,10 @@ import {
   type SplitShare,
   GRID_DAYS,
   leadSplitOfBrand,
-  teamRowsOfBrand,
 } from '@/server/domain/registration/leadSplit'
 import { buildRopReport, type RopReportDto } from '@/server/domain/registration/ropReport'
-import type { BrandFilter } from '@/server/domain/types'
+import { teamBrand } from '@/server/domain/rnp/rnpSheet'
+import { type BrandFilter, brandMatches } from '@/server/domain/types'
 import type { InsightsRepository, SellerFaktDayRow } from '@/server/repositories/insightsRepository'
 import type { RegistrationRepository } from '@/server/repositories/registrationRepository'
 
@@ -67,8 +67,9 @@ export class RegistrationService {
 
   /**
    * «ROP otchet» over `from`…`to` (inclusive), dated `to`; without the calls, their columns print a dash.
-   * One brand keeps its teams' leads, orders and rosters (`teamRowsOfBrand`), after the memo — a call
-   * names no team and follows its seller's row, so another brand's sellers' calls fall away with them.
+   * One brand keeps its teams' groups (`teamBrand`; «Brendsiz» the teams on neither list and the leads
+   * and orders that name no team), after the memo. The sheet is built whole and narrowed by group: a
+   * call names no team and sits on its seller's one row, so it is in exactly one slice.
    */
   private async sellerSheet(input: {
     from: string
@@ -91,12 +92,17 @@ export class RegistrationService {
       this.repository.roster(),
       !input.calls || callFloorApplied(period.start) ? null : this.repository.sellerCalls(period.start, period.end),
     ])
-    const fakt = teamRowsOfBrand(allFakt, brand)
-    const leads = teamRowsOfBrand(allLeads, brand)
-    const roster = teamRowsOfBrand(allRoster, brand)
-    const rostered = new Set(roster.map((m) => m.employeeId))
-    const strangers = new Set([...fakt.map((r) => r.employeeId), ...leads.flatMap((r) => (r.employeeId ? [r.employeeId] : []))])
+    const rostered = new Set(allRoster.map((m) => m.employeeId))
+    const strangers = new Set([...allFakt.map((r) => r.employeeId), ...allLeads.flatMap((r) => (r.employeeId ? [r.employeeId] : []))])
     const names = await this.repository.names([...strangers].filter((id) => !rostered.has(id)))
-    return buildRopReport({ day: input.to, leads, fakt, roster, names, calls })
+    return buildRopReport({
+      day: input.to,
+      leads: allLeads,
+      fakt: allFakt,
+      roster: allRoster,
+      names,
+      calls,
+      keepsGroup: brand === 'all' ? undefined : (rop) => brandMatches(brand, teamBrand(rop)),
+    })
   }
 }

@@ -111,7 +111,7 @@ export type RnpLine =
       readonly tone: RnpLabelTone
       /** The first line of a team the sheet has no block for: draw `RNP_ADDED_TEAM_NOTE` beside it. */
       readonly added?: true
-      /** Its brand on the Collagen / Zextra switch; absent = company-wide (not shown under one brand). */
+      /** Its slice on the brand switch; absent = company-wide (not shown under one slice). */
       readonly brand?: RnpLineBrand
     }
   | {
@@ -128,8 +128,10 @@ export type RnpLine =
       readonly key: string | null
       /** The first line of a team the sheet has no block for: draw `RNP_ADDED_TEAM_NOTE` beside it. */
       readonly added?: true
-      /** Its brand on the Collagen / Zextra switch; absent = company-wide (not shown under one brand). */
+      /** Its slice on the brand switch; absent = company-wide (not shown under one slice). */
       readonly brand?: RnpLineBrand
+      /** Drawn under its `brand` only, never on «Hammasi» (a brand's cut of a company-wide row). */
+      readonly brandOnly?: true
     }
 
 /**

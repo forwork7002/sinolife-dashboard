@@ -147,3 +147,15 @@ describe('brandLines — «Brendsiz»', () => {
     expect(brandLines(lines, 'none').map((l) => l.row)).toEqual([300, 301])
   })
 })
+
+describe('brandLines — a brand\'s cut of a company-wide row', () => {
+  it('shows the cut under its slice only, never on «Hammasi»', () => {
+    const v = (key: string, extra: Partial<Extract<RnpLine, { kind: 'value' }>> = {}): RnpLine => ({
+      kind: 'value', row: null, team: null, label: key, sub: null, tone: 'plain', fact: 'plain', bold: false, key, ...extra,
+    })
+    const lines = [v('reg:group:none:qualified'), v('reg:group:none:qualified:Collagen', { brand: 'Collagen', brandOnly: true }), v('reg:group:none:qualified:none', { brand: 'none', brandOnly: true })]
+    expect(brandLines(lines, 'all').map((l) => l.kind === 'value' && l.key)).toEqual(['reg:group:none:qualified'])
+    expect(brandLines(lines, 'Collagen').map((l) => l.kind === 'value' && l.key)).toEqual(['reg:group:none:qualified:Collagen'])
+    expect(brandLines(lines, 'none').map((l) => l.kind === 'value' && l.key)).toEqual(['reg:group:none:qualified:none'])
+  })
+})

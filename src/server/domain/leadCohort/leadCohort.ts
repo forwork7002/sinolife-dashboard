@@ -226,7 +226,10 @@ const kindOf = (lead: Pick<Lead, 'repeat'>): LeadKind => (lead.repeat === null ?
  * FILTERS: `pipelines` narrows the DEALS before they fold (a lead is in if any
  * of its copies is in a chosen pipeline); `rop` narrows the LEADS after, and
  * applies to the tiles and the tables — never to the ROP breakdown, which is
- * the comparison the filter picks from.
+ * the comparison the filter picks from. `keepsRop` (the brand switch) narrows
+ * the LEADS after the fold too, by the ROP the folded lead was handed to — on
+ * the raw deals one lead's copies could fall into two slices — and, unlike
+ * `rop`, the breakdown as well: a brand's screen lists its own ROPs.
  */
 export function leadCohortOverview(input: {
   rows: readonly LeadDealRow[]
@@ -237,12 +240,14 @@ export function leadCohortOverview(input: {
   pipelines: readonly number[]
   rop: string | null
   names: ReadonlyMap<string, string>
+  keepsRop?: (ropEmployeeId: string | null) => boolean
 }): LeadCohortOverviewDto {
   const cohortFrom = input.from < LEAD_COHORT_START ? LEAD_COHORT_START : input.from
   const inPipelines = new Set(input.pipelines)
   const rows = input.rows.filter((r) => inPipelines.has(r.pipeline))
 
-  const leads = foldLeads(rows, input.timeZone)
+  const keepsRop = input.keepsRop ?? (() => true)
+  const leads = foldLeads(rows, input.timeZone).filter((l) => keepsRop(l.ropEmployeeId))
   const matchesRop = (l: Lead) => input.rop === null || l.ropEmployeeId === input.rop
   const inWindow = (l: Lead) => l.arrivedDay >= cohortFrom && l.arrivedDay <= input.to
 
@@ -275,13 +280,15 @@ export function leadCohortOverview(input: {
     (l) => l.arrivedDay < LEAD_COHORT_START && matchesRop(l),
   ).length
 
-  // Deals with no arrival: one per customer, created in the window.
-  const missing = new Set<string>()
+  // Deals with no arrival: one per customer, created in the window — the customer under its first deal's ROP.
+  const missingRop = new Map<string, string | null>()
   for (const r of rows) {
     if (r.arrivedAt !== null || r.createdDay < input.from || r.createdDay > input.to) continue
     if (input.rop !== null && r.ropEmployeeId !== input.rop) continue
-    missing.add(r.customerId ?? `deal:${r.dealId}`)
+    const customer = r.customerId ?? `deal:${r.dealId}`
+    if (!missingRop.has(customer)) missingRop.set(customer, r.ropEmployeeId)
   }
+  const missing = [...missingRop.values()].filter(keepsRop)
 
   const ropAcc = new Map<string | null, { total: number; new: number; repeat: number; sameDay: number }>()
   for (const l of distributedInWindow) {
@@ -317,7 +324,7 @@ export function leadCohortOverview(input: {
       aiQualified,
       undistributed,
       repeat,
-      missingArrival: missing.size,
+      missingArrival: missing.length,
       arrivedBeforeStart,
       distributedBeforeArrival,
     },

@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { StatTile } from '@/components/ui/Stat'
 import { NO_VALUE, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
+import { isOneBrand } from '@/features/shared/BrandSwitch'
 import { PRODUCT_LABEL, PRODUCT_TONE, usd } from '@/features/target/targetTheme'
 import {
   type DayRow,
@@ -213,9 +214,6 @@ const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
   sarafan:
     'Ecommerce voronkasidagi «Сарафан маркетинг» manbali bitimlar: shu davrda ochilgani, kval — shu davrda «Доставлен» boʻlgani. Регистрация lidi emas, shuning uchun «Jami»ga kirmaydi; Регистрацияdagi «Сарафан маркетинг» lidlari «Boshqa»da.',
 }
-
-/** Collagen or Zextra — the slices under which what carries no brand is not shown. */
-const isOneBrand = (brand: string) => brand === 'Collagen' || brand === 'Zextra'
 
 /**
  * Under one brand, for what carries none — «Сарафан» (Ecommerce deals) and

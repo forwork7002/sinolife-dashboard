@@ -172,6 +172,13 @@ export function buildRopReport(input: {
   names: ReadonlyMap<string, string>
   /** Null: the day is before `CALL_DATA_FLOOR`, the call columns print a dash. */
   calls: readonly SellerCallRow[] | null
+  /**
+   * The brand switch: which groups the sheet keeps, by their team. Applied to
+   * the FINISHED groups, so every call is first placed on the person's one row
+   * across the whole sheet — narrowing the inputs first would let a seller's
+   * calls land on a row in two slices. The total sums the kept groups.
+   */
+  keepsGroup?: (rop: string | null) => boolean
 }): RopReportDto {
   const callsKnown = input.calls !== null
   const rosterOf = new Map(input.roster.map((m) => [m.employeeId, { ...m, rop: canonicalRop(m.rop) }]))
@@ -222,7 +229,9 @@ export function buildRopReport(input: {
   }
 
   const total = zero()
+  const keepsGroup = input.keepsGroup ?? (() => true)
   const groups: RopReportGroupDto[] = [...grid.entries()]
+    .filter(([rop]) => keepsGroup(rop))
     .map(([rop, people]) => {
       const groupTotal = zero()
       const sellers = [...people.entries()]

@@ -63,7 +63,7 @@ export class LeadCohortService {
     to?: string
     pipelines: readonly number[]
     rop: string | null
-    /** The Collagen / Zextra switch: leads routed to one brand's teams (`teamBrand`), or all. */
+    /** The brand switch: leads routed to one brand's teams (`teamBrand`), «Brendsiz», or all. */
     brand?: BrandFilter
     timeZone: string
     now: Date
@@ -87,19 +87,20 @@ export class LeadCohortService {
 
     /*
       A brand keeps the leads routed to its teams — after the memo, so a
-      switch costs no query. A lead not yet routed names no team and so no
-      brand: it is «Brendsiz», with the leads of teams on neither list.
+      switch costs no query, and after the fold (`keepsRop`), so one lead is
+      in one slice. A lead not yet routed names no team and so no brand: it
+      is «Brendsiz», with the leads of teams on neither list.
     */
     const brand = input.brand ?? 'all'
-    const branded =
+    const keepsRop =
       brand === 'all'
-        ? rows
-        : rows.filter((r) =>
-            brandMatches(brand, r.ropEmployeeId === null ? null : teamBrand(teams.get(r.ropEmployeeId) ?? null)),
-          )
+        ? undefined
+        : (ropEmployeeId: string | null) =>
+            brandMatches(brand, ropEmployeeId === null ? null : teamBrand(teams.get(ropEmployeeId) ?? null))
 
     return leadCohortOverview({
-      rows: branded,
+      rows,
+      keepsRop,
       from,
       to,
       today,

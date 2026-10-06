@@ -111,11 +111,15 @@ export function ropLines(lines: readonly RnpLine[], rop: string | null, label: s
  * their heading, its teams' blocks and logistics — `lineBrand`), with the
  * brand's P&L («Коллаген / Зехтра проект») moved to the top, where «Основные
  * показатели» opens the whole sheet: it is the brand's FAKT, budget, leads
- * and CAC. Company-wide lines no brand can claim are left out. 'all' = the
- * whole sheet.
+ * and CAC. Company-wide lines no brand can claim are left out; «Brendsiz»
+ * keeps the teams on neither list. 'all' = the whole sheet.
  */
 export function brandLines(lines: readonly RnpLine[], brand: 'all' | 'Collagen' | 'Zextra' | 'none'): readonly RnpLine[] {
-  if (brand === 'all') return lines
+  if (brand === 'all') {
+    // A brand's cut of a company-wide row (`brandOnly`) never shows on «Hammasi», where the row itself does.
+    const whole = lines.filter((l) => !(l.kind === 'value' && l.brandOnly))
+    return whole.length === lines.length ? lines : whole
+  }
   // «Brendsiz»: the blocks and logistics of the teams on neither brand's list.
   if (brand === 'none') return lines.filter((l) => l.brand === 'none')
   const own = lines.filter((l) => l.brand === brand || l.brand === 'both')

@@ -57,6 +57,8 @@ export type RnpLine =
       readonly added?: true
       /** The Collagen / Zextra switch's brand (`lineBrand` in rnpSheet.ts); absent = company-wide. */
       readonly brand?: RnpLineBrand
+      /** Drawn under its `brand` only, never on «Hammasi» (a brand's cut of a company-wide row). */
+      readonly brandOnly?: true
     }
 
 /*
@@ -118,7 +120,7 @@ export function sheetLines(blocks: readonly RnpBlockDto[], options: { month: str
     lines.push({ kind: 'value', row, team: teamOfKey(key), label, sub: named, tone, fact, bold, key })
   }
 
-  const valueLine = (r: RnpRowDto): RnpLine => ({
+  const valueLine = (r: RnpRowDto): Extract<RnpLine, { kind: 'value' }> => ({
     kind: 'value',
     row: null,
     team: teamOfKey(r.key),
@@ -159,10 +161,16 @@ export function sheetLines(blocks: readonly RnpBlockDto[], options: { month: str
       })
   const addedTeams = added('team', 'team', 'team')
   const addedLogistics = added('logistics', 'lg', 'section')
-  // The leads handed to teams no «guruh» row is named after («Boshqa jamoalar — квал»).
-  const otherTeams = (blocks.find((b) => b.kind === 'registration')?.rows ?? [])
-    .filter((r) => r.key === 'reg:group:none:qualified')
-    .map(valueLine)
+  // The leads handed to teams no «guruh» row is named after («Boshqa jamoalar — квал»), and its cut per brand.
+  const registrationRows = blocks.find((b) => b.kind === 'registration')?.rows ?? []
+  const otherTeams = [
+    ...registrationRows.filter((r) => r.key === 'reg:group:none:qualified').map(valueLine),
+    ...(['Collagen', 'Zextra', 'none'] as const).flatMap((b) =>
+      registrationRows
+        .filter((r) => r.key === `reg:group:none:qualified:${b}`)
+        .map((r): RnpLine => ({ ...valueLine(r), brand: b, brandOnly: true })),
+    ),
+  ]
 
   insertAfter(lines, LOGISTICS, addedLogistics)
   insertAfter(lines, TEAMS, addedTeams)

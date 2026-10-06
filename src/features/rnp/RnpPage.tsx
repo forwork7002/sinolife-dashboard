@@ -49,9 +49,9 @@ import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
  * under a heading (`ropLines`). Kept in the URL (`?rop=`), so a link opens on
  * the team; no request — the whole sheet is already on the page.
  *
- * «Hammasi · Collagen · Zextra» CUTS IT TO ONE BRAND (2026-10-05) the same
- * way, in the browser (`brandLines`): `?brand=`, and the ROP list offers only
- * that brand's teams.
+ * «Hammasi · Collagen · Zextra · Brendsiz» CUTS IT TO ONE SLICE (2026-10-05;
+ * «Brendsiz» 2026-10-06) the same way, in the browser (`brandLines`):
+ * `?brand=`, and the ROP list offers only that slice's teams.
  */
 export function RnpPage() {
   const current = useCurrentMonth()

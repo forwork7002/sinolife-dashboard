@@ -4,6 +4,15 @@ import { PRODUCT_FILTER_OPTIONS, PRODUCT_TONE } from '@/features/target/targetTh
 
 import { type DashboardBrand, useDashboardFilters } from './useDashboardFilters'
 
+/**
+ * Collagen or Zextra — the slices under which what carries no brand (Сарафан,
+ * inbound calls, undistributed leads, HR · Kosmetika) is not shown: it is
+ * «Brendsiz»'s, and «Hammasi»'s.
+ */
+export function isOneBrand(brand: string | undefined): brand is 'Collagen' | 'Zextra' {
+  return brand === 'Collagen' || brand === 'Zextra'
+}
+
 /** What each slice of the switch is called on screen. */
 export const BRAND_LABEL: Readonly<Record<DashboardBrand, string>> = {
   all: 'Hammasi',

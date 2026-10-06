@@ -2,6 +2,7 @@
 
 import { EmptyState } from '@/components/states/States'
 import { type Column, DataTable } from '@/components/ui/DataTable'
+import { isOneBrand } from '@/features/shared/BrandSwitch'
 import type { DashboardBrand } from '@/features/shared/useDashboardFilters'
 
 import type { SideColumnDto } from './reklamaApi'
@@ -30,7 +31,7 @@ export function SideSection({
   status: Status
   brand: DashboardBrand
 }) {
-  if (brand === 'Collagen' || brand === 'Zextra') {
+  if (isOneBrand(brand)) {
     return (
       <TableCard title="HR · Kosmetika" hint="Meta sarfi, kunma-kun. HR — barcha vakansiya kampaniyalari va HR Eldor akkaunti.">
         <EmptyState title="Brend boʻyicha ajratilmaydi" body="HR va Kosmetika na Collagen, na Zextra — «Brendsiz» va «Hammasi» da koʻrinadi." />

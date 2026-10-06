@@ -219,3 +219,27 @@ describe('the tiles and the filters', () => {
     ])
   })
 })
+
+describe('the brand switch (`keepsRop`) — one lead in one slice', () => {
+  it('narrows the FOLDED lead, so copies routed to two teams never split it across slices', () => {
+    // One lead, two copies: one handed to rop-a (Collagen), one not handed out at all.
+    const arrivedAt = msk('2026-09-21T10:00:00')
+    const rows = [
+      deal({ customerId: 'one', arrivedAt, distributedOn: '2026-09-21', ropEmployeeId: 'rop-a' }),
+      deal({ customerId: 'one', arrivedAt, pipeline: 4 }),
+      deal({ arrivedAt: msk('2026-09-22T10:00:00'), distributedOn: '2026-09-22', ropEmployeeId: 'rop-b' }),
+      deal({ arrivedAt: msk('2026-09-23T10:00:00') }),
+    ]
+    const brandOf = (rop: string | null) => (rop === 'rop-a' ? 'C' : rop === 'rop-b' ? 'Z' : 'N')
+    const all = overview(rows)
+    const slices = (['C', 'Z', 'N'] as const).map((b) => overview(rows, { keepsRop: (rop) => brandOf(rop) === b }))
+    const sum = (pick: (o: ReturnType<typeof overview>) => number) => slices.reduce((n, o) => n + pick(o), 0)
+    expect(sum((o) => o.kpi.arrived)).toBe(all.kpi.arrived)
+    expect(sum((o) => o.kpi.undistributed)).toBe(all.kpi.undistributed)
+    expect(sum((o) => o.kpi.distributedToday)).toBe(all.kpi.distributedToday)
+    expect(sum((o) => o.rops.reduce((n, r) => n + r.total, 0))).toBe(all.rops.reduce((n, r) => n + r.total, 0))
+    // The folded lead is rop-a's: Collagen holds it, «Brendsiz» does not see a phantom undistributed copy.
+    expect(slices[0]!.kpi.arrived).toBe(1)
+    expect(slices[2]!.kpi.undistributed).toBe(1)
+  })
+})

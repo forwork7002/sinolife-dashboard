@@ -167,3 +167,32 @@ describe('buildRopReport', () => {
     expect(hidden.total.connectedCalls).toBe(6)
   })
 })
+
+describe('buildRopReport — the brand switch (`keepsGroup`)', () => {
+  it('places each person\'s calls on one row of the whole sheet, so the slices add up to it', () => {
+    const input = {
+      ...base,
+      // «sev» is on Sevinch's roster and also carries a lead that names no team.
+      leads: [
+        { rop: 'Sevinch', employeeId: 'sev', leads: 4 },
+        { rop: null, employeeId: 'sev', leads: 1 },
+        { rop: 'Asliddin', employeeId: 'sar', leads: 2 },
+      ],
+      fakt: [fakt('sev', 'Hayot', 1_000_000, 1), fakt('sar', 'Asliddin', 2_000_000, 1)],
+      calls: [
+        { employeeId: 'sev', connected: 10, talkSec: 600 },
+        { employeeId: 'sar', connected: 5, talkSec: 300 },
+      ],
+    }
+    const brandOf = (rop: string | null) => (rop === 'Sevinch' ? 'C' : rop === 'Asliddin' ? 'Z' : 'N')
+    const all = buildRopReport(input)
+    const slices = (['C', 'Z', 'N'] as const).map((b) => buildRopReport({ ...input, keepsGroup: (rop) => brandOf(rop) === b }))
+    for (const k of ['leads', 'fakt1Orders', 'fakt2Orders', 'connectedCalls', 'talkSec'] as const) {
+      expect(slices.reduce((n, r) => n + (r.total[k] ?? 0), 0)).toBe(all.total[k])
+    }
+    expect(slices.reduce((n, r) => n + BigInt(r.total.fakt1.amountMinor), 0n)).toBe(BigInt(all.total.fakt1.amountMinor))
+    // The calls sit on the roster row (Collagen), never again under «Brendsiz».
+    expect(slices[0]!.total.connectedCalls).toBe(10)
+    expect(slices[2]!.total.connectedCalls).toBe(0)
+  })
+})

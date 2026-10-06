@@ -1148,10 +1148,11 @@ export class SellerBoardService {
         table above it prints would be the one screen disagreeing with itself.
         `boardFilters` is what drops the scope, in one place, for both.
       */
-      const days = await this.insights.confirmationSellerRatingDays(
-        scopedPeriod(ctx.period, boardFilters(ctx)),
-        employeeId,
-      )
+      const filters = boardFilters(ctx)
+      const days = await this.insights.confirmationSellerRatingDays(scopedPeriod(ctx.period, filters), employeeId, {
+        teams: filters.teams,
+        excludeTeams: filters.excludeTeams,
+      })
       return days.map((d) => ({
         date: d.date,
         orders: d.orders,

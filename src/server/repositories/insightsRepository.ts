@@ -3438,22 +3438,24 @@ export class InsightsRepository {
   }
 
   /**
+   * The brand switch's team predicate over a team expression: the brand's
+   * teams, or — for «Brendsiz» (`exclude`) — every order on no brand team,
+   * a team-less one included, so the three slices partition the board.
+   * `IS NOT TRUE` takes the NULL team in with one evaluation of the
+   * expression (`dealTeamSql` carries a subquery per row).
+   */
+  static teamFilterSql(expression: string, param: number, exclude: boolean): string {
+    return exclude
+      ? `(${expression} = ANY($${param}::text[])) IS NOT TRUE`
+      : `${expression} = ANY($${param}::text[])`
+  }
+
+  /**
    * A deal's ROP team read off the deal row alone — `c.rop`'s rule (the
    * «Организация сотрудника» snapshot, then the operator's department) for
    * readers outside the confirmation cohort, so a team filter means the same
    * team on every board.
    */
-  /**
-   * The brand switch's team predicate over a team expression: the brand's
-   * teams, or — for «Brendsiz» (`exclude`) — every order on no brand team,
-   * a team-less one included, so the three slices partition the board.
-   */
-  static teamFilterSql(expression: string, param: number, exclude: boolean): string {
-    return exclude
-      ? `(${expression} IS NULL OR NOT (${expression} = ANY($${param}::text[])))`
-      : `${expression} = ANY($${param}::text[])`
-  }
-
   static dealTeamSql(alias: string): string {
     return `COALESCE(
           ${InsightsRepository.ropNameSql(`${alias}."operatorTeamSource"`)},
@@ -5005,7 +5007,7 @@ export class InsightsRepository {
    * A chart that quietly answers a different question than the row it hangs
    * under is worse than no chart: nobody reconciles what they cannot see.
    */
-  private static ratingDaysSql(): string {
+  private static ratingDaysSql(teamFilter = ''): string {
     return `
        SELECT
          (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS date,
@@ -5015,7 +5017,7 @@ export class InsightsRepository {
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
-       WHERE COALESCE(d."operatorEmployeeId", d."employeeId") = $3
+       WHERE COALESCE(d."operatorEmployeeId", d."employeeId") = $3${teamFilter}
        GROUP BY 1
        -- The same gate as the board: a day whose only money was delivered
        -- without a confirmation still belongs to FAKT 2's series.
@@ -5034,7 +5036,12 @@ export class InsightsRepository {
   async confirmationSellerRatingDays(
     period: ScopedWindow,
     employeeId: string,
+    /** The brand switch, as the board row this chart hangs under narrows by it (`ratingFilterSql`). */
+    brand: { teams?: readonly string[]; excludeTeams?: boolean } = {},
   ): Promise<{ date: string; confirmedMinor: bigint; deliveredMinor: bigint; orders: number }[]> {
+    const teamFilter = brand.teams?.length
+      ? ` AND ${InsightsRepository.teamFilterSql('c.rop', 5, brand.excludeTeams === true)}`
+      : ''
     const rows = await this.prisma.$queryRawUnsafe<
       { date: string; confirmed: MoneyText; delivered: MoneyText; orders: bigint }[]
     >(
@@ -5047,11 +5054,12 @@ export class InsightsRepository {
         `deals/[id]` gets from putting the scope in its WHERE clause instead of
         comparing after the read.
       */
-      `${InsightsRepository.queueSql('window', '$4')}${InsightsRepository.ratingDaysSql()}`,
+      `${InsightsRepository.queueSql('window', '$4')}${InsightsRepository.ratingDaysSql(teamFilter)}`,
       period.start,
       period.end,
       employeeId,
       InsightsRepository.scopeValue(period),
+      ...(teamFilter ? [[...brand.teams!]] : []),
     )
 
     return rows.map((r) => ({

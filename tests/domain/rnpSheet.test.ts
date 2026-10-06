@@ -516,10 +516,24 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     // The hint names who is in it.
     expect(others.hint).toContain('Шохжахон РОП')
     expect(others.hint).toContain('Малика РОП - БАЗА')
-    const groups = d.blocks.find((b) => b.id === 'registration')!.rows.filter((r) => r.key.startsWith('reg:group:'))
+    // The brand cuts (`…:qualified:<brand>`) are the switch's, not the sheet's — left out of the sum.
+    const groups = d.blocks
+      .find((b) => b.id === 'registration')!
+      .rows.filter((r) => r.key.startsWith('reg:group:') && !/:qualified:/.test(r.key))
     const sum = groups.reduce((acc, r) => acc + (on(r, '2026-09-02') ?? 0), 0)
     expect(sum).toBe(57 + 13 + 25 + 6 + 2)
     expect(on(row(d, 'registration', 'reg:distributed'), '2026-09-02')).toBe(sum)
+  })
+
+  it('cuts «Boshqa jamoalar» by brand for the switch, the three cuts adding up to it', () => {
+    const d = dto()
+    const others = on(row(d, 'registration', 'reg:group:none:qualified'), '2026-09-02')
+    const cuts = (['Collagen', 'Zextra', 'none'] as const).map((b) => on(row(d, 'registration', `reg:group:none:qualified:${b}`), '2026-09-02') ?? 0)
+    expect(cuts.reduce((a, b) => a + b, 0)).toBe(others)
+    // Шохжахон is Collagen's, Малика (folded into Charos) Zextra's.
+    expect(row(d, 'registration', 'reg:group:none:qualified:Collagen').hint).toContain('Шохжахон РОП')
+    const lines = d.lines.filter((l) => l.kind === 'value' && l.key?.startsWith('reg:group:none:qualified:'))
+    expect(lines.map((l) => [l.brand, l.kind === 'value' && l.brandOnly])).toEqual([['Collagen', true], ['Zextra', true], ['none', true]])
   })
 })
 
