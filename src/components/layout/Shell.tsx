@@ -29,7 +29,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { apiGet, type AlertsDto, type SearchDto } from '@/lib/api'
 import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { useNewBuildAvailable } from '@/lib/buildVersion'
-import { formatCompactUzs, formatDateTime, syncFailureScope } from '@/lib/format'
+import { formatCompactUzs, formatDateTime, formatTime, syncFailureScope } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { useServerViewer } from '@/lib/viewer'
 import {
@@ -1479,8 +1479,10 @@ function isActive(pathname: string, href: string): boolean {
  *
  * Reads `meta.dataSource` and nothing else, so no screen can present generated
  * numbers as if they came from the live CRM.
+ *
+ * Exported for `tests/components/syncOutageTime.test.tsx`.
  */
-function DataSourceBadge({
+export function DataSourceBadge({
   source,
   syncedAt,
   syncError,
@@ -1635,7 +1637,10 @@ function DataSourceBadge({
     like a four-minute blip.
   */
   const failingScope = syncFailureScope(syncError)
-  const outageSince = syncError?.since ? clockOf(Date.parse(syncError.since)) : null
+  // Tashkent time, like «Oxirgi sinx» in the same sentence. `clockOf` is the
+  // reader's own clock: right for a press on their machine, and on a laptop
+  // left on UTC it put the outage five hours before the last good sync.
+  const outageSince = syncError?.since ? formatTime(syncError.since) : null
 
   const hint = isDemo
     ? t.badge.demoHint
