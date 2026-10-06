@@ -3,7 +3,9 @@ import { resolvePeriod } from '@/server/domain/period/period'
 import { buildGroupPlan, type GroupPlanDto, monthStart } from '@/server/domain/registration/groupPlan'
 import {
   addDays,
+  type BezkvalDayRow,
   buildLeadSplit,
+  type DistributedDayRow,
   type LeadSplitDto,
   type SplitShare,
   GRID_DAYS,
@@ -24,12 +26,21 @@ import { LIVE_CACHE, ttlCache } from './ttlCache'
 */
 const faktCache = ttlCache<SellerFaktDayRow[]>(120_000, LIVE_CACHE)
 
+/*
+  The month grid's day rows — the handed-out leads and «Безквал» — memoised
+  like the rest of «Lidlar» (2026-10-06 audit). They were read afresh on
+  every poll of every open «Lid manbalari» tab and on every brand switch,
+  and «Безквал» is 31 days of Регистрация deals with correlated subplans per
+  deal (the owner's ROP, the hand-over history). They carry no brand — it is
+  applied after (`leadSplitOfBrand`) — so a switch costs no query.
+*/
+const splitDaysCache = ttlCache<{ rows: DistributedDayRow[]; bezkval: BezkvalDayRow[] }>(120_000, LIVE_CACHE)
+
 /**
  * «Registratsiya» — one day's handed-out leads per ROP and the day's split,
  * «ROP otchet», the same day seller by seller, and «Guruhlar», that sheet
- * summed from the first of the month. The split is three small
- * reads (the leads index on `leadDistributedOn` serves the week), so nothing
- * there is memoised: a split saved a second ago is on the next read.
+ * summed from the first of the month. The split itself — two small reads —
+ * is never memoised: a split saved a second ago is on the next read.
  */
 export class RegistrationService {
   constructor(
@@ -39,9 +50,14 @@ export class RegistrationService {
 
   async overview(input: { day: string; timeZone: string; canEdit: boolean; brand?: BrandFilter }): Promise<LeadSplitDto> {
     const from = addDays(input.day, -(GRID_DAYS - 1))
-    const [rows, bezkval, split, previous] = await Promise.all([
-      this.repository.distributedDays(from, input.day),
-      this.repository.bezkvalDays(from, input.day, input.timeZone),
+    const [{ rows, bezkval }, split, previous] = await Promise.all([
+      splitDaysCache.get(`${from}:${input.day}:${input.timeZone}`, async () => {
+        const [rows, bezkval] = await Promise.all([
+          this.repository.distributedDays(from, input.day),
+          this.repository.bezkvalDays(from, input.day, input.timeZone),
+        ])
+        return { rows, bezkval }
+      }),
       this.repository.split(input.day),
       this.repository.previousSplit(input.day),
     ])
