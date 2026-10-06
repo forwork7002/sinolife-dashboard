@@ -10,19 +10,10 @@ export const dynamic = 'force-dynamic'
 /**
  * The Тасдиклаш queue, one row per order.
  *
- * A sibling of `/insights/confirmations` rather than a replacement for it:
- * that endpoint answers "how does each operator work their queue", this one
- * answers "what happened to the orders".
- *
- * THE SIBLING NO LONGER FEEDS ANYTHING. This comment used to say it fed the
- * overview tile; the command centre moved to `confirmationOutcomes` for speed
- * and nothing in `src/features` has called `/insights/confirmations` since.
- * The two are also not interchangeable: it counts every order that entered a
- * PENDING_CONFIRM stage during the window (3,210 for one August) while this
- * one counts every order CREATED in the window that reached any confirmation
- * stage (3,049) — two populations, both fielded as `orders`. Nothing on a
- * screen compares them today; if one ever does, that is the first thing to
- * reconcile.
+ * The parent `/insights/confirmations` («how does each operator work their
+ * queue») was deleted with the rest of the callerless code on 2026-09-10;
+ * this and `regions/` — the РЕГИОН filter's options — are what is left under
+ * it.
  */
 /*
   WHO REACHES IT, AND HOW MUCH OF IT THEY READ — TWO ANSWERS, NOT ONE.

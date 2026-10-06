@@ -64,8 +64,6 @@ export interface DeliveryBoardDto {
 
 // ---------------------------------------------------------------------------
 
-/**
-
 /** Keep only the filters the pulse SQL can honestly honour. */
 function pulseFilters(ctx: AnalyticsContext): PulseDealFilters {
   return {

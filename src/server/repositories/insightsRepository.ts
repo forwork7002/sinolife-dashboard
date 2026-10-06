@@ -53,7 +53,6 @@ import {
 import type { Period } from '@/server/domain/period/period'
 import { type DealProductBrand, PRODUCT_BRAND_PATTERNS } from '@/server/domain/products/productBrand'
 import {
-  CONFIRMATION_OUTCOMES,
   type ConfirmationOrderSortValue,
   type ConfirmationOutcomeValue,
   type ConfirmationQueueMode,
@@ -4245,42 +4244,6 @@ export class InsightsRepository {
       operatorId: r.operator_id,
       queuedAt: r.queued_at === null ? null : new Date(r.queued_at),
     }))
-  }
-
-  /** How the window's queue split across the five states. */
-  async confirmationOutcomes(
-    period: ScopedWindow,
-    filter: { rops?: readonly string[]; q?: string } = {},
-    mode: ConfirmationQueueMode = 'window',
-  ): Promise<ConfirmationOutcomeTotals> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      { outcome: ConfirmationOutcomeValue; orders: bigint }[]
-    >(
-      `${InsightsRepository.queueSql(mode, '$5')}
-       SELECT c.outcome, count(*)::bigint AS orders
-         FROM scoped c
-         JOIN "deal" d ON d."id" = c.deal_id
-         LEFT JOIN "customer" cust ON cust."id" = d."customerId"
-        WHERE ${InsightsRepository.ropMatch('$3')}
-          ${InsightsRepository.SEARCH_SQL('$4')}
-        GROUP BY c.outcome`,
-      period.start,
-      period.end,
-      filter.rops && filter.rops.length > 0 ? [...filter.rops] : null,
-      filter.q ?? null,
-      InsightsRepository.scopeValue(period),
-    )
-
-    // Every state is present with a zero rather than absent. A state missing
-    // from the payload would render as an em dash — "not measured" — when the
-    // truth is "measured, and none".
-    const totals = Object.fromEntries(
-      CONFIRMATION_OUTCOMES.map((outcome) => [outcome, 0]),
-    ) as Record<ConfirmationOutcomeValue, number>
-
-    for (const row of rows) totals[row.outcome] = int(row.orders)
-
-    return totals
   }
 
   /**
