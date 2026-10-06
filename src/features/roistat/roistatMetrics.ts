@@ -83,7 +83,7 @@ export function roasOf(soldUzs: number, spendUsd: number, uzsPerUsd: number | nu
 
 /**
  * A cost per unit, or null when no dollar was placed on the row. A row the
- * spend cannot reach («— не указано —», a page no account pays for) would
+ * spend cannot reach («Targetologsiz …», a page no account pays for) would
  * otherwise read «CPL 0» — leads that cost nothing — which is the one thing
  * it does not mean.
  */

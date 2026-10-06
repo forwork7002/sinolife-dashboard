@@ -36,16 +36,28 @@ import {
   spendCut,
   spendTotal,
 } from '@/server/domain/roistat/roistatCuts'
+import { leadChannel } from '@/server/domain/leads/leadSources'
 import type { DealProductBrand } from '@/server/domain/products/productBrand'
 import { saleBrand } from '@/server/domain/rnp/rnpSheet'
 import { type BrandFilter, brandMatches } from '@/server/domain/types'
 import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
+import { LEAD_SOURCE_VOCABULARY } from '@/server/integrations/crm/bitrix24/mapping'
 import { adBudgetProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import type { RoistatBitrixRow, RoistatMetaRow, RoistatRepository } from '@/server/repositories/roistatRepository'
 
 import { leadBrand } from './rnpService'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
+
+/** The brand and channel rules the cuts label by — RNP's and «Lidlar»'s, never a copy. */
+const LABELERS = Object.freeze({
+  brandOf: leadBrand,
+  channelOf: (sourceId: string | null) => {
+    const channel = leadChannel(sourceId, null, LEAD_SOURCE_VOCABULARY)
+    // Never 'form' with no form name; narrowed for the type only.
+    return channel === 'form' ? 'other' : channel
+  },
+})
 
 /** How many trailing days are still settling: sales and returns close later. */
 const FRESH_DAYS = 7
@@ -161,7 +173,11 @@ export interface RoistatQuery {
  * The Bitrix scan narrowed to one brand: a lead by RNP's `leadBrand` (its
  * source, then its form), a sale by the product it was paid for (`saleBrand`;
  * its team only when it has no line item) — as RNP's «Коллаген / Зехтра
- * проект» reads it, so the switch and the P&L agree.
+ * проект» reads it, so the switch and the P&L agree on every sale and on
+ * every lead whose title names its form. A repeat lead («Такрор - обработка»)
+ * is the exception since 2026-10-06: here its form is recovered from
+ * SOURCE_DESCRIPTION (`RoistatRepository.formTitleSql`), RNP still reads
+ * the title and calls it brandless.
  * Rows of a brand-keyed scan only (`RoistatRepository.bitrix`'s `brandKeys`).
  */
 function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: BrandFilter): Parameters<typeof bitrixCut>[1] {
@@ -265,7 +281,7 @@ export class RoistatService {
     const budget = spendTotal(spend)
 
     const spendByDay = spendCut('days', spend)
-    const soldByDay = bitrixCut('days', bitrix, leadBrand)
+    const soldByDay = bitrixCut('days', bitrix, LABELERS)
     const daily = daysBetween(window.from, window.to < today ? window.to : today).map((date) => ({
       date,
       spendUsd: dollars(spendByDay.get(date)?.spendMicroUsd ?? 0n),
@@ -347,7 +363,7 @@ export class RoistatService {
         })
         .sort((a, b) => (b.counters.spendMicroUsd > a.counters.spendMicroUsd ? 1 : b.counters.spendMicroUsd < a.counters.spendMicroUsd ? -1 : 0))
     }
-    const merged = mergeCuts(bitrixCut(dim, bitrix, leadBrand), spendCut(dim, spend))
+    const merged = mergeCuts(bitrixCut(dim, bitrix, LABELERS), spendCut(dim, spend))
     return [...merged.entries()]
       .filter(([, c]) => c.leads > 0 || c.orders > 0 || c.sold > 0 || c.spendMicroUsd > 0n)
       .map(([label, counters]) => ({ key: label, label, account: null, counters }))

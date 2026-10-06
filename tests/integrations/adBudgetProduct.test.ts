@@ -32,6 +32,11 @@ describe('adBudgetProduct', () => {
     expect(ownerOf('4016900891780426', 'Zapas Collagen')).toEqual({ product: 'Boshqa', targetolog: 'Zapas Collagen' })
   })
 
+  it('puts both of Tursunbek\'s accounts on Tursunbek · Zextra (2026-10-06)', () => {
+    expect(ownerOf('2230777724410928', 'Zextra (Tursunbek Targetolog)')).toEqual({ product: 'Zextra', targetolog: 'Tursunbek' })
+    expect(ownerOf('1686836655304575', 'Zextra 2 (Tursunbek TARGETOLOG)')).toEqual({ product: 'Zextra', targetolog: 'Tursunbek' })
+  })
+
   it('leaves out a hiring campaign, wherever it runs', () => {
     expect(adBudgetProduct(row({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'EX - Sinolife (vakansiya) - DM' }))).toBeNull()
     expect(adBudgetProduct(row({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'EX - TOF - Vacancy - 19.09' }))).toBeNull()

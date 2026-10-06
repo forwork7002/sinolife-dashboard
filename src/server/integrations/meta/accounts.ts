@@ -62,6 +62,13 @@ export const META_ACCOUNT_OWNERS: Readonly<Record<string, MetaAccountOwner>> = O
   */
   '1766424904604300': { product: 'Zextra', targetolog: 'Umar' }, // Umar (Zextra)
   /*
+    Tursunbek, a new Zextra targetolog (2026-10-06): lead forms since 05.10
+    on both accounts (17.24 $ by 06.10), and his «Tursunbek-zextra …» form
+    leads already on the portal. Unmapped, his money left the ad budget.
+  */
+  '2230777724410928': { product: 'Zextra', targetolog: 'Tursunbek' }, // Zextra (Tursunbek Targetolog)
+  '1686836655304575': { product: 'Zextra', targetolog: 'Tursunbek' }, // Zextra 2 (Tursunbek TARGETOLOG)
+  /*
     The client's own AI targetolog (2026-09-25: «collagen ai targetolog men bir
     ai targetolog yaratdim … hali uni ishlatmadim»). It runs on «Collagen AI
     Targetolog» (1052133867828964): Collagen lead forms since 29.09, 12.07 $ by

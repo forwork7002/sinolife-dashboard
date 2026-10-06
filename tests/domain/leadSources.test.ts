@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { LEAD_TILES, formNameOf, formOwner, leadChannel, leadTile } from '@/server/domain/leads/leadSources'
+import { LEAD_TILES, formNameOf, formOwner, leadChannel, leadTile, targetologOfField } from '@/server/domain/leads/leadSources'
 import { LEAD_SOURCE_VOCABULARY } from '@/server/integrations/crm/bitrix24/mapping'
 
 /*
@@ -50,6 +50,25 @@ describe('formOwner', () => {
   it('is null for a form that names nobody', () => {
     expect(formOwner('Collagen Marine ген лид')).toBeNull()
     expect(formOwner('New 21 forma')).toBeNull()
+  })
+})
+
+describe('the AI targetolog and Tursunbek (2026-10-06)', () => {
+  it('owns the AI\'s forms and Tursunbek\'s', () => {
+    expect(formOwner('AI targetolog · Sinolife AI forma 26.09.2026 17:44')).toEqual({ targetolog: 'AI targetolog', product: 'Collagen' })
+    expect(formOwner('Tursunbek-zextra Zextra filtr savol (Tursunbek Targetolog)')).toEqual({ targetolog: 'Tursunbek', product: 'Zextra' })
+    // His accounts are all Zextra: a form that names no product is Zextra, as Kamron's.
+    expect(formOwner('Tursunbek filtr savol')).toEqual({ targetolog: 'Tursunbek', product: 'Zextra' })
+  })
+
+  it('spells the deal field\'s «AI» as the account map does', () => {
+    expect(targetologOfField('AI')).toBe('AI targetolog')
+    expect(targetologOfField('Umar')).toBe('Umar')
+    expect(targetologOfField(null)).toBeNull()
+  })
+
+  it('reads a repeat lead\'s «Заполнена CRM-форма» as a form', () => {
+    expect(formNameOf('Qayta zayavka (forma akt #4806000) Заполнена CRM-форма "Umar-collagen Collagen (UMAR)"')).toBe('Umar-collagen Collagen (UMAR)')
   })
 })
 

@@ -24,14 +24,46 @@
  * in a row of its own rather than raising every targetolog's CPL.
  */
 
-import { formNameOf, formOwner } from '@/server/domain/leads/leadSources'
+import { type LeadChannel, formNameOf, formOwner, targetologOfField } from '@/server/domain/leads/leadSources'
 import type { TargetProduct } from '@/server/domain/types'
 
-/** The spelling of an empty dimension value on every Bitrix cut. */
-export const ROISTAT_NOT_STATED = '— не указано —'
+/**
+ * An empty dimension value, named by what is missing (2026-10-06: the
+ * client read «— не указано —» and asked what it meant).
+ */
+export const ROISTAT_NOT_STATED: Readonly<Partial<Record<RoistatDim, string>>> = Object.freeze({
+  source: 'Manbasiz',
+  region: 'Region kiritilmagan',
+  rop: 'ROP kiritilmagan',
+  seller: 'Sotuvchi kiritilmagan',
+  registrator: 'Registrator belgilanmagan',
+})
+const NOT_STATED_FALLBACK = 'Koʻrsatilmagan'
+/**
+ * A lead no targetolog bought: no form of his, no «Таргетолог» on the deal,
+ * and not a DM page's (those sit with the DM money, `ROISTAT_NOT_FORM`) — an
+ * operator's «Исход», an inbound call, Telegram, a lead typed in by hand.
+ */
+export const ROISTAT_NO_TARGETOLOG = 'Targetologsiz (Исход, qoʻngʻiroq, Telegram…)'
+/** A form lead whose form names no targetolog and whose deal names none either. */
+export const ROISTAT_FORM_NO_OWNER = 'Forma · targetolog nomi yoʻq'
+/** A lead no CRM form opened, on the «Форма» cut — by the channel it came through. */
+export const ROISTAT_NO_FORM: Readonly<Record<Exclude<LeadChannel, 'form'>, string>> = Object.freeze({
+  page: 'Formasiz · DM sahifalar',
+  outbound: 'Formasiz · Исход',
+  inbound: 'Formasiz · kiruvchi qoʻngʻiroq',
+  telegram: 'Formasiz · Telegram',
+  smm: 'Formasiz · SMM',
+  manual: 'Formasiz · qoʻlda kiritilgan',
+  other: 'Formasiz · boshqa manba',
+})
 /** Spend or leads that no product claims. */
 export const ROISTAT_NO_PRODUCT = 'Boshqa'
-/** Ad-budget money that bought no form lead: DM and other objectives. */
+/**
+ * Ad-budget money that bought no form lead — DM and other objectives — and,
+ * since 2026-10-06, the DM pages' leads beside it: the DM campaigns are what
+ * sends people to those pages, so the row's CPL prices its own leads.
+ */
 export const ROISTAT_NOT_FORM = 'DM va boshqa reklama'
 
 export type RoistatDim =
@@ -217,26 +249,30 @@ const SET_OF: Partial<Record<RoistatDim, BitrixCutRow['set']>> = {
   registrator: 'registrar',
 }
 
-/**
- * A row's label on a cut. `brandOf` is RNP's `leadBrand` (source, then form),
- * passed in so this file stays free of the service layer.
- */
-export function bitrixLabel(
-  dim: RoistatDim,
-  row: BitrixCutRow,
-  brandOf: (sourceId: string | null, formTitle: string | null) => TargetProduct | null,
-): string {
-  const stated = (value: string | null) => value ?? ROISTAT_NOT_STATED
+/** What a cut needs from outside the domain, passed in so this file stays free of the service layer. */
+export interface RoistatLabelers {
+  /** RNP's `leadBrand`: source, then form. */
+  readonly brandOf: (sourceId: string | null, formTitle: string | null) => TargetProduct | null
+  /** `leadChannel` over the portal's source vocabulary, for a lead no form opened. */
+  readonly channelOf: (sourceId: string | null) => Exclude<LeadChannel, 'form'>
+}
+
+/** A row's label on a cut. */
+export function bitrixLabel(dim: RoistatDim, row: BitrixCutRow, { brandOf, channelOf }: RoistatLabelers): string {
+  const stated = (value: string | null) => value ?? ROISTAT_NOT_STATED[dim] ?? NOT_STATED_FALLBACK
   switch (dim) {
     case 'days':
       return stated(row.day)
     case 'targetolog': {
       // The form names its owner as the ad account map spells it; the field is the fallback.
       const form = formNameOf(row.formTitle)
-      return (form ? formOwner(form)?.targetolog : null) ?? stated(row.targetolog)
+      const owner = (form ? formOwner(form)?.targetolog : null) ?? targetologOfField(row.targetolog)
+      if (owner) return owner
+      if (form !== null) return ROISTAT_FORM_NO_OWNER
+      return channelOf(row.sourceId) === 'page' ? ROISTAT_NOT_FORM : ROISTAT_NO_TARGETOLOG
     }
     case 'form':
-      return stated(formNameOf(row.formTitle))
+      return formNameOf(row.formTitle) ?? ROISTAT_NO_FORM[channelOf(row.sourceId)]
     case 'source':
       return stated(row.sourceName)
     case 'product':
@@ -252,7 +288,7 @@ export function bitrixLabel(
     case 'registrator':
       return stated(row.registrar)
     default:
-      return ROISTAT_NOT_STATED
+      return NOT_STATED_FALLBACK
   }
 }
 
@@ -260,7 +296,7 @@ export function bitrixLabel(
 export function bitrixCut(
   dim: RoistatDim,
   rows: readonly BitrixCutRow[],
-  brandOf: (sourceId: string | null, formTitle: string | null) => TargetProduct | null,
+  labelers: RoistatLabelers,
 ): Map<string, RoistatCounters> {
   const out = new Map<string, RoistatCounters>()
   const set = SET_OF[dim]
@@ -274,7 +310,7 @@ export function bitrixCut(
   for (const row of rows) {
     if (row.set !== set) continue
     if (!withLeads && row.orders === 0 && row.sold === 0) continue
-    const label = bitrixLabel(dim, row, brandOf)
+    const label = bitrixLabel(dim, row, labelers)
     const counters = withLeads ? row : { ...row, leads: 0, clean: 0, kval: 0 }
     addCounters(out.get(label) ?? out.set(label, emptyCounters()).get(label)!, counters)
   }

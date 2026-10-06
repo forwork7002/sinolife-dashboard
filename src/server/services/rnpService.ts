@@ -27,7 +27,7 @@ import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { type RnpOverviewDto, buildRnpSheet } from '@/server/domain/rnp/rnpSheet'
 import { type Period, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
-import { formNameOf, formOwner } from '@/server/domain/leads/leadSources'
+import { ZEXTRA_ONLY_TARGETOLOGS, formNameOf, formOwner } from '@/server/domain/leads/leadSources'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
 import { adBudgetProduct } from '@/server/integrations/meta/accounts'
 import { logger } from '@/server/logging/logger'
@@ -363,7 +363,7 @@ export class RnpService {
 /**
  * A Регистрация lead's brand: its source when the source is a brand's page or
  * line; else its CRM form's — «zextra» or «collagen» in the name, then a
- * Kamron form (his Meta accounts are all Zextra; «Kamron 6 etap filt forma»
+ * Kamron or Tursunbek form (their Meta accounts are all Zextra; «Kamron 6 etap filt forma»
  * names no product); any other form sold the collagen (every form of
  * 18–24.09 without «zextra» did). A name that says «collagen» outranks its
  * owner: the forms read «<targetolog>-collagen / -zextra» (01.10), so a
@@ -379,7 +379,7 @@ export function leadBrand(sourceId: string | null, formTitle: string | null): Ta
   if (/zextra/i.test(form)) return 'Zextra'
   if (/collagen|коллаген/i.test(form)) return 'Collagen'
   const owner = formOwner(form)
-  if (owner?.targetolog === 'Kamron') return 'Zextra'
+  if (owner && ZEXTRA_ONLY_TARGETOLOGS.has(owner.targetolog)) return 'Zextra'
   return 'Collagen'
 }
 

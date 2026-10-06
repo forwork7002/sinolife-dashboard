@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   type BitrixCutRow,
   type SpendDay,
+  ROISTAT_FORM_NO_OWNER,
+  ROISTAT_NO_FORM,
   ROISTAT_NO_PRODUCT,
+  ROISTAT_NO_TARGETOLOG,
   ROISTAT_NOT_FORM,
   ROISTAT_NOT_STATED,
   bitrixCut,
@@ -25,6 +28,12 @@ import type { TargetProduct } from '@/server/domain/types'
 function leadBrand(_sourceId: string | null, formTitle: string | null): TargetProduct | null {
   if (!formTitle) return null
   return /zextra/i.test(formTitle) ? 'Zextra' : 'Collagen'
+}
+
+/** And the portal's source vocabulary, as `leadChannel` reads it: two of its sources stand in. */
+const labelers = {
+  brandOf: leadBrand,
+  channelOf: (sourceId: string | null) => (sourceId === 'UC_1X1J24' ? 'page' : sourceId === 'UC_KPZA32' ? 'outbound' : 'other') as 'page' | 'outbound' | 'other',
 }
 
 function row(set: BitrixCutRow['set'], fields: Partial<BitrixCutRow>): BitrixCutRow {
@@ -88,19 +97,63 @@ describe('columnsOf', () => {
 })
 
 describe('bitrixCut', () => {
-  it('reads the targetolog from the form name first, then the field, then «не указано»', () => {
+  it('reads the targetolog from the form name first, then the field, then the channel', () => {
     const rows = [
       row('form', { formTitle: 'Заполнение CRM-формы "Umar-collagen Collagen (UMAR)"', targetolog: 'Kimdir', leads: 3 }),
       row('form', { formTitle: null, targetolog: 'Kamron', leads: 2 }),
-      row('form', { formTitle: null, targetolog: null, leads: 5 }),
+      row('form', { formTitle: null, targetolog: null, sourceId: 'UC_KPZA32', leads: 5 }),
+      // A DM page's lead sits with the DM money.
+      row('form', { formTitle: null, targetolog: null, sourceId: 'UC_1X1J24', leads: 4 }),
       // Not the targetolog's set: ignored.
       row('source', { sourceName: 'sinolifeuz', leads: 100 }),
     ]
-    const cut = bitrixCut('targetolog', rows, leadBrand)
+    const cut = bitrixCut('targetolog', rows, labelers)
     expect(cut.get('Umar')?.leads).toBe(3)
     expect(cut.get('Kamron')?.leads).toBe(2)
-    expect(cut.get(ROISTAT_NOT_STATED)?.leads).toBe(5)
-    expect(cut.size).toBe(3)
+    expect(cut.get(ROISTAT_NO_TARGETOLOG)?.leads).toBe(5)
+    expect(cut.get(ROISTAT_NOT_FORM)?.leads).toBe(4)
+    expect(cut.size).toBe(4)
+  })
+
+  it('puts the AI targetolog\'s leads and its spend on one row', () => {
+    const rows = [
+      // The deal field's «AI», on a lead with no form…
+      row('form', { formTitle: null, targetolog: 'AI', leads: 2 }),
+      // …and the form rebuilt from its SOURCE_DESCRIPTION (roistatRepository.formTitleJoinSql).
+      row('form', { formTitle: 'CRM-формы «AI targetolog · Sinolife AI forma 26.09.2026 17:44»', leads: 3 }),
+    ]
+    const merged = mergeCuts(
+      bitrixCut('targetolog', rows, labelers),
+      spendCut('targetolog', [spend({ targetolog: 'AI targetolog', spendMicroUsd: 45_740_000n })]),
+    )
+    expect(merged.get('AI targetolog')).toMatchObject({ leads: 5, spendMicroUsd: 45_740_000n })
+    expect(merged.size).toBe(1)
+  })
+
+  it('names a repeat lead\'s form from «Заполнена CRM-форма», as an ordinary one', () => {
+    const rows = [
+      row('form', { formTitle: 'Заполнение CRM-формы «Timur-collagen\u00a0Sinolife - TM - 01 / 10»', leads: 2 }),
+      row('form', { formTitle: 'Qayta zayavka (forma akt #4806000) Заполнена CRM-форма "Timur-collagen\u00a0Sinolife - TM - 01 / 10"', leads: 1 }),
+    ]
+    expect(bitrixCut('form', rows, labelers).get('Timur-collagen Sinolife - TM - 01 / 10')?.leads).toBe(3)
+    expect(bitrixCut('targetolog', rows, labelers).get('Timur')?.leads).toBe(3)
+  })
+
+  it('keeps a form lead whose form and deal name nobody apart from the no-form leads', () => {
+    const rows = [row('form', { formTitle: 'Заполнение CRM-формы "Sinolifecollgen marine"', sourceId: 'REPEAT_SALE', leads: 2 })]
+    expect(bitrixCut('targetolog', rows, labelers).get(ROISTAT_FORM_NO_OWNER)?.leads).toBe(2)
+  })
+
+  it('files a lead with no form under the channel it came through', () => {
+    const rows = [
+      row('form', { sourceId: 'UC_KPZA32', leads: 6 }),
+      row('form', { sourceId: 'UC_1X1J24', leads: 4 }),
+      row('form', { sourceId: null, leads: 1 }),
+    ]
+    const cut = bitrixCut('form', rows, labelers)
+    expect(cut.get(ROISTAT_NO_FORM.outbound)?.leads).toBe(6)
+    expect(cut.get(ROISTAT_NO_FORM.page)?.leads).toBe(4)
+    expect(cut.get(ROISTAT_NO_FORM.other)?.leads).toBe(1)
   })
 
   it('names a form by its title and folds two titles of one form together', () => {
@@ -108,7 +161,7 @@ describe('bitrixCut', () => {
       row('form', { formTitle: 'Заполнение CRM-формы "Sinolife (UMAR) 777"', targetolog: 'a', leads: 1 }),
       row('form', { formTitle: 'Заполнение CRM-формы "Sinolife (UMAR) 777"', targetolog: 'b', leads: 2 }),
     ]
-    expect(bitrixCut('form', rows, leadBrand).get('Sinolife (UMAR) 777')?.leads).toBe(3)
+    expect(bitrixCut('form', rows, labelers).get('Sinolife (UMAR) 777')?.leads).toBe(3)
   })
 
   it('files a sale by what it was paid for (its product_line), a lead by its source or form', () => {
@@ -121,22 +174,22 @@ describe('bitrixCut', () => {
       row('product', { formTitle: zextraForm, productLine: ROISTAT_NO_PRODUCT, sold: 1, soldMinor: 50n }),
       row('product', { productLine: 'Zextra', sold: 1, soldMinor: 30n }),
     ]
-    const cut = bitrixCut('product', rows, leadBrand)
+    const cut = bitrixCut('product', rows, labelers)
     expect(cut.get('Zextra')?.leads).toBe(4)
     expect(cut.get('Zextra')?.soldMinor).toBe(30n)
     expect(cut.get('Collagen')?.soldMinor).toBe(100n)
     expect(cut.get(ROISTAT_NO_PRODUCT)?.soldMinor).toBe(50n)
   })
 
-  it('drops the leads from a sales-only cut instead of piling them into «не указано»', () => {
+  it('drops the leads from a sales-only cut instead of piling them into «Region kiritilmagan»', () => {
     const rows = [
       row('region', { region: null, leads: 50, clean: 45, kval: 20 }),
       row('region', { region: 'Ташкент г.', orders: 3, orderedMinor: 300n, sold: 2, soldMinor: 200n }),
       row('region', { region: null, orders: 1, orderedMinor: 100n }),
     ]
-    const cut = bitrixCut('region', rows, leadBrand)
+    const cut = bitrixCut('region', rows, labelers)
     expect(cut.get('Ташкент г.')?.sold).toBe(2)
-    expect(cut.get(ROISTAT_NOT_STATED)).toMatchObject({ leads: 0, orders: 1 })
+    expect(cut.get(ROISTAT_NOT_STATED.region!)).toMatchObject({ leads: 0, orders: 1 })
     expect(cut.size).toBe(2)
   })
 
@@ -146,7 +199,7 @@ describe('bitrixCut', () => {
       row('day', { day: '2026-09-01', leads: 4, sold: 1, soldMinor: 200n }),
       row('day', { day: '2026-09-02', leads: 3, sold: 1, soldMinor: 300n }),
     ]
-    const cut = bitrixCut('days', rows, leadBrand)
+    const cut = bitrixCut('days', rows, labelers)
     const total = bitrixTotal(rows)
     expect([...cut.values()].reduce((n, c) => n + c.leads, 0)).toBe(total.leads)
     expect([...cut.values()].reduce((n, c) => n + c.soldMinor, 0n)).toBe(total.soldMinor)
@@ -188,7 +241,7 @@ describe('spendCut', () => {
 
   it('meets the leads on one targetolog key', () => {
     const merged = mergeCuts(
-      bitrixCut('targetolog', [row('form', { formTitle: 'Заполнение CRM-формы "Eldor-collagen Sinolife Collagen - 30.04"', leads: 9 })], leadBrand),
+      bitrixCut('targetolog', [row('form', { formTitle: 'Заполнение CRM-формы "Eldor-collagen Sinolife Collagen - 30.04"', leads: 9 })], labelers),
       spendCut('targetolog', days),
     )
     expect(merged.get('Элдор')).toMatchObject({ leads: 9, spendMicroUsd: 5_000_000n })

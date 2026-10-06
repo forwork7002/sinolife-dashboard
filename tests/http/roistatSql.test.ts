@@ -101,6 +101,45 @@ describe('RoistatRepository.bitrix', () => {
   })
 })
 
+describe('RoistatRepository.bitrix — the form of a repeat lead (2026-10-06)', () => {
+  const NOW = new Date('2026-10-05T00:00:00Z')
+
+  it('recovers the form from SOURCE_DESCRIPTION on the full scan, reading aliases a month back', async () => {
+    const { calls, repository } = recorder()
+    await repository.bitrix(PERIOD, NOW)
+    const sql = calls[0]!.sql
+    expect(sql).toContain('form_alias AS MATERIALIZED')
+    expect(sql).toContain(`"metadata"->'utm'->>'SOURCE_DESCRIPTION'`)
+    expect(sql).toContain(`'CRM-формы «AI targetolog · ' || btrim(substring(`)
+    // A short name borrows a form only on a «Ген лид» deal, and only when it names one form.
+    expect(sql).toContain(`= 'REPEAT_SALE' THEN fa.title`)
+    expect(sql).toContain(`= 'REPEAT_SALE' THEN ofa.title`)
+    expect(sql).toMatch(/HAVING count\(DISTINCT btrim\(translate\(/)
+    expect(calls[0]!.params[6]).toEqual(new Date(PERIOD.start.getTime() - 30 * 86_400_000))
+  })
+
+  it('looks the alias up once per sale, outside the origin-lead probe', async () => {
+    const { calls, repository } = recorder()
+    await repository.bitrix(PERIOD, NOW)
+    const sql = calls[0]!.sql
+    const lateral = sql.slice(sql.indexOf('LEFT JOIN LATERAL (\n          SELECT\n            l."createdAtSource"'), sql.indexOf(') o ON true'))
+    expect(lateral).not.toContain('form_alias')
+    expect(sql).toContain('LEFT JOIN form_alias ofa ON ofa.sd = o.sd')
+  })
+
+  it('skips the recovery where no form is grouped, unless the brand switch reads it', async () => {
+    const { calls, repository } = recorder()
+    await repository.bitrix(PERIOD, NOW, 'days')
+    await repository.bitrix(PERIOD, NOW, 'total')
+    await repository.bitrix(PERIOD, NOW, 'days', true)
+    expect(calls[0]!.sql).not.toContain('form_alias')
+    expect(calls[1]!.sql).not.toContain('form_alias')
+    expect(calls[0]!.params).toHaveLength(6)
+    expect(calls[2]!.sql).toContain('form_alias')
+    for (const call of calls) expectBound(call)
+  })
+})
+
 describe('RoistatRepository.meta', () => {
   it('binds the parent only where a grain has one', async () => {
     const { calls, repository } = recorder()

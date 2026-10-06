@@ -138,8 +138,10 @@ export interface LeadSourceVocabulary {
   The closing quote is optional (2026-10-02): a title can arrive without it,
   and deal 1038510 («Заполнение CRM-формы "Sinolifecollgen marine», a kval of
   01.10) lost its form — and with it its brand — to the missing quote.
+  «CRM-форма» too (2026-10-06): a repeat lead's SOURCE_DESCRIPTION reads
+  «Qayta zayavka (forma akt #…) Заполнена CRM-форма "<form>"».
 */
-const FORM_TITLE = /CRM-формы\s*[«"“]([^»"”]+)(?:[»"”]|$)/
+const FORM_TITLE = /CRM-форм[аы]\s*[«"“]([^»"”]+)(?:[»"”]|$)/
 
 /** The CRM form's name from a deal title, or null when the deal was not a form. */
 export function formNameOf(title: string | null | undefined): string | null {
@@ -175,24 +177,44 @@ export interface FormOwner {
   readonly product: TargetProduct
 }
 
+/** The client's AI targetolog, spelled as `META_ACCOUNT_OWNERS` spells its account's owner. */
+export const AI_TARGETOLOG = 'AI targetolog'
+
+/**
+ * The deal's own «Таргетолог» field, spelled as the ad account map spells
+ * its owner. The portal's list says «AI» for the AI targetolog (2026-10-06:
+ * its leads sat in a row of their own beside its spend).
+ */
+export function targetologOfField(value: string | null): string | null {
+  if (value === null) return null
+  return /^ai$/i.test(value.trim()) ? AI_TARGETOLOG : value
+}
+
 /*
   Names as the targetologs type them into their form titles. «Элдор» is
   Cyrillic because `META_ACCOUNT_OWNERS` spells it so; the rest are Latin
   there too.
 */
 const FORM_TARGETOLOGS: readonly (readonly [RegExp, string])[] = [
+  // First: the AI's forms are named by the AI, not by a person.
+  [/ai\s*targetolog/i, AI_TARGETOLOG],
   [/eldor|элдор/i, 'Элдор'],
   [/umar|умар/i, 'Umar'],
   [/kamron|камрон/i, 'Kamron'],
   [/sobirjon|собиржон/i, 'Sobirjon'],
   [/timur|тимур/i, 'Timur'],
+  // Zextra forms since 05.10.2026 («Tursunbek-zextra Zextra filtr savol»).
+  [/tursunbek|турсунбек/i, 'Tursunbek'],
 ]
+
+/** Targetologs whose every Meta account is Zextra: a form of theirs that names no product sold the Zextra. */
+export const ZEXTRA_ONLY_TARGETOLOGS: ReadonlySet<string> = new Set(['Kamron', 'Tursunbek'])
 
 /**
  * Whose form this is, from its name — or null when the name names nobody.
  *
  * The product is RNP's `leadBrand` rule for a form: what the name says
- * («zextra», then «collagen»), else Zextra for a Kamron form (his Meta
+ * («zextra», then «collagen»), else Zextra for a Kamron or Tursunbek form (their Meta
  * accounts are all Zextra), else the collagen — every other form that week
  * without «zextra» in it sold the collagen. Until 2026-10-05 a Kamron form
  * fell to Collagen here, so its leads sat on a «Collagen · Kamron» owner
@@ -205,7 +227,7 @@ export function formOwner(formName: string): FormOwner | null {
     ? 'Zextra'
     : /collagen|коллаген/i.test(formName)
       ? 'Collagen'
-      : hit[1] === 'Kamron'
+      : ZEXTRA_ONLY_TARGETOLOGS.has(hit[1])
         ? 'Zextra'
         : 'Collagen'
   return { targetolog: hit[1], product }
