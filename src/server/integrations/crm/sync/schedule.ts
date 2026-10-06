@@ -1,3 +1,5 @@
+import type { SyncResult } from './SyncEngine'
+
 /**
  * When a slow-clock pass (reference data, the deletion sweep) is next due.
  *
@@ -129,4 +131,28 @@ export function isBackfillDue(
   if (hour < BACKFILL_NIGHT.fromHour || hour >= BACKFILL_NIGHT.toHour) return false
   // A refusal waits an hour, the sweep's rule — never a retry on the next tick.
   return lastFailedAt === null || now.getTime() - lastFailedAt.getTime() >= SWEEP_RETRY_MS
+}
+
+/**
+ * A one-off read — the night backfill, a `ONE_OFF_READS` entry — run so that
+ * nothing it throws reaches the tick loop.
+ *
+ * `runEntity` reports a failed fetch or write in its result, but its own
+ * bookkeeping — `beginRun`, `setCursor` (a CUSTOMERS FULL), `finishRun` — is a
+ * bare database write, and these were the two awaited calls in the worker's
+ * loop with no catch: a connection dropped by a managed-Postgres failover in
+ * the night window rejected into `main().catch` and exited the worker.
+ * SETTLED is SUCCESS or PARTIAL, as it always was — a skipped deal is one the
+ * portal no longer resolves, and re-reading the window would skip it again.
+ */
+export async function runOneOff(
+  run: () => Promise<SyncResult>,
+): Promise<{ readonly settled: true; readonly result: SyncResult } | { readonly settled: false; readonly reason: string }> {
+  try {
+    const result = await run()
+    if (result.status === 'SUCCESS' || result.status === 'PARTIAL') return { settled: true, result }
+    return { settled: false, reason: result.errorMessage ?? result.status }
+  } catch (error) {
+    return { settled: false, reason: error instanceof Error ? error.message : String(error) }
+  }
 }

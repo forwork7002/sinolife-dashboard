@@ -68,6 +68,7 @@ import {
   isBackfillDue,
   isPassDue,
   isResolvePassDue,
+  runOneOff,
   SWEEP_RETRY_MS,
 } from '../src/server/integrations/crm/sync/schedule'
 import {
@@ -1539,8 +1540,12 @@ async function main() {
         `  ${stamp()} backfill: ${DEALS_BACKFILL.since.toISOString().slice(0, 10)} dan beri` +
           ' oʻzgargan bitimlar qayta oʻqilmoqda',
       )
-      const r = await engine.runEntity('DEALS', 'BACKFILL', { updatedSince: DEALS_BACKFILL.since })
-      if (r.status === 'SUCCESS' || r.status === 'PARTIAL') {
+      // Never throws — see `runOneOff`: a database blip here used to exit the worker.
+      const outcome = await runOneOff(() =>
+        engine.runEntity('DEALS', 'BACKFILL', { updatedSince: DEALS_BACKFILL.since }),
+      )
+      if (outcome.settled) {
+        const r = outcome.result
         backfillSettled = true
         console.log(
           `  ${stamp()} backfill tugadi: ${r.recordsRead} bitim oʻqildi, ${r.recordsUpdated} yangilandi` +
@@ -1549,7 +1554,7 @@ async function main() {
         )
       } else {
         backfillFailedAt = new Date()
-        console.warn(`  ${stamp()} backfill muvaffaqiyatsiz: ${r.errorMessage ?? r.status} — bir soatdan keyin`)
+        console.warn(`  ${stamp()} backfill muvaffaqiyatsiz: ${outcome.reason} — bir soatdan keyin`)
       }
     }
 
@@ -1589,12 +1594,17 @@ async function main() {
       lastOneOffAt = oneOffNow
       const started = Date.now()
       console.log(`  ${stamp()} bir martalik qayta oʻqish: ${oneOff.label}`)
-      const r = await engine.runEntity(
-        oneOff.entity,
-        oneOff.mode,
-        oneOff.mode === 'BACKFILL' ? { updatedSince: oneOff.request.since } : {},
+      // Never throws — see `runOneOff`. `lastOneOffAt` is already set, so a
+      // failure still holds the hour's spacing.
+      const outcome = await runOneOff(() =>
+        engine.runEntity(
+          oneOff.entity,
+          oneOff.mode,
+          oneOff.mode === 'BACKFILL' ? { updatedSince: oneOff.request.since } : {},
+        ),
       )
-      if (r.status === 'SUCCESS' || r.status === 'PARTIAL') {
+      if (outcome.settled) {
+        const r = outcome.result
         oneOffSettled.set(oneOff.label, true)
         console.log(
           `  ${stamp()} ${oneOff.label} tugadi: ${r.recordsRead} oʻqildi, ${r.recordsUpdated} yangilandi` +
@@ -1603,9 +1613,7 @@ async function main() {
         )
       } else {
         oneOffFailedAt.set(oneOff.label, new Date())
-        console.warn(
-          `  ${stamp()} ${oneOff.label} muvaffaqiyatsiz: ${r.errorMessage ?? r.status} — bir soatdan keyin`,
-        )
+        console.warn(`  ${stamp()} ${oneOff.label} muvaffaqiyatsiz: ${outcome.reason} — bir soatdan keyin`)
       }
     }
 

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { isBackfillDue, isPassDue, isResolvePassDue, RESOLVE_GAP_MS } from '@/server/integrations/crm/sync/schedule'
+import type { SyncResult } from '@/server/integrations/crm/sync/SyncEngine'
+import {
+  isBackfillDue,
+  isPassDue,
+  isResolvePassDue,
+  RESOLVE_GAP_MS,
+  runOneOff,
+} from '@/server/integrations/crm/sync/schedule'
 
 /**
  * A DEPLOY MUST NOT COST THE PORTAL A PASS.
@@ -94,5 +101,48 @@ describe('isResolvePassDue — what a skipped deal asks for', () => {
   it('stays inside the shortest skip window, so the arrival row is still re-read', () => {
     // STAGE_HISTORY rewinds 35 minutes after a skip; the gap plus a slow tick fits.
     expect(RESOLVE_GAP_MS + 5 * 60_000).toBeLessThan(35 * 60_000)
+  })
+})
+
+/**
+ * THE NIGHT'S ONE-OFF READS MAY NOT TAKE THE WORKER DOWN.
+ *
+ * `runEntity` reports a failed fetch in its result, but its own `sync_log`
+ * writes are bare database calls — and the backfill and the one-off reads were
+ * the two awaited calls in the loop with no catch. A dropped connection there
+ * reached `main().catch` and exited the process.
+ */
+describe('runOneOff', () => {
+  const result = (status: SyncResult['status'], errorMessage?: string): SyncResult => ({
+    entity: 'DEALS',
+    mode: 'BACKFILL',
+    status,
+    recordsRead: 10,
+    recordsCreated: 0,
+    recordsUpdated: 10,
+    recordsSkipped: 0,
+    recordsFailed: 0,
+    recordsDeleted: 0,
+    errorMessage,
+    skippedUnsupported: false,
+  })
+
+  it('settles on SUCCESS and on PARTIAL, as the worker always did', async () => {
+    expect(await runOneOff(async () => result('SUCCESS'))).toMatchObject({ settled: true })
+    expect(await runOneOff(async () => result('PARTIAL'))).toMatchObject({ settled: true })
+  })
+
+  it('reports a FAILED run with its reason', async () => {
+    expect(await runOneOff(async () => result('FAILED', 'OVERLOAD_LIMIT'))).toEqual({
+      settled: false,
+      reason: 'OVERLOAD_LIMIT',
+    })
+  })
+
+  it('turns a throw from the run into a failure instead of rejecting', async () => {
+    const outcome = await runOneOff(async () => {
+      throw new Error('Connection terminated unexpectedly')
+    })
+    expect(outcome).toEqual({ settled: false, reason: 'Connection terminated unexpectedly' })
   })
 })
