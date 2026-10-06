@@ -27,6 +27,14 @@ page orange and the logistics page teal so a glance tells you where you are.
 The moment a bar takes its colour from `--accent`, the same bar means two
 different things on two screens, and colour stops being readable at all.
 
+Its three derivatives — `--accent-soft` (a 12% wash), `--accent-line` (a 40%
+hairline) and `--accent-ink` (80% accent into ink, for accent-coloured text) —
+are declared on `:root` **and on `.page-container`**, the element PageShell
+gives the page's `--accent`. A `var()` inside a custom property is resolved
+where it is declared, so on `:root` alone they were series-1 blue on every
+page. The ink's 80% is measured: the most accent that keeps 4.5:1 for every
+pool slot on its own wash over a card, in both themes.
+
 ### The palette is computed, not chosen
 
 Re-derived August 2026 and validated with the data-visualisation validator in

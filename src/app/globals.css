@@ -629,9 +629,30 @@
  */
 :root {
   --accent: var(--series-1);
+}
+
+/*
+ * The accent's three derivatives — a wash, a hairline and an accent-coloured
+ * ink — declared on `.page-container` as well as on :root.
+ *
+ * A var() inside a custom property is filled in on the element that DECLARES
+ * it (the trap the aurora tokens above describe), and PageShell sets the
+ * page's --accent inline on `.page-container`. Declared on :root alone, all
+ * three froze to series-1 and every page that read them painted blue beside
+ * its own hue: the custom-period chip on every page, /structure's found row
+ * and «Rahbar» tag, /rnp's today column, /roistat's drill links. :root keeps
+ * its copies for the chrome outside any page.
+ *
+ * The ink is 80% accent, not more, because it is TEXT and now wears every
+ * pool slot: 80% is the most that clears 4.5:1 for all six on their own
+ * --accent-soft over a raised card in both themes (worst, light slot 5:
+ * 4.62:1; on the bare card 5.29:1). At 88% dark slot 6 read 4.15:1.
+ */
+:root,
+.page-container {
   --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
   --accent-line: color-mix(in oklab, var(--accent) 40%, transparent);
-  --accent-ink: color-mix(in oklab, var(--accent) 88%, var(--ink-primary));
+  --accent-ink: color-mix(in oklab, var(--accent) 80%, var(--ink-primary));
 }
 
 /* ===========================================================================
