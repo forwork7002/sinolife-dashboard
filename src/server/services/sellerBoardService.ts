@@ -237,6 +237,18 @@ export interface SellerBoardTotalsDto {
    */
   readonly bonusPayable: MoneyDto | null
   readonly sellersInBonus: number | null
+  /**
+   * A DEPLOY-SKEW SHIM FOR ONE RELEASE, always `no_data` (2026-10-06).
+   *
+   * The FAKT 2 trend is gone (see `buildBoard`), but a Savdo dinamikasi tab
+   * still running the bundle from before it renders `<TrendIndicator
+   * delta={totals.wonDelta} />` and reads `delta.kind` unguarded: without the
+   * field, its first poll after the deploy throws and lands on the global error
+   * page, which a retry cannot leave. `no_data` draws a muted «maʼlumot yoʻq»
+   * there instead. The current client never reads it, so it is NOT mirrored in
+   * `src/lib/api.ts`. Delete it in the release after this one.
+   */
+  readonly wonDelta: { readonly kind: 'no_data' }
 }
 
 /**
@@ -818,6 +830,8 @@ export class SellerBoardService {
         bonusPayable:
           bonusMinor === null ? null : toMoneyDto(money(sum(bonusMinor, (b) => b), ctx.currency)),
         sellersInBonus: bonusMinor === null ? null : bonusMinor.filter((b) => b > 0n).length,
+        // For a tab on the previous bundle only — see `SellerBoardTotalsDto.wonDelta`.
+        wonDelta: { kind: 'no_data' },
       },
       forecast: forecastOf(totalOrderedMinor, totalWonMinor, elapsed, ctx),
       basis: basis === 'queue' ? 'confirmation_queue' : 'created_in_period',

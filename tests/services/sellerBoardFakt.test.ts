@@ -463,7 +463,7 @@ describe('the bonus fund under the other filters', () => {
  * else until a comparison can be read at the same age.
  */
 describe('the board against the window before it', () => {
-  it('reads only its own window, and carries no FAKT 2 trend', async () => {
+  it('reads only its own window, and carries no FAKT 2 trend but the shim', async () => {
     const asked: { start: Date; end: Date }[] = []
     const insights = {
       confirmationSellerRating: async (period: { start: Date; end: Date }) => {
@@ -486,7 +486,13 @@ describe('the board against the window before it', () => {
     expect(asked).toHaveLength(1)
     expect(asked[0]!.start.toISOString()).toBe(period.start.toISOString())
     expect(asked[0]!.end.toISOString()).toBe(period.end.toISOString())
-    expect('wonDelta' in board.totals).toBe(false)
+    /*
+      No trend: the only `wonDelta` left is the one-release shim for a tab
+      still on the bundle before this change, which reads `delta.kind`
+      unguarded and would crash on an absent field. `no_data` is the one
+      reading that claims nothing.
+    */
+    expect(board.totals.wonDelta).toEqual({ kind: 'no_data' })
   })
 })
 
