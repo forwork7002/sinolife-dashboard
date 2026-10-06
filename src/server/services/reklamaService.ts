@@ -365,7 +365,7 @@ const SIDE_NAMES: Readonly<Record<SideColumn, string>> = { hr: 'HR', kosmetika: 
  * Roistat file it — its «Проект» first (2026-10-06), so a sinolifeuz lead
  * whose project is Zextra is Zextra's and a «Kosmetika» one «Brendsiz»; else
  * its page (`TARGET_SOURCE_PRODUCT`, every lead here being a target page's).
- * The pages are that brand's, plus any other page still holding one of its
+ * The pages are that brand's, then any other page still holding one of its
  * leads — dropping that page would drop the lead from every total — and only
  * a page of the slice's own brand carries its DM money. The Meta rows go to
  * that brand's AD BUDGET (`adBudgetProduct`, as every other screen reads a
@@ -388,7 +388,15 @@ export function reklamaOverview(input: {
     input = {
       ...input,
       brand: 'all',
-      pages: input.pages.filter((page) => brandMatches(brand, page.product) || pagesWithLeads.has(page.key)),
+      pages: input.pages
+        .filter((page) => brandMatches(brand, page.product) || pagesWithLeads.has(page.key))
+        /*
+          The slice's own pages first, in the sheet's order: its DM page, which
+          carries its money, opens the DM sheet. Collagen's pages sort first
+          overall, so on «Zextra» sinolifeuz — kept for a few Zextra-«Проект»
+          leads, no money — took that place from zextrauzb.
+        */
+        .sort((a, b) => Number(brandMatches(brand, b.product)) - Number(brandMatches(brand, a.product))),
       leadRows,
       campaignRows: input.campaignRows.filter((row) => brandMatches(brand, adBudgetProduct(row))),
     }

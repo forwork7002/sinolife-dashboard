@@ -455,7 +455,9 @@ describe('reklamaOverview — the Collagen / Zextra switch', () => {
     // sinolifeuz stays on the Zextra slice for its Zextra lead — without it the lead would leave every total —
     // but Collagen's DM money is not in that slice, so the page carries none of it and prices nothing.
     const uzOnZ = z.dm.pages.find((p) => p.key === 'UC_1X1J24')!
-    expect(z.dm.pages.map((p) => p.key)).toEqual(['UC_1X1J24', 'UC_A8LE21'])
+    // …and it follows the slice's own pages: zextrauzb, which carries the slice's DM money, opens the sheet.
+    expect(z.dm.pages.map((p) => p.key)).toEqual(['UC_A8LE21', 'UC_1X1J24'])
+    expect(z.quality.pages.map((p) => p.key)).toEqual(['UC_A8LE21', 'UC_1X1J24'])
     expect(uzOnZ.carriesDmSpend).toBe(false)
     expect(uzOnZ.total).toMatchObject({ leads: 7, qualified: 7, spendUsd: 0 })
     expect(z.dm.pages.find((p) => p.key === 'UC_A8LE21')!.carriesDmSpend).toBe(true)
