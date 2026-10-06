@@ -1,6 +1,7 @@
 /**
  * Keeps «RNP jadvali» warm: the current month is built in the background
- * every few minutes, so nobody opening the sheet ever waits for a cold build.
+ * every few minutes of the working day, so nobody opening the sheet then
+ * waits for a cold build.
  *
  * WHY. A month's rows come from seven scans (the queue cohort, a month of
  * leads, calls, stage history, registration …). Served from the memo the page
@@ -9,8 +10,9 @@
  * (2026-09-30). The client asked for the section to open fast.
  *
  * THE CADENCE, 4 MINUTES: the memo's TTL, well under its 30-minute hard limit, so an idle
- * sheet is never older than that and never cold. One build at a time — a
- * slow tick is skipped over, never stacked.
+ * sheet is never older than that and never cold — in working hours
+ * (`RNP_WARM_HOURS`). One build at a time — a slow tick is skipped over,
+ * never stacked.
  *
  * EACH TICK IS A REAL BUILD, WAITED FOR (`RnpService.warm`, 2026-10-02): it
  * used to take the memo's answer and rebuild behind it, so «rnp warmed»
@@ -25,6 +27,23 @@
 import { logger } from '@/server/logging/logger'
 
 export const RNP_WARM_EVERY_MS = 4 * 60_000
+
+/*
+  WORKING HOURS ONLY (2026-10-06): Tashkent [7, 23), the «Lidlar» warmer's
+  hours (`LEADS_WARM_HOURS`). Round the clock it was ~120 month builds a
+  night nobody asked for, each up to ~80 s of database time on the one-core
+  database, beside the worker's night jobs (`DEALS_BACKFILL` 01:00–06:00, the
+  deletion sweep). The 07:00 tick builds before the morning; a night reader
+  waits for one cold build, as after any quiet half hour. `RnpService.warm`
+  checks it and returns, so a night deploy's first-build flag still clears.
+*/
+export const RNP_WARM_HOURS = [7, 23] as const
+
+/** Whether `now` is within the hours [from, to) of the day in `timeZone`. */
+export function withinHours(now: Date, timeZone: string, [from, to]: readonly [number, number]): boolean {
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone }).format(now))
+  return hour >= from && hour < to
+}
 
 /*
   THE FIRST BUILD HOLDS BACK A DEPLOY (2026-10-06, «RNP sekin», then «Lidlar

@@ -140,7 +140,11 @@ const T0 = Date.parse('2026-10-02T05:00:00Z')
  * scans — told the month, it may hold the build open or fail it. `Service`:
  * another copy of the class, as another bundle loads it.
  */
-function serviceOver(scan: (month: string) => Promise<void>, Service: typeof RnpService = RnpService) {
+function serviceOver(
+  scan: (month: string) => Promise<void>,
+  Service: typeof RnpService = RnpService,
+  usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) },
+) {
   const none = async () => []
   const repository = {
     leadDays: async (from: string) => {
@@ -156,7 +160,6 @@ function serviceOver(scan: (month: string) => Promise<void>, Service: typeof Rnp
     manualCosts: none,
     manualHeadcount: none,
   }
-  const usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) }
   return new Service({ rnpTeamDays: none } as never, repository as never, { campaignDays: none } as never, usd)
 }
 
@@ -245,6 +248,22 @@ describe('RnpService — the month memo (2026-10-02)', () => {
     // From the 8th the month that ended is left to its readers.
     await service.warm(new Date('2027-05-08T05:00:00Z'), TZ)
     expect(scans.slice(3)).toEqual(['2027-05'])
+  })
+
+  it('warm(): working hours only — at 03:00 in Tashkent it builds nothing and asks the bank nothing (2026-10-06)', async () => {
+    const scans: string[] = []
+    const asked: string[] = []
+    const service = serviceOver(async (month) => void scans.push(month), RnpService, {
+      forDays: async (days: readonly string[]) => {
+        asked.push(days[0]!.slice(0, 7))
+        return days.map(() => 12_000)
+      },
+    })
+    await service.warm(new Date('2027-09-14T22:00:00Z'), TZ) // 03:00 on the 15th
+    await service.warm(new Date('2027-09-15T18:00:00Z'), TZ) // 23:00
+    expect([scans, asked]).toEqual([[], []])
+    await service.warm(new Date('2027-09-15T02:00:00Z'), TZ) // 07:00, the first tick of the day
+    expect([scans, asked]).toEqual([['2027-09'], ['2027-09']])
   })
 })
 
