@@ -32,13 +32,13 @@ const CHANNEL_LABEL: Readonly<Record<CampaignChannel, string>> = {
 type Filter = 'all' | CampaignChannel
 type SortKey = 'spend' | 'results' | 'cpr' | 'ctr' | 'last'
 
-const SORTERS: Readonly<Record<SortKey, (c: CampaignDto) => number | string>> = {
+/** Null where the figure does not exist — no result to price, no impression to click through. */
+const SORTERS: Readonly<Record<SortKey, (c: CampaignDto) => number | string | null>> = {
   spend: (c) => c.spendUsd,
   results: (c) => c.results,
-  // Unpriced sinks to the bottom whichever way the reader sorts.
-  cpr: (c) => c.costPerResultUsd ?? Number.POSITIVE_INFINITY,
-  ctr: (c) => c.ctrPercent ?? -1,
-  last: (c) => c.lastActive ?? '',
+  cpr: (c) => c.costPerResultUsd,
+  ctr: (c) => c.ctrPercent,
+  last: (c) => c.lastActive,
 }
 
 export function CampaignSection({
@@ -63,6 +63,13 @@ export function CampaignSection({
       .sort((a, b) => {
         const x = pick(a)
         const y = pick(b)
+        /*
+          A missing figure sinks to the bottom whichever way the reader sorts,
+          so it is placed before the direction applies: as +Infinity a traffic
+          campaign's absent price rose to the top of «Natija narxi» descending
+          and pushed the dearest lead forms past the rows shown.
+        */
+        if (x === null || y === null) return x === y ? b.spendUsd - a.spendUsd : x === null ? 1 : -1
         return (x < y ? -1 : x > y ? 1 : 0) * sign || b.spendUsd - a.spendUsd
       })
   }, [campaigns, filter, sort, order])
