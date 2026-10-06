@@ -41,7 +41,7 @@ export function DmSection({ dm, status }: { dm: DmBlockDto | undefined; status: 
 
       <TableCard
         title="Sahifalar — davr boʻyicha"
-        hint="Kval — «Сделка успешна». Kval narxi — DM sarfi ÷ kval."
+        hint="Kval — «Сделка успешна». Kval narxi — DM sarfi ÷ kval. Jami qatorida narx va «Murojat → kval» faqat «· DM» sahifalarning kvalidan: DM puli faqat ularga yoziladi."
         footer={
           dm && dm.unattributed.spendUsd > 0
             ? `Mahsulotga biriktirilmagan akkauntlardagi DM sarfi (${usd(dm.unattributed.spendUsd)}, ${dm.unattributed.conversations} murojaat) hech bir sahifaga qoʻshilmagan.`

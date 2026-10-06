@@ -145,9 +145,55 @@ describe('reklamaOverview', () => {
     expect(out.dm.pages.find((p) => p.key === 'UC_A8LE21')!.total.costPerQualifiedUsd).toBeNull()
 
     expect(out.dm.total).toMatchObject({ leads: 117, qualified: 42, spendUsd: 142.7, conversations: 742 })
+    // sinolife_otziv carries no DM money: its 5 kval are counted above but do not cheapen the price.
+    expect(out.dm.total.costPerQualifiedUsd).toBeCloseTo(142.7 / 37, 9)
     // Every day is listed, the quiet one as zeros.
     expect(out.dm.days.map((d) => d.date)).toEqual(['2026-08-01', '2026-08-02'])
     expect(out.dm.days[1]).toMatchObject({ leads: 0, spendUsd: 0 })
+  })
+
+  it('prices «Итог» over the pages that carry the DM money, as the tile does — every page still counted', () => {
+    const out = build(
+      [
+        lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 50),
+        lead('2026-08-01', 'UC_1X1J24', 'Недозвон', 'LOST', 50),
+        lead('2026-08-01', 'UC_0FMQ5Q', 'Сделка успешна', 'WON', 30),
+        lead('2026-08-02', 'UC_A8LE21', 'Сделка успешна', 'WON', 20),
+        lead('2026-08-02', 'UC_0FMQ5Q', 'Сделка успешна', 'WON', 10),
+      ],
+      [
+        campaign({ spendMicroUsd: 200_000_000n, conversations: 400 }),
+        campaign({
+          date: '2026-08-02',
+          accountId: '440073592484616',
+          accountName: 'Zextra Umar',
+          spendMicroUsd: 60_000_000n,
+          conversations: 100,
+        }),
+      ],
+    )
+    // sinolife_otziv's 40 kval are counted, and never divide the DM money.
+    expect(out.dm.total).toMatchObject({ leads: 160, qualified: 110, spendUsd: 260, conversations: 500 })
+    expect(out.dm.total.qualifiedPercent).toBeCloseTo((110 / 160) * 100, 9)
+    expect(out.dm.total.costPerQualifiedUsd).toBeCloseTo(260 / 70, 9)
+    expect(out.dm.total.conversationToQualifiedPercent).toBeCloseTo((70 / 500) * 100, 9)
+
+    // The «DM kval narxi» tile's formula over the pages flagged `carriesDmSpend`.
+    const carrying = out.dm.pages.filter((p) => p.carriesDmSpend)
+    expect(carrying.map((p) => p.key)).toEqual(['UC_1X1J24', 'UC_A8LE21'])
+    const tile =
+      carrying.reduce((n, p) => n + p.total.spendUsd, 0) / carrying.reduce((n, p) => n + p.total.qualified, 0)
+    expect(out.dm.total.costPerQualifiedUsd).toBeCloseTo(tile, 9)
+
+    // Each day of the grid on the same rule.
+    expect(out.dm.days[0]).toMatchObject({ qualified: 80, spendUsd: 200 })
+    expect(out.dm.days[0]!.costPerQualifiedUsd).toBeCloseTo(200 / 50, 9)
+    expect(out.dm.days[0]!.conversationToQualifiedPercent).toBeCloseTo((50 / 400) * 100, 9)
+    expect(out.dm.days[1]).toMatchObject({ qualified: 30, spendUsd: 60 })
+    expect(out.dm.days[1]!.costPerQualifiedUsd).toBeCloseTo(60 / 20, 9)
+
+    // A page's own price is unchanged: its money over its own kval.
+    expect(out.dm.pages.find((p) => p.key === 'UC_1X1J24')!.total.costPerQualifiedUsd).toBeCloseTo(200 / 50, 9)
   })
 
   it('keeps hiring and lead-form money off the DM sheet, and counts them in the split', () => {

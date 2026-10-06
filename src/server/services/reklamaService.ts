@@ -85,7 +85,9 @@ export interface DmPageDto {
 }
 
 export interface DmBlockDto {
+  /** «Итог»: every page's counts, but the price and «Murojat → kval» of the DM-money pages only (`dmTotalCells`). */
   readonly total: DmCellsDto
+  /** «Итог» a day at a time, on the same rule. */
   readonly days: readonly DmDayDto[]
   readonly pages: readonly DmPageDto[]
   /** DM money on accounts nobody has mapped to a product — no page to put it on. */
@@ -285,6 +287,23 @@ function addDm(into: DmAcc, from: DmAcc): void {
   into.spend += from.spend
 }
 
+/**
+ * The block's «Итог» — the window's or a day's. Its counts are every page's,
+ * but its price of a kval and «Murojat → kval» are over the pages that CARRY
+ * the DM money only (`priced`, `carriesDmSpend`): a page with no DM spend
+ * (sinolife_otziv, collagen.marine, the Telegram pages) would add its kval to
+ * the denominator and make every DM lead look cheaper than it was. The
+ * sheet's «Итог» «Цена за квал» is sinolifeuz's, and the «DM kval narxi» tile
+ * prints this figure, so the tile, the «Jami» row and the day grid agree.
+ */
+function dmTotalCells(all: DmAcc, priced: DmAcc): DmCellsDto {
+  return {
+    ...dmCells(all),
+    costPerQualifiedUsd: perUnit(priced.spend, priced.qualified),
+    conversationToQualifiedPercent: percent(priced.qualified, priced.conversations),
+  }
+}
+
 // --- quality ----------------------------------------------------------------
 
 type QualityAcc = Record<LeadBucket, number>
@@ -458,24 +477,29 @@ export function reklamaOverview(input: {
     }
   }
 
-  // --- DM block
+  // --- DM block: every page into the total, the DM-money pages into its price too (`dmTotalCells`).
   const dmTotalDays = days.map(() => dmZero())
   const dmTotal = dmZero()
+  const dmPricedDays = days.map(() => dmZero())
+  const dmPriced = dmZero()
   const dmPages: DmPageDto[] = input.pages.map((page) => {
+    const carriesDmSpend = dmPageOf.get(page.product) === page.key
     const byDay = dm.get(page.key)
     const total = dmZero()
     const pageDays = days.map((date, i) => {
       const cell = byDay?.get(date) ?? dmZero()
       addDm(total, cell)
       addDm(dmTotalDays[i]!, cell)
+      if (carriesDmSpend) addDm(dmPricedDays[i]!, cell)
       return { date, ...dmCells(cell) }
     })
     addDm(dmTotal, total)
+    if (carriesDmSpend) addDm(dmPriced, total)
     return {
       key: page.key,
       name: page.name,
       product: page.product,
-      carriesDmSpend: dmPageOf.get(page.product) === page.key,
+      carriesDmSpend,
       total: dmCells(total),
       days: pageDays,
     }
@@ -594,8 +618,8 @@ export function reklamaOverview(input: {
       otherUsd: usd(split.other),
     },
     dm: {
-      total: dmCells(dmTotal),
-      days: days.map((date, i) => ({ date, ...dmCells(dmTotalDays[i]!) })),
+      total: dmTotalCells(dmTotal, dmPriced),
+      days: days.map((date, i) => ({ date, ...dmTotalCells(dmTotalDays[i]!, dmPricedDays[i]!) })),
       pages: dmPages,
       unattributed: { spendUsd: usd(unattributed.spend), conversations: unattributed.conversations },
     },

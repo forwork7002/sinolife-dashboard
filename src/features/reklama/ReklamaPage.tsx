@@ -120,14 +120,16 @@ function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; 
   const spend = data?.spend
   const outside = spend ? spend.hiringUsd + spend.otherUsd : 0
   /*
-    Over the pages that CARRY the DM money only: a page with no DM spend
-    (sinolife_otziv, collagen.marine, the Telegram pages) would add its qualified leads to the
+    The server prices a DM kval over the pages that CARRY the DM money only
+    (`dmTotalCells`): a page with no DM spend (sinolife_otziv,
+    collagen.marine, the Telegram pages) would add its qualified leads to the
     denominator and make every DM lead look cheaper than it was. The sheet's
-    «Итог» does the same — its «Цена за квал» is sinolifeuz's.
+    «Итог» does the same — its «Цена за квал» is sinolifeuz's. The tile reads
+    that figure rather than dividing again, so it is the «Jami» row's and the
+    day grid's «Итог» to the cent; the pages below only name the hint.
   */
   const dmPages = data?.dm.pages.filter((p) => p.carriesDmSpend) ?? []
   const dmQualified = dmPages.reduce((n, p) => n + p.total.qualified, 0)
-  const dmPageSpend = dmPages.reduce((n, p) => n + p.total.spendUsd, 0)
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -155,7 +157,7 @@ function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; 
         <UsdTile
           status={status}
           label="DM kval narxi"
-          value={dmQualified > 0 ? dmPageSpend / dmQualified : null}
+          value={data?.dm.total.costPerQualifiedUsd ?? null}
           hint={
             data
               ? `${dmPages.map((p) => p.name).join(', ')}: ${formatNumber(dmQualified)} kval · ${formatNumber(data.dm.total.conversations)} murojat`

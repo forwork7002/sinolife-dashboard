@@ -27,9 +27,10 @@ const cells = (o: Partial<DmCellsDto>): DmCellsDto => ({
 })
 
 const dm: DmBlockDto = {
-  total: cells({ leads: 4570, qualified: 753, qualifiedPercent: 16.5, spendUsd: 2685, costPerQualifiedUsd: 3.57 }),
+  // «Итог» prices a kval over the DM-money pages only (sinolifeuz here): 2 685 $ ÷ 649, not ÷ 753.
+  total: cells({ leads: 4570, qualified: 753, qualifiedPercent: 16.5, spendUsd: 2685, costPerQualifiedUsd: 4.14 }),
   days: [
-    { date: '2026-08-01', ...cells({ leads: 219, qualified: 35, qualifiedPercent: 16, spendUsd: 143, costPerQualifiedUsd: 4.09 }) },
+    { date: '2026-08-01', ...cells({ leads: 219, qualified: 35, qualifiedPercent: 16, spendUsd: 143, costPerQualifiedUsd: 4.61 }) },
     { date: '2026-08-02', ...cells({ leads: 224, qualified: 38 }) },
   ],
   pages: [
