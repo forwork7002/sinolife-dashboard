@@ -86,11 +86,10 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
     const written: string[] = []
     const prisma = {
       metaAdDaily: {
-        aggregate: async () => ({ _max: { date: new Date('2026-09-20T00:00:00Z') } }),
         // Two accounts that have spent before — the ad grain only asks those (and any spending now).
         groupBy: async () => [
-          { accountId: '990016692137088', _min: { date: new Date('2026-07-01T00:00:00Z') } },
-          { accountId: '1356045995688768', _min: { date: new Date('2026-07-01T00:00:00Z') } },
+          { accountId: '990016692137088', _min: { date: new Date('2026-07-01T00:00:00Z') }, _max: { date: new Date('2026-09-20T00:00:00Z') } },
+          { accountId: '1356045995688768', _min: { date: new Date('2026-07-01T00:00:00Z') }, _max: { date: new Date('2026-09-20T00:00:00Z') } },
         ],
         findMany: async () => [
           { accountId: '990016692137088', accountName: 'Umar - 64' },
@@ -284,6 +283,74 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(refusal), { status: 400 })))
     const { prisma } = fakePrisma()
     await expect(importMetaSpend(prisma, 'token', '2026-09-23')).rejects.toThrow(/hech bir akkaunt/)
+  })
+})
+
+describe('importMetaSpend — the account grain starts per account, never at the table\'s latest day', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reads a new account from the history start and a long-refused one from its own last week', async () => {
+    const day = (iso: string) => new Date(`${iso}T00:00:00Z`)
+    const deleted = new Map<string, string>()
+    const prisma = {
+      metaAdDaily: {
+        // The table runs to 05.10; Kamron 3 was refused from 11.09; Kamron 2 is new to the token.
+        groupBy: async () => [
+          { accountId: '990016692137088', _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-05') } },
+          { accountId: '1356045995688768', _min: { date: day('2026-07-01') }, _max: { date: day('2026-09-10') } },
+        ],
+        deleteMany: (args: { where: { accountId: string; date: { gte: Date } } }) => {
+          deleted.set(args.where.accountId, args.where.date.gte.toISOString().slice(0, 10))
+          return 'delete'
+        },
+        createMany: () => 'create',
+      },
+      metaCampaignDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      metaAdInsightDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      $transaction: async () => [],
+    } as unknown as PrismaClient
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/me/adaccounts')) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              { account_id: '990016692137088', name: 'Umar - 64' },
+              { account_id: '1356045995688768', name: 'Zextra Kamron 3' },
+              { account_id: '1075542260705572', name: 'Zextra Kamron 2' },
+            ],
+          }),
+        )
+      }
+      return new Response(JSON.stringify({ data: [] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const r = await importMetaSpend(prisma, 'token', '2026-10-06')
+
+    const accountGrainSince = new Map(
+      fetchMock.mock.calls
+        .map(([url]) => new URL(url))
+        .filter((u) => u.searchParams.get('level') === 'account')
+        .map((u) => [
+          u.pathname.split('/').find((part) => part.startsWith('act_'))!,
+          (JSON.parse(u.searchParams.get('time_range')!) as { since: string }).since,
+        ]),
+    )
+    expect(accountGrainSince).toEqual(
+      new Map([
+        ['act_990016692137088', '2026-09-28'], // its own last week
+        ['act_1356045995688768', '2026-09-03'], // a week before its own last day, not the table's
+        ['act_1075542260705572', '2026-07-01'], // no rows yet: the whole history
+      ]),
+    )
+    // Each account's window is the one replaced.
+    expect(deleted).toEqual(
+      new Map([
+        ['990016692137088', '2026-09-28'],
+        ['1356045995688768', '2026-09-03'],
+        ['1075542260705572', '2026-07-01'],
+      ]),
+    )
+    expect(r.since).toBe('2026-07-01')
   })
 })
 
