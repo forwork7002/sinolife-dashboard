@@ -193,6 +193,20 @@ const LIST_PAGE = 50
 /** Commands per batch request. The portal's hard limit. */
 const BATCH_SIZE = 50
 
+/** The method a line-item read spends — metered, held and named as itself, never as `batch`. */
+const PRODUCT_ROWS = 'crm.deal.productrows.get'
+
+/** One row of `crm.deal.productrows.get`, as far as this file reads it. */
+interface ProductRow {
+  readonly PRODUCT_ID: string
+  readonly PRODUCT_NAME?: string
+  readonly ORIGINAL_PRODUCT_NAME?: string
+  readonly QUANTITY: string
+  readonly PRICE: string
+  readonly DISCOUNT_SUM?: string
+  readonly DISCOUNT_RATE?: string
+}
+
 /**
  * Commands a walk opens with, and how fast it widens.
  *
@@ -385,6 +399,19 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * on 0 and 226 of them respectively and are therefore still skipped.
    */
   private itemDealIds: string[] = []
+
+  /**
+   * Deals whose product rows a FAILED read still owes; the next read asks
+   * for them first.
+   *
+   * DEAL_ITEMS has no watermark: it reads the deals the same tick's DEALS pass
+   * found carrying money, and the next tick's DEALS pass starts that list
+   * afresh. So a refused read lost those deals' lines until the deal was
+   * modified again — the three-minute DEALS overlap was the only retry. While
+   * the method is held the read is refused locally, which costs the portal
+   * nothing. In memory, like `itemDealIds`: a restart forgets it.
+   */
+  private itemDealsOwed = new Set<string>()
 
   // Running totals, for progress output only. The walk is stateless — every
   // page is addressed by the id it starts after — so these carry no meaning
@@ -904,6 +931,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * Product rows are per-deal, and 16 500 sequential calls at 2/second is over
    * two hours. Batched it is a few minutes — the difference between usable
    * product analytics and none.
+   *
+   * It merges `result.result` and IGNORES `result_error`, so a caller has to
+   * check that every command it sent came back — `fetchStages` does. Product
+   * rows moved to their own reader, `productRows`, which must also tell a
+   * refusal from an answer.
    */
   private async batch<T>(commands: Record<string, string>, label = 'batch'): Promise<Record<string, T>> {
     const entries = Object.entries(commands)
@@ -1909,30 +1941,15 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * funnels carry no products. The 16 500 deals that produce money do.
    */
   async fetchDealItems(_o?: FetchOptions): Promise<Page<RawDealItem>> {
-    if (this.itemDealIds.length === 0) return this.page([])
+    const wanted = [...new Set([...this.itemDealsOwed, ...this.itemDealIds])]
+    if (wanted.length === 0) return this.page([])
 
-    const commands: Record<string, string> = {}
-    for (const id of this.itemDealIds) {
-      commands[`d${id}`] = `crm.deal.productrows.get?id=${id}`
-    }
-
-    const results = await this.batch<
-      {
-        PRODUCT_ID: string
-        PRODUCT_NAME?: string
-        ORIGINAL_PRODUCT_NAME?: string
-        QUANTITY: string
-        PRICE: string
-        DISCOUNT_SUM?: string
-        DISCOUNT_RATE?: string
-      }[]
-    >(commands, 'product rows')
+    const answered = await this.productRows(wanted)
 
     const items: RawDealItem[] = []
 
-    for (const [key, rows] of Object.entries(results)) {
-      const dealId = key.slice(1)
-      for (const [index, row] of (rows ?? []).entries()) {
+    for (const [dealId, rows] of answered) {
+      for (const [index, row] of rows.entries()) {
         if (!row?.PRODUCT_ID) continue
         const unit = toMinorUnits(row.PRICE)
         /*
@@ -1984,6 +2001,89 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
     this.progress(`  deal items: ${items.length}`)
     return this.page(items)
+  }
+
+  /**
+   * The product rows of THESE deals — every one answered, or the read fails.
+   *
+   * `halt: 0` makes the portal answer HTTP 200 and bury a refused command in
+   * `result_error`, and this read used to merge `result.result` alone. A spent
+   * basket or a command that never ran left those deals with no lines at all,
+   * DEAL_ITEMS finished SUCCESS, and — having no watermark — nothing asked again
+   * until somebody modified the deal. Now:
+   *
+   * - a REFUSAL (a spent basket, an overloaded or locked-out portal) is told to
+   *   the gate under `crm.deal.productrows.get`, the method that was spent and
+   *   never `batch`, and stops the read;
+   * - an error about ONE deal (deleted since the DEALS pass read it) fails the
+   *   read too, but that deal is not owed again — asking every tick for a deal
+   *   that is gone would fail every tick;
+   * - a command the portal left unanswered fails it as well.
+   *
+   * Whatever a failed read did not settle stays in `itemDealsOwed` — the deals
+   * it did answer included, since a thrown read writes nothing.
+   */
+  private async productRows(dealIds: readonly string[]): Promise<Map<string, ProductRow[]>> {
+    const answered = new Map<string, ProductRow[]>()
+    const gone = new Set<string>()
+    let failure: Bitrix24Error | null = null
+    const owe = () => {
+      this.itemDealsOwed = new Set(dealIds.filter((id) => !gone.has(id)))
+    }
+
+    try {
+      for (let i = 0; i < dealIds.length && failure === null; i += BATCH_SIZE) {
+        const chunk = dealIds.slice(i, i + BATCH_SIZE)
+        const cmd = Object.fromEntries(chunk.map((id) => [`d${id}`, `${PRODUCT_ROWS}?id=${id}`]))
+        const payload = await this.call<{ result?: Record<string, unknown>; result_error?: unknown }>(
+          'batch',
+          { halt: 0, cmd },
+          { meterAs: PRODUCT_ROWS, invocations: chunk.length },
+        )
+
+        const errors = (payload.result?.result_error ?? {}) as Record<string, { error?: string } | undefined>
+        const results = (payload.result?.result ?? {}) as Record<string, unknown>
+
+        for (const id of chunk) {
+          const error = errors[`d${id}`]
+          const rows = results[`d${id}`]
+          if (!error && Array.isArray(rows)) {
+            answered.set(id, rows as ProductRow[])
+            continue
+          }
+
+          const problem = new Bitrix24Error(
+            error
+              ? `Bitrix24 ${PRODUCT_ROWS} rad etdi (bitim ${id}): ${JSON.stringify(error).slice(0, 200)}`
+              : `Bitrix24 ${PRODUCT_ROWS} javobsiz qoldi (bitim ${id})`,
+            undefined,
+            false,
+            typeof error?.error === 'string' && error.error.length > 0 ? error.error : undefined,
+            PRODUCT_ROWS,
+          )
+          const kind = error ? classifyRefusal(problem) : null
+          if (kind === 'THROTTLE' || kind === 'CREDENTIAL' || kind === 'METHOD') {
+            this.gate.trip(problem, new Date())
+          } else if (error) {
+            gone.add(id)
+          }
+          failure ??= problem
+        }
+      }
+    } catch (error) {
+      // Refused before the portal answered — the gate, the budget, a socket.
+      // Nothing is known about any one deal, so all of them stay owed.
+      owe()
+      throw error
+    }
+
+    if (failure) {
+      owe()
+      throw failure
+    }
+
+    this.itemDealsOwed.clear()
+    return answered
   }
 
   /** Not available on this portal — verified. See mapping.ts. */
