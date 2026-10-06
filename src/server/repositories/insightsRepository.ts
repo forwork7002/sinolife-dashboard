@@ -6583,14 +6583,19 @@ export class InsightsRepository {
         not a wrong number but a statement that never returns and a page that
         never loads. The real tree is three deep and the deepest this schema has
         ever held is three.
+
+        ACTIVE UNITS ONLY, here and wherever a unit is drawn or counted: the
+        sync retires a unit the portal no longer returns (2026-10-06), and the
+        screen mirrors the portal's chart, where a deleted unit is gone.
       */
       walk AS (
         SELECT d."id" AS root, d."id" AS node, 0 AS depth
           FROM "department" d
+         WHERE d."isActive"
         UNION ALL
         SELECT w.root, c."id", w.depth + 1
           FROM walk w
-          JOIN "department" c ON c."parentId" = w.node
+          JOIN "department" c ON c."parentId" = w.node AND c."isActive"
          WHERE w.depth < 16
       ),
       /*
@@ -6664,7 +6669,7 @@ export class InsightsRepository {
       kids AS (
         SELECT c."parentId" AS dep_id, count(*)::bigint AS child_count
           FROM "department" c
-         WHERE c."parentId" IS NOT NULL
+         WHERE c."parentId" IS NOT NULL AND c."isActive"
          GROUP BY c."parentId"
       ),
       /*
@@ -6688,7 +6693,12 @@ export class InsightsRepository {
       SELECT
         dep."id",
         dep."name",
-        dep."parentId" AS parent_id,
+        /*
+          A unit under a parent that is no longer active is drawn as a root,
+          not dropped: the service builds the tree from the roots down, and a
+          parent missing from the rows would take the child with it.
+        */
+        CASE WHEN par."isActive" THEN dep."parentId" END AS parent_id,
         dep."headId" AS head_id,
         head."fullName" AS head_name,
         head."position" AS head_position,
@@ -6722,11 +6732,13 @@ export class InsightsRepository {
         COALESCE(k.child_count, 0)::bigint AS child_count,
         dep."sortOrder" AS sort_order
       FROM "department" dep
+      LEFT JOIN "department" par ON par."id" = dep."parentId"
       LEFT JOIN "employee" head ON head."id" = dep."headId"
       LEFT JOIN people p ON p.dep_id = dep."id"
       LEFT JOIN members m ON m.dep_id = dep."id"
       LEFT JOIN subtree t ON t.dep_id = dep."id"
       LEFT JOIN kids k ON k.dep_id = dep."id"
+      WHERE dep."isActive"
       /*
         Sibling order is the PORTAL's, not alphabetical.
 

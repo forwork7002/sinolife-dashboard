@@ -209,6 +209,18 @@ export class SweepRefusedError extends Error {
 }
 
 /**
+ * The most units one DEPARTMENTS pass may retire: half the active ones, never
+ * fewer than two.
+ *
+ * The client removes a ROP unit or two at a time. Most of the tree «gone» from
+ * one answer is a misread, and retiring on it would take the org chart's cards
+ * and RNP's teams away at once.
+ */
+export function retireLimit(active: number): number {
+  return Math.max(2, Math.floor(active / 2))
+}
+
+/**
  * The most one line-item reconciliation may delete: 25 lines, or 5% of the
  * lines stored for the deals it read if that is more.
  *
@@ -314,10 +326,22 @@ export function createSyncHandlers(
   // Organisation
   // -------------------------------------------------------------------------
 
+  /**
+   * Every unit the portal returned in this DEPARTMENTS run, for `finalize`.
+   *
+   * Taken from the fetched pages, not from what was written: a unit the
+   * portal still lists is alive even if its own upsert failed.
+   */
+  const departmentsSeen = new Set<string>()
+
   const departments: EntitySyncHandler<RawDepartment> = {
     entity: 'DEPARTMENTS',
     externalIdOf: (record) => record.externalId,
-    fetch: (provider: CrmProvider, options: FetchOptions) => provider.fetchDepartments(options),
+    async fetch(provider: CrmProvider, options: FetchOptions) {
+      const page = await provider.fetchDepartments(options)
+      for (const record of page.items) departmentsSeen.add(record.externalId)
+      return page
+    },
     async persist(batch) {
       const existing = new Set(
         (
@@ -361,9 +385,24 @@ export function createSyncHandlers(
        * returns the tree in no guaranteed order — a child can arrive before
        * its parent. Linking after every row is written is the only way the
        * reference resolves for all of them.
+       *
+       * A UNIT THE PORTAL PUTS AT THE TOP LOSES ITS PARENT here, as a head the
+       * portal stops naming loses it above; it used to stay drawn under the
+       * old one. Only when the batch names a parent for some unit: one that
+       * names none (the engine's one-record retry, or an answer missing the
+       * field) proves nothing about the tree.
        */
+      const namesParents = batch.some((record) => record.parentExternalId)
       for (const record of batch) {
-        if (!record.parentExternalId) continue
+        if (!record.parentExternalId) {
+          if (namesParents) {
+            await prisma.department.updateMany({
+              where: { externalSource: source, externalId: record.externalId, parentId: { not: null } },
+              data: { parentId: null },
+            })
+          }
+          continue
+        }
         const parentId = await resolver.optional('department', record.parentExternalId)
         const selfId = await resolver.optional('department', record.externalId)
         if (!parentId || !selfId || parentId === selfId) continue
@@ -372,6 +411,50 @@ export function createSyncHandlers(
       }
 
       return { ...classify(batch, existing), skipped: 0 }
+    },
+
+    /**
+     * Retire the units the portal no longer returns — deactivated, never
+     * deleted.
+     *
+     * The pass only ever upserted what came back and nothing set `isActive`
+     * false, so a unit deleted in Bitrix24 (the client does remove ROP units —
+     * Husniddin(ROP)) kept its card on /structure, its place in RNP's ROP list
+     * and the «Boʻlim» filter, and its head: every `isActive` filter in the
+     * repositories was a no-op. Kept as a row because employees, members and
+     * deals reference it and history must still resolve; its head is cleared
+     * so nobody's TEAM scope anchors on a unit that is gone. A unit the portal
+     * returns again is active again — the upsert above writes `isActive`.
+     *
+     * `department.get` answers with the whole tree on every pass, so a unit it
+     * leaves out is a deleted one — unless it left out everything (the
+     * provider's «scope yoʻq» path) or most of the tree at once, which is a
+     * misread rather than a reorganisation: past `retireLimit` nothing changes
+     * and the run says why.
+     */
+    async finalize() {
+      const seen = [...departmentsSeen]
+      departmentsSeen.clear()
+      if (seen.length === 0) return
+
+      const gone = await prisma.department.findMany({
+        where: { externalSource: source, isActive: true, externalId: { notIn: seen } },
+        select: { id: true },
+      })
+      if (gone.length === 0) return
+
+      const active = await prisma.department.count({ where: { externalSource: source, isActive: true } })
+      const limit = retireLimit(active)
+      if (gone.length > limit) {
+        throw new Error(
+          `${active} ta faol boʻlimdan ${gone.length} tasini portal qaytarmadi — ` +
+            `bu juda koʻp (chegara ${limit}), hech biri nofaol qilinmadi`,
+        )
+      }
+      await prisma.department.updateMany({
+        where: { id: { in: gone.map((d) => d.id) } },
+        data: { isActive: false, headId: null },
+      })
     },
   }
 
