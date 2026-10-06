@@ -6,6 +6,7 @@ import {
   isBackfillDue,
   isPassDue,
   isResolvePassDue,
+  planTick,
   REFERENCE_MARKER,
   RESOLVE,
   RESOLVE_GAP_MS,
@@ -127,6 +128,45 @@ describe('RESOLVE — what a skipped deal brings forward', () => {
 
   it('never writes the row that dates the full pass at startup', () => {
     expect(RESOLVE).not.toContain(REFERENCE_MARKER)
+  })
+})
+
+/**
+ * WHICH SLOW PASS A TICK RUNS — the worker's loop decides it through
+ * `planTick`, so these are the loop's own answers.
+ */
+describe('planTick', () => {
+  const idle = { referenceDue: false, resolveOwed: false, calm: 0 }
+
+  it('runs the hot entities alone when nothing is owed', () => {
+    expect(planTick(idle)).toEqual({ reference: false, resolve: false, referenceOwed: false, resolveOwed: false })
+  })
+
+  it('runs the forced pass on the tick after a skip, and settles it', () => {
+    expect(planTick({ ...idle, resolveOwed: true })).toEqual({
+      reference: false,
+      resolve: true,
+      referenceOwed: false,
+      resolveOwed: false,
+    })
+  })
+
+  it('lets the full pass settle a forced pass owed on the same tick', () => {
+    expect(planTick({ referenceDue: true, resolveOwed: true, calm: 0 })).toEqual({
+      reference: true,
+      resolve: false,
+      referenceOwed: false,
+      resolveOwed: false,
+    })
+  })
+
+  it('runs neither inside the calm after an outage, and keeps both owed', () => {
+    expect(planTick({ referenceDue: true, resolveOwed: true, calm: 2 })).toEqual({
+      reference: false,
+      resolve: false,
+      referenceOwed: true,
+      resolveOwed: true,
+    })
   })
 })
 

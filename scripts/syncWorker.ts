@@ -68,6 +68,7 @@ import {
   isBackfillDue,
   isPassDue,
   isResolvePassDue,
+  planTick,
   REFERENCE_MARKER,
   RESOLVE,
   runOneOff,
@@ -1109,16 +1110,17 @@ async function main() {
       )
     }
 
-    const referenceDue: boolean = isPassDue(lastReferenceAt, new Date(), REFERENCE_MS) || referenceOwed
-    referenceOwed = referenceDue && calm > 0
-    const withReference = referenceDue && calm === 0
-    // The full pass re-reads all of `RESOLVE` itself.
-    const withResolve = !withReference && resolveOwed && calm === 0
-    const entities = withReference ? [...REFERENCE, ...HOT] : withResolve ? [...RESOLVE, ...HOT] : HOT
+    const plan = planTick({
+      referenceDue: isPassDue(lastReferenceAt, new Date(), REFERENCE_MS) || referenceOwed,
+      resolveOwed,
+      calm,
+    })
+    referenceOwed = plan.referenceOwed
+    resolveOwed = plan.resolveOwed
+    const entities = plan.reference ? [...REFERENCE, ...HOT] : plan.resolve ? [...RESOLVE, ...HOT] : HOT
     // Stamped when the pass is ATTEMPTED — see the startup read for why.
-    if (withReference) lastReferenceAt = new Date()
-    if (withResolve) lastResolveAt = new Date()
-    if (withReference || withResolve) resolveOwed = false
+    if (plan.reference) lastReferenceAt = new Date()
+    if (plan.resolve) lastResolveAt = new Date()
 
     // Zeroed per tick, so the line below reports THIS tick's cost rather than
     // the process total. The baskets are kept — they belong to the portal's

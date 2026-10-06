@@ -108,6 +108,39 @@ export const RESOLVE: readonly SyncEntityValue[] = ['DEPARTMENTS', 'EMPLOYEES', 
 export const REFERENCE_MARKER: SyncEntityValue = 'PRODUCTS'
 
 /**
+ * Which slow pass a tick runs ahead of the hot entities, and what it leaves
+ * owed for a later tick. Taken out of the worker's loop so it can be pinned.
+ *
+ * Inside the calm after an outage (`CALM_TICKS`) neither runs and both stay
+ * owed: the portal has only just started answering again. The full pass
+ * re-reads everything `RESOLVE` does, so it settles a forced pass owed beside
+ * it — the forced one never rides a tick that runs the full one.
+ */
+export function planTick(state: {
+  /** The scheduled pass is due, or one fell inside the calm. */
+  readonly referenceDue: boolean
+  /** A DEALS run skipped and asked for `RESOLVE` (`isResolvePassDue`). */
+  readonly resolveOwed: boolean
+  /** Hot-only ticks still to run after a recovery. */
+  readonly calm: number
+}): {
+  readonly reference: boolean
+  readonly resolve: boolean
+  readonly referenceOwed: boolean
+  readonly resolveOwed: boolean
+} {
+  const calm = state.calm > 0
+  const reference = state.referenceDue && !calm
+  const resolve = state.resolveOwed && !calm && !reference
+  return {
+    reference,
+    resolve,
+    referenceOwed: state.referenceDue && calm,
+    resolveOwed: state.resolveOwed && calm,
+  }
+}
+
+/**
  * How long a FAILED sweep waits before it is tried again.
  *
  * On the tick counter a failure simply waited out the next full period. On a

@@ -10,7 +10,7 @@ import {
   isCleanRun,
   nextWatermark,
 } from '@/server/integrations/crm/sync/SyncEngine'
-import { isResolvePassDue } from '@/server/integrations/crm/sync/schedule'
+import { isPassDue, isResolvePassDue, planTick } from '@/server/integrations/crm/sync/schedule'
 
 // ---------------------------------------------------------------------------
 // In-memory fakes — the engine's seams make a database unnecessary here.
@@ -799,7 +799,8 @@ describe('watermark for a record that settles after it is first read', () => {
  * is skipped by DEALS (unknown employee) and its arrival by STAGE_HISTORY
  * (deal not written). The windows rewind 95 and 35 minutes; the reference pass
  * is three hours away. The worker's loop is reproduced here only as far as the
- * decision it makes after each tick — `isResolvePassDue`.
+ * decisions it makes around each tick — `planTick` before, `isResolvePassDue`
+ * after.
  */
 describe('a skip that waits on reference data', () => {
   const TICK = 2 * 60_000
@@ -835,17 +836,21 @@ describe('a skip that waits on reference data', () => {
     })
 
     // The scheduled pass ran ten minutes before the order and next runs in three hours.
-    const lastReference = new Date(NOW.getTime() - 10 * 60_000)
+    let lastReference = new Date(NOW.getTime() - 10 * 60_000)
     let lastResolve: Date | null = null
     let owed = false
     for (let tick = 0; tick < 90; tick++) {
       clock = new Date(NOW.getTime() + tick * TICK)
-      const scheduled = clock.getTime() - lastReference.getTime() >= 3 * 60 * 60_000
-      if (owed || scheduled) {
-        employeeKnown = true
-        lastResolve = clock
-        owed = false
-      }
+      // The worker's own decision (`planTick`), on a portal that answers throughout.
+      const plan = planTick({
+        referenceDue: isPassDue(lastReference, clock, 3 * 60 * 60_000),
+        resolveOwed: owed,
+        calm: 0,
+      })
+      owed = plan.resolveOwed
+      if (plan.reference) lastReference = clock
+      if (plan.resolve) lastResolve = clock
+      if (plan.reference || plan.resolve) employeeKnown = true
       const [dealRun] = await engine.runAll(['DEALS', 'STAGE_HISTORY'], 'INCREMENTAL')
       if (forcePass && isResolvePassDue(dealRun!.recordsSkipped, [lastReference, lastResolve], clock)) owed = true
     }
