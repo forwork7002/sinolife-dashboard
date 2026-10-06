@@ -106,6 +106,29 @@ function ts(date: Date | null | undefined): string | null {
 const SOURCE_CAST = '"ExternalSource"'
 
 /**
+ * The «Ответственный» changes a deals batch carries: a deal already stored
+ * whose portal owner now resolves to another employee. A new deal is no
+ * change — who opened it is `createdByEmployeeId` — and an owner we cannot
+ * resolve is skipped with the deal itself. See DealOwnerChange.
+ */
+export function ownerChangesOf(
+  before: readonly { id: string; externalId: string | null; employeeId: string }[],
+  batch: readonly Pick<RawDeal, 'externalId' | 'employeeExternalId' | 'updatedAtSource'>[],
+  employeeMap: ReadonlyMap<string, string>,
+  now: Date = new Date(),
+): { dealId: string; fromEmployeeId: string; toEmployeeId: string; changedAt: Date }[] {
+  const stored = new Map(before.map((r) => [r.externalId, r]))
+  const out: { dealId: string; fromEmployeeId: string; toEmployeeId: string; changedAt: Date }[] = []
+  for (const record of batch) {
+    const row = stored.get(record.externalId)
+    const to = employeeMap.get(record.employeeExternalId)
+    if (!row || !to || to === row.employeeId) continue
+    out.push({ dealId: row.id, fromEmployeeId: row.employeeId, toEmployeeId: to, changedAt: record.updatedAtSource ?? now })
+  }
+  return out
+}
+
+/**
  * Close each transition with the start of the next one.
  *
  * The portal reports only when a deal ENTERED a stage. How long it stayed
@@ -129,29 +152,6 @@ const SOURCE_CAST = '"ExternalSource"'
  * not change this run cannot have a new answer. Deals nobody touched are
  * skipped because there is nothing to recompute, not because it is faster.
  */
-/**
- * The «Ответственный» changes a deals batch carries: a deal already stored
- * whose portal owner now resolves to another employee. A new deal is no
- * change — who opened it is `createdByEmployeeId` — and an owner we cannot
- * resolve is skipped with the deal itself. See DealOwnerChange.
- */
-export function ownerChangesOf(
-  before: readonly { id: string; externalId: string | null; employeeId: string }[],
-  batch: readonly Pick<RawDeal, 'externalId' | 'employeeExternalId' | 'updatedAtSource'>[],
-  employeeMap: ReadonlyMap<string, string>,
-  now: Date = new Date(),
-): { dealId: string; fromEmployeeId: string; toEmployeeId: string; changedAt: Date }[] {
-  const stored = new Map(before.map((r) => [r.externalId, r]))
-  const out: { dealId: string; fromEmployeeId: string; toEmployeeId: string; changedAt: Date }[] = []
-  for (const record of batch) {
-    const row = stored.get(record.externalId)
-    const to = employeeMap.get(record.employeeExternalId)
-    if (!row || !to || to === row.employeeId) continue
-    out.push({ dealId: row.id, fromEmployeeId: row.employeeId, toEmployeeId: to, changedAt: record.updatedAtSource ?? now })
-  }
-  return out
-}
-
 export function historyLeftAtSql(scoped: boolean): string {
   return `
         UPDATE "deal_stage_history" AS h
@@ -798,12 +798,6 @@ export function createSyncHandlers(
     externalIdOf: (record) => record.externalId,
     fetch: (provider, options) => provider.fetchDeals(options),
     async persist(batch) {
-      const before = await prisma.deal.findMany({
-        where: { externalSource: source, externalId: { in: ids(batch) } },
-        select: { id: true, externalId: true, employeeId: true },
-      })
-      const existing = new Set(before.map((r) => r.externalId!))
-
       const stageMap = await resolver.map('dealStage')
       const employeeMap = await resolver.map('employee')
       const operatorMap = await floorNumberIndex()
@@ -814,9 +808,14 @@ export function createSyncHandlers(
       )
       const sourceMap = await resolver.map('salesSource')
       const pipelineMap = await resolver.map('pipeline')
+      // Owner changes are kept for Регистрация only — «Безквал» is their one reader.
+      const leadPipelines = new Set(
+        (await prisma.pipeline.findMany({ where: { role: 'LEAD' }, select: { id: true } })).map((p) => p.id),
+      )
 
       const now = new Date().toISOString()
       const rows: unknown[][] = []
+      const written: RawDeal[] = []
       let skipped = 0
 
       for (const record of batch) {
@@ -855,6 +854,7 @@ export function createSyncHandlers(
           continue
         }
 
+        written.push(record)
         rows.push([
           rowId(),
           source,
@@ -903,19 +903,31 @@ export function createSyncHandlers(
         ])
       }
 
-      await bulkUpsert({
-        prisma,
-        table: 'deal',
-        columns: DEAL_COLUMNS,
-        conflict: ['externalSource', 'externalId'],
-        rows,
-      })
-
-      const written = batch.filter((r) => stageMap.has(r.stageExternalId) && employeeMap.has(r.employeeExternalId))
-
-      // After the upsert, so a failed write records no change it did not make.
-      const changes = ownerChangesOf(before, written, employeeMap)
-      if (changes.length > 0) await prisma.dealOwnerChange.createMany({ data: changes })
+      /*
+        One transaction: the owner before, the write, and the changes it made.
+        Apart, a failed insert sent the engine to its record-by-record retry,
+        which read the NEW owner as "before" and lost the change for good.
+      */
+      const existing = await prisma.$transaction(
+        async (tx) => {
+          const before = await tx.deal.findMany({
+            where: { externalSource: source, externalId: { in: ids(batch) } },
+            select: { id: true, externalId: true, employeeId: true },
+          })
+          await bulkUpsert({
+            prisma: tx,
+            table: 'deal',
+            columns: DEAL_COLUMNS,
+            conflict: ['externalSource', 'externalId'],
+            rows,
+          })
+          const inRegistration = written.filter((r) => leadPipelines.has(link(pipelineMap, r.pipelineExternalId) ?? ''))
+          const changes = ownerChangesOf(before, inRegistration, employeeMap)
+          if (changes.length > 0) await tx.dealOwnerChange.createMany({ data: changes })
+          return new Set(before.map((r) => r.externalId!))
+        },
+        { maxWait: 10_000, timeout: 60_000 },
+      )
 
       await rememberWritten(
         resolver,

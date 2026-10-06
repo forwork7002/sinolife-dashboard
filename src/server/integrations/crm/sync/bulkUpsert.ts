@@ -62,7 +62,8 @@ export function rowId(): string {
 }
 
 export interface BulkUpsertInput {
-  readonly prisma: PrismaClient
+  /** A client or a transaction: only `$executeRawUnsafe` is used. */
+  readonly prisma: Pick<PrismaClient, '$executeRawUnsafe'>
   readonly table: string
   readonly columns: readonly ColumnSpec[]
   /** Columns forming the unique index the conflict is resolved against. */

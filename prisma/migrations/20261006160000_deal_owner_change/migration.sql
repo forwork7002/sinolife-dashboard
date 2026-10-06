@@ -5,9 +5,12 @@
 -- from now on. Nothing is backfilled: the column fills as the sync re-reads
 -- deals, and the history starts empty.
 --
--- ADD COLUMN with no default rewrites nothing. The foreign key checks the
--- column, all NULL, under a lock the sync's writes wait on for those seconds;
--- lock_timeout makes the deploy fail fast and retryable instead.
+-- ADD COLUMN with no default rewrites nothing. The foreign key is NOT VALID
+-- and never validated: checking ~434 000 rows of a column that is all NULL
+-- would hold the ADD COLUMN's exclusive lock on "deal" for the whole scan
+-- (one transaction), and every row written from now on is checked anyway.
+-- lock_timeout makes the deploy fail fast instead of queueing behind a long
+-- sync write; a failed run then needs `prisma migrate resolve --rolled-back`.
 SET lock_timeout = '5s';
 
 -- AlterTable
@@ -29,7 +32,7 @@ CREATE TABLE "deal_owner_change" (
 CREATE INDEX "deal_owner_change_dealId_changedAt_idx" ON "deal_owner_change"("dealId", "changedAt");
 
 -- AddForeignKey
-ALTER TABLE "deal" ADD CONSTRAINT "deal_createdByEmployeeId_fkey" FOREIGN KEY ("createdByEmployeeId") REFERENCES "employee"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "deal" ADD CONSTRAINT "deal_createdByEmployeeId_fkey" FOREIGN KEY ("createdByEmployeeId") REFERENCES "employee"("id") ON DELETE SET NULL ON UPDATE CASCADE NOT VALID;
 
 -- AddForeignKey
 ALTER TABLE "deal_owner_change" ADD CONSTRAINT "deal_owner_change_dealId_fkey" FOREIGN KEY ("dealId") REFERENCES "deal"("id") ON DELETE CASCADE ON UPDATE CASCADE;

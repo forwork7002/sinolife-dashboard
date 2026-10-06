@@ -39,11 +39,12 @@ describe('distributedDaysSql', () => {
 
 /*
   «Безквал», 2026-10-06. Run against a scratch PostgreSQL with the migrations
-  applied and nine synthetic Регистрация deals: a head's deal, a seller's deal
+  applied and ten synthetic Регистрация deals: a head's deal, a seller's deal
   the desk opened, a seller's own, one with no opener, a deal that went to a
   ROP and back to the desk, a registrar's, Davlat's, a deal moved from one ROP
-  to another, and one created 01:00 Tashkent — Azizbek 3, Maftuna 2,
-  Shohjaxon 1, unassigned 3, as seeded.
+  to another, one created 01:00 Tashkent, and a registrar whose primary unit
+  is a ROP's but who is also listed in Регистрация — Azizbek 3, Maftuna 2,
+  Shohjaxon 1, unassigned 4, as seeded.
 */
 describe('bezkvalDaysSql', () => {
   const sql = bare(RegistrationRepository.bezkvalDaysSql())
@@ -73,6 +74,11 @@ describe('bezkvalDaysSql', () => {
     expect(sql).toContain(`WHERE dep."id" = e."departmentId" AND dep."isActive"`)
     expect(sql).toContain(`AND d."createdByEmployeeId" IS NOT NULL`)
     expect(sql).toContain(`AND d."createdByEmployeeId" <> d."employeeId"`)
+  })
+
+  it('keeps a registrar the portal also files under a ROP out of the seller rule', () => {
+    expect(sql).toContain(`WHERE om."employeeId" = e."id"`)
+    expect(sql).toMatch(/AND NOT EXISTS \(\s*SELECT 1\s*FROM "department_member" om/)
   })
 
   it('falls back to the last recorded hand-over to a ROP, read by the same owner rule', () => {

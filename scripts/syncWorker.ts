@@ -423,7 +423,8 @@ const CONTACT_RELINK_SINCE = new Date('2026-09-25T00:00:00Z')
 
 const DEALS_BACKFILL: DealsBackfill | null = {
   since: new Date('2026-09-01T00:00:00+05:00'),
-  requestedAt: new Date('2026-10-06T00:00:00+05:00'),
+  // After the deploy, so no DEALS backfill run earlier today settles it.
+  requestedAt: new Date('2026-10-06T18:00:00+05:00'),
 }
 
 /**

@@ -112,10 +112,11 @@ export class RegistrationRepository {
    *
    * 1. the team today's «Ответственный» stands for (`bezkvalOwnerRopSql`);
    * 2. a deal someone else opened, now with a seller whose PRIMARY unit is a
-   *    ROP's: that ROP — the ROP passed it on. A registrar's primary unit is
-   *    Регистрация, so the desk stays out; a deal the seller opened is theirs,
-   *    not handed over; an unknown opener (rows before 2026-10-06 the sync has
-   *    not re-read) is not counted;
+   *    ROP's and who sits in no other kind of unit: that ROP — the ROP passed
+   *    it on. A registrar is listed in Регистрация, so the desk stays out even
+   *    when the portal also files them under a ROP (the user's 2026-10-05
+   *    choice); a deal the seller opened is theirs, not handed over; an
+   *    unknown opener (not yet re-read, or not on the roster) is not counted;
    * 3. the last owner change to a ROP the sync recorded (`deal_owner_change`,
    *    from 2026-10-06) — the deal went on to the desk or back office;
    *
@@ -134,7 +135,13 @@ export class RegistrationRepository {
              FROM "department" dep
             WHERE dep."id" = e."departmentId" AND dep."isActive"
               AND d."createdByEmployeeId" IS NOT NULL
-              AND d."createdByEmployeeId" <> d."employeeId"),
+              AND d."createdByEmployeeId" <> d."employeeId"
+              AND NOT EXISTS (
+                SELECT 1
+                  FROM "department_member" om
+                  JOIN "department" od ON od."id" = om."departmentId" AND od."isActive"
+                 WHERE om."employeeId" = e."id"
+                   AND ${InsightsRepository.ropNameSql('od."name"')} IS NULL)),
           (SELECT x.rop
              FROM "deal_owner_change" c
              JOIN "employee" he ON he."id" = c."toEmployeeId"
