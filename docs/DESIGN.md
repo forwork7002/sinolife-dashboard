@@ -230,9 +230,12 @@ or the cells scrolling under it show through; on a glass card the cells beside
 it were the card's colour while it was the opaque one, so a frozen column read
 as a strip wherever the backdrop was lit. On the table's own ground pinned and
 moving cells are one colour everywhere. `--surface-raised` is the glass card
-composited over the bare page, so the table sits inside the glass as nearly the
-same colour. `overflow: clip` on a card holding a table keeps a flush table
-inside the card's corners without making the card a scroll container.
+composited over the bare page, so where the backdrop is unlit the table is the
+card's own colour; over a lit pool it reads as a slightly deeper panel in the
+glass (dark `#0d142e` in `#121d44` at the blue pool's peak) — a well for the
+numbers, which is what an opaque ground honestly is. `overflow: clip` on a card
+holding a table keeps a flush table inside the card's corners without making
+the card a scroll container.
 
 **The hero's rim** was a gradient clipped to the border box under a fill
 clipped to the padding box. Under a translucent fill that gradient shows
