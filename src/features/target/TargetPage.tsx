@@ -28,6 +28,7 @@ import type {
   TargetScope,
   TargetStageDto,
 } from './targetApi'
+import { PRODUCT_FILTER_OPTIONS } from './targetTheme'
 
 /** recharts rides with the chart, not with the page — see CallsPage. */
 const TargetDailyChart = dynamic(
@@ -132,6 +133,7 @@ export function TargetPage() {
         <>
           <BrandSwitch
             value={product}
+            options={PRODUCT_FILTER_OPTIONS}
             onChange={(next) => {
               setProduct(next)
               setFilters(EMPTY_FILTERS)

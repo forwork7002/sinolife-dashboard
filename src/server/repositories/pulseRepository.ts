@@ -56,13 +56,15 @@ export interface PulseDealFilters {
    * directly, and ANDed with `employeeIds` above rather than replacing it: the
    * caller's own pick narrows the scope, it never widens it.
    */
+  readonly restrictToEmployeeIds?: readonly string[] | null
   /**
    * ROP teams by name — the Collagen / Zextra switch (`brandTeams`), matched
    * against the deal's team (`InsightsRepository.dealTeamSql`). Undefined or
    * empty means every team, and deals on no team.
    */
   readonly teams?: readonly string[]
-  readonly restrictToEmployeeIds?: readonly string[] | null
+  /** «Brendsiz»: keep the deals on NONE of `teams` (or on no team). */
+  readonly excludeTeams?: boolean
 }
 
 /**
@@ -130,7 +132,9 @@ export class PulseRepository {
     }
     if (filters.teams?.length) {
       params.push([...filters.teams])
-      conditions.push(`${InsightsRepository.dealTeamSql(alias)} = ANY($${params.length}::text[])`)
+      conditions.push(
+        InsightsRepository.teamFilterSql(InsightsRepository.dealTeamSql(alias), params.length, filters.excludeTeams === true),
+      )
     }
 
     return conditions.length === 0 ? '' : ` AND ${conditions.join(' AND ')}`

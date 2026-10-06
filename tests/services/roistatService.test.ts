@@ -294,7 +294,24 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
     const { service, calls } = keyedHarness()
     await service.overview(PERIOD, { dim: 'days', brand: 'all' }, NOW)
     await service.days(PERIOD, NOW, 'Zextra')
-    expect(calls.map((c) => c.keyed)).toEqual([false, false, true])
+    await service.days(PERIOD, NOW, 'none')
+    expect(calls.map((c) => c.keyed)).toEqual([false, false, true, true])
+  })
+
+  it('files what neither brand claims under «Brendsiz» — Hayot\'s sale — and the three make the whole scan', async () => {
+    const { service } = keyedHarness()
+    const n = await service.overview(PERIOD, { dim: 'days', brand: 'none' }, NOW)
+    expect(n.kpi).toMatchObject({ leads: 0, sold: 1, soldUzs: 2_000_000, spendUsd: 0 })
+    resetRoistatCaches()
+    const [c, z] = await Promise.all([
+      service.overview(PERIOD, { dim: 'days', brand: 'Collagen' }, NOW),
+      service.overview(PERIOD, { dim: 'days', brand: 'Zextra' }, NOW),
+    ])
+    // The harness's scan: 33 leads, 16 mln sold, 38 $ of ad budget.
+    expect(c.kpi.leads + z.kpi.leads + n.kpi.leads).toBe(33)
+    expect(c.kpi.sold + z.kpi.sold + n.kpi.sold).toBe(4)
+    expect(c.kpi.soldUzs + z.kpi.soldUzs + n.kpi.soldUzs).toBe(16_000_000)
+    expect(c.kpi.spendUsd + z.kpi.spendUsd + n.kpi.spendUsd).toBe(38)
   })
 })
 

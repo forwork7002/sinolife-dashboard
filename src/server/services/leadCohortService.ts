@@ -17,7 +17,7 @@ import {
 } from '@/server/domain/leadCohort/leadCohort'
 import { resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import { teamBrand } from '@/server/domain/rnp/rnpSheet'
-import type { TargetProductFilter } from '@/server/domain/types'
+import { type BrandFilter, brandMatches } from '@/server/domain/types'
 import type { LeadCohortRepository } from '@/server/repositories/leadCohortRepository'
 
 import { ttlCache } from './ttlCache'
@@ -64,7 +64,7 @@ export class LeadCohortService {
     pipelines: readonly number[]
     rop: string | null
     /** The Collagen / Zextra switch: leads routed to one brand's teams (`teamBrand`), or all. */
-    brand?: TargetProductFilter
+    brand?: BrandFilter
     timeZone: string
     now: Date
   }): Promise<LeadCohortOverviewDto> {
@@ -88,13 +88,15 @@ export class LeadCohortService {
     /*
       A brand keeps the leads routed to its teams — after the memo, so a
       switch costs no query. A lead not yet routed names no team and so no
-      brand: under one brand the table reads «handed to this brand's teams».
+      brand: it is «Brendsiz», with the leads of teams on neither list.
     */
     const brand = input.brand ?? 'all'
     const branded =
       brand === 'all'
         ? rows
-        : rows.filter((r) => r.ropEmployeeId !== null && teamBrand(teams.get(r.ropEmployeeId) ?? null) === brand)
+        : rows.filter((r) =>
+            brandMatches(brand, r.ropEmployeeId === null ? null : teamBrand(teams.get(r.ropEmployeeId) ?? null)),
+          )
 
     return leadCohortOverview({
       rows: branded,

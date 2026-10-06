@@ -11,7 +11,7 @@ import {
   teamRowsOfBrand,
 } from '@/server/domain/registration/leadSplit'
 import { buildRopReport, type RopReportDto } from '@/server/domain/registration/ropReport'
-import type { TargetProductFilter } from '@/server/domain/types'
+import type { BrandFilter } from '@/server/domain/types'
 import type { InsightsRepository, SellerFaktDayRow } from '@/server/repositories/insightsRepository'
 import type { RegistrationRepository } from '@/server/repositories/registrationRepository'
 
@@ -37,7 +37,7 @@ export class RegistrationService {
     private readonly insights: InsightsRepository,
   ) {}
 
-  async overview(input: { day: string; timeZone: string; canEdit: boolean; brand?: TargetProductFilter }): Promise<LeadSplitDto> {
+  async overview(input: { day: string; timeZone: string; canEdit: boolean; brand?: BrandFilter }): Promise<LeadSplitDto> {
     const from = addDays(input.day, -(GRID_DAYS - 1))
     const [rows, bezkval, split, previous] = await Promise.all([
       this.repository.distributedDays(from, input.day),
@@ -54,12 +54,12 @@ export class RegistrationService {
   }
 
   /** «ROP otchet» — one day. See ropReport.ts. */
-  async report(input: { day: string; timeZone: string; now: Date; brand?: TargetProductFilter }): Promise<RopReportDto> {
+  async report(input: { day: string; timeZone: string; now: Date; brand?: BrandFilter }): Promise<RopReportDto> {
     return this.sellerSheet({ from: input.day, to: input.day, timeZone: input.timeZone, now: input.now, calls: true, brand: input.brand })
   }
 
   /** «Guruhlar» — the first of the day's month to the day. See groupPlan.ts. */
-  async groupPlan(input: { day: string; timeZone: string; now: Date; brand?: TargetProductFilter }): Promise<GroupPlanDto> {
+  async groupPlan(input: { day: string; timeZone: string; now: Date; brand?: BrandFilter }): Promise<GroupPlanDto> {
     const from = monthStart(input.day)
     const report = await this.sellerSheet({ from, to: input.day, timeZone: input.timeZone, now: input.now, calls: false, brand: input.brand })
     return buildGroupPlan({ from, report })
@@ -76,7 +76,7 @@ export class RegistrationService {
     timeZone: string
     now: Date
     calls: boolean
-    brand?: TargetProductFilter
+    brand?: BrandFilter
   }): Promise<RopReportDto> {
     const period = resolvePeriod('custom', {
       timeZone: input.timeZone,

@@ -118,6 +118,7 @@ describe('brandLines', () => {
     line('team:Asliddin:fakt1', 132, 'Zextra'),
     line('team:Sevinch:fakt1', 93, 'Collagen'),
     line('wh:orders', 265),
+    line('team:Hayot:fakt1', 300, 'none'),
     line('pj:zextra:fakt1', 421, 'Zextra'),
     line('pj:zextra:fakt2', 422, 'Zextra'),
   ]
@@ -133,5 +134,16 @@ describe('brandLines', () => {
   it('leaves out every company-wide line', () => {
     const rows = brandLines(lines, 'Collagen').map((l) => l.row)
     expect(rows).toEqual([14, 3001, 93])
+  })
+})
+
+describe('brandLines — «Brendsiz»', () => {
+  it('keeps only the blocks of the teams on neither list', () => {
+    const line = (row: number, brand?: RnpLine['brand']): RnpLine => ({
+      kind: 'value', row, team: null, label: `r${row}`, sub: null, tone: 'plain', fact: 'plain', bold: false, key: `k${row}`,
+      ...(brand ? { brand } : {}),
+    })
+    const lines = [line(348), line(93, 'Collagen'), line(132, 'Zextra'), line(300, 'none'), line(301, 'none'), { ...line(3001), brand: 'both' as const }]
+    expect(brandLines(lines, 'none').map((l) => l.row)).toEqual([300, 301])
   })
 })

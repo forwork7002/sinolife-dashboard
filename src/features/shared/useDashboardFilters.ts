@@ -91,7 +91,8 @@ export interface DashboardFilters {
    */
   readonly queue: 'window' | 'backlog'
   /**
-   * The Collagen / Zextra switch on the main screens — both, or one brand.
+   * The brand switch on the main screens — both brands, one, or «Brendsiz»
+   * ('none': what neither brand claims, so the three add up to «Hammasi»).
    *
    * A MODE OF THE SCREEN, like `queue`: the switch itself shows what is on,
    * so it is not in `activeCount` and «Filtrlarni tozalash» keeps it. Sent
@@ -133,7 +134,7 @@ export interface DashboardFilters {
  * screen has always had, kept because it is the only one that shows every
  * column at once and the only one that prints.
  */
-export const DASHBOARD_BRANDS = ['all', 'Collagen', 'Zextra'] as const
+export const DASHBOARD_BRANDS = ['all', 'Collagen', 'Zextra', 'none'] as const
 export type DashboardBrand = (typeof DASHBOARD_BRANDS)[number]
 
 export const STRUCTURE_VIEWS = ['chart', 'list'] as const

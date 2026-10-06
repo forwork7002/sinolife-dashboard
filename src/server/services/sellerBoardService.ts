@@ -744,6 +744,7 @@ export class SellerBoardService {
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
       keyPart(filters.teams),
+      filters.excludeTeams ? 'x' : '',
     ].join('|')
 
     return boardCache.get(key, () => this.buildBoard(ctx, basis, filters))
@@ -1017,6 +1018,7 @@ export class SellerBoardService {
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
       keyPart(filters.teams),
+      filters.excludeTeams ? 'x' : '',
     ].join('|')
 
     return recordsCache.get(key, () => this.buildRecords(ctx, period, filters))
@@ -1096,6 +1098,7 @@ export class SellerBoardService {
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
       keyPart(filters.teams),
+      filters.excludeTeams ? 'x' : '',
     ].join('|')
 
     return medalsCache.get(key, () => this.buildMedals(ctx, period, filters))
@@ -1207,6 +1210,7 @@ export class SellerBoardService {
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
       keyPart(filters.teams),
+      filters.excludeTeams ? 'x' : '',
     ].join('|')
     const days = await faktDaysCache.get(key, () =>
       this.insights.confirmationFaktDays(scopedPeriod(ctx.period, filters), filters),
@@ -1281,6 +1285,7 @@ export class SellerBoardService {
       keyPart(filters.departmentIds),
       keyPart(filters.sourceIds),
       keyPart(filters.teams),
+      filters.excludeTeams ? 'x' : '',
     ].join('|')
 
     return sourcesCache.get(key, async () => {
@@ -1381,18 +1386,22 @@ function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
     employeeIds: ctx.filters.employeeIds,
     departmentIds: ctx.filters.departmentIds,
     sourceIds: ctx.filters.sourceIds,
-    teams: brandTeamsOf(ctx),
+    ...brandTeamsOf(ctx),
   }
 }
 
 /**
- * The Collagen / Zextra switch as a team list: an order is the brand's when
- * the team that sold it is (`teamBrand` — the P&L's rule, so the board and
- * RNP's «Коллаген / Зехтра проект» agree). Undefined for both brands.
+ * The brand switch as a team filter: an order is the brand's when the team
+ * that sold it is (`teamBrand` — the P&L's rule, so the board and RNP's
+ * «Коллаген / Зехтра проект» agree). «Brendsiz» is every order on neither
+ * brand's teams, a team-less one included (`excludeTeams`), so the three
+ * slices add up to the whole board. Empty for «Hammasi».
  */
-export function brandTeamsOf(ctx: AnalyticsContext): readonly string[] | undefined {
+export function brandTeamsOf(ctx: AnalyticsContext): { teams?: readonly string[]; excludeTeams?: boolean } {
   const brand = ctx.filters.brand
-  return brand === undefined || brand === 'all' ? undefined : brandTeams(brand)
+  if (brand === undefined || brand === 'all') return {}
+  if (brand === 'none') return { teams: [...brandTeams('Collagen'), ...brandTeams('Zextra')], excludeTeams: true }
+  return { teams: brandTeams(brand) }
 }
 
 /**

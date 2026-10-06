@@ -145,7 +145,9 @@ function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; 
                   .join(', ')} — jadvallarga kirmaydi`
               : brand === 'all'
                 ? 'Meta, barcha akkauntlar'
-                : `Meta, ${brand} akkauntlari`
+                : brand === 'none'
+                  ? 'Meta: vakansiya, HR, Kosmetika va brendsiz akkauntlar'
+                  : `Meta, ${brand} reklama byudjeti`
           }
         />
         <UsdTile status={status} label="Lid-forma sarfi" value={spend?.formUsd ?? null} hint="«Отчёт Т»" />

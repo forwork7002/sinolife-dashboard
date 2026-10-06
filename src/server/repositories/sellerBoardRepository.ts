@@ -66,6 +66,8 @@ export interface SellerBoardFilters {
    * empty means every team, and deals on no team.
    */
   readonly teams?: readonly string[]
+  /** «Brendsiz»: keep the deals on NONE of `teams` (or on no team). */
+  readonly excludeTeams?: boolean
 }
 
 export interface SellerBoardRow {
@@ -291,7 +293,9 @@ export class SellerBoardRepository {
     }
     if (filters.teams?.length) {
       params.push([...filters.teams])
-      conditions.push(`${InsightsRepository.dealTeamSql(alias)} = ANY($${params.length}::text[])`)
+      conditions.push(
+        InsightsRepository.teamFilterSql(InsightsRepository.dealTeamSql(alias), params.length, filters.excludeTeams === true),
+      )
     }
 
     return conditions.length === 0 ? '' : ` AND ${conditions.join(' AND ')}`

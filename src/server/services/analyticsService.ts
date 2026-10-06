@@ -19,7 +19,7 @@
 
 import { type Period, previousEquivalent, toPeriodDto } from '@/server/domain/period/period'
 import type { EmployeeScopeFilter } from '@/server/domain/employees/branches'
-import type { TargetProductFilter } from '@/server/domain/types'
+import type { BrandFilter } from '@/server/domain/types'
 import type { DealFilters } from '@/server/repositories/dealRepository'
 
 /**
@@ -34,7 +34,7 @@ import type { DealFilters } from '@/server/repositories/dealRepository'
  */
 export interface AnalyticsFilters extends DealFilters, EmployeeScopeFilter {
   /** The Collagen / Zextra switch, on the screens that honour it; both when absent. */
-  readonly brand?: TargetProductFilter
+  readonly brand?: BrandFilter
 }
 
 export interface AnalyticsContext {

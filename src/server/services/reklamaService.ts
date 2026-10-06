@@ -27,6 +27,7 @@ import { TARGET_SOURCE_IDS, TARGET_SOURCE_PRODUCT } from '@/server/integrations/
 import {
   type CampaignChannel,
   DM_PAGE_OF_PRODUCT,
+  adBudgetProduct,
   type MetaProduct,
   type SideColumn,
   campaignChannel,
@@ -35,7 +36,7 @@ import {
 } from '@/server/integrations/meta/accounts'
 import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
-import type { TargetProduct, TargetProductFilter } from '@/server/domain/types'
+import { type BrandFilter, type TargetProduct, brandMatches } from '@/server/domain/types'
 import type {
   CampaignDayRow,
   LeadStageDayRow,
@@ -339,11 +340,13 @@ const SIDE_NAMES: Readonly<Record<SideColumn, string>> = { hr: 'HR', kosmetika: 
  * with nothing on it in the window is still listed, so the columns do not
  * move from one month to the next.
  *
- * `brand` (the Collagen / Zextra switch) narrows all three ledgers before
- * anything is summed: the pages and their leads to that brand's pages
+ * `brand` (the brand switch, `BRAND_FILTERS`) narrows all three ledgers
+ * before anything is summed: the pages and their leads to that brand's pages
  * (`TARGET_SOURCE_PRODUCT` — every lead here is a target page's, so this is
- * `leadBrand`'s answer too), the Meta rows to that brand's ad accounts. An
- * account mapped to no brand (HR Eldor, Kosmetika) drops out with it.
+ * `leadBrand`'s answer too), the Meta rows to that brand's AD BUDGET
+ * (`adBudgetProduct`, as every other screen reads a brand's money). What no
+ * budget claims — hiring campaigns, HR Eldor, Kosmetika, an unmapped account —
+ * is «Brendsiz», so Collagen + Zextra + Brendsiz is «Hammasi» to the cent.
  */
 export function reklamaOverview(input: {
   window: { from: string; to: string }
@@ -351,16 +354,16 @@ export function reklamaOverview(input: {
   leadRows: readonly LeadStageDayRow[]
   campaignRows: readonly CampaignDayRow[]
   importedAt: Date | null
-  brand?: TargetProductFilter
+  brand?: BrandFilter
 }): ReklamaOverviewDto {
   const brand = input.brand ?? 'all'
   if (brand !== 'all') {
     input = {
       ...input,
       brand: 'all',
-      pages: input.pages.filter((page) => page.product === brand),
-      leadRows: input.leadRows.filter((row) => TARGET_SOURCE_PRODUCT[row.sourceId] === brand),
-      campaignRows: input.campaignRows.filter((row) => ownerOf(row.accountId, row.accountName).product === brand),
+      pages: input.pages.filter((page) => brandMatches(brand, page.product)),
+      leadRows: input.leadRows.filter((row) => brandMatches(brand, TARGET_SOURCE_PRODUCT[row.sourceId])),
+      campaignRows: input.campaignRows.filter((row) => brandMatches(brand, adBudgetProduct(row))),
     }
   }
   const days = calendarDays(input.window.from, input.window.to)
@@ -651,7 +654,7 @@ const leadCache = ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE)
 export class ReklamaService {
   constructor(private readonly repository: ReklamaRepository) {}
 
-  async overview(period: Period, timeZone: string, brand: TargetProductFilter = 'all'): Promise<ReklamaOverviewDto> {
+  async overview(period: Period, timeZone: string, brand: BrandFilter = 'all'): Promise<ReklamaOverviewDto> {
     const window = {
       from: zonedDateKey(period.start, timeZone),
       to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),

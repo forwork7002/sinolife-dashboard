@@ -430,4 +430,16 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     expect(all.inboundCalls).toBe(9)
     expect(zextra.inboundCalls).toBeNull()
   })
+
+  it('files what no brand claims under «Brendsiz» — the three add up to «Hammasi»', () => {
+    const none = leadSourcesOverview({ ...input, brand: 'none' })
+    expect(none.brand).toBe('none')
+    expect(none.funnel.total).toBe(7)
+    expect(collagen.funnel.total + zextra.funnel.total + none.funnel.total).toBe(all.funnel.total)
+    expect(collagen.funnel.qualified + zextra.funnel.qualified + none.funnel.qualified).toBe(all.funnel.qualified)
+    expect(collagen.funnel.spendUsd + zextra.funnel.spendUsd + none.funnel.spendUsd).toBe(all.funnel.spendUsd)
+    // «Сарафан» and the inbound calls carry no brand: they are «Brendsiz»'s, whole.
+    expect(none.tiles.rows.find((r) => r.tile === 'sarafan')!.leads).toBe(3)
+    expect(none.inboundCalls).toBe(9)
+  })
 })

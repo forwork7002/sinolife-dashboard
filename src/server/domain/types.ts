@@ -141,6 +141,25 @@ export const TARGET_PRODUCT_FILTERS = ['all', ...TARGET_PRODUCTS] as const
 export type TargetProductFilter = (typeof TARGET_PRODUCT_FILTERS)[number]
 
 /**
+ * The brand switch on the main screens (`?brand=`): both brands, one, or
+ * «Brendsiz» — everything neither brand claims (a lead no source or form ties
+ * to a brand, a sale by a team on neither list, money that is not ad budget:
+ * hiring, HR, Kosmetika, an unmapped account). The three slices partition
+ * «Hammasi», so every count and sum on a screen satisfies
+ * Collagen + Zextra + Brendsiz = Hammasi (the client, 2026-10-06: the brands
+ * «qo'shganda» must add up).
+ */
+export const BRAND_FILTERS = ['all', ...TARGET_PRODUCTS, 'none'] as const
+export type BrandFilter = (typeof BRAND_FILTERS)[number]
+
+/** Whether a thing of `brand` (null = brandless) belongs on a screen switched to `filter`. */
+export function brandMatches(filter: BrandFilter, brand: TargetProduct | null | undefined): boolean {
+  if (filter === 'all') return true
+  if (filter === 'none') return brand === null || brand === undefined
+  return brand === filter
+}
+
+/**
  * What a single stage move says about an order's confirmation.
  *
  * The outcomes above are what an ORDER ends up in; these are what a STAGE

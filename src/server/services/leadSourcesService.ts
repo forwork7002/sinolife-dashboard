@@ -47,7 +47,7 @@ import {
 } from '@/server/domain/leads/leadSources'
 import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
-import type { TargetProduct, TargetProductFilter } from '@/server/domain/types'
+import { type BrandFilter, type TargetProduct, brandMatches } from '@/server/domain/types'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
 import type {
   LeadSourcesRepository,
@@ -159,7 +159,7 @@ export interface LeadSourcesOverviewDto {
    * calls cannot be split: the screen prints them as «brend boʻyicha
    * ajratilmaydi», not as a zero.
    */
-  readonly brand: TargetProductFilter
+  readonly brand: BrandFilter
   /** When Meta's campaign grain was last read; null means never. */
   readonly importedAt: string | null
   /**
@@ -339,22 +339,26 @@ type LeadSourcesInput = Parameters<typeof leadSourcesOverview>[0]
  * The tab's inputs narrowed to one brand — RNP's rules, so the switch agrees
  * with RNP's «Коллаген / Зехтра проект»: a lead (and its kval, its FAKT 1
  * client, the AI's mark) by `leadBrand` — its source, then its form; a chat
- * by its page; Meta money by its ad account (`adBudgetProduct`). A lead
- * nothing ties to a brand (an outgoing call, a hand-typed lead) is in
- * neither. «Сарафан» and the inbound calls carry no brand at all.
+ * by its page; Meta money by its ad budget (`adBudgetProduct`). What
+ * nothing ties to a brand — an outgoing call, a hand-typed lead, a page no
+ * brand claims, hiring money — is «Brendsiz», and so are «Сарафан» and the
+ * inbound calls, which carry no brand at all: the three slices partition the
+ * tab, so Collagen + Zextra + Brendsiz is «Hammasi» on every count.
  */
-function ofBrand(input: LeadSourcesInput, brand: TargetProduct): LeadSourcesInput {
-  const lead = (row: { sourceId: string | null; formTitle: string | null }) => leadBrand(row.sourceId, row.formTitle) === brand
+function ofBrand(input: LeadSourcesInput, brand: Exclude<BrandFilter, 'all'>): LeadSourcesInput {
+  const lead = (row: { sourceId: string | null; formTitle: string | null }) =>
+    brandMatches(brand, leadBrand(row.sourceId, row.formTitle))
+  const brandless = brand === 'none'
   return {
     ...input,
     registration: input.registration.filter(lead),
-    triage: input.triage.filter((row) => pageBrand(row.sourceId) === brand),
-    campaigns: input.campaigns.filter((row) => adBudgetProduct(row) === brand),
+    triage: input.triage.filter((row) => brandMatches(brand, pageBrand(row.sourceId))),
+    campaigns: input.campaigns.filter((row) => brandMatches(brand, adBudgetProduct(row))),
     fakt1: input.fakt1.filter(lead),
     qualified: input.qualified.filter(lead),
     aiQualified: input.aiQualified.filter(lead),
-    sarafan: { leads: 0, qualified: 0 },
-    inboundCalls: null,
+    sarafan: brandless ? input.sarafan : { leads: 0, qualified: 0 },
+    inboundCalls: brandless ? input.inboundCalls : null,
   }
 }
 
@@ -377,8 +381,8 @@ export function leadSourcesOverview(all: {
   importedAt: Date | null
   /** `LeadSourcesRepository.inboundCallCount`; absent reads as null. */
   inboundCalls?: number | null
-  /** The Collagen / Zextra switch; both when absent. */
-  brand?: TargetProductFilter
+  /** The brand switch (`BRAND_FILTERS`); both brands when absent. */
+  brand?: BrandFilter
 }): LeadSourcesOverviewDto {
   const brand = all.brand ?? 'all'
   const input = brand === 'all' ? all : ofBrand(all, brand)
@@ -425,8 +429,8 @@ export function leadSourcesOverview(all: {
   const pages = new Map<string, PageAcc>()
   const pageAcc = (key: string, name: string) =>
     mapGet(pages, key, () => ({ key, name, conversations: 0, outcome: outcomeZero(), days: new Map() }))
-  // Under one brand, only its pages: a page no brand claims (sinolif_tg, sinogummy) is in neither.
-  for (const p of DM_PAGES) if (brand === 'all' || pageBrand(p.id) === brand) pageAcc(p.id, p.name)
+  // Under one brand, only its pages: a page no brand claims (sinolif_tg, sinogummy) is «Brendsiz».
+  for (const p of DM_PAGES) if (brandMatches(brand, pageBrand(p.id))) pageAcc(p.id, p.name)
   const pageKeyOf = (sourceId: string) => DM_PAGE_ALIAS[sourceId] ?? sourceId
   const sources = new Map<string, SourceAcc>()
   const channels = new Map<LeadChannel, OutcomeAcc>(LEAD_CHANNELS.map((c) => [c, outcomeZero()]))
@@ -735,7 +739,7 @@ export class LeadSourcesService {
     private readonly insights: InsightsRepository,
   ) {}
 
-  async overview(period: Period, timeZone: string, brand: TargetProductFilter = 'all'): Promise<LeadSourcesOverviewDto> {
+  async overview(period: Period, timeZone: string, brand: BrandFilter = 'all'): Promise<LeadSourcesOverviewDto> {
     const window = {
       from: zonedDateKey(period.start, timeZone),
       to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),

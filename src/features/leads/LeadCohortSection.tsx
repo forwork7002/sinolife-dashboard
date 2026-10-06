@@ -234,11 +234,12 @@ function Tiles({
   data: LeadCohortOverviewDto | undefined
   status: Status
   ropName: string | null
-  /** The Collagen / Zextra switch, when one brand is on. */
+  /** The brand switch, when a slice other than «Hammasi» is on. */
   brand: string | undefined
 }) {
   const k = data?.kpi
   const of = ropName ? ` · ${ropName}` : ''
+  const oneBrand = brand === 'Collagen' || brand === 'Zextra'
   return (
     <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       <StatTile
@@ -265,13 +266,13 @@ function Tiles({
       <StatTile
         status={status}
         label="Tarqatilmagan qoldiq"
-        // Under one brand a lead is its team's: one not yet handed out has no team, so no brand.
-        value={brand !== undefined ? null : (k?.undistributed ?? null)}
+        // Under one brand a lead is its team's: one not yet handed out has no team, so it is «Brendsiz».
+        value={oneBrand ? null : (k?.undistributed ?? null)}
         unit="count"
-        tone={brand === undefined && k && k.undistributed > 0 ? 'warning' : 'neutral'}
+        tone={!oneBrand && k && k.undistributed > 0 ? 'warning' : 'neutral'}
         hint={
-          brand !== undefined
-            ? 'Brend boʻyicha ajratilmaydi — tarqatilmagan lid hali hech qaysi jamoaga berilmagan'
+          oneBrand
+            ? 'Brend boʻyicha ajratilmaydi — tarqatilmagan lid hali hech qaysi jamoaga berilmagan («Brendsiz»da)'
             : k
               ? `tushgan, lekin «Лид таркатилган сана» boʻsh · ${share(k.undistributed, k.arrived) ?? '—'}`
               : undefined

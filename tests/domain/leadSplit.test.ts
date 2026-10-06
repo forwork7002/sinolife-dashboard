@@ -173,4 +173,21 @@ describe('the Collagen / Zextra switch on the team tables', () => {
     expect(collagen.canEdit).toBe(false)
     expect(leadSplitOfBrand(whole, 'all')).toBe(whole)
   })
+
+  it('files a teamless lead and a team on neither list under «Brendsiz», so the three add up', () => {
+    expect(teamRowsOfBrand(rows, 'none').map((r) => r.rop)).toEqual([null, 'Hayot'])
+    const split = {
+      rows: SPLIT_ROPS.map((rop) => ({ rop, shareBp: rop === 'Sevinch' ? 5000 : rop === 'Lola' ? 3000 : rop === 'Sadriddin' ? 2000 : 0 })),
+      updatedAt: '2026-09-30T04:09:00.000Z',
+    }
+    const whole = buildLeadSplit({ day, rows, bezkval: [{ day, rop: 'Lola', leads: 5 }, { day, rop: null, leads: 1 }], split, previous: null, canEdit: true })
+    const [c, z, n] = (['Collagen', 'Zextra', 'none'] as const).map((b) => leadSplitOfBrand(whole, b))
+    expect(n.unassigned).toBe(whole.unassigned)
+    expect(c!.total + z!.total + n!.total).toBe(whole.total)
+    expect(c!.fresh + z!.fresh + n!.fresh).toBe(whole.fresh)
+    const week = (s: typeof whole) => s.week.unassigned.reduce((a, b) => a + b, 0) + s.rops.reduce((a, r) => a + r.week.reduce((x, y) => x + y, 0), 0)
+    expect(week(c!) + week(z!) + week(n!)).toBe(week(whole))
+    const bez = (s: typeof whole) => s.bezkval.unassigned.reduce((a, b) => a + b, 0) + s.bezkval.rops.reduce((a, r) => a + r.week.reduce((x, y) => x + y, 0), 0)
+    expect(bez(c!) + bez(z!) + bez(n!)).toBe(bez(whole))
+  })
 })

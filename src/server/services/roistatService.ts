@@ -37,7 +37,7 @@ import {
   spendTotal,
 } from '@/server/domain/roistat/roistatCuts'
 import { teamBrand } from '@/server/domain/rnp/rnpSheet'
-import type { TargetProductFilter } from '@/server/domain/types'
+import { type BrandFilter, brandMatches } from '@/server/domain/types'
 import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { adBudgetProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
@@ -152,8 +152,8 @@ export interface RoistatQuery {
   readonly dim: RoistatDim
   /** Campaign id under `adset`, adset id under `ad`. */
   readonly parent?: string
-  /** The Collagen / Zextra switch; both when absent. */
-  readonly brand?: TargetProductFilter
+  /** The brand switch (`BRAND_FILTERS`); both brands when absent. */
+  readonly brand?: BrandFilter
 }
 
 /**
@@ -162,16 +162,21 @@ export interface RoistatQuery {
  * P&L's split, so the switch and RNP's «Коллаген / Зехтра проект» agree.
  * Rows of a brand-keyed scan only (`RoistatRepository.bitrix`'s `brandKeys`).
  */
-function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: TargetProductFilter): Parameters<typeof bitrixCut>[1] {
+function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: BrandFilter): Parameters<typeof bitrixCut>[1] {
   if (brand === 'all') return rows
   return narrowBitrix(rows, (row) =>
-    (row.brandTeam !== null ? teamBrand(row.brandTeam) : leadBrand(row.brandSource, row.brandForm)) === brand,
+    brandMatches(brand, row.brandTeam !== null ? teamBrand(row.brandTeam) : leadBrand(row.brandSource, row.brandForm)),
   )
 }
 
-/** Meta money narrowed to one brand's ad budget. */
-function spendOfBrand(days: readonly SpendDay[], brand: TargetProductFilter): readonly SpendDay[] {
-  return brand === 'all' ? days : days.filter((d) => d.product === brand)
+/**
+ * Meta money narrowed to one brand's ad budget. «Brendsiz» keeps the money no
+ * brand's budget claims (hiring, an unmapped account) — which every total on
+ * this screen leaves out anyway (`spendTotal`), so its spend reads 0 and the
+ * three slices still add up to «Hammasi».
+ */
+function spendOfBrand(days: readonly SpendDay[], brand: BrandFilter): readonly SpendDay[] {
+  return brand === 'all' ? days : days.filter((d) => brandMatches(brand, d.product))
 }
 
 const overviewCache = ttlCache<RoistatOverviewDto>(120_000, LIVE_CACHE)
@@ -204,7 +209,7 @@ export class RoistatService {
     return overviewCache.get(key, () => this.buildOverview(period, query, now))
   }
 
-  async days(period: Period, now: Date, brand: TargetProductFilter = 'all'): Promise<RoistatDaysDto> {
+  async days(period: Period, now: Date, brand: BrandFilter = 'all'): Promise<RoistatDaysDto> {
     const key = [period.preset, period.start.toISOString(), period.end.toISOString(), brand].join('|')
     return daysCache.get(key, () => this.buildDays(period, now, brand))
   }
@@ -244,7 +249,7 @@ export class RoistatService {
     const bitrixPrevious = bitrixOfBrand(bitrixPreviousRows, brand)
     const spend = spendOfBrand(spendAll, brand)
     const spendPrevious = spendOfBrand(spendPreviousAll, brand)
-    const metaRows = keyed ? metaRowsAll.filter((row) => adBudgetProduct(row) === brand) : metaRowsAll
+    const metaRows = keyed ? metaRowsAll.filter((row) => brandMatches(brand, adBudgetProduct(row))) : metaRowsAll
 
     const kpi = addCounters(bitrixTotal(bitrix), spendTotal(spend))
 
@@ -275,7 +280,7 @@ export class RoistatService {
   }
 
   /** The «Дни» table — the same rows `overview(period, { dim: 'days' })` draws, newest day first. */
-  private async buildDays(period: Period, now: Date, brand: TargetProductFilter): Promise<RoistatDaysDto> {
+  private async buildDays(period: Period, now: Date, brand: BrandFilter): Promise<RoistatDaysDto> {
     const today = zonedDateKey(now, period.timeZone)
     const window = dayRange(period)
     const rateDay = window.to < today ? window.to : today

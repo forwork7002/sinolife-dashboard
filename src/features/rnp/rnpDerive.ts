@@ -114,8 +114,10 @@ export function ropLines(lines: readonly RnpLine[], rop: string | null, label: s
  * and CAC. Company-wide lines no brand can claim are left out. 'all' = the
  * whole sheet.
  */
-export function brandLines(lines: readonly RnpLine[], brand: 'all' | 'Collagen' | 'Zextra'): readonly RnpLine[] {
+export function brandLines(lines: readonly RnpLine[], brand: 'all' | 'Collagen' | 'Zextra' | 'none'): readonly RnpLine[] {
   if (brand === 'all') return lines
+  // «Brendsiz»: the blocks and logistics of the teams on neither brand's list.
+  if (brand === 'none') return lines.filter((l) => l.brand === 'none')
   const own = lines.filter((l) => l.brand === brand || l.brand === 'both')
   const isProject = (l: RnpLine) => l.kind === 'value' && l.key !== null && l.key.startsWith('pj:')
   return [...own.filter(isProject), ...own.filter((l) => !isProject(l))]

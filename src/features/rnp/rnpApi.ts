@@ -98,7 +98,7 @@ export type RnpFactTone = 'fakt' | 'plan' | 'rate' | 'key' | 'money' | 'alert' |
  * `row` is the sheet row, null for a line added for a team the sheet lacks.
  */
 /** `both`: a heading each brand keeps over its own rows. */
-export type RnpLineBrand = 'Collagen' | 'Zextra' | 'both'
+export type RnpLineBrand = 'Collagen' | 'Zextra' | 'none' | 'both'
 
 export type RnpLine =
   | {

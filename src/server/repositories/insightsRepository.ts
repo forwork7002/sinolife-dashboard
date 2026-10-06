@@ -766,6 +766,8 @@ export interface ConfirmationSellerRatingFilters {
    * means every team, and orders on no team.
    */
   readonly teams?: readonly string[]
+  /** «Brendsiz»: keep the orders on NONE of `teams` (or on no team). */
+  readonly excludeTeams?: boolean
 }
 
 /**
@@ -3441,6 +3443,17 @@ export class InsightsRepository {
    * readers outside the confirmation cohort, so a team filter means the same
    * team on every board.
    */
+  /**
+   * The brand switch's team predicate over a team expression: the brand's
+   * teams, or — for «Brendsiz» (`exclude`) — every order on no brand team,
+   * a team-less one included, so the three slices partition the board.
+   */
+  static teamFilterSql(expression: string, param: number, exclude: boolean): string {
+    return exclude
+      ? `(${expression} IS NULL OR NOT (${expression} = ANY($${param}::text[])))`
+      : `${expression} = ANY($${param}::text[])`
+  }
+
   static dealTeamSql(alias: string): string {
     return `COALESCE(
           ${InsightsRepository.ropNameSql(`${alias}."operatorTeamSource"`)},
@@ -4741,7 +4754,7 @@ export class InsightsRepository {
     }
     if (filters.teams?.length) {
       params.push([...filters.teams])
-      conditions.push(`c.rop = ANY($${params.length}::text[])`)
+      conditions.push(InsightsRepository.teamFilterSql('c.rop', params.length, filters.excludeTeams === true))
     }
 
     return conditions.length === 0 ? '' : ` AND ${conditions.join(' AND ')}`

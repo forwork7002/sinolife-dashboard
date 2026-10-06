@@ -52,9 +52,15 @@ describe('brandTeams', () => {
   })
 
   it('is no filter at all for both brands', () => {
-    expect(brandTeamsOf(context({}))).toBeUndefined()
-    expect(brandTeamsOf(context({ brand: 'all' }))).toBeUndefined()
-    expect(brandTeamsOf(context({ brand: 'Zextra' }))).toEqual(brandTeams('Zextra'))
+    expect(brandTeamsOf(context({}))).toEqual({})
+    expect(brandTeamsOf(context({ brand: 'all' }))).toEqual({})
+    expect(brandTeamsOf(context({ brand: 'Zextra' }))).toEqual({ teams: brandTeams('Zextra') })
+  })
+
+  it('is «on none of the brands\' teams» for «Brendsiz», so the three slices partition the board', () => {
+    const none = brandTeamsOf(context({ brand: 'none' }))
+    expect(none.excludeTeams).toBe(true)
+    expect([...none.teams!].sort()).toEqual([...brandTeams('Collagen'), ...brandTeams('Zextra')].sort())
   })
 })
 
@@ -70,6 +76,17 @@ describe('the confirmation-queue readers', () => {
     const clause = ratingFilterSql({ teams: ['Asliddin', 'Charos'] }, params)
     expect(clause).toBe(' AND c.rop = ANY($4::text[])')
     expect(params[3]).toEqual(['Asliddin', 'Charos'])
+  })
+
+  it('keep, for «Brendsiz», the orders on none of the teams — a team-less one too', () => {
+    const params: unknown[] = []
+    const clause = (
+      InsightsRepository as unknown as {
+        ratingFilterSql: (filters: { teams?: readonly string[]; excludeTeams?: boolean }, params: unknown[]) => string
+      }
+    ).ratingFilterSql({ teams: ['Asliddin'], excludeTeams: true }, params)
+    expect(clause).toBe(' AND (c.rop IS NULL OR NOT (c.rop = ANY($1::text[])))')
+    expect(params).toEqual([['Asliddin']])
   })
 
   it('add nothing without a brand', () => {

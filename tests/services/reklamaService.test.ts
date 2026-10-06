@@ -334,8 +334,10 @@ describe('reklamaOverview — the Collagen / Zextra switch', () => {
     campaign({ accountId: '440073592484616', accountName: 'Zextra Umar', objective: 'OUTCOME_LEADS', spendMicroUsd: 8_000_000n, leads: 9 }),
     campaign({ accountId: '517245084208402', accountName: 'Kosmetika Eldor', objective: 'OUTCOME_LEADS', spendMicroUsd: 3_000_000n }),
     campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', spendMicroUsd: 5_000_000n, conversations: 9 }),
+    // A Collagen account's vacancy campaign: hiring is no brand's ad budget.
+    campaign({ campaignName: 'EX - TOF - Vacancy - 19.09', spendMicroUsd: 2_000_000n }),
   ]
-  const build = (brand?: 'all' | 'Collagen' | 'Zextra') =>
+  const build = (brand?: 'all' | 'Collagen' | 'Zextra' | 'none') =>
     reklamaOverview({ window: WINDOW, pages: PAGES, leadRows: leads, campaignRows: campaigns, importedAt: null, brand })
 
   it('keeps one brand\'s pages, leads and ad accounts — unmapped money drops out', () => {
@@ -357,9 +359,21 @@ describe('reklamaOverview — the Collagen / Zextra switch', () => {
     const all = build()
     const [c, z] = [build('Collagen'), build('Zextra')]
     expect(c.quality.total.leads + z.quality.total.leads).toBe(all.quality.total.leads)
-    // Kosmetika and the unmapped account are neither brand's.
-    expect(c.spend.totalUsd + z.spend.totalUsd + 3 + 5).toBe(all.spend.totalUsd)
+    // Kosmetika, the unmapped account and the vacancy are neither brand's.
+    expect(c.spend.totalUsd + z.spend.totalUsd + 3 + 5 + 2).toBe(all.spend.totalUsd)
     expect(build('all')).toEqual(all)
+  })
+
+  it('reads a brand\'s money as its ad budget, the vacancy left to «Brendsiz», as every screen does', () => {
+    expect(build('Collagen').spend.hiringUsd).toBe(0)
+    const n = build('none')
+    expect(n.spend).toMatchObject({ totalUsd: 10, hiringUsd: 2 })
+    expect(n.quality.total.leads).toBe(0)
+    const [all, c, z] = [build(), build('Collagen'), build('Zextra')]
+    for (const k of ['totalUsd', 'formUsd', 'dmUsd', 'hiringUsd', 'otherUsd'] as const) {
+      expect(c.spend[k] + z.spend[k] + n.spend[k]).toBeCloseTo(all.spend[k], 6)
+    }
+    expect(c.quality.total.leads + z.quality.total.leads + n.quality.total.leads).toBe(all.quality.total.leads)
   })
 })
 

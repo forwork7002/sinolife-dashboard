@@ -72,7 +72,7 @@ function pulseFilters(ctx: AnalyticsContext): PulseDealFilters {
     employeeIds: ctx.filters.employeeIds,
     departmentIds: ctx.filters.departmentIds,
     sourceIds: ctx.filters.sourceIds,
-    teams: brandTeamsOf(ctx),
+    ...brandTeamsOf(ctx),
     restrictToEmployeeIds: ctx.filters.restrictToEmployeeIds,
   }
 }
@@ -109,6 +109,7 @@ export class PulseService {
       keyPart(filters.sourceIds),
       keyPart(filters.restrictToEmployeeIds),
       keyPart(filters.teams),
+      filters.excludeTeams ? 'x' : '',
     ].join('|')
     const rows = await deliveryCache.get(key, () => this.repo.deliveryBoard(filters))
     const pipelineName = rows[0]?.pipelineName ?? null

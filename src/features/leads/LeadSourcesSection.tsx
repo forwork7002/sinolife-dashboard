@@ -214,10 +214,13 @@ const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
     'Ecommerce voronkasidagi «Сарафан маркетинг» manbali bitimlar: shu davrda ochilgani, kval — shu davrda «Доставлен» boʻlgani. Регистрация lidi emas, shuning uchun «Jami»ga kirmaydi; Регистрацияdagi «Сарафан маркетинг» lidlari «Boshqa»da.',
 }
 
+/** Collagen or Zextra — the slices under which what carries no brand is not shown. */
+const isOneBrand = (brand: string) => brand === 'Collagen' || brand === 'Zextra'
+
 /**
  * Under one brand, for what carries none — «Сарафан» (Ecommerce deals) and
  * the inbound calls: a dash and this, never the company's figure and never a
- * zero that reads as «nothing came in».
+ * zero that reads as «nothing came in». They are «Brendsiz»'s figures.
  */
 const unsplitNote = (what: string, prefix?: string) => (
   <p
@@ -331,7 +334,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
   const byTile = new Map<LeadTile, ChannelTileDto>(data?.tiles.rows.map((r) => [r.tile, r]))
   const total = data?.tiles.total
   const channelTile = (tile: LeadTile, extra?: ReactNode) => {
-    if (tile === 'sarafan' && data !== undefined && data.brand !== 'all') {
+    if (tile === 'sarafan' && data !== undefined && isOneBrand(data.brand)) {
       return (
         <StatTile
           key={tile}
@@ -408,7 +411,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
               : t === 'aiSmm'
                 ? aiElsewhereNote(data.tiles.aiElsewhere)
                 : t === 'inbound'
-                  ? data.brand !== 'all'
+                  ? isOneBrand(data.brand)
                     ? unsplitNote('Kiruvchi qoʻngʻiroqlar', '📞 qoʻngʻiroqlar')
                     : inboundCallsNote(data.inboundCalls)
                   : undefined,

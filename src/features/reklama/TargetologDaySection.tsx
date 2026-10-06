@@ -64,8 +64,10 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
   const owners = query.data?.data.forms.owners ?? []
   const products = (['Collagen', 'Zextra', 'Boshqa'] as const).filter((p) => owners.some((o) => o.product === p))
   // The page's brand switch wins over this picker, which then steps aside — two switches would contradict.
-  // The product picked may have no targetolog this period: fall back to the first that has one.
-  const product = brand !== 'all' ? brand : products.includes(picked) ? picked : (products[0] ?? picked)
+  // «Brendsiz» is the forms no brand claims («Boshqa»). The product picked may have no targetolog this
+  // period: fall back to the first that has one.
+  const product: MetaProduct =
+    brand === 'none' ? 'Boshqa' : brand !== 'all' ? brand : products.includes(picked) ? picked : (products[0] ?? picked)
   // The biggest spender first, as the sheet opens on Eldor.
   const shown = owners.filter((o) => o.product === product).sort((a, b) => b.spendUsd - a.spendUsd)
 

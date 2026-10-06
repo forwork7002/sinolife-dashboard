@@ -276,14 +276,16 @@ const between = (row: number, lo: number, hi: number) => row >= lo && row <= hi
  * Which brand a sheet line belongs to, for the page's Collagen / Zextra
  * switch (2026-10-05) — absent: a company-wide line no brand can claim
  * («Основные показатели», the registration totals 47–49, «Склад и упаковка»,
- * «Boshqa jamoalar»), or a team on neither list (`teamBrand`). A team's block
+ * «Boshqa jamoalar»); `none` («Brendsiz», 2026-10-06): a team on neither list
+ * (`teamBrand`). A team's block
  * and logistics follow its team; a registration group its ROP's team
  * (`GROUP_TEAM`, the three rows around its «квал» row); the marketing rows
  * and the P&L their own brand. `both`: the groups' heading, which each brand
  * keeps above its own groups.
  */
 export function lineBrand(line: RnpLine): RnpLine['brand'] {
-  if (line.team !== null) return teamBrand(line.team) ?? undefined
+  // A team on neither list (Kompaniya, Hayot, «(ROP yoʻq)») is «Brendsiz».
+  if (line.team !== null) return teamBrand(line.team) ?? 'none'
   const row = line.row
   if (row === null) return undefined
   if (row === 3001) return 'both'

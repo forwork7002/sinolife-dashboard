@@ -43,7 +43,7 @@
 import { apportion } from '@/lib/apportion'
 
 import { TEAM_ALIASES, teamBrand } from '../rnp/rnpSheet'
-import type { TargetProductFilter } from '../types'
+import { type BrandFilter, brandMatches } from '../types'
 
 /** The teams the client splits leads among (2026-10-01: their six plus Shohjaxon, Asliddin, Sadriddin). */
 export const SPLIT_ROPS: readonly string[] = Object.freeze([
@@ -233,11 +233,11 @@ export function splitProblem(rows: readonly SplitShare[]): string | null {
 
 /**
  * Team rows narrowed to one brand by the team they name (`teamBrand`, the
- * P&L's split) — the Collagen / Zextra switch on «Lidlar»'s team tables. A
- * row that names no team, or a team on neither list (Hayot), is in neither.
+ * P&L's split) — the brand switch on «Lidlar»'s team tables. A row that names
+ * no team, or a team on neither list (Hayot), is «Brendsiz».
  */
-export function teamRowsOfBrand<R extends { readonly rop: string | null }>(rows: readonly R[], brand: TargetProductFilter): readonly R[] {
-  return brand === 'all' ? rows : rows.filter((r) => teamBrand(r.rop) === brand)
+export function teamRowsOfBrand<R extends { readonly rop: string | null }>(rows: readonly R[], brand: BrandFilter): readonly R[] {
+  return brand === 'all' ? rows : rows.filter((r) => brandMatches(brand, teamBrand(r.rop)))
 }
 
 /**
@@ -245,21 +245,24 @@ export function teamRowsOfBrand<R extends { readonly rop: string | null }>(rows:
  * its share of the whole day, which is what the administrator set — and the
  * card's two bars are re-based on the brand's teams alone, so «Reja» and
  * «Haqiqatda olgan» read as that brand's split. Leads given to no team carry
- * no brand and leave. Read-only: a split is set for every team at once, and
- * a brand's slice of it cannot sum to 100 %.
+ * no brand: they are «Brendsiz», with the teams on neither list, so the three
+ * slices' totals add up to the whole card. Read-only: a split is set for
+ * every team at once, and a brand's slice of it cannot sum to 100 %.
  */
-export function leadSplitOfBrand(split: LeadSplitDto, brand: TargetProductFilter): LeadSplitDto {
+export function leadSplitOfBrand(split: LeadSplitDto, brand: BrandFilter): LeadSplitDto {
   if (brand === 'all') return split
   const rops = teamRowsOfBrand(split.rops, brand)
+  const brandless = brand === 'none'
   const zeros = split.week.days.map(() => 0)
+  const unassigned = brandless ? split.unassigned : 0
   return {
     ...split,
-    total: rops.reduce((n, r) => n + r.received, 0),
+    total: rops.reduce((n, r) => n + r.received, 0) + unassigned,
     fresh: rops.reduce((n, r) => n + (r.planLeads ?? 0), 0),
-    unassigned: 0,
+    unassigned,
     rops,
-    week: { days: split.week.days, unassigned: zeros },
-    bezkval: { rops: teamRowsOfBrand(split.bezkval.rops, brand), unassigned: zeros },
+    week: { days: split.week.days, unassigned: brandless ? split.week.unassigned : zeros },
+    bezkval: { rops: teamRowsOfBrand(split.bezkval.rops, brand), unassigned: brandless ? split.bezkval.unassigned : zeros },
     canEdit: false,
   }
 }

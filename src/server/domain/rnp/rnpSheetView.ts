@@ -25,7 +25,7 @@ import type { RnpBlockDto, RnpRowDto } from './rnpSheet'
 import { type RnpFactTone, type RnpLabelTone, RNP_SHEET_LAYOUT } from './rnpSheetLayout'
 
 /** A line's brand on the switch; `both` = a heading each brand keeps over its own rows. */
-export type RnpLineBrand = 'Collagen' | 'Zextra' | 'both'
+export type RnpLineBrand = 'Collagen' | 'Zextra' | 'none' | 'both'
 
 export type RnpLine =
   | {

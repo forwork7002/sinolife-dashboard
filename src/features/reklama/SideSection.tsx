@@ -17,8 +17,9 @@ import { DayCell, type Status, TableCard, money } from './reklamaUi'
  * itself); Kosmetika is Kosmetika Eldor's other campaigns. Neither is in the
  * DM sheet; Kosmetika's lead forms are also in «Отчёт Т» under «Boshqa».
  *
- * Neither belongs to Collagen or Zextra, so with one brand picked the table
- * says so instead of printing the brand-narrowed rows (partial HR money).
+ * Neither belongs to Collagen or Zextra: the table is «Brendsiz»'s, drawn
+ * under «Hammasi» and «Brendsiz», and under one brand it says so instead of
+ * printing that brand's (empty) rows.
  */
 export function SideSection({
   side,
@@ -29,10 +30,10 @@ export function SideSection({
   status: Status
   brand: DashboardBrand
 }) {
-  if (brand !== 'all') {
+  if (brand === 'Collagen' || brand === 'Zextra') {
     return (
       <TableCard title="HR · Kosmetika" hint="Meta sarfi, kunma-kun. HR — barcha vakansiya kampaniyalari va HR Eldor akkaunti.">
-        <EmptyState title="Brend boʻyicha ajratilmaydi" body="HR va Kosmetika na Collagen, na Zextra — «Hammasi» da koʻrinadi." />
+        <EmptyState title="Brend boʻyicha ajratilmaydi" body="HR va Kosmetika na Collagen, na Zextra — «Brendsiz» va «Hammasi» da koʻrinadi." />
       </TableCard>
     )
   }

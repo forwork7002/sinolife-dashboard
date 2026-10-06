@@ -4,20 +4,46 @@ import { PRODUCT_FILTER_OPTIONS, PRODUCT_TONE } from '@/features/target/targetTh
 
 import { type DashboardBrand, useDashboardFilters } from './useDashboardFilters'
 
+/** What each slice of the switch is called on screen. */
+export const BRAND_LABEL: Readonly<Record<DashboardBrand, string>> = {
+  all: 'Hammasi',
+  Collagen: 'Collagen',
+  Zextra: 'Zextra',
+  none: 'Brendsiz',
+}
+
 /**
- * «Hammasi · Collagen · Zextra» — narrows the whole screen to one brand.
+ * The main screens' slices: «Brendsiz» after the two brands, so a reader can
+ * add the three and land on «Hammasi» (the client, 2026-10-06).
+ */
+const DASHBOARD_BRAND_OPTIONS: readonly { value: DashboardBrand; label: string }[] = [
+  ...PRODUCT_FILTER_OPTIONS,
+  { value: 'none', label: BRAND_LABEL.none },
+]
+
+const TONE: Readonly<Record<Exclude<DashboardBrand, 'all'>, string>> = {
+  Collagen: PRODUCT_TONE.Collagen,
+  Zextra: PRODUCT_TONE.Zextra,
+  none: PRODUCT_TONE.Boshqa,
+}
+
+/**
+ * «Hammasi · Collagen · Zextra (· Brendsiz)» — narrows the whole screen to one slice.
  *
  * The house segmented control, with each brand's identity colour as a dot
  * (`PRODUCT_TONE`), so the switch already speaks the colour the comparisons
- * and charts use. Born on «Target tahlili»; every main screen carries it
- * since 2026-10-05 («zextraga qancha, collagenga qancha»).
+ * and charts use. Born on «Target tahlili» (which offers the two brands
+ * only); every main screen carries it since 2026-10-05 («zextraga qancha,
+ * collagenga qancha»), with «Brendsiz» since 2026-10-06.
  */
-export function BrandSwitch({
+export function BrandSwitch<T extends DashboardBrand>({
   value,
   onChange,
+  options,
 }: {
-  value: DashboardBrand
-  onChange: (next: DashboardBrand) => void
+  value: T
+  onChange: (next: T) => void
+  options: readonly { value: T; label: string }[]
 }) {
   return (
     <div
@@ -26,7 +52,7 @@ export function BrandSwitch({
       className="flex items-center gap-0.5 rounded-lg p-0.5"
       style={{ background: 'var(--grid)' }}
     >
-      {PRODUCT_FILTER_OPTIONS.map((option) => {
+      {options.map((option) => {
         const active = option.value === value
         return (
           <button
@@ -45,7 +71,7 @@ export function BrandSwitch({
               <span
                 aria-hidden
                 className="inline-block h-2 w-2 rounded-sm"
-                style={{ background: PRODUCT_TONE[option.value] }}
+                style={{ background: TONE[option.value as Exclude<DashboardBrand, 'all'>] }}
               />
             )}
             {option.label}
@@ -62,6 +88,7 @@ export function DashboardBrandSwitch() {
   return (
     <BrandSwitch
       value={filters.brand}
+      options={DASHBOARD_BRAND_OPTIONS}
       onChange={(next) => update({ brand: next === 'all' ? undefined : next })}
     />
   )

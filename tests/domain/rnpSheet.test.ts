@@ -1236,7 +1236,8 @@ describe('lineBrand', () => {
   it('follows the team, then the group\'s ROP, then the brand\'s own rows', () => {
     expect(lineBrand(value(132, 'Asliddin'))).toBe('Zextra')
     expect(lineBrand(value(274, 'Sevinch'))).toBe('Collagen')
-    expect(lineBrand(value(227, 'Hayot'))).toBeUndefined()
+    // A team on neither list is «Brendsiz».
+    expect(lineBrand(value(227, 'Hayot'))).toBe('none')
     // Sevinch guruh 50–52, Aziz guruh (Azizbek) 56–58, Sadriddin ROP 1011–1013.
     expect([50, 51, 52, 56, 1011, 1013].map((r) => lineBrand(value(r)))).toEqual(['Collagen', 'Collagen', 'Collagen', 'Collagen', 'Zextra', 'Zextra'])
     expect([4, 2005, 14, 394, 418].map((r) => lineBrand(value(r)))).toEqual(Array(5).fill('Collagen'))

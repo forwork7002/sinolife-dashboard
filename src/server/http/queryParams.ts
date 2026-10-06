@@ -16,6 +16,7 @@ import { z } from 'zod'
 import { PAYROLL_HALVES, PERIOD_PRESETS } from '@/server/domain/period/period'
 import { ROISTAT_DIMS } from '@/server/domain/roistat/roistatCuts'
 import {
+  BRAND_FILTERS,
   CONFIRMATION_ORDER_SORTS,
   CONFIRMATION_OUTCOMES,
   CONFIRMATION_QUEUE_MODES,
@@ -323,11 +324,11 @@ const targetScope = z.enum(TARGET_SCOPES).default('target')
 const targetProduct = z.enum(TARGET_PRODUCT_FILTERS).default('all')
 
 /**
- * The Collagen / Zextra switch every main screen carries (`?brand=`): both,
- * or one. A lead is filed by RNP's `leadBrand`, a sale by the team that sold
- * it (`teamBrand`), Meta money by its ad account (`adBudgetProduct`).
+ * The brand switch every main screen carries (`?brand=`, `BRAND_FILTERS`):
+ * both, one, or «Brendsiz». A lead is filed by RNP's `leadBrand`, a sale by
+ * the team that sold it (`teamBrand`), Meta money by `adBudgetProduct`.
  */
-export const brandFilter = z.enum(TARGET_PRODUCT_FILTERS).default('all')
+export const brandFilter = z.enum(BRAND_FILTERS).default('all')
 
 /** «Reklama samarasi»: the window and the brand switch. */
 export const reklamaOverviewQuerySchema = periodQuerySchema.and(z.object({ brand: brandFilter }))
