@@ -203,7 +203,7 @@ export function InboundCalls({
             value={total?.groups[g] ?? null}
             unit="count"
             fill={g === 'fresh' ? 'good' : undefined}
-            hint={total ? `${formatNumber(total.unreached[g])} tasi umuman ulanolmagan` : undefined}
+            hint={total ? `${formatNumber(total.unreached[g])} tasi javobsiz qoldi` : undefined}
             context={
               <p className="text-[11px] leading-snug" style={muted}>
                 {GROUP_RULE[g]}
@@ -212,6 +212,10 @@ export function InboundCalls({
           />
         ))}
       </div>
+      <p className="text-[11px] leading-snug" style={muted}>
+        «Javobsiz qoldi» — guruhdagi raqamlardan davr ichida bironta ham qoʻngʻirogʻi ulanmaganlari (suhbat 0 soniya):
+        hech kim koʻtarmagan yoki mijoz ulanmasdan qoʻyib qoʻygan. Bularga qayta qoʻngʻiroq qilish kerak.
+      </p>
 
       {data && data.undatedContacts > 0 && (
         <p className="text-xs" style={{ color: 'var(--status-warning)' }} data-testid="inbound-undated">
