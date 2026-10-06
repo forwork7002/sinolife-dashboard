@@ -4460,7 +4460,7 @@ export class InsightsRepository {
 
       WHAT IT HAS TO WORK OVER. The three queries that use this predicate join
       different things — the tiles and the ROP panel join only `deal` and
-      `customer`, the list also joins employee, stage and source. So the
+      `customer`, the list also joins employee and source. So the
       predicate may only depend on what ALL THREE have: the cohort aliased
       `c` (`scoped` or `visible`, both carrying `operator_id`), `d` and
       `cust`. Everything else is reached by a correlated EXISTS rather than an
@@ -5922,7 +5922,7 @@ export class InsightsRepository {
    *
    * The page is cut BEFORE it is dressed: filter, sort and LIMIT run over the
    * bare cohort, and only the fifty survivors are joined to their customer,
-   * operator, stage, source and line items. Both readings come back as JSON
+   * operator, source and line items. Both readings come back as JSON
    * so a single row can carry two differently-shaped lists; timestamps arrive
    * as ISO text without a zone and are read back as the UTC they are.
    */
@@ -6222,7 +6222,7 @@ export class InsightsRepository {
 
          The filter, the sort and the LIMIT run over the bare cohort — deal id,
          ROP, outcome, four timestamps — and only the fifty rows that survive
-         are joined to their customer, operator, stage, source and line items.
+         are joined to their customer, operator, source and line items.
          It used to be the other way round: every row in the window was fully
          dressed, including a LATERAL over deal_item per row, and then all but
          fifty thrown away. For a month that was three thousand decorated rows
