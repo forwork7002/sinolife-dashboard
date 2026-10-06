@@ -1628,17 +1628,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
   /**
    * Which of THESE deal ids the portal still holds — the recent-deletion check.
    *
-   * WHY NOT `listDealContacts`. That walk answers for all 464 000 deals and costs
-   * ~9 300 invocations, which is why it runs once a day — and why a test order
-   * posted to the Тасдиклаш queue and deleted a minute later sat on the board
-   * until the next night. The queue's recent orders are a few hundred to a few
-   * thousand ids we already know, so we ask about exactly those: one
+   * WHY NOT `listDealContacts`. That walk answers for all 464 000 deals and
+   * costs ~9 300 invocations, which is why it runs once a day — and why a test
+   * order posted to the Тасдиклаш queue and deleted a minute later sat on the
+   * board until the next night. The queue's recent orders are a few hundred to
+   * a few thousand ids we already know, so we ask about exactly those: one
    * `crm.deal.list` per 50 ids, filtered by ID, selecting only ID. 300 ids is
    * six invocations in one round trip.
    *
-   * The filter carries `CATEGORY_ID` exactly as `listDealContacts` does, so the two
-   * sweeps agree on what «gone» means: a deal moved into a pipeline we do not
-   * import is gone to both.
+   * The filter carries `CATEGORY_ID` exactly as `listDealContacts` does, so the
+   * two sweeps agree on what «gone» means: a deal moved into a pipeline we do
+   * not import is gone to both.
    *
    * THROWS RATHER THAN GUESSING, because the caller deletes whatever is not
    * returned. A refused command, a missing answer, or a row outside the ids
