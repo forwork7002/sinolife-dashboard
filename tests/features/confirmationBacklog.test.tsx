@@ -7,8 +7,9 @@ import { describe, expect, it, vi } from 'vitest'
 /**
  * THE BELL AND THE BOARD BEHIND IT ARE ONE COHORT, OR THE HEADER IS LYING.
  *
- * The badge counts `queuePressure(allTime, …, 'backlog')` — every order still
- * waiting, whenever it arrived. The page it links to answers whichever
+ * The badge counts `queueBacklogRows(allTime(…))` — `queueSql`'s backlog
+ * mode, every order still waiting, whenever it arrived — cut to the reader's
+ * scope. The page it links to answers whichever
  * question its URL asks for, and `queue` is the only thing in that URL that
  * chooses. When the mode switch was removed the link was rewritten to
  * `?outcomes=CONFIRM_NEW`, which narrows the STATE and leaves the board on its

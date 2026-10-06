@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { AlertsService } from '@/server/services/alertsService'
+import { AlertsService, resetAlertsQueueCache } from '@/server/services/alertsService'
 import type { InsightsRepository } from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { Principal } from '@/server/auth/rbac'
@@ -43,7 +43,7 @@ function serviceWith(
   } as unknown as ReferenceRepository
 
   const insights = {
-    queuePressure: async () => ({ pending: 0, overdue: 0 }),
+    queueBacklogRows: async () => [],
   } as unknown as InsightsRepository
 
   return new AlertsService(insights, reference)
@@ -134,13 +134,17 @@ describe('AlertsDto.syncError', () => {
     } as unknown as ReferenceRepository
 
     const insights = {
-      queuePressure: async () => {
+      queueBacklogRows: async () => {
         throw new Error('statement timeout')
       },
     } as unknown as InsightsRepository
 
+    // A memo filled by another file in this worker would answer instead of the
+    // failing read, and the case would pass without ever reaching it.
+    resetAlertsQueueCache()
     const dto = await new AlertsService(insights, reference).load(
-      ADMIN,
+      // An account that HOLDS the queue, so the failing read is really asked.
+      { ...ADMIN, isActive: true, sections: ['confirmation'] } as unknown as Principal,
       NO_SCOPE,
       new Date('2026-09-15T05:48:00.000Z'),
       'UTC',

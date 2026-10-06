@@ -9,7 +9,7 @@
  *
  * THE SECOND HALF OF THAT STOPPED BEING TRUE when the bell moved to the
  * backlog, and it took a while to notice because nothing on screen changed.
- * See `cachedQueuePressure` below for what it costs now and what holds the
+ * See `cachedBacklog` below for what it costs now and what holds the
  * line instead.
  *
  * IT CARRIED A THIRD: a list of faults behind a warning triangle. The client
@@ -26,16 +26,18 @@
 
 import type { Principal, RowScope } from '@/server/auth/rbac'
 import { canSeeSection } from '@/server/auth/rbac'
-import { scopedPeriod } from '@/server/domain/employees/branches'
 import { allTime } from '@/server/domain/period/period'
 import {
   classifyRefusal,
   SELF_LIMIT_CODE,
 } from '@/server/integrations/crm/bitrix24/refusal'
 import type { RefusalClass } from '@/server/integrations/crm/bitrix24/refusal'
-import type { InsightsRepository } from '@/server/repositories/insightsRepository'
+import type {
+  InsightsRepository,
+  QueueBacklogRow,
+} from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
-import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
+import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 export interface AlertsDto {
   /** The last successful sync, or null when none has ever completed. */
@@ -102,17 +104,17 @@ export interface AlertsDto {
 type QueueCount = { readonly pending: number; readonly overdue: number }
 
 /**
- * ONE backlog count per minute, however many people have the app open.
+ * ONE backlog read per three minutes, however many people have the app open
+ * and whoever they are.
  *
  * The header above says this payload is "CHEAP by construction — one row from
  * the sync log, one aggregate over today's queue". The first half is still
  * true. The second stopped being true when the bell moved to the BACKLOG: the
- * call below is `queuePressure(allTime, …, 'backlog')`, which is the whole
- * `queueSql` CTE chain over an unbounded left bound — measured at ~4 s on
- * production when this cache was written, and recorded as that in `Shell.tsx`
- * beside the poll that issues it. A four-second query is a perfectly
- * reasonable thing for a page to do once. This one runs on EVERY screen, once
- * a minute, per open tab.
+ * read below is the whole `queueSql` CTE chain over an unbounded left bound —
+ * measured at ~4 s on production when this cache was written, and recorded as
+ * that in `Shell.tsx` beside the poll that issues it. A four-second query is a
+ * perfectly reasonable thing for a page to do once. This one runs on EVERY
+ * screen, once a minute, per open tab.
  *
  * N people watching the dashboard were issuing N identical four-second
  * statements against a pool of eight on a one-core database. That is the same
@@ -127,22 +129,21 @@ type QueueCount = { readonly pending: number; readonly overdue: number }
  * moved and what was measured); this cache stays, because 1.7 s times every
  * open tab is still the same door.
  *
- * THE ANSWER IS SCOPED, SO THE KEY CARRIES THE SCOPE. This memo was first
- * written when the bell was company-wide by construction, and `ttlCache`'s own
- * header still says the safest rule is to memoise only unscoped answers. The
- * bell narrowed after that — `scopedPeriod(allTime, scope)` below — and the
- * two readings a ROP and an administrator get are genuinely different numbers.
- * Keyed on the window alone they would share one entry and the second caller
- * would be served the first's count: an administrator's 265 handed to a ROP
- * whose own floor has 12, or the reverse. So `keyPart(restrictToEmployeeIds)`
- * is part of the key, which is the one job that function exists for — it sorts
- * the list, and it keeps `undefined` and `[]` distinct, because an empty array
- * reads as "no filter" everywhere in this codebase and widens to the company.
- *
- * The hit rate survives it. A scope is a team, not a person: every tab an
- * administrator has open shares the `-` key, and each ROP's own tabs share
- * theirs, so the entry count is the number of distinct teams reading at once —
- * about sixteen on this portal — not the number of readers.
+ * THE MEMO HOLDS THE COMPANY'S WAITING ORDERS AND NO SCOPE, AND THAT IS WHAT
+ * MAKES AN UNSCOPED KEY SAFE (2026-10-06). The bell is narrowed — a ROP's
+ * badge counts their own floor — and until this date the narrowing ran in SQL,
+ * so the memo was keyed per scope, as `ttlCache`'s rule demands of a scoped
+ * answer. But the scope is applied only after the whole all-time cohort is
+ * built, so every scope paid the identical build: thirteen ROP accounts plus
+ * the administrators' key was about fourteen all-time builds every three
+ * minutes, ~24 s of a one-vCPU database's time idle and far more under load,
+ * to answer one question fourteen ways. The memo now answers the UNSCOPED
+ * question — every still-waiting order with its operator and arrival, 74–265
+ * rows (`InsightsRepository.queueBacklogRows`) — and `countFor` cuts each
+ * reader's two numbers from it per request. Nothing that differs between two
+ * accounts is in the memoised value, so nothing that differs belongs in the
+ * key; the reader's own answer is still narrowed on the server, by the scope
+ * the route resolved, and never leaves it un-narrowed.
  *
  * THE TTL IS THREE MINUTES, served stale for ten more while it rebuilds
  * (2026-10-05; it was 60 s). Polled once a minute by every tab, a 60 s entry
@@ -155,6 +156,9 @@ type QueueCount = { readonly pending: number; readonly overdue: number }
  *    AlertsDto under a key with no principal in it would hand an account
  *    barred from the queue a count of orders it cannot open — the exact
  *    disclosure the gate below was added to close.
+ *  * The CUT and the OVERDUE line, which are each reader's own and are taken
+ *    per request — the overdue line from the request's clock, so an order
+ *    crosses it when it does rather than when the memo was last rebuilt.
  *  * `syncedAt`. It is one indexed row, and being honest about the clock is
  *    the freshness chip's entire job; serving it from a cache would make the
  *    chip lie about its own staleness by up to a minute.
@@ -169,22 +173,33 @@ type QueueCount = { readonly pending: number; readonly overdue: number }
   it, or a database it saturates, is not.
 */
 const QUEUE_CACHE_TTL_MS = 3 * 60_000
-const queueCache = ttlCache<QueueCount>(QUEUE_CACHE_TTL_MS, { ...LIVE_CACHE, staleMs: 10 * 60_000 })
+const queueCache = ttlCache<readonly QueueBacklogRow[]>(QUEUE_CACHE_TTL_MS, {
+  ...LIVE_CACHE,
+  staleMs: 10 * 60_000,
+})
 
-function cachedQueuePressure(
+/**
+ * Test seam, and the hazard is real rather than theoretical: the memo is
+ * module-level, so two cases that stub the repository differently would
+ * otherwise be served each other's backlog. See `resetConfirmationRopCache`.
+ */
+export function resetAlertsQueueCache(): void {
+  queueCache.clear()
+}
+
+function cachedBacklog(
   insights: InsightsRepository,
-  scope: RowScope,
   timeZone: string,
-  overdueAfterMinutes: number,
-): Promise<QueueCount> {
-  const period = scopedPeriod(allTime(timeZone), scope)
+): Promise<readonly QueueBacklogRow[]> {
+  const period = allTime(timeZone)
   /*
     `allTime` is frozen at epoch → 2100 with `preset: 'custom'`, so the window
     half of this key is a constant. It is written out in full anyway: the key
     has to name every argument that reaches the query, or the next person to
     give the bell a real window silently serves them the all-time answer.
     (Same rule as `ttlCache.ts` states — the preset is part of the key —
-    satisfied here trivially rather than skipped.)
+    satisfied here trivially rather than skipped.) No scope, because none
+    reaches the query — see the block above.
   */
   const key = [
     'backlog',
@@ -192,13 +207,45 @@ function cachedQueuePressure(
     period.start.toISOString(),
     period.end.toISOString(),
     timeZone,
-    overdueAfterMinutes,
-    keyPart(period.restrictToEmployeeIds),
   ].join('|')
 
-  return queueCache.get(key, () =>
-    insights.queuePressure(period, overdueAfterMinutes, 'backlog'),
-  )
+  return queueCache.get(key, () => insights.queueBacklogRows(period))
+}
+
+/**
+ * One reader's bell, cut from the company's waiting orders.
+ *
+ * THE SAME CUT `InsightsRepository.scopeMatch` MAKES, on the same column:
+ * null is the whole company, any list admits exactly its operators — and an
+ * EMPTY list admits NOBODY. Every other id filter in this codebase reads `[]`
+ * as "no filter", which is right for a filter a reader chose and a disclosure
+ * for one the reader is subject to; `scopeValue` turns it into a sentinel that
+ * matches no row, and a `Set` of nothing does the same here.
+ *
+ * `overdue` is measured from the order's own arrival in the queue, not from
+ * the start of the day: an order that arrived ten minutes ago has not been
+ * waiting since midnight. The null guard is implied by the cohort — an order
+ * with no arrival is not on the board at all — and kept because the comparison
+ * beneath it is what the count means.
+ */
+function countFor(
+  rows: readonly QueueBacklogRow[],
+  scope: RowScope,
+  now: Date,
+  overdueAfterMinutes: number,
+): QueueCount {
+  const admitted =
+    scope.restrictToEmployeeIds === null ? null : new Set(scope.restrictToEmployeeIds)
+  const overdueBefore = now.getTime() - overdueAfterMinutes * 60_000
+
+  let pending = 0
+  let overdue = 0
+  for (const row of rows) {
+    if (admitted !== null && !admitted.has(row.operatorId)) continue
+    pending += 1
+    if (row.queuedAt !== null && row.queuedAt.getTime() < overdueBefore) overdue += 1
+  }
+  return { pending, overdue }
 }
 
 /**
@@ -274,9 +321,10 @@ export class AlertsService {
         The queue narrows now, so the second gate would do the opposite damage:
         a ROP whose board has forty orders waiting on it would be given the
         board and no bell to tell them so. The COUNT is narrowed by the same
-        scope the board is — `scope` is threaded into `queuePressure` below —
-        so the header and the page behind it still describe one set of rows,
-        which is the property this gate has always been protecting.
+        scope the board is — `countFor` cuts it on the operator `scopeMatch`
+        cuts the board on — so the header and the page behind it still
+        describe one set of rows, which is the property this gate has always
+        been protecting.
       */
       canSeeSection(principal, 'confirmation')
         ? /*
@@ -291,7 +339,7 @@ export class AlertsService {
              signal is CONFIRM_NEW, whenever it arrived, which is what the
              page shows behind the link.
           */
-          cachedQueuePressure(this.insights, scope, timeZone, 120)
+          cachedBacklog(this.insights, timeZone).then((rows) => countFor(rows, scope, now, 120))
         : Promise.resolve(null),
     ])
 

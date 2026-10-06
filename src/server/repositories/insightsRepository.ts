@@ -705,6 +705,20 @@ export interface ConfirmationRopRow {
 }
 
 /**
+ * One order still waiting in Тасдиклаш — the header bell's unit.
+ *
+ * The two facts that decide whether it counts for a reader and whether it is
+ * overdue, and nothing else: the bell counts these per reader and never prints
+ * one.
+ */
+export interface QueueBacklogRow {
+  /** The ОПЕРАТОР — `classified.operator_id`, the person every scope cuts on. */
+  readonly operatorId: string
+  /** The arrival in C4:NEW the wait is measured from. */
+  readonly queuedAt: Date | null
+}
+
+/**
  * What narrows the COHORT the tiles and the ROP panel are measured over.
  *
  * Deliberately a subset of `ConfirmationOrderQuery`: it carries everything
@@ -3674,9 +3688,15 @@ export class InsightsRepository {
    * Written once and placed in `classified`, the CTE where the operator is
    * resolved, because every reading of this board — the row list, its
    * pagination count, the five tiles, the ROP panel, the ROP filter's own
-   * options, the header bell, the rejection control chart and both of the
-   * sellers board's queue queries — is built on top of it. Narrowing anywhere
-   * else would be narrowing one of them.
+   * options, the rejection control chart and both of the sellers board's
+   * queue queries — is built on top of it. Narrowing anywhere else would be
+   * narrowing one of them.
+   *
+   * THE ONE EXCEPTION IS THE HEADER BELL, and it cuts on the same column.
+   * `queueBacklogRows` binds null here and `alertsService.countFor` narrows
+   * its rows per reader, on `operator_id`, with the same empty-list rule —
+   * because the scope lands after the all-time build, and one shared build
+   * beats one per ROP.
    *
    * NULL IS THE WHOLE COMPANY. An empty array is not: `= ANY('{}')` is false
    * for every row, which is the correct answer for a scope that admits nobody
@@ -4156,7 +4176,8 @@ export class InsightsRepository {
   }
 
   /**
-   * What the header's bell counts: still waiting, and waiting too long.
+   * What the header's bell counts: every order still waiting, whenever it
+   * arrived — one row each, for the WHOLE company.
    *
    * Built on the SAME cohort the board is, so the bell and the screen it
    * links to can never disagree — a header that says three and a page that
@@ -4165,36 +4186,31 @@ export class InsightsRepository {
    * opened the board on its own window, and the header read 7 over a page
    * that read 2 for a fortnight.
    *
-   * NOT TODAY'S WINDOW. `alertsService` passes an all-time span in backlog
-   * mode, and what keeps that affordable to fetch from every page every
-   * minute is the join to open deals inside `queueSql` — not a narrow date
-   * bound, which backlog mode by definition does not have.
+   * NOT TODAY'S WINDOW. `alertsService` passes an all-time span, and what
+   * keeps that affordable is the live-orders-only filter inside `queueSql`'s
+   * backlog cohort — not a narrow date bound, which backlog mode by definition
+   * does not have.
    *
-   * `overdue` is measured from the order's own arrival in the queue, not from
-   * the start of the day: an order that arrived ten minutes ago has not been
-   * waiting since midnight.
-   *
-   * The `queued_at IS NOT NULL` guard below is now implied by the cohort — an
-   * order with no arrival is not on the board at all — and it is kept because
-   * the comparison beneath it is what the count means, and a reader should
-   * not have to prove the null case away before trusting the number.
+   * ROWS, NOT A COUNT, AND NOBODY'S IN PARTICULAR (2026-10-06). This was
+   * `queuePressure`, which counted pending and overdue in SQL under the
+   * caller's scope — and the scope is applied only in `scoped`, AFTER `moves`
+   * has read every signal-stage history row since the epoch and `agg` has
+   * grouped them per deal. Every scope therefore paid the identical all-time
+   * build (1.7 s idle, 23.4 s under load on 2026-10-05), and the bell's memo,
+   * keyed per scope as it had to be, rebuilt it once per ROP with a tab open:
+   * about fourteen builds every three minutes on one vCPU, for one answer.
+   * The waiting orders are 74–265 rows, so they are read ONCE for everybody
+   * and each reader's two numbers are counted from them in `alertsService`,
+   * which mirrors `scopeMatch` on the same `operator_id`.
    */
-  async queuePressure(
-    period: ScopedWindow,
-    overdueAfterMinutes = 120,
-    mode: ConfirmationQueueMode = 'window',
-  ): Promise<{ pending: number; overdue: number }> {
-    const rows = await this.prisma.$queryRawUnsafe<{ pending: bigint; overdue: bigint }[]>(
-      `${InsightsRepository.queueSql(mode, '$4')}
-       SELECT
-         count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS pending,
-         count(*) FILTER (
-           WHERE c.outcome = 'CONFIRM_NEW'
-             AND c.queued_at IS NOT NULL
-             AND c.queued_at < $3
-         )::bigint AS overdue
+  async queueBacklogRows(period: Period): Promise<QueueBacklogRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { operator_id: string; queued_at: Date | null }[]
+    >(
+      `${InsightsRepository.queueSql('backlog', '$3')}
+       SELECT c.operator_id, c.queued_at
        /*
-         classified, NOT numbered — this reading never shows the day's number.
+         scoped, NOT numbered — this reading never shows the day's number.
 
          numbered adds a row_number() partitioned by ROP and Tashkent day,
          which is a Sort plus a WindowAgg over the whole cohort. Postgres does
@@ -4204,14 +4220,22 @@ export class InsightsRepository {
          number; the tiles, the ROP panel, the ROP options, the header bell and
          the rejection chart do not.
        */
-       FROM scoped c`,
+         FROM scoped c
+        WHERE c.outcome = 'CONFIRM_NEW'`,
       period.start,
       period.end,
-      new Date(Date.now() - overdueAfterMinutes * 60_000),
-      InsightsRepository.scopeValue(period),
+      /*
+        NULL, SAID DELIBERATELY: the whole company. This answer is memoised
+        once for every reader and narrowed per reader afterwards, so a scope
+        here would be the first reader's scope served to everyone after them.
+      */
+      null,
     )
 
-    return { pending: int(rows[0]?.pending), overdue: int(rows[0]?.overdue) }
+    return rows.map((r) => ({
+      operatorId: r.operator_id,
+      queuedAt: r.queued_at === null ? null : new Date(r.queued_at),
+    }))
   }
 
   /** How the window's queue split across the five states. */
