@@ -833,7 +833,9 @@ export function Shell({
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="focusable rounded-lg px-2.5 py-1.5 text-[11px] font-semibold whitespace-nowrap"
+                  // The controls' radius and small height (28px, a Button `sm`),
+                  // not the 8px corner and padding-made 29px it had beside them.
+                  className="focusable inline-flex h-7 items-center rounded-[var(--radius-panel-sm)] px-2.5 text-[11px] font-semibold whitespace-nowrap"
                   // Teal takes the dark ink in both themes: white on it read
                   // 4.31:1 in light and 2.07:1 in dark (see --ink-on-series).
                   style={{ background: 'var(--series-3)', color: 'var(--ink-on-series-bright)' }}

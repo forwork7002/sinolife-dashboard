@@ -265,6 +265,11 @@ describe('the controls are glass, at one radius and two heights', () => {
     expect(picker[1]).toMatch(/h-10 .*sm:h-8/)
     expect(picker[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\]/)
 
+    // The header's «Yangi versiya» button sits among them at a Button `sm`'s height and corner.
+    const version = /Yangi versiya · yangilash/.exec(source('src/components/layout/Shell.tsx'))
+    expect(version).not.toBeNull()
+    expect(source('src/components/layout/Shell.tsx')).toMatch(/className="focusable inline-flex h-7 items-center rounded-\[var\(--radius-panel-sm\)\][^"]*"[\s\S]{0,300}Yangi versiya/)
+
     // The retired solid-ink active segment, and the 8px / 6px corners, are gone from both files.
     for (const [name, file] of [['Controls', controls], ['PeriodFilter', period]] as const) {
       expect(file, name).not.toMatch(/background: active \? 'var\(--ink-primary\)'/)
