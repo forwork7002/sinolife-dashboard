@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { Principal, RowScope } from '@/server/auth/rbac'
+import { allTime } from '@/server/domain/period/period'
 import type {
   InsightsRepository,
   QueueBacklogRow,
@@ -45,12 +46,17 @@ function reader(sections: readonly string[] = ['confirmation']): Principal {
   } as unknown as Principal
 }
 
-/** A service whose repository counts how often the backlog is actually read. */
+/**
+ * A service whose repository counts how often the backlog is actually read,
+ * and remembers what each read was asked for.
+ */
 function counted(rows: readonly QueueBacklogRow[] = WAITING) {
   let builds = 0
+  const asked: unknown[] = []
   const insights = {
-    queueBacklogRows: async () => {
+    queueBacklogRows: async (window: unknown) => {
       builds += 1
+      asked.push(window)
       return [...rows]
     },
   } as unknown as InsightsRepository
@@ -63,7 +69,7 @@ function counted(rows: readonly QueueBacklogRow[] = WAITING) {
   const bell = async (scope: RowScope, now: Date = NOW, principal: Principal = reader()) =>
     (await service.load(principal, scope, now, 'Asia/Tashkent')).queue
 
-  return { bell, builds: () => builds }
+  return { bell, builds: () => builds, asked: () => asked }
 }
 
 describe('the header bell', () => {
@@ -75,6 +81,41 @@ describe('the header bell', () => {
     await bell({ restrictToEmployeeIds: null })
 
     expect(builds()).toBe(1)
+  })
+
+  it('asks the build for the company, even when a narrowed reader starts it', async () => {
+    const { bell, asked } = counted()
+
+    /*
+      The FIRST reader's scope is the dangerous one: the build it starts is
+      what every later reader is cut from, so a scope that reached it would
+      serve Aziz's floor to the administrator as the company's backlog.
+    */
+    await bell({ restrictToEmployeeIds: ['aziz'] })
+    await bell({ restrictToEmployeeIds: null })
+
+    expect(asked()).toEqual([
+      expect.objectContaining({
+        start: new Date(0),
+        preset: 'custom',
+        restrictToEmployeeIds: null,
+      }),
+    ])
+  })
+
+  it('will not type-check a bare window, or a reader’s scope, into the build', () => {
+    /*
+      Checked by `tsc` over this file (`npm run typecheck`), not by vitest:
+      should `queueBacklogRows` accept either argument again, its directive
+      goes unused and the type check fails. The function is never called.
+    */
+    const typeOnly = (insights: InsightsRepository) => {
+      // @ts-expect-error — a bare Period says nobody's rows; this build must say the company's.
+      void insights.queueBacklogRows(allTime('Asia/Tashkent'))
+      // @ts-expect-error — a narrowed scope here would be one reader's rows, served to all.
+      void insights.queueBacklogRows({ ...allTime('Asia/Tashkent'), restrictToEmployeeIds: ['aziz'] })
+    }
+    expect(typeOnly).toBeTypeOf('function')
   })
 
   it('still answers each reader with their own floor', async () => {

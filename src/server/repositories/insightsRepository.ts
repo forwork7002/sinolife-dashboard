@@ -4199,8 +4199,17 @@ export class InsightsRepository {
    * The waiting orders are 74–265 rows, so they are read ONCE for everybody
    * and each reader's two numbers are counted from them in `alertsService`,
    * which mirrors `scopeMatch` on the same `operator_id`.
+   *
+   * THE ONE CALLER THAT SAYS «EVERYBODY», AND THE TYPE MAKES IT SAY SO. Every
+   * other confirmation reading takes a `ScopedWindow`, whose required
+   * `restrictToEmployeeIds` is what forces a caller to say whose rows it
+   * wants. This one narrows that field to `null`: a bare `Period` does not
+   * type-check, and neither does a reader's narrowed scope — the one argument
+   * that would turn the memoised answer into the first reader's rows.
    */
-  async queueBacklogRows(period: Period): Promise<QueueBacklogRow[]> {
+  async queueBacklogRows(
+    period: ScopedWindow & { readonly restrictToEmployeeIds: null },
+  ): Promise<QueueBacklogRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
       { operator_id: string; queued_at: Date | null }[]
     >(
@@ -4222,11 +4231,12 @@ export class InsightsRepository {
       period.start,
       period.end,
       /*
-        NULL, SAID DELIBERATELY: the whole company. This answer is memoised
-        once for every reader and narrowed per reader afterwards, so a scope
-        here would be the first reader's scope served to everyone after them.
+        NULL, SAID BY THE SIGNATURE: the whole company. This answer is
+        memoised once for every reader and narrowed per reader afterwards, so
+        a scope here would be the first reader's scope served to everyone
+        after them.
       */
-      null,
+      InsightsRepository.scopeValue(period),
     )
 
     return rows.map((r) => ({

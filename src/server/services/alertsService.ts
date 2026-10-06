@@ -37,7 +37,7 @@ import type {
   QueueBacklogRow,
 } from '@/server/repositories/insightsRepository'
 import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
-import { LIVE_CACHE, ttlCache } from './ttlCache'
+import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 export interface AlertsDto {
   /** The last successful sync, or null when none has ever completed. */
@@ -191,15 +191,20 @@ function cachedBacklog(
   insights: InsightsRepository,
   timeZone: string,
 ): Promise<readonly QueueBacklogRow[]> {
-  const period = allTime(timeZone)
+  /*
+    THE COMPANY, SAID OUT LOUD. `queueBacklogRows` takes a window whose scope
+    can only be `null`, so the reader's scope cannot be handed to the build by
+    one edit — it is cut from the rows afterwards, in `countFor`.
+  */
+  const period = { ...allTime(timeZone), restrictToEmployeeIds: null }
   /*
     `allTime` is frozen at epoch → 2100 with `preset: 'custom'`, so the window
-    half of this key is a constant. It is written out in full anyway: the key
-    has to name every argument that reaches the query, or the next person to
-    give the bell a real window silently serves them the all-time answer.
-    (Same rule as `ttlCache.ts` states — the preset is part of the key —
-    satisfied here trivially rather than skipped.) No scope, because none
-    reaches the query — see the block above.
+    half of this key is a constant, and the scope is always «-». Both are
+    written out in full anyway: the key has to name every argument that
+    reaches the query, or the next person to give the bell a real window
+    silently serves them the all-time answer. (Same rule as `ttlCache.ts`
+    states — the preset and the scope are part of the key — satisfied here
+    trivially rather than skipped.)
   */
   const key = [
     'backlog',
@@ -207,6 +212,7 @@ function cachedBacklog(
     period.start.toISOString(),
     period.end.toISOString(),
     timeZone,
+    keyPart(period.restrictToEmployeeIds),
   ].join('|')
 
   return queueCache.get(key, () => insights.queueBacklogRows(period))
