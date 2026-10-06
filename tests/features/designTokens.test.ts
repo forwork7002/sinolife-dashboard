@@ -58,6 +58,15 @@ function token(theme: Theme, name: string): string {
 /** A percentage token or literal, as a fraction. */
 const fraction = (value: string) => Number(/^([\d.]+)%$/.exec(value)?.[1] ?? NaN) / 100
 
+/** Every component source under `src/components` and `src/features`, by path. */
+const COMPONENTS: ReadonlyMap<string, string> = new Map(
+  ['src/components', 'src/features'].flatMap((dir) =>
+    (readdirSync(join(process.cwd(), dir), { recursive: true }) as string[])
+      .filter((file) => file.endsWith('.tsx'))
+      .map((file) => [`${dir}/${file}`, readFileSync(join(process.cwd(), dir, file), 'utf8')] as const),
+  ),
+)
+
 // --- colour arithmetic: WCAG 2 contrast, sRGB compositing, oklab mixing -----
 
 type Rgb = readonly [number, number, number]
@@ -215,15 +224,10 @@ describe('ink on a series fill', () => {
   })
 
   it('is never a literal white in a component, where no theme can reach it', () => {
-    const offenders: string[] = []
-    for (const dir of ['src/components', 'src/features']) {
-      for (const file of readdirSync(join(process.cwd(), dir), { recursive: true }) as string[]) {
-        if (!file.endsWith('.tsx')) continue
-        const source = readFileSync(join(process.cwd(), dir, file), 'utf8')
-        if (/\btext-white\b|color:\s*['"](#fff(fff)?|white)['"]/i.test(source)) offenders.push(`${dir}/${file}`)
-      }
-    }
-    expect(offenders).toEqual([])
+    const offenders = [...COMPONENTS].filter(([, source]) =>
+      /\btext-white\b|color:\s*['"](#fff(fff)?|white)['"]/i.test(source),
+    )
+    expect(offenders.map(([file]) => file)).toEqual([])
   })
 
   /*
@@ -246,5 +250,58 @@ describe('ink on a series fill', () => {
       expect(contrast(white, stop)).toBeGreaterThanOrEqual(4.5)
       expect(contrast(white, stop.map((v) => Math.min(255, v * gain)) as unknown as Rgb)).toBeGreaterThanOrEqual(4.5)
     }
+  })
+})
+
+describe('line glow', () => {
+  /*
+    From 2026-09-28 one unscoped rule gave every line and area the same blue
+    halo in dark, whatever it encoded — orange FAKT 1, red refusals, the green
+    confirmation rate — while the scoped `.glow-series-1` had no user and the
+    FAKT chart's `glow-series-2` matched no rule. Colour follows the entity: a
+    mark glows in its own slot or not at all.
+  */
+  const rules = [...CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map(([, selector, body]) => ({
+    selector: selector!.trim(),
+    body: body!,
+  }))
+
+  it('is never app-wide: a filter on a line or area curve is always scoped by a glow class', () => {
+    const curves = rules.filter((r) => /recharts-(line|area)-curve/.test(r.selector) && /filter\s*:/.test(r.body))
+    expect(curves.length).toBeGreaterThan(0)
+    for (const rule of curves) expect(rule.selector).toMatch(/glow-series-\d/)
+  })
+
+  it('has a colour for exactly the slots that opt in, each its own slot, all under the one filter', () => {
+    const defined = new Map(
+      [...CSS.matchAll(/\.glow-series-(\d)\s*\{\s*--glow-color:\s*var\(--series-(\d)\);\s*\}/g)].map((m) => [m[1]!, m[2]!]),
+    )
+    for (const [n, slot] of defined) expect(slot, `.glow-series-${n}`).toBe(n)
+
+    const used = new Set([...COMPONENTS.values()].flatMap((source) => [...source.matchAll(/glow-series-(\d)/g)].map((m) => m[1]!)))
+    expect([...used].sort()).toEqual([...defined.keys()].sort())
+
+    const glow = rules.find((r) => /drop-shadow\([^;]*var\(--glow-color\)/.test(r.body))
+    expect(glow).toBeDefined()
+    for (const n of defined.keys()) expect(glow!.selector).toContain(`.glow-series-${n}`)
+  })
+
+  it('opts a mark in under the slot its stroke wears, and never a status line', () => {
+    let optedIn = 0
+    for (const [file, source] of COMPONENTS) {
+      for (const [block] of source.matchAll(/<(?:Line|Area)\b[\s\S]*?\/>/g)) {
+        const glow = /className="glow-series-(\d)"/.exec(block)
+        const stroke = /stroke="var\(--((?:series|status)-[\w-]+)\)"/.exec(block)
+        if (glow) optedIn += 1
+        if (stroke?.[1]!.startsWith('status-')) expect(glow, `${file}: a status line`).toBeNull()
+        if (glow && stroke) expect(stroke[1], file).toBe(`series-${glow[1]}`)
+      }
+    }
+    expect(optedIn).toBeGreaterThanOrEqual(7)
+  })
+
+  it('collapses to nothing in light and shows in dark', () => {
+    expect(fraction(token('light', '--line-glow-mix'))).toBe(0)
+    expect(fraction(token('dark', '--line-glow-mix'))).toBeGreaterThan(0)
   })
 })

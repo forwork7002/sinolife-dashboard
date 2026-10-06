@@ -311,11 +311,13 @@
    * with a lit top edge and neon plot lines. Two strengths, both 0 in light:
    * a card's top-edge sheen (ink mixed over the card, so it is white on the
    * navy card and would be a smudge on a white one) and the glow under a
-   * plot line. The gradient behind the active rail item is theme-free: white
-   * text on both stops measures 4.9:1 and 5.9:1.
+   * plot line — a mix percentage, not a finished shadow, because each line
+   * glows in its OWN series colour and that colour is only known at the line
+   * (`.glow-series-N`, ANALYSIS INDICATORS). The gradient behind the active
+   * rail item is theme-free: white text on both stops measures 4.9:1 and 5.9:1.
    */
   --card-sheen: 0%;
-  --line-glow: none;
+  --line-glow-mix: 0%;
   --rail-active-bg: linear-gradient(135deg, #2f66f0, #6a3df0);
 
   /**
@@ -506,7 +508,7 @@
     --grain-alpha: 0.04;
     --glow-hero-mix: 40%;
     --card-sheen: 5%;
-    --line-glow: drop-shadow(0 0 6px rgba(80, 140, 255, 0.55));
+    --line-glow-mix: 55%;
   }
 }
 
@@ -630,7 +632,7 @@
   --grain-alpha: 0.04;
   --glow-hero-mix: 40%;
   --card-sheen: 5%;
-  --line-glow: drop-shadow(0 0 6px rgba(80, 140, 255, 0.55));
+  --line-glow-mix: 55%;
 }
 
 /**
@@ -906,14 +908,6 @@ body {
 .display {
   letter-spacing: -0.03em;
   line-height: 1.1;
-}
-
-/* Neon under a plot line — dark only (--line-glow is `none` in light). A
-   filter on a handful of paths, never on bars or grid: cheap, and the glow
-   never touches a mark that has to be measured against its neighbour. */
-.recharts-line-curve,
-.recharts-area-curve {
-  filter: var(--line-glow);
 }
 
 /**
@@ -2133,20 +2127,32 @@ tr:hover > .tcol-sticky:not(.is-edge) {
 }
 
 /**
- * Line glow — SCOPED, never app-wide.
+ * Line glow — opted into per series, never app-wide; dark only.
  *
- * A faint halo under the data line, from the line's own colour. It is what
- * makes a chart read as luminous rather than drawn — most visible in dark
- * mode, where a bare 2px stroke on a near-black card looks like a wire.
+ * A faint halo under a data line, from the line's OWN colour, at
+ * --line-glow-mix: 55% in dark, where a bare 2px stroke on a navy card reads
+ * as a wire, and 0% in light, where the mix collapses to transparent (a glow
+ * in daylight is smudge). A filter on a handful of paths, never on bars or
+ * grid, so it never touches a mark measured against its neighbour.
  *
- * The scope class is the rule: an unscoped `.recharts-area-curve` selector
- * would hand a series-1 blue halo to every future Area drawn in any other
- * slot — a colour-follows-entity violation waiting to fire. Each chart opts
- * in with the class that names its own series. (The sparkline glows via an
- * inline drop-shadow from its own colour prop, the same pattern.)
+ * THE CLASS IS THE RULE. From 2026-09-28 an unscoped `.recharts-line-curve`
+ * rule gave every line the same blue halo whatever it encoded — the orange
+ * FAKT 1 area, the red refusals line, the green confirmation rate — while
+ * the one scoped rule, `.glow-series-1`, had lost its last user and the FAKT
+ * chart's `glow-series-2` matched nothing. A <Line> or <Area> opts in
+ * with `className="glow-series-N"`, N the slot its stroke already wears; only
+ * the slots in use have a rule. A STATUS line never glows — a state is not an
+ * entity — and neither does a dashed projection, which is drawn to read
+ * quieter than what was measured.
  */
-.glow-series-1 .recharts-area-curve {
-  filter: drop-shadow(0 2px 8px color-mix(in oklab, var(--series-1) 45%, transparent));
+.glow-series-1 { --glow-color: var(--series-1); }
+.glow-series-2 { --glow-color: var(--series-2); }
+.glow-series-3 { --glow-color: var(--series-3); }
+.glow-series-8 { --glow-color: var(--series-8); }
+
+:is(.glow-series-1, .glow-series-2, .glow-series-3, .glow-series-8)
+  :is(.recharts-line-curve, .recharts-area-curve) {
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--glow-color) var(--line-glow-mix), transparent));
 }
 
 /* Heatmap cells lift slightly under the pointer, so the eye keeps its place

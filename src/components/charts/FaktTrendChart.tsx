@@ -213,10 +213,7 @@ export function FaktTrendChart({
       legend left: `flex: 1` with `minHeight` still on it, so a fixed-height
       caller loses the legend's band from the plot rather than growing the card.
       */}
-      <div
-        className="glow-series-2"
-        style={{ position: 'relative', width: '100%', flex: 1, minHeight: 260 }}
-      >
+      <div style={{ position: 'relative', width: '100%', flex: 1, minHeight: 260 }}>
         <div style={{ position: 'absolute', inset: 0 }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
@@ -320,6 +317,9 @@ export function FaktTrendChart({
               <Area
                 type="monotone"
                 dataKey="fakt1"
+                // The dark-mode halo in the mark's own slot (globals.css, «Line
+                // glow») — on the measured lines only, never the projections.
+                className="glow-series-2"
                 stroke="var(--series-2)"
                 strokeWidth={2}
                 fill="url(#fakt1Fill)"
@@ -359,6 +359,7 @@ export function FaktTrendChart({
               <Line
                 type="monotone"
                 dataKey="fakt2"
+                className="glow-series-3"
                 stroke="var(--series-3)"
                 strokeWidth={2}
                 dot={endpointDot({

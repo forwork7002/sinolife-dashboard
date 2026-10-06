@@ -182,6 +182,8 @@ export function RoistatDailyChart({
               <Line
                 type="monotone"
                 dataKey="roas"
+                // ROAS_COLOUR's slot, so it glows in its own colour in dark (globals.css, «Line glow»).
+                className="glow-series-3"
                 stroke={ROAS_COLOUR}
                 strokeWidth={2}
                 dot={false}

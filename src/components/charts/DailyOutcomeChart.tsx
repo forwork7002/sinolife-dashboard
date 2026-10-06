@@ -148,6 +148,8 @@ export function DailyOutcomeChart({
               <Line
                 type="monotone"
                 dataKey="done"
+                // Each line glows in its own slot in dark (globals.css, «Line glow»).
+                className="glow-series-3"
                 stroke="var(--series-3)"
                 strokeWidth={2}
                 dot={endpointDot({
@@ -171,6 +173,7 @@ export function DailyOutcomeChart({
               <Line
                 type="monotone"
                 dataKey="lost"
+                className="glow-series-8"
                 stroke="var(--series-8)"
                 strokeWidth={2}
                 dot={endpointDot({

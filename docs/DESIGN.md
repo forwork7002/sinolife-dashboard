@@ -340,10 +340,14 @@ view()`, composited by the browser, nothing on the main thread. Print disables
 it (a scroll-driven animation would freeze unseen cards at opacity 0 on
 paper), and so does reduced motion.
 
-**Lines glow, faintly.** A `drop-shadow` of the series' own colour under the
-data line — the same hue at low opacity, never a new colour. It is most of
-the difference between a chart that reads as luminous and a wire on a dark
-card.
+**Lines glow, faintly, in dark.** A `drop-shadow` of the series' own colour
+under the data line — the same hue at `--line-glow-mix` (55% dark, 0% light),
+never a new colour. It is most of the difference between a chart that reads as
+luminous and a wire on a dark card. A mark opts in with
+`className="glow-series-N"` on its `<Line>` or `<Area>`, N the slot its stroke
+wears; there is no app-wide rule (one shipped for a week and gave every line
+the same blue). A status line never glows, and neither does a dashed
+projection.
 
 ---
 
