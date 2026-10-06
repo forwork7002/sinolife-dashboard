@@ -7,11 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * «REFUSED, THEN DELIVERED ANYWAY» IS NOT A PART OF «Отказ».
  *
  * The six columns are each order's CURRENT stage. `revived` is a delivery
- * that came after the order's LAST refusal, so the order stands at or past
- * Доставлено — it is counted in Успешно and was never one of the Отказ
- * orders. The line used to read «Отказ koʻrsatgan yoʻqotishdan N tasi …
- * yetkazilgan», and a manager who took N off Отказ understated the loss by
- * exactly N. This pins the sentence the other way round.
+ * that came after the order's LAST refusal, so the order cannot be standing
+ * in a refusal stage — it was never one of the Отказ orders. The line used to
+ * read «Отказ koʻrsatgan yoʻqotishdan N tasi … yetkazilgan», and a manager
+ * who took N off Отказ understated the loss by exactly N. This pins the
+ * sentence the other way round — and pins that it names no column it cannot
+ * vouch for: the count is every such FAKT 1 order, and one moved on after its
+ * delivery is not in Успешно.
  */
 
 vi.mock('next/navigation', () => ({
@@ -113,7 +115,11 @@ describe('the revived-orders line on Logistika', () => {
 
     expect(text).toContain('12 ta buyurtma')
     expect(text).toMatch(/Отказ ustunida emas/)
-    expect(text).toMatch(/Успешно ichida sanalgan/)
+    expect(text).toMatch(/hozirgi bosqichi boʻyicha sanalgan/)
+    /* Not «Успешно ichida»: an order delivered after its refusal and then
+       moved to «База», or back to another Доставка stage, is in that column
+       and still in this count, so the claim would be false for it. */
+    expect(text).not.toMatch(/Успешно/)
     /* The old claim — that N of Отказ's loss was delivered — is the reading
        that led a reader to subtract N from a column it was never in. */
     expect(text).not.toMatch(/yoʻqotishdan/)

@@ -742,10 +742,12 @@ export interface LogisticsDto {
     /**
      * Refused, and then delivered anyway — refusals that recovered, and NOT a
      * part of «Отказ»: the columns are the CURRENT stage, and an order whose
-     * last delivery outlived its last refusal stands in Успешно. Taking it off
-     * Отказ would understate the loss. Decided against the LAST refusal, so a
-     * parcel that was delivered, bounced and then refused is not reported as
-     * a recovery.
+     * last delivery outlived its last refusal cannot be standing in a refusal
+     * stage. Taking it off Отказ would understate the loss. Which column it IS
+     * in is not fixed: Успешно while it stays on Доставлено, wherever it went
+     * once moved on (`unbucketedOrders` for another funnel). Decided against
+     * the LAST refusal, so a parcel that was delivered, bounced and then
+     * refused is not reported as a recovery.
      */
     readonly revivedOrders: number
     readonly revived: MoneyDto

@@ -462,9 +462,10 @@ export interface LogisticsCut {
   /**
    * Refused, and then delivered anyway — refusals that recovered, and NOT a
    * part of the «Отказ» column: `bucket` is the CURRENT stage, and an order
-   * whose last delivery outlived its last refusal stands in Успешно. Decided
-   * against the LAST refusal, so a parcel that was delivered, bounced and
-   * then refused is not reported as a recovery.
+   * whose last delivery outlived its last refusal cannot be standing in a
+   * refusal stage (Успешно while it stays on Доставлено, wherever it went
+   * once moved on). Decided against the LAST refusal, so a parcel that was
+   * delivered, bounced and then refused is not reported as a recovery.
    */
   readonly revivedOrders: number
   readonly revivedMinor: bigint
@@ -2875,9 +2876,10 @@ export class InsightsRepository {
 
           A recovery, and NOT a part of the Отказ column: bucket is the
           CURRENT stage, and a delivery after the last refusal means the
-          order stands at or past Доставлено, so it sits in Успешно. Both
-          sides come from CTEs already scanned; see refused_at for why the
-          last refusal and not the first.
+          order cannot be standing in a refusal stage now. Which column it
+          is in is not fixed: Успешно while it stays on Доставлено, wherever
+          it went once moved on. Both sides come from CTEs already scanned;
+          see refused_at for why the last refusal and not the first.
         */
         (dv.last_delivered_at IS NOT NULL
          AND rf.refused_at IS NOT NULL
