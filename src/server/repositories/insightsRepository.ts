@@ -1333,11 +1333,15 @@ export class InsightsRepository {
              THE FALLBACK IS THE OPERATOR WHO SOLD IT, NOT THE DEAL'S HOLDER
              TODAY, for the reason the classified CTE gives: the portal moves
              a deal to back office while it is processed, so ASSIGNED_BY_ID
-             drifts (556 July orders once sat on the head of Операцион). The
-             fallback decides the team for every unstamped order, which is
-             most cohort rows before 2026, and read off the holder it filed
-             those customers under «(ROP yoʻq)» while Logistika named the
-             team that sold them. */
+             drifts (556 July orders once sat on the head of Операцион). That
+             decides one kind of order only: one that names its operator but
+             whose team stamp is empty or names a unit with no «(ROP)». Read
+             off the holder, such an order sitting on back office filed its
+             customer under «(ROP yoʻq)» while Logistika named the operator's
+             team. IT DOES NOT REACH THE OLD COHORTS. The portal began writing
+             both snapshot fields in May 2026, so an earlier order names no
+             operator, the COALESCE lands on the holder exactly as it did
+             before, and Logistika's classified CTE resolves it the same way. */
           d."operatorTeamSource" AS team_source,
           COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id,`
               : ''

@@ -351,8 +351,11 @@ describe('the team cut is absent unless it was asked for', () => {
     expect(scoped.indexOf('operatorTeamSource')).toBeLessThan(scoped.indexOf('departmentId'))
     /* And the fallback's department is the OPERATOR's — the person who sold
        the order — before the deal's assignee, the resolution Logistika's
-       classified CTE joins on. Read off the assignee alone, an unstamped
-       order sitting on back office files its customer under «(ROP yoʻq)». */
+       classified CTE joins on. That reaches an order that names its operator
+       but carries no ROP team stamp: read off the assignee alone, one sitting
+       on back office filed its customer under «(ROP yoʻq)». An order from
+       before the snapshot (May 2026) names no operator, so it still falls
+       back to the assignee, here and on Logistika alike. */
     expect(scoped).toContain('COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id')
     expect(scoped).not.toContain('d."employeeId" AS employee_id')
   })
