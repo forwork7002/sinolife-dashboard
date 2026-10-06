@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { useMemo } from 'react'
 
 import { type CallTimePoint, dayPoints, hourPoints } from '@/components/charts/callTimePoints'
-import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
+import { ChartSkeleton, EmptyState, ErrorState, statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
 import { StatTile } from '@/components/ui/Stat'
 import { CallTable } from '@/features/calls/CallTable'
@@ -69,7 +69,7 @@ export function CallsPage() {
     queryFn: ({ signal }) => apiGet<CallActivityDto>('/insights/calls', windowParams, signal),
   })
 
-  const status: Status = calls.isPending ? 'loading' : calls.isError ? 'error' : 'ready'
+  const status: Status = statusOf(calls)
 
   return (
     <PageShell

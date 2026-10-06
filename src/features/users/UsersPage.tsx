@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
+import { statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { DataTable, InitialChip, type Column } from '@/components/ui/DataTable'
@@ -234,7 +235,7 @@ export function UsersPage() {
             columns={columns}
             rows={items}
             rowKey={(row) => row.id}
-            status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+            status={statusOf(query)}
             errorMessage={(query.error as Error | null)?.message}
             onRetry={() => void query.refetch()}
             onRowClick={(row) => setEditing(row)}
@@ -594,7 +595,7 @@ function UserDialog({
               headlessUnits={headlessUnits}
               selected={head}
               isPending={headsQuery.isPending}
-              isError={headsQuery.isError}
+              isError={statusOf(headsQuery) === 'error'}
               onChoose={chooseHead}
             />
           </div>

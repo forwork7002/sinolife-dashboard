@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
+import { EmptyState, ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { SearchInput } from '@/components/ui/Controls'
@@ -65,7 +65,7 @@ export function SverkaPage() {
     queryFn: ({ signal }) => apiGet<SverkaOverviewDto>('/sverka/overview', windowParams, signal),
   })
 
-  const status: Status = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+  const status: Status = statusOf(query)
 
   return (
     <PageShell

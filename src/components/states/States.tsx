@@ -20,6 +20,35 @@ import { t } from '@/lib/messages'
  * dashed socket — recognisable from across the room, before a word is read.
  */
 
+export type ViewStatus = 'loading' | 'error' | 'ready'
+
+/**
+ * Which of the three a block draws for its query: a skeleton, the error card
+ * or the figures. Every screen asks this one function, so the rule below is
+ * stated once.
+ *
+ * THE ERROR CARD IS FOR HAVING NOTHING TO SHOW. TanStack Query 5 keeps the
+ * last good `data` when a refetch fails and still reports `isError`, so a
+ * block that read `isError` alone threw away figures it was holding: two
+ * misses in a row on the 120 s poll (`retry: 1` in `providers.tsx`) — a
+ * deploy restart, one statement timeout on a busy database — and the TV
+ * board, Logistika or «Lid manbalari» sat behind «Qayta urinish» until the
+ * next good poll, with every number still in memory. A failed BACKGROUND
+ * refetch keeps the screen; the next good poll replaces it.
+ *
+ * A first read that fails still gets the card, and so does a new period
+ * whose read fails: placeholder data covers only a query that is still
+ * pending, so after the failure there is no `data` to keep.
+ */
+export function statusOf(query: {
+  readonly isPending: boolean
+  readonly isError: boolean
+  readonly data: unknown
+}): ViewStatus {
+  if (query.isPending) return 'loading'
+  return query.isError && query.data === undefined ? 'error' : 'ready'
+}
+
 export function LoadingSkeleton({ rows = 3, className = '' }: { rows?: number; className?: string }) {
   return (
     <div className={`space-y-3 ${className}`} role="status" aria-label={t.state.loading}>

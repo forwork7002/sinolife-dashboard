@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 
-import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
+import { EmptyState, ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { InitialChip } from '@/components/ui/DataTable'
 import { MultiplyGlyph } from '@/components/ui/Icons'
 import { apiGet, type DepartmentMemberDto, type StructureDto } from '@/lib/api'
@@ -101,6 +101,7 @@ export function DepartmentPanel({
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  const status = statusOf(query)
   const people = query.data?.data ?? []
   const active = people.filter((p) => p.isActive)
 
@@ -230,14 +231,14 @@ export function DepartmentPanel({
       <div className="org-panel-body">
         {query.isPending && <LoadingSkeleton rows={5} />}
 
-        {query.isError && (
+        {status === 'error' && (
           <ErrorState
             message={(query.error as Error).message}
             onRetry={() => void query.refetch()}
           />
         )}
 
-        {!query.isPending && !query.isError && people.length === 0 && (
+        {status === 'ready' && people.length === 0 && (
           <EmptyState
             title="Boʻlim boʻsh"
             body="Bitrix24 bu boʻlimda hech kimni koʻrsatmayapti. Odatda bu boʻlim ostidagi jamoalarda ishlaydi."

@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { ErrorState } from '@/components/states/States'
+import { ErrorState, statusOf } from '@/components/states/States'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { GaugeTile, RankBadge, StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
@@ -85,7 +85,7 @@ export function useFaktBoard() {
   return {
     query,
     data: query.data?.data,
-    status: query.isPending ? ('loading' as const) : query.isError ? ('error' as const) : ('ready' as const),
+    status: statusOf(query),
     ignoresFilters,
   }
 }

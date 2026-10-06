@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { ErrorState } from '@/components/states/States'
+import { ErrorState, statusOf } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
@@ -37,7 +37,7 @@ export function MarginPage() {
 
   /** One derivation, so no tile can disagree with its own page. */
 
-  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+  const tileStatus = statusOf(query)
 
 
   const data = query.data?.data
@@ -315,7 +315,7 @@ export function MarginPage() {
         one claim.
       */}
       <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Marja">
-        {query.isError ? (
+        {tileStatus === 'error' ? (
           <ErrorState
             message={(query.error as Error).message}
             onRetry={() => void query.refetch()}
@@ -517,7 +517,7 @@ export function MarginPage() {
             setSort(key)
           }}
           rowKey={(row) => row.productId}
-          status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+          status={tileStatus}
           errorMessage={(query.error as Error | null)?.message}
           onRetry={() => void query.refetch()}
           emptyTitle={narrowing ? 'Bu filtr boʻyicha mahsulot topilmadi' : 'Bu davrda sotuv yoʻq'}

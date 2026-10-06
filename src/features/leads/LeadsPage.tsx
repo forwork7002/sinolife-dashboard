@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
-import { ErrorState } from '@/components/states/States'
+import { ErrorState, statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
@@ -80,7 +80,7 @@ export function LeadsPage() {
     enabled: tab === 'sources',
   })
 
-  const status: Status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
+  const status: Status = statusOf(overview)
 
   return (
     <PageShell

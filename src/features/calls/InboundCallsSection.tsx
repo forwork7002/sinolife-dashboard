@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
+import { statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { StatTile } from '@/components/ui/Stat'
@@ -123,7 +124,7 @@ export function InboundCallsSection({ windowParams }: { windowParams: Record<str
     queryKey: ['insights-calls-inbound', windowParams],
     queryFn: ({ signal }) => apiGet<InboundCallsDto>('/insights/calls/inbound', windowParams, signal),
   })
-  const status = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+  const status = statusOf(query)
   return (
     <InboundCalls
       data={query.data?.data}

@@ -11,7 +11,7 @@ import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { GaugeTile, Meter, SectionHeader, StatTile } from '@/components/ui/Stat'
 import { InfoTip } from '@/components/ui/Tooltip'
-import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
+import { ChartSkeleton, EmptyState, ErrorState, statusOf } from '@/components/states/States'
 import { StateBars } from '@/features/cohort/StateBars'
 import { RopPicker } from '@/features/cohort/RopPicker'
 import { useCohortRop } from '@/features/cohort/useCohortRop'
@@ -302,13 +302,9 @@ export function CohortPage() {
 
   /** One derivation, so no tile can disagree with its own page. */
 
-  const tileStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+  const tileStatus = statusOf(query)
 
-  const concStatus = concentration.isPending
-    ? 'loading'
-    : concentration.isError
-      ? 'error'
-      : 'ready'
+  const concStatus = statusOf(concentration)
 
   const data = query.data?.data
   const conc = concentration.data?.data
@@ -345,7 +341,7 @@ export function CohortPage() {
      for. */
   const f = flow.data?.data
   const flowPeriod = flow.data?.meta?.period
-  const flowStatus = flow.isPending ? 'loading' : flow.isError ? 'error' : 'ready'
+  const flowStatus = statusOf(flow)
   const lost = f?.states.rows.find((row) => row.key === 'LOST') ?? null
 
   /**
@@ -539,7 +535,7 @@ export function CohortPage() {
           }
         >
           {query.isPending && <ChartSkeleton height={320} />}
-          {query.isError && (
+          {tileStatus === 'error' && (
             <ErrorState message={(query.error as Error).message} onRetry={() => void query.refetch()} />
           )}
           {data && data.rows.length === 0 && <CohortEmpty rop={data.rop} />}
@@ -723,7 +719,7 @@ export function CohortPage() {
           {flow.isPending && <ChartSkeleton height={280} />}
           {/* ALL THREE BRANCHES. The «База» card shipped without an error
               branch once and a failed request read as an empty funnel. */}
-          {flow.isError && (
+          {flowStatus === 'error' && (
             <ErrorState
               message={(flow.error as Error | null)?.message}
               onRetry={() => void flow.refetch()}
@@ -750,7 +746,7 @@ export function CohortPage() {
           hint="Yuqorida — shu davrda kelgan mijozlar soni. Pastda — oʻsha manbaning qaytish foizi, butun tarix boʻyicha, 90 kunlik yetilish muddati bilan."
         >
           {flow.isPending && <ChartSkeleton height={200} />}
-          {flow.isError && (
+          {flowStatus === 'error' && (
             <ErrorState
               message={(flow.error as Error | null)?.message}
               onRetry={() => void flow.refetch()}
@@ -805,7 +801,7 @@ export function CohortPage() {
           hint={`Mijozning oxirgi buyurtmasidan beri oʻtgan vaqt: ${CUSTOMER_ACTIVE_DAYS} kungacha faol, ${CUSTOMER_AT_RISK_DAYS} kungacha xavf ostida, undan keyin yoʻqotilgan.`}
         >
           {flow.isPending && <ChartSkeleton height={160} />}
-          {flow.isError && (
+          {flowStatus === 'error' && (
             <ErrorState
               message={(flow.error as Error | null)?.message}
               onRetry={() => void flow.refetch()}
@@ -1007,7 +1003,7 @@ export function CohortPage() {
             "we could not ask". The matrix card above has carried all three
             states from the start; this one now matches it.
           */}
-          {query.isError && (
+          {tileStatus === 'error' && (
             <ErrorState
               message={(query.error as Error | null)?.message}
               onRetry={() => void query.refetch()}

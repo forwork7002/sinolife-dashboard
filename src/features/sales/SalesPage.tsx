@@ -5,7 +5,7 @@ import { useEffect } from 'react'
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
-import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
+import { ChartSkeleton, EmptyState, ErrorState, statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import {
   ConfirmationFaktSection,
@@ -134,6 +134,7 @@ export function SalesPage() {
     placeholderData: keepPreviousData,
   })
 
+  const trendStatus = statusOf(faktTrend)
   const faktPoints = faktTrend.data?.data ?? []
 
   /**
@@ -243,7 +244,7 @@ export function SalesPage() {
         <div className="px-5 pt-4 pb-5">
           {faktTrend.isPending ? (
             <ChartSkeleton height={300} />
-          ) : faktTrend.isError ? (
+          ) : trendStatus === 'error' ? (
             <ErrorState
               message={(faktTrend.error as Error | null)?.message}
               onRetry={() => void faktTrend.refetch()}
@@ -303,7 +304,7 @@ export function SalesPage() {
 
       <ConfirmationOutcomeSection
         points={faktPoints}
-        trendStatus={faktTrend.isPending ? 'loading' : faktTrend.isError ? 'error' : 'ready'}
+        trendStatus={trendStatus}
         trendError={(faktTrend.error as Error | null)?.message}
         onRetry={() => void faktTrend.refetch()}
       />

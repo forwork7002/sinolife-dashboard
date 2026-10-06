@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 
-import { ErrorState } from '@/components/states/States'
+import { ErrorState, statusOf } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Controls'
@@ -88,6 +88,7 @@ export function KpiPage() {
   })
 
   const data = query.data?.data
+  const status = statusOf(query)
 
   const formatValue = (item: KpiItem, which: 'target' | 'actual' | 'actual-raw') => {
     const money = which === 'target' ? item.target : item.actual
@@ -314,28 +315,28 @@ export function KpiPage() {
           value={data?.counts.achieved}
           tone="good"
           loading={query.isPending}
-          failed={query.isError}
+          failed={status === 'error'}
         />
         <CountCard
           label={t.kpiStatus.ON_TRACK}
           value={data?.counts.onTrack}
           tone="good"
           loading={query.isPending}
-          failed={query.isError}
+          failed={status === 'error'}
         />
         <CountCard
           label={t.kpiStatus.AT_RISK}
           value={data?.counts.atRisk}
           tone="warning"
           loading={query.isPending}
-          failed={query.isError}
+          failed={status === 'error'}
         />
         <CountCard
           label={t.kpiStatus.BEHIND}
           value={data?.counts.behind}
           tone="critical"
           loading={query.isPending}
-          failed={query.isError}
+          failed={status === 'error'}
         />
       </div>
 
@@ -358,7 +359,7 @@ export function KpiPage() {
           columns={columns}
           rows={data?.items ?? []}
           rowKey={(row) => row.kpiId}
-          status={query.isError ? 'error' : query.isPending ? 'loading' : 'ready'}
+          status={status}
           errorMessage={query.error instanceof ApiClientError ? query.error.message : undefined}
           onRetry={() => void query.refetch()}
           emptyBody="Tanlangan davr uchun KPI rejalari belgilanmagan."
