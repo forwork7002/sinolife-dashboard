@@ -1362,8 +1362,12 @@ export interface SellerBoardTotalsDto {
   readonly lostAfterConfirm: MoneyDto
   readonly conversionPercent: number | null
   readonly wonDelta: DeltaDto
-  readonly bonusPayable: MoneyDto
-  readonly sellersInBonus: number
+  /**
+   * Null under a brand slice, with `sellersInBonus`: the ladder pays on a
+   * seller's WHOLE FAKT 2 and is not linear, so it cannot be cut by brand.
+   */
+  readonly bonusPayable: MoneyDto | null
+  readonly sellersInBonus: number | null
   /** Sellers the ladder can pay at all — the 107-147 band. */
   readonly sellersEligibleForBonus: number
   /** Every target on the board summed, and won intake against them. */

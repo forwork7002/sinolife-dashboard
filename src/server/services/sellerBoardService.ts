@@ -332,9 +332,15 @@ export interface SellerBoardTotalsDto {
   readonly conversionPercent: number | null
   /** Won intake vs the comparison window's, on the same clock. */
   readonly wonDelta: DeltaDto
-  /** Total bonus the tiers would pay on today's standings. */
-  readonly bonusPayable: MoneyDto
-  readonly sellersInBonus: number
+  /**
+   * Total bonus the tiers would pay on today's standings.
+   *
+   * NULL UNDER A BRAND SLICE, with `sellersInBonus`: the ladder pays on a
+   * seller's WHOLE FAKT 2 and is not linear, so it cannot be cut by brand —
+   * see `buildBoard`.
+   */
+  readonly bonusPayable: MoneyDto | null
+  readonly sellersInBonus: number | null
   /**
    * Sellers the client's ladder pays at all — the 107–147 band.
    *
@@ -953,13 +959,29 @@ export class SellerBoardService {
           ),
         ),
         wonDelta: toDeltaDto(growth(Number(totalWonMinor), Number(previousWonMinor))),
-        bonusPayable: toMoneyDto(
-          money(
-            boardRows.reduce((a, r) => a + BigInt(r.bonus.earned.amountMinor), 0n),
-            ctx.currency,
-          ),
-        ),
-        sellersInBonus: boardRows.filter((r) => r.bonus.earned.amount > 0).length,
+        /*
+          THE FUND IS NOT BRAND-KNOWABLE, so a brand slice states none.
+
+          The client's ladder (45 / 60 / 70 mln → 1 / 1.5 / 2 mln) pays on a
+          seller's WHOLE FAKT 2, and a step function of a sum is not the sum of
+          the steps: a seller at 30 mln Collagen + 20 mln Zextra earns the
+          45 mln rung, yet read 0 under «Collagen», 0 under «Zextra» and 0
+          under «Brendsiz» — three slices adding up to 0 against 1 000 000 on
+          «Hammasi», on a page whose brand slices are promised to add up. The
+          unsliced fund is no answer either: every figure under the switch
+          follows it, and this one would not.
+        */
+        bonusPayable: filters.brand
+          ? null
+          : toMoneyDto(
+              money(
+                boardRows.reduce((a, r) => a + BigInt(r.bonus.earned.amountMinor), 0n),
+                ctx.currency,
+              ),
+            ),
+        sellersInBonus: filters.brand
+          ? null
+          : boardRows.filter((r) => r.bonus.earned.amount > 0).length,
         sellersEligibleForBonus: boardRows.filter((r) => r.bonus.eligible).length,
         plan: planFor(
           plans.byEmployee.size > 0 ? plannedMinor : null,

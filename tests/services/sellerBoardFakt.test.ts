@@ -341,3 +341,64 @@ describe('the totals keep the five queue states apart', () => {
     expect(totals.confirmedRate).toBeNull()
   })
 })
+
+/**
+ * THE BONUS FUND UNDER THE BRAND SWITCH — 2026-10-06.
+ *
+ * The client's ladder (45 / 60 / 70 mln) pays on a seller's WHOLE FAKT 2 and is
+ * not linear, so cut by brand it states a payout nobody receives: one seller at
+ * 30 mln Collagen + 20 mln Zextra earns the 45 mln rung, and read 0 under each
+ * of the three slices — which then added up to 0 against 1 000 000 on
+ * «Hammasi». A brand slice states no fund at all.
+ */
+describe('the bonus fund under the brand switch', () => {
+  /** FAKT 2 by slice, the way `ratingFilterSql` would narrow it. */
+  const FAKT2_BY_SLICE: Readonly<Record<string, bigint>> = {
+    all: mln(50),
+    Collagen: mln(30),
+    Zextra: mln(20),
+    none: 0n,
+  }
+
+  async function boardFor(brand?: 'Collagen' | 'Zextra' | 'none') {
+    const insights = {
+      confirmationSellerRating: async (_period: unknown, filters: { brand?: { slice: string } }) => [
+        rating({
+          employeeId: 'e1',
+          // Floor 115 sits inside the ladder's 107–147 band (`bonusEligible`).
+          fullName: 'Sirojov 115 Davlatbek',
+          rop: 'Lola',
+          deliveredOrders: 1,
+          deliveredMinor: FAKT2_BY_SLICE[filters.brand?.slice ?? 'all']!,
+        }),
+      ],
+    } as unknown as InsightsRepository
+    const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
+    const service = new SellerBoardService({} as SellerBoardRepository, insights, reference)
+    const period = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
+    const ctx = {
+      period,
+      comparison: previousEquivalent(period),
+      currency: 'UZS',
+      filters: brand === undefined ? {} : { brand },
+      now: NOW,
+    } as unknown as AnalyticsContext
+    return service.board(ctx, 'queue')
+  }
+
+  it('pays the ladder on the whole FAKT 2 under «Hammasi»', async () => {
+    const { totals } = await boardFor()
+
+    expect(totals.bonusPayable?.amount).toBe(1_000_000)
+    expect(totals.sellersInBonus).toBe(1)
+  })
+
+  it('states no fund under a brand, rather than one the ladder never pays', async () => {
+    for (const brand of ['Collagen', 'Zextra', 'none'] as const) {
+      const { totals } = await boardFor(brand)
+
+      expect(totals.bonusPayable).toBeNull()
+      expect(totals.sellersInBonus).toBeNull()
+    }
+  })
+})
