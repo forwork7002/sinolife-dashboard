@@ -283,10 +283,10 @@ function PeriodPicker({
       role="dialog"
       aria-label={t.period.pick}
       // Spans the row on a phone — anchored right on a desk it would hang off
-      // the left edge of a 360px screen and lose its first field.
-      className="absolute top-full right-0 left-0 z-50 mt-2 rounded-[var(--radius-panel)] border p-3 sm:left-auto sm:w-72"
+      // the left edge of a 360px screen and lose its first field. Frosted
+      // (`.glass-float`): it opens over the cards under the filter row.
+      className="glass-float absolute top-full right-0 left-0 z-50 mt-2 rounded-[var(--radius-panel)] border p-3 sm:left-auto sm:w-72"
       style={{
-        background: 'var(--surface-raised)',
         borderColor: 'var(--border-strong)',
         // Floating chrome — see --shadow-ambient.
         boxShadow: 'var(--shadow-ambient)',

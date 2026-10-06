@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
@@ -145,5 +145,69 @@ describe('the chrome is glass with no blur', () => {
 
   it('washes a hovered rail item with the glass hover, not an opaque patch', () => {
     expect(rule('.rail-item:hover')).toMatch(/background: var\(--glass-hover\)/)
+  })
+})
+
+describe('floating panels are frosted, and nothing else is blurred', () => {
+  /*
+    The only surfaces live content moves under — rows under a column filter,
+    tiles repainting under a dropdown, the page dimmed under the palette. A
+    nearly-opaque fill and an 18px blur, only while open; a browser with no
+    backdrop-filter gets the opaque card instead of a see-through 10%.
+  */
+  it('frosts .glass-float with the float fill and the theme-free frost, opaque where the browser cannot blur', () => {
+    const float = rule('.glass-float')
+    expect(float).toMatch(/background: var\(--glass-float\)/)
+    expect(float).toMatch(/(?<!-webkit-)backdrop-filter: var\(--glass-frost\)/)
+    expect(float).toMatch(/-webkit-backdrop-filter: var\(--glass-frost\)/)
+    expect(CSS).toMatch(
+      /@supports not \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\) \{\s*\.glass-float \{\s*background: var\(--surface-raised\);\s*\}\s*\}/,
+    )
+    expect(RULES.findIndex((r) => r.selector === '.glass-float')).toBeGreaterThan(RULES.findIndex((r) => r.selector === '.card'))
+  })
+
+  it('wears .glass-float on every floating panel, with no surface of its own inline', () => {
+    const panels: readonly (readonly [string, RegExp])[] = [
+      ['MultiSelect', /role="listbox"[\s\S]*?className="(glass-float [^"]*)"[\s\S]*?style=\{\{([\s\S]*?)\}\}/],
+      ['ColumnFilter', /role="dialog"\s+aria-label=\{`\$\{label\} — filtr`\}[\s\S]*?className="(glass-float [^"]*)"[\s\S]*?style=\{\{([\s\S]*?)\}\}/],
+    ]
+    const controls = source('src/components/ui/Controls.tsx')
+    for (const [name, pattern] of panels) {
+      const found = pattern.exec(controls)
+      expect(found, name).not.toBeNull()
+      expect(found![2], name).not.toMatch(/background/)
+    }
+    const picker = /function PeriodPicker[\s\S]*?className="(glass-float [^"]*)"[\s\S]*?style=\{\{([\s\S]*?)\}\}/.exec(source('src/components/layout/PeriodFilter.tsx'))
+    expect(picker?.[2]).not.toMatch(/background/)
+    const palette = /aria-label="Buyruqlar oynasi"[\s\S]*?className="(glass-float [^"]*)"[\s\S]*?style=\{\{([\s\S]*?)\}\}/.exec(source('src/components/ui/CommandPalette.tsx'))
+    expect(palette?.[2]).not.toMatch(/background/)
+    expect(source('src/features/users/UsersPage.tsx')).toMatch(/className="backdrop-dim [^"]*"[\s\S]{0,700}<Card className="glass-float /)
+  })
+
+  /*
+    Speed: a backdrop-filter is a composited layer and a render pass each
+    frame its backdrop changes. Spent on .glass-float alone; the header's
+    blur, the scrim's whole-viewport 2px, the org chart's standing 8px and
+    the aurora's 70px filter all went in this pass. `none` (the fallback) is
+    the one other value allowed.
+  */
+  it('spends backdrop-filter on .glass-float alone, in the stylesheet and in every component', () => {
+    const blurring = RULES.filter((r) => [...r.body.matchAll(/backdrop-filter:\s*([^;]+)/g)].some((m) => m[1]!.trim() !== 'none')).map(
+      (r) => r.selector,
+    )
+    expect(blurring).toEqual(['.glass-float'])
+    const tsx = (dir: string) =>
+      (readdirSync(join(process.cwd(), dir), { recursive: true }) as string[]).filter((f) => f.endsWith('.tsx')).map((f) => `${dir}/${f}`)
+    const offenders = ['src/components', 'src/features', 'src/app'].flatMap(tsx).filter((file) => /backdropFilter|backdrop-filter/.test(source(file)))
+    expect(offenders).toEqual([])
+    expect(rule('.page-atmosphere::before')).not.toMatch(/filter/)
+    expect(rule('.backdrop-dim')).not.toMatch(/filter/)
+    expect(rule('.org-float')).toMatch(/background: var\(--surface-raised\)/)
+  })
+
+  it('keeps every tooltip opaque: it carries data', () => {
+    expect(rule('.tip')).toMatch(/background: var\(--surface-raised\)/)
+    expect(source('src/components/charts/chartTooltip.tsx')).toMatch(/background: 'var\(--surface-raised\)'/)
+    expect(source('src/features/sellers/MedalTip.tsx')).toMatch(/className="tip medal-tip"/)
   })
 })

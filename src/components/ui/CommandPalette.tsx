@@ -279,9 +279,9 @@ function PaletteDialog({
         role="dialog"
         aria-modal="true"
         aria-label="Buyruqlar oynasi"
-        className="palette-enter w-full max-w-[600px] overflow-hidden border"
+        // Frosted (`.glass-float`) over the dimmed page.
+        className="glass-float palette-enter w-full max-w-[600px] overflow-hidden border"
         style={{
-          background: 'var(--surface)',
           borderColor: 'var(--border)',
           borderRadius: 'var(--radius-panel)',
           /* Ambient in dark (zero-offset glow), --shadow-float in light — the

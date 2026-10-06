@@ -1926,23 +1926,55 @@ tbody tr:hover > .tcol-sticky {
 }
 
 /**
- * The scrim behind the command palette.
+ * A floating panel — MultiSelect's list, a column's filter, the date picker,
+ * the ⌘K panel, a modal dialog — is FROSTED: the one place in the house a
+ * real blur is spent.
+ *
+ * These are the only surfaces live content moves under: rows scroll beneath
+ * a column filter while it is open, a refetch repaints the tiles under a
+ * dropdown, the page dims under the palette. A plain translucent fill there
+ * would show text through text, so the fill is nearly opaque (--glass-float,
+ * 90% light / 92% dark) and the little that comes through is blurred 18px
+ * and saturated back, as a blur greys what it averages. Each exists only
+ * while it is open, so the blur is paid only then. The panel's text is
+ * measured over the worst thing that can pass beneath it, an ink at full
+ * strength (glassContrast.test.ts).
+ *
+ * A browser with no backdrop-filter gets the opaque raised surface: a 90%
+ * fill with nothing blurring the other 10% would let the text beneath read
+ * through. A TOOLTIP IS NOT THIS — it carries data and stays opaque (`.tip`,
+ * the chart tooltip, MedalTip). Declared after `.card`, so a dialog that is a
+ * Card takes this fill.
+ */
+.glass-float {
+  background: var(--glass-float);
+  -webkit-backdrop-filter: var(--glass-frost);
+  backdrop-filter: var(--glass-frost);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-float {
+    background: var(--surface-raised);
+  }
+}
+
+/**
+ * The scrim behind the command palette — and behind every modal.
  *
  * Tinted from --page, not black: a black scrim in light mode turns the app
  * into a different, darker room for the duration of a search, while a
- * page-coloured frost dims WITHOUT changing the room. In dark mode --page is
- * near-black and the very same mix is the conventional dim. The 2px blur
- * softens content just enough to say "inactive" while the layout stays
+ * page-coloured veil dims WITHOUT changing the room. In dark mode --page is
+ * near-black and the very same mix is the conventional dim. The layout stays
  * recognisable underneath — which is what makes the palette feel like a
  * layer of the app rather than a modal interruption.
  *
- * `prefers-reduced-transparency` trades the blur for opacity: the same
- * separation, delivered without the see-through effect the preference asks
- * to avoid.
+ * NO BLUR since 2026-10-06. It blurred the whole viewport 2px for as long as
+ * the scrim was up, the largest backdrop pass in the house, to soften a page
+ * the frosted panel over it now blurs where it matters. The tint alone says
+ * "inactive". The transparency fallback makes it denser (the end of BASE).
  */
 .backdrop-dim {
   background: color-mix(in oklab, var(--page) 60%, transparent);
-  backdrop-filter: blur(2px);
 }
 
 @media (prefers-reduced-transparency: reduce) {
@@ -4852,8 +4884,14 @@ p {
 /*
   Two clusters, both inside the canvas: the view controls at the top and the
   zoom stepper at the bottom left, exactly where the source screen puts them.
-  `--shadow-ambient` and a blur, because they sit over a moving tree and a
-  flat panel would read as part of it.
+  `--shadow-ambient`, because they sit over a moving tree and a flat panel
+  would read as part of it.
+
+  OPAQUE since 2026-10-06, like a tooltip. They were 88% raised over an 8px
+  blur — the house's only standing glass — and the tree pans under them, so
+  that blur was re-run on every frame of every drag, on the page every seller
+  is meant to open. A floating panel that is only there while open may be
+  frosted (`.glass-float`); one that is always there is a surface.
 */
 .org-float {
   position: absolute;
@@ -4863,8 +4901,7 @@ p {
   gap: 4px;
   padding: 4px;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--surface-raised) 88%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-ambient);
 }

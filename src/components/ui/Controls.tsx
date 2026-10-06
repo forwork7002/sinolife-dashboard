@@ -277,13 +277,14 @@ export function MultiSelect({
             aria-label={label}
             // `z-40`, ColumnFilter's: over the page and the mobile rail, under
             // the command palette (50) and tooltips (60). Hidden until measured.
-            className="z-40 max-h-72 w-60 overflow-y-auto rounded-[var(--radius-panel)] border p-1"
+            // Frosted (`.glass-float`): the tiles repaint under it while a
+            // ticked option refetches.
+            className="glass-float z-40 max-h-72 w-60 overflow-y-auto rounded-[var(--radius-panel)] border p-1"
             style={{
               position: 'fixed',
               top: place?.top ?? 0,
               left: place?.left ?? 0,
               visibility: place ? 'visible' : 'hidden',
-              background: 'var(--surface-raised)',
               borderColor: 'var(--border-strong)',
               // Floating chrome: the directional float stack in light, an
               // offset-free halo in dark (see --shadow-ambient).
@@ -726,14 +727,14 @@ export function ColumnFilter({
               `z-40` clears the page's own dropdowns and the mobile rail; the
               command palette (z-50) and tooltips (60) still go over it.
               Hidden until measured — one frame — so it never flashes at 0,0.
+              Frosted (`.glass-float`): the table's rows scroll under it.
             */
-            className="z-40 w-60 rounded-[var(--radius-panel)] border p-1 text-left text-xs"
+            className="glass-float z-40 w-60 rounded-[var(--radius-panel)] border p-1 text-left text-xs"
             style={{
               position: 'fixed',
               top: place?.top ?? 0,
               left: place?.left ?? 0,
               visibility: place ? 'visible' : 'hidden',
-              background: 'var(--surface-raised)',
               borderColor: 'var(--border-strong)',
               boxShadow: 'var(--shadow-ambient)',
             }}
