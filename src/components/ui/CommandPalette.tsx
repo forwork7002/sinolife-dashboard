@@ -97,10 +97,12 @@ export function CommandPalette({
   /**
    * Told what is being typed, so a caller can look it up.
    *
-   * The palette keeps owning the input — it is transient state that dies with
-   * the dialog — and merely reports it. A caller that lifted the value would
-   * have to reset it on close, which is the effect this design exists to
-   * avoid.
+   * The palette keeps owning the input — transient state that dies with the
+   * dialog, so every open starts on a blank box — and merely reports it.
+   * Whatever a caller derives from it lives outside the dialog and outlives
+   * it: reset it in `onClose`, as Shell's `closePalette` resets its typed and
+   * looked-up terms, or the next open draws the last term's hits under an
+   * empty box.
    */
   readonly onQueryChange?: (query: string) => void
   /** A lookup is in flight; say so rather than showing "nothing found". */
