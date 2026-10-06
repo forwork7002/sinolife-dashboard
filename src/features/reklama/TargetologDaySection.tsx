@@ -94,6 +94,16 @@ const SUM_TINT = 'color-mix(in oklab, var(--status-good) 10%, transparent)'
 
 const columnTint = (c: Column) => (c === 'Meta лид' ? LEAD_TINT : c === 'Jami $' ? SUM_TINT : undefined)
 
+/*
+  Under the brand switch a card holds that slice's money only («Lidlar»'s
+  `ofBrand`: Meta money by its ad budget). Hiring is no brand's budget, so on
+  Collagen and Zextra «HR $» is empty on every card and «Jami $» is not all
+  the accounts spent; on «Brendsiz» a targetolog with hiring money and no
+  brandless form or lead has no card at all. «HR · Kosmetika» holds all of it.
+*/
+const BRAND_NOTE =
+  ' Brend tanlanganda Jami $ — faqat shu tanlovning puli. Vakansiya puli hech bir brendniki emas: Collagen va Zextra da HR $ boʻsh, «Brendsiz» da — faqat kartasi bor targetologniki; hammasi «HR · Kosmetika» jadvalida.'
+
 export function TargetologDaySection({ params, brand }: { params: Params; brand: DashboardBrand }) {
   const query = useQuery({
     queryKey: ['reklama-targetologs', params],
@@ -121,7 +131,7 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Targetologlar · kunlik"
-        hint="Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan."
+        hint={`Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan.${brand === 'all' ? '' : BRAND_NOTE}`}
       />
       {brand === 'all' && products.length > 1 && (
         <SlicePicker<MetaProduct>

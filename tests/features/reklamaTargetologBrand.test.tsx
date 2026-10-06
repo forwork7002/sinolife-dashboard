@@ -131,6 +131,8 @@ describe('«Targetologlar · kunlik» — the brand switch', () => {
     expect(cardTitles().some((t) => t.startsWith('Sinolife filtr forma 3'))).toBe(true)
     // The page's switch wins: no product picker beside it.
     expect(screen.queryByRole('group', { name: 'Qaysi mahsulot' })).toBeNull()
+    // Hiring is no brand's budget: the hint says why «HR $» is empty and what «Jami $» holds here.
+    expect(screen.getByText(/Brend tanlanganda Jami \$ — faqat shu tanlovning puli\./)).toBeTruthy()
   })
 
   it('with both brands asks for no brand and lets the picker choose one product', async () => {
@@ -140,5 +142,7 @@ describe('«Targetologlar · kunlik» — the brand switch', () => {
     expect(asked.params).not.toHaveProperty('brand')
     expect(screen.getByRole('group', { name: 'Qaysi mahsulot' })).toBeTruthy()
     expect(cardTitles().some((t) => t.startsWith('Sinolife filtr forma 3'))).toBe(false)
+    // With both brands «Jami $» is every dollar the accounts spent, HR included: no brand note.
+    expect(screen.queryByText(/Brend tanlanganda/)).toBeNull()
   })
 })
