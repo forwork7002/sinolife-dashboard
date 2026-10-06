@@ -15,6 +15,7 @@ import {
 import { endpointDot, endpointLabelWidth } from '@/components/charts/chartEndpoint'
 import { ChartTooltipPanel } from '@/components/charts/chartTooltip'
 import { OUTCOME_SPECS, type RatePoint } from '@/features/sales/confirmationOutcomes'
+import type { TrendGranularity } from '@/features/sales/trendGranularity'
 import { formatDateShort, formatNumber, formatPercent } from '@/lib/format'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 
@@ -43,13 +44,27 @@ import { useReducedMotion } from '@/lib/useReducedMotion'
  * total — because a low point raises exactly one question (refusals up, or
  * intake down?) and the point already holds the answer.
  */
+/** «har bir … uchun» — what one point of the line divides. */
+const PER_BUCKET: Record<TrendGranularity, string> = {
+  day: 'har bir kun uchun',
+  week: 'har bir hafta uchun',
+  month: 'har bir oy uchun',
+}
+
 export function ConfirmedRateChart({
   data,
+  granularity,
   height,
   referenceValue,
   referenceLabel,
 }: {
   data: readonly RatePoint[]
+  /**
+   * What one point is — read off the trend by `trendGranularity`. It was
+   * «har bir kun uchun» unconditionally, over forty-one weekly points on
+   * «Yil → 2026». Null makes no claim.
+   */
+  granularity: TrendGranularity | null
   height?: number
   /** The period's pooled rate, 0–100. Drawn in --axis: context, not a series. */
   referenceValue?: number
@@ -78,7 +93,9 @@ export function ConfirmedRateChart({
         className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]"
         style={{ color: 'var(--ink-muted)' }}
       >
-        <span>Тасдиқланди ÷ navbatga tushganlar, har bir kun uchun</span>
+        <span>
+          Тасдиқланди ÷ navbatga tushganlar{granularity !== null && `, ${PER_BUCKET[granularity]}`}
+        </span>
         <span>Navbatga tushgan sana boʻyicha</span>
       </div>
 

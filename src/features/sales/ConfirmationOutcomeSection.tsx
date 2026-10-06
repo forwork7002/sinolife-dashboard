@@ -11,9 +11,11 @@ import {
   confirmedRateSeries,
   describeRateSpread,
 } from '@/features/sales/confirmationOutcomes'
+import { trendGranularity } from '@/features/sales/trendGranularity'
 import { QUEUE_BASIS } from '@/features/shared/faktVocabulary'
 import type { FaktTrendPointDto, SellerBoardTotalsDto } from '@/lib/api'
 import { formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
+import { t } from '@/lib/messages'
 
 /**
  * WHERE THE WHOLE QUEUE WENT — the five states of the confirmation cohort as
@@ -54,6 +56,12 @@ export function ConfirmationOutcomeSection({
   const totals = data?.totals
   const series = useMemo(() => confirmedRateSeries(points), [points])
   const spread = describeRateSpread(series)
+  /*
+    The same reading the FAKT chart above captions itself with: a point is a
+    day only up to two months — «Yil → 2026» draws weeks. See
+    `trendGranularity`.
+  */
+  const granularity = trendGranularity(points)
 
   return (
     <section
@@ -111,7 +119,7 @@ export function ConfirmationOutcomeSection({
             className="text-sm font-semibold tracking-tight"
             style={{ color: 'var(--ink-primary)' }}
           >
-            Тасдиқланиш % kunlar kesimida
+            Тасдиқланиш %{granularity !== null && ` ${t.chart.buckets[granularity]}`}
           </h3>
           <p className="mt-0.5 mb-3 text-xs" style={{ color: 'var(--ink-muted)' }}>
             Punktir chiziq — davr oʻrtachasi: davrning barcha buyurtmalari boʻyicha, kunlar
@@ -130,6 +138,7 @@ export function ConfirmationOutcomeSection({
             <>
               <ConfirmedRateChart
                 data={series.points}
+                granularity={granularity}
                 height={240}
                 referenceValue={series.pooledRate}
                 referenceLabel={`Davr oʻrtachasi · ${formatPercent(series.pooledRate)}`}
