@@ -145,13 +145,14 @@
   /* --- Status — reserved, never reused as a series colour ---------------- */
   /* Each step clears 4.5:1 on every surface status text can land on — the
      page and the glass card over every pool of the backdrop, the chrome, a
-     floating panel, the sunken band and the hero's bloom — so a status may
-     carry TEXT and not only a mark (tightest: warning 4.66 and good 4.68 on
-     the page under two pools). Glass moved two of them: warning from #915c00
-     (4.40:1 on the pooled page) and critical from #d02222 (4.18 there, 4.49
-     on --surface-sunken). Still not on --grid or a control's well; keep
-     status text off those. It ships with an icon or a word; colour alone is
-     not a channel. */
+     floating panel, the sunken band, the hero's bloom and the danger
+     button's own tint — so a status may carry TEXT and not only a mark
+     (tightest: warning 4.66 and good 4.68 on the page under two pools,
+     critical 4.59 on the danger button pressed there). Glass moved two of
+     them: warning from #915c00 (4.40:1 on the pooled page) and critical
+     from #d02222 (4.18 there, 4.49 on --surface-sunken). Still not on
+     --grid or a control's well; keep status text off those. It ships with
+     an icon or a word; colour alone is not a channel. */
   --status-good: #00733a;
   --status-warning: #8d5800;
   --status-critical: #c50f16;
@@ -433,8 +434,8 @@
    * 40% of its peak at 45% of its reach and to nothing at the edge. The old
    * two pools reached the top ~300px only, so a glass card anywhere below
    * the title had nothing but a flat --page to show; these meet in the
-   * middle at about a fifth of their peaks, so every card has colour behind
-   * it. No filter — a radial gradient is already as soft as a blur of one.
+   * middle at 12–17% of their peaks, so every card has colour behind it.
+   * No filter — a radial gradient is already as soft as a blur of one.
    * Literal colours, chrome only: no mark that encodes a value reads them.
    */
   --backdrop:
@@ -547,7 +548,8 @@
     --status-warning: #d9a01c;
     /* Lighter than the #f0524e it was: on the page under the brightest pool
        that read 4.28:1, on a glass card's sheen 4.13. #ff655e clears 4.5:1
-       on every surface in the light block's list (5.17 at the worst). */
+       on every surface in the light block's list (5.17 at the worst; 4.56 on
+       the danger button pressed, the tightest place it is drawn). */
     --status-critical: #ff655e;
 
     --delta-up: #2fb862;
@@ -2012,7 +2014,7 @@ tbody tr:hover > .tcol-sticky {
  *
  * Scale 0.98 → 1 with a fade, 150ms: the palette must feel FASTER than a
  * page — it is what you reach for INSTEAD of navigating — so it gets less
- * than the page's 220ms and no translate, only the settle. Under reduced
+ * than the page's 180ms and no translate, only the settle. Under reduced
  * motion the keyframes drop the scale and the fade alone remains.
  */
 @keyframes palette-enter {
