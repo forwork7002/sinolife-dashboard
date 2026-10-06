@@ -742,4 +742,57 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
     await service.warm(new Date('2026-05-12T05:00:00Z'), 'Asia/Tashkent')
     expect(windows).toEqual(['today', 'this_month'])
   })
+
+  describe('each rebuild waited for (2026-10-06 audit)', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('waits for every memo\'s rebuild, window by window and two scans at a time — on the second tick too', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      vi.setSystemTime(new Date('2026-04-14T05:00:00Z')) // 10:00 Tashkent
+      const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+      let inFlight = 0
+      let peak = 0
+      let reads = 0
+      /** A read that holds a connection for a second. */
+      const read = <T,>(rows: T) => async () => {
+        reads++
+        peak = Math.max(peak, ++inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 1_000))
+        inFlight--
+        return rows
+      }
+      const service = new LeadSourcesService(
+        {
+          registrationDays: read([]),
+          triageDays: read([]),
+          qualifiedSources: read([]),
+          aiQualifiedStages: read([]),
+          pipelineSourceCount: read(NO_SARAFAN),
+          inboundCallCount: read(null),
+        } as never,
+        { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+        { leadFakt1Clients: read([]) } as never,
+      )
+      const tick = async () => {
+        let done = false
+        const warming = service.warm(new Date(), 'Asia/Tashkent').then(() => (done = true))
+        // A window: registration 1 s, the five scans two at a time 3 s, FAKT 1 1 s. Two windows: 10 s.
+        await vi.advanceTimersByTimeAsync(9_999)
+        expect(done).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        await warming
+        expect(inFlight).toBe(0)
+      }
+
+      await tick() // cold: every memo's first build
+      expect(reads).toBe(14)
+      // Three minutes on: every memo past its TTL and still showable — `get` would hand it out and rebuild behind.
+      vi.advanceTimersByTime(180_000)
+      await tick()
+      expect(reads).toBe(28)
+      expect(peak).toBe(2)
+    })
+  })
 })

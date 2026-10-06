@@ -861,13 +861,14 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
   construction — both routes that read these memos (`/leads/overview`,
   `/reklama/targetologs`) refuse a narrowed account — so no scope reaches them.
 */
-const scanCache = ttlCache<{
+interface WindowScans {
   triage: TriageDayRow[]
   qualified: QualifiedSourceRow[]
   aiQualified: AiQualifiedStageRow[]
   sarafan: PipelineSourceCount
   inboundCalls: number | null
-}>(120_000, LIVE_CACHE)
+}
+const scanCache = ttlCache<WindowScans>(120_000, LIVE_CACHE)
 
 /*
   KEPT WARM (2026-10-06, «Lidlar juda sekin ochilayapti»). The memos above
@@ -876,14 +877,54 @@ const scanCache = ttlCache<{
   every deploy — was built in front of its reader: six scans, the FAKT 1
   phone match alone 4.4 s on average on a month. `warm` builds the windows
   the tab opens on («Bugun», the dashboard default, and «Shu oy») every
-  `LEADS_WARM_EVERY_MS` from `src/instrumentation.ts`, through `overview` —
-  the same memo keys, the same scans, so a reader is handed exactly what they
-  would have waited for. Working hours only: at night nobody reads them.
+  `LEADS_WARM_EVERY_MS` from `src/instrumentation.ts`, into `overview`'s own
+  memo keys with its own scans, so a reader is handed exactly what they would
+  have waited for. Working hours only: at night nobody reads them.
+
+  EACH REBUILD WAITED FOR, ONE AT A TIME (2026-10-06 audit). `warm` went
+  through `overview`, whose memos past their TTL hand out the old answer and
+  rebuild behind it: from the second tick on it returned in milliseconds,
+  moved straight on to «Shu oy», and both windows' scans — 14–16 statements,
+  the FAKT 1 phone match twice — met on an 8-connection pool every three
+  minutes, while «leads warmed» timed nothing and never heard of a failure.
+  Now each memo is `refresh`ed in turn, window by window, and the scans go
+  `LEADS_WARM_SCANS_AT_ONCE` at a time, as `RnpService.monthRows` does:
+  behind no reader, a few seconds longer cost nobody anything. A reader's
+  cold miss still runs them all at once. The Meta reads are not memoised,
+  so there is nothing of them to warm.
 */
 export const LEADS_WARM_EVERY_MS = 3 * 60_000
 const LEADS_WARM_PRESETS: readonly PeriodPreset[] = ['today', 'this_month']
 /** Tashkent hours [from, to) the warmer runs in. */
 const LEADS_WARM_HOURS = [7, 23] as const
+const LEADS_WARM_SCANS_AT_ONCE = 2
+
+type Answers<T extends readonly (() => Promise<unknown>)[]> = {
+  -readonly [K in keyof T]: T[K] extends () => Promise<infer R> ? R : never
+}
+
+/**
+ * `tasks` at most `width` at a time — the next starts as one settles — with
+ * their answers in order. A failure starts nothing further and rejects.
+ */
+async function atMost<const T extends readonly (() => Promise<unknown>)[]>(width: number, tasks: T): Promise<Answers<T>> {
+  const answers: unknown[] = []
+  let next = 0
+  let failed = false
+  const lane = async (): Promise<void> => {
+    while (next < tasks.length && !failed) {
+      const i = next++
+      try {
+        answers[i] = await tasks[i]!()
+      } catch (error) {
+        failed = true
+        throw error
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(width, tasks.length) }, lane))
+  return answers as unknown as Answers<T>
+}
 
 export class LeadSourcesService {
   constructor(
@@ -908,16 +949,7 @@ export class LeadSourcesService {
     )
     const [registration, scans, campaigns, importedAt] = await Promise.all([
       this.registrationDays(period),
-      scanCache.get(key, async () => {
-        const [triage, qualified, aiQualified, sarafan, inboundCalls] = await Promise.all([
-          this.repository.triageDays(period),
-          this.repository.qualifiedSources(period),
-          this.repository.aiQualifiedStages(period),
-          this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
-          this.repository.inboundCallCount(period),
-        ])
-        return { triage, qualified, aiQualified, sarafan, inboundCalls }
-      }),
+      scanCache.get(key, () => this.scans(period)),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),
     ])
@@ -933,7 +965,13 @@ export class LeadSourcesService {
     const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone }).format(now))
     if (hour < LEADS_WARM_HOURS[0] || hour >= LEADS_WARM_HOURS[1]) return
     // One at a time: two cold months side by side would take the pool from every other screen.
-    for (const preset of LEADS_WARM_PRESETS) await this.overview(resolvePeriod(preset, { timeZone, now }), timeZone)
+    for (const preset of LEADS_WARM_PRESETS) {
+      const period = resolvePeriod(preset, { timeZone, now })
+      const key = windowKey(period)
+      await registrationCache.refresh(key, () => this.repository.registrationDays(period))
+      await scanCache.refresh(key, () => this.scans(period, LEADS_WARM_SCANS_AT_ONCE))
+      await fakt1Cache.refresh(key, () => this.insights.leadFakt1Clients(period))
+    }
   }
 
   /**
@@ -967,6 +1005,18 @@ export class LeadSourcesService {
 
   private registrationDays(period: Period): Promise<RegistrationDayRow[]> {
     return registrationCache.get(windowKey(period), () => this.repository.registrationDays(period))
+  }
+
+  /** `scanCache`'s build: its five reads, at most `width` at a time — all at once for a reader. */
+  private async scans(period: Period, width = Infinity): Promise<WindowScans> {
+    const [triage, qualified, aiQualified, sarafan, inboundCalls] = await atMost(width, [
+      () => this.repository.triageDays(period),
+      () => this.repository.qualifiedSources(period),
+      () => this.repository.aiQualifiedStages(period),
+      () => this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
+      () => this.repository.inboundCallCount(period),
+    ])
+    return { triage, qualified, aiQualified, sarafan, inboundCalls }
   }
 }
 
