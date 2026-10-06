@@ -1375,12 +1375,20 @@ body::after {
  * ======================================================================== */
 
 /**
- * A card.
+ * A card — and since 2026-10-06 («Shisha») a pane of glass.
  *
+ * A translucent fill (--glass-card) over the backdrop html paints, which in
+ * the Shell never moves: so a fill does what a blur would, at no cost, and
+ * the colour behind the card changes with where on the screen the card is.
  * Border, elevation and a 1px highlight along the top edge. The highlight is
  * what separates this from a flat rectangle with a shadow: a real raised
  * surface catches light on its top edge, and the eye reads that as depth far
- * more readily than it reads a blur underneath.
+ * more readily than it reads a blur underneath. On glass it is also where
+ * the light goes instead of the fill — see --glass-card-top.
+ *
+ * Card, ChartCard and StatTile all wear this class. What may not wear glass
+ * is anything data scrolls under — a table's ground and its pinned cells are
+ * opaque, see «Data never sits on glass» below.
  */
 .card {
   /* The sheen is the second «koʻk» cue after the lit edge: the top ~40% of
@@ -1388,51 +1396,89 @@ body::after {
      literal per theme (--glass-card-top), faint on purpose — see the token. */
   background:
     linear-gradient(180deg, var(--glass-card-top), transparent 42%),
-    var(--surface-raised);
-  border: 1px solid var(--border);
+    var(--glass-card);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-card), var(--edge-highlight);
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
 }
 
 /**
  * The lead instrument — at most ONE per screen.
  *
  * A hero band is a card that outranks its neighbours three ways: the larger
- * radius, the raised shadow, and a hairline painted as a GRADIENT so the top
- * edge is visibly brighter than the bottom — the strongest "this surface is
- * nearest the light" cue a 1px line can give.
+ * radius, the raised shadow, and a rim whose top edge is visibly brighter
+ * than the rest — the strongest "this surface is nearest the light" cue a
+ * 1px line can give.
  *
- * A border cannot take a gradient directly (border-image discards
- * border-radius), so the gradient rides in as the second of two stacked
- * backgrounds: an opaque surface fill clipped to the padding box, the
- * gradient clipped to the border box, and a transparent 1px border between
- * them leaving exactly that much of the gradient visible. The stops are
- * --edge-hero-*, which flip with the theme by construction — see the token.
+ * THE RIM IS AN INSET SHADOW NOW, NOT A BORDER-BOX GRADIENT. The gradient
+ * rode in as a background layer clipped to the border box under a fill
+ * clipped to the padding box, which worked while the fill was opaque; under
+ * a translucent fill the whole gradient showed through the card as a grey
+ * veil. So the border is the quieter stop (--edge-hero-bottom) all round,
+ * and the brighter one (--edge-hero-top) is a 1px inset shadow along the
+ * top, which follows the corner radius and fades down the sides as a lit
+ * edge does. Both stops flip with the theme by construction — see the token.
  *
- * Declared after .card ON PURPOSE: a call site may stack the two classes,
- * and source order is what lets this one win every property they share.
- * Two of these on a screen is not two heroes — it is none; the treatment
- * only ranks the card because nothing else wears it.
+ * It stands alone or stacked on `.card` (most heroes are a bare
+ * `card-hero`), so it states the whole surface. Declared after .card ON
+ * PURPOSE: source order is what lets it win every property they share. Two
+ * of these on a screen is not two heroes — it is none; the treatment only
+ * ranks the card because nothing else wears it.
  */
 .card-hero {
-  border: 1px solid transparent;
+  border: 1px solid var(--edge-hero-bottom);
   border-radius: var(--radius-panel-lg);
   /* The «koʻk» bloom: the page's accent pooled in the top-left corner, at
      --hero-bloom-mix — 5% in light, so it reads as the hint of a light
-     source; 16% in dark, the reference boards' backlit hero card, and the
-     most that keeps the card's muted text at 4.5:1 on its peak (see the
-     token). Read at the element, so it follows the page accent PageShell
-     sets, like the aurora above the title. */
+     source; 8% in dark, the reference boards' backlit hero card, the most
+     that keeps muted and status text at 4.5:1 on its peak over the
+     backdrop's brightest pool (see the token). Read at the element, so it
+     follows the page accent PageShell sets, like the aurora above the
+     title. */
   background:
     radial-gradient(
-        42rem 18rem at 0% 0%,
-        color-mix(in oklab, var(--accent) var(--hero-bloom-mix), transparent),
-        transparent 70%
-      )
-      padding-box,
-    linear-gradient(var(--surface-raised), var(--surface-raised)) padding-box,
-    linear-gradient(180deg, var(--edge-hero-top), var(--edge-hero-bottom)) border-box;
-  box-shadow: var(--shadow-raised), var(--edge-highlight);
+      42rem 18rem at 0% 0%,
+      color-mix(in oklab, var(--accent) var(--hero-bloom-mix), transparent),
+      transparent 70%
+    ),
+    linear-gradient(180deg, var(--glass-card-top), transparent 42%),
+    var(--glass-card);
+  box-shadow:
+    var(--shadow-raised),
+    inset 0 1px 0 var(--edge-hero-top),
+    var(--glass-highlight);
+}
+
+/**
+ * DATA NEVER SITS ON GLASS.
+ *
+ * A table inside a glass card is laid on an opaque ground, --surface-raised
+ * — the glass card over the bare page — and that is not taste, it is the
+ * pinned cells. A sticky column or header has to be opaque, or the cells
+ * scrolling under it show through (`.tcol-sticky`, `.thead-sticky`); on glass
+ * the cells beside it were the card's colour while it was the opaque one, so
+ * the frozen columns read as a darker or lighter strip wherever the backdrop
+ * was lit — the strip the dark «koʻk» sheen already drew over a raised card.
+ * With the table on the same opaque ground, pinned and moving cells are one
+ * colour everywhere, and every number reads on a surface that does not change
+ * with where on the screen it is. One rule, so every table in every card has
+ * it: DataTable's box, the RNP sheet, the cohort heatmap, the hand-written
+ * sheets in Reklama and Lidlar, Struktura's list and Sverka's.
+ *
+ * The sellers board is not glass — `.tv-col` paints its own opaque surface —
+ * and is pixel-tuned, so it is left out by name.
+ *
+ * `overflow: clip` keeps the ground inside the card's rounded corners where a
+ * table runs flush to the card's edge (TableCard, the Reklama sheets). Clip,
+ * not hidden: it makes no scroll container, so nothing sticky inside a card
+ * changes what it sticks to.
+ */
+:is(.card, .card-hero):not(.tv-col) table {
+  background-color: var(--surface-raised);
+}
+
+:is(.card, .card-hero):not(.tv-col):has(table) {
+  overflow: clip;
 }
 
 /**
@@ -1621,10 +1667,11 @@ body::after {
  * sliding beneath it show through, which is worse than not pinning at all.
  * `--surface-raised` and not `--surface-sunken`: these are DATA cells, and they
  * must go on reading as part of their row rather than as a band of chrome, so
- * they take the card's own background (`.card`) — the surface the rest of the
- * row is already painted on. The ground is `--pin-ground`, so the hover and the
- * header's and total's own cells can change it in one place and the seam below
- * follows.
+ * they take the table's own ground — `--surface-raised`, which every table in
+ * a card is laid on (see «Data never sits on glass») — the surface the rest of
+ * the row is already painted on. The ground is `--pin-ground`, so the hover and
+ * the header's and total's own cells can change it in one place and the seam
+ * below follows.
  *
  * THE HOVER WASH HAD TO BE PUT BACK BY HAND. The row paints its hover on <tr>,
  * and an opaque cell lifted out of the flow paints over it — so the pinned

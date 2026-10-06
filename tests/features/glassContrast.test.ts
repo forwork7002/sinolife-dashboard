@@ -91,6 +91,44 @@ function contrast(a: Rgb, b: Rgb): number {
   return (hi! + 0.05) / (lo! + 0.05)
 }
 
+/**
+ * `color-mix(in oklab, F p, G)` where G may be translucent — premultiplied, as
+ * CSS Color 5 interpolates: alpha mixes linearly, and each oklab component is
+ * mixed weighted by its own colour's alpha. A filled stat tile is this, with G
+ * the glass card.
+ */
+function mixInOklab(f: Paint, p: number, g: Paint): Paint {
+  const lab = ([r, gr, b]: Rgb): Rgb => {
+    const [lr, lg, lb] = [toLinear(r), toLinear(gr), toLinear(b)]
+    const l = Math.cbrt(0.4122214708 * lr + 0.5363325363 * lg + 0.0514459929 * lb)
+    const m = Math.cbrt(0.2119034982 * lr + 0.6806995451 * lg + 0.1073969566 * lb)
+    const s = Math.cbrt(0.0883024619 * lr + 0.2817188376 * lg + 0.6299787005 * lb)
+    return [
+      0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+      1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+      0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+    ]
+  }
+  const fromLinear = (v: number) => {
+    const c = Math.min(1, Math.max(0, v))
+    return 255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055)
+  }
+  const alpha = f.alpha * p + g.alpha * (1 - p)
+  const [x, y] = [lab(f.rgb), lab(g.rgb)]
+  const [L, A, B] = x.map((v, i) => (v * f.alpha * p + y[i]! * g.alpha * (1 - p)) / alpha)
+  const l = (L! + 0.3963377774 * A! + 0.2158037573 * B!) ** 3
+  const m = (L! - 0.1055613458 * A! - 0.0638541728 * B!) ** 3
+  const s = (L! - 0.0894841775 * A! - 1.291485548 * B!) ** 3
+  return {
+    rgb: [
+      fromLinear(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+      fromLinear(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+      fromLinear(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+    ],
+    alpha,
+  }
+}
+
 // --- the backdrop -----------------------------------------------------------
 
 /** --backdrop's pools as their PEAK paint, in the order the stylesheet lists them (the first paints on top). */
@@ -223,6 +261,26 @@ describe('the rest of what glass puts text on', () => {
         for (const ink of ['--ink-muted', ...STATUS]) {
           const { ratio, at } = worst(theme, ink, (ground) => over(accent, over(paint(token(theme, '--glass-card')), ground)))
           expect(ratio, `${theme} ${ink} on slot ${slot} over ${at}`).toBeGreaterThanOrEqual(4.5)
+        }
+      }
+    }
+  })
+
+  /*
+    A filled stat tile is the status tinted into the glass card
+    (`color-mix(in oklab, <status> 12%, var(--glass-card))`, Stat.tsx), and its
+    figure is drawn in that same status — the hardest pairing on the tile.
+  */
+  it('keeps a filled stat tile\'s figure and labels at their floors over every sample', () => {
+    const stat = readFileSync(join(process.cwd(), 'src/components/ui/Stat.tsx'), 'utf8')
+    const share = Number(/color-mix\(in oklab, \$\{fillColor\} (\d+)%, var\(--glass-card\)\)/.exec(stat)![1]) / 100
+    for (const theme of THEMES) {
+      for (const status of ['--status-good', '--status-critical']) {
+        const tile = mixInOklab({ rgb: opaque(theme, status), alpha: 1 }, share, paint(token(theme, '--glass-card')))
+        for (const ink of [status, '--ink-primary', '--ink-secondary', '--ink-muted']) {
+          const floor = ink === '--ink-primary' ? 7 : 4.5
+          const { ratio, at } = worst(theme, ink, (ground) => over(tile, ground))
+          expect(ratio, `${theme} ${ink} on a ${status} tile over ${at}`).toBeGreaterThanOrEqual(floor)
         }
       }
     }
