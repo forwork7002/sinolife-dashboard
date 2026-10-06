@@ -804,6 +804,21 @@ describe('buildRnpSheet — «Баҳо», the day\'s grade from its FAKT 1 (2026
     expect(on(row(x, 'team:Charos', 'team:Charos:grade'), '2026-09-11')).toBe(3)
   })
 
+  it('averages the finished days only: today is still running, so its grade is drawn but kept out of the month (2026-10-06)', () => {
+    const fakt1 = [
+      fakt('2026-09-27', 'Sevinch', { fakt1Orders: 20, fakt1Minor: som(50_000_000) }),
+      // The fixture's today, 28.09, by the morning: a 2 so far.
+      fakt('2026-09-28', 'Sevinch', { fakt1Orders: 2, fakt1Minor: som(5_000_000) }),
+    ]
+    const running = row(buildRnpSheet(input({ fakt: fakt1 })), 'team:Sevinch', 'team:Sevinch:grade')
+    expect(on(running, '2026-09-28')).toBe(2)
+    expect(running.fact).toBe(5)
+    expect(running.hint).toMatch(/bugun hali tugamagan/)
+    // A month that is over counts every day it graded.
+    const closed = row(buildRnpSheet(input({ fakt: fakt1, today: '2026-10-02' })), 'team:Sevinch', 'team:Sevinch:grade')
+    expect(closed.fact).toBe(3.5)
+  })
+
   it('leaves a team with no scale empty, and says so', () => {
     const bosh = row(graded(), 'team:Bosh', 'team:Bosh:grade')
     expect(bosh.days.every((v) => v === null)).toBe(true)

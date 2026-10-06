@@ -688,12 +688,17 @@ function ratio(clock: Clock, o: RowOptions, num: readonly number[], den: readonl
 /**
  * A snapshot row — something counted at a moment, which a month cannot sum.
  * `mean`: the average of the lived days that had any (headcount — a day
- * nobody worked is not a day of zero staff). `latest`: the last lived day's
- * reading (a queue — what stands in it now is the month's answer).
+ * nobody worked is not a day of zero staff). `meanFinished`: the same over
+ * the days that are over — today is drawn but not averaged («Баҳо»: a
+ * morning's FAKT 1 grades a 2, and counted it pulled every team's month down
+ * until the evening). `latest`: the last lived day's reading (a queue — what
+ * stands in it now is the month's answer).
  */
-function level(clock: Clock, o: RowOptions, values: readonly (number | null)[], reading: 'mean' | 'latest'): RnpRowDto {
+function level(clock: Clock, o: RowOptions, values: readonly (number | null)[], reading: 'mean' | 'meanFinished' | 'latest'): RnpRowDto {
   const days = lived(clock, values)
-  const trusted = days.slice(startOf(clock, o))
+  // A closed month's `todayIndex` is past its last day, so every day of it is over.
+  const counted = reading === 'meanFinished' ? days.map((v, i) => (i === clock.todayIndex ? null : v)) : days
+  const trusted = counted.slice(startOf(clock, o))
   const seen = trusted.filter((v): v is number => v !== null && v > 0)
   const last = trusted.filter((v): v is number => v !== null).at(-1) ?? null
   const fact = reading === 'latest' ? last : seen.length > 0 ? sum(seen) / seen.length : null
@@ -1185,11 +1190,11 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
             hint:
               scale === null
                 ? 'Bu jamoa uchun baho shkalasi belgilanmagan.'
-                : `Kunlik «Сумма факт 1» boʻyicha: ${rnpGradeScaleText(scale)}. Sotuv boʻlmagan kun baholanmaydi; oy ustuni — baholangan kunlar oʻrtachasi.`,
+                : `Kunlik «Сумма факт 1» boʻyicha: ${rnpGradeScaleText(scale)}. Sotuv boʻlmagan kun baholanmaydi; oy ustuni — tugagan baholangan kunlar oʻrtachasi (bugun hali tugamagan, kirmaydi).`,
             sheet: r0 === undefined ? null : sh(r0 + GRADE_ROW_OFFSET, 'Баҳо'),
           },
           t.fakt1.map((v) => (scale === null ? null : rnpDayGrade(v, scale))),
-          'mean',
+          'meanFinished',
         ),
         /* The block's first line on the page, the ROP's name beside it. */
         unlessTooFew(
