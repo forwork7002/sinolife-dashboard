@@ -353,8 +353,9 @@ describe('the rest of what glass puts text on', () => {
   /*
     A control's labels: inactive segments and an input's text sit in the
     sunken well, the active segment and a secondary button's label on the
-    raised chip, a hovered ghost's label in the wash. Status text and marks do
-    not sit in any of them, so only the three text inks are held here.
+    raised chip, a hovered ghost's label in the wash, a hovered secondary
+    button's on the wash over its chip. Status text and marks do not sit in
+    any of them, so only the three text inks are held here.
   */
   it('keeps control labels at their floor in the well, on the chip and under the hover wash', () => {
     for (const theme of THEMES) {
@@ -370,6 +371,7 @@ describe('the rest of what glass puts text on', () => {
         ['chip', ['--ink-primary', '--ink-secondary'], (g) => over(chip, g)],
         ['chip in a well', ['--ink-primary', '--ink-secondary'], (g) => over(chip, over(well, g))],
         ['hover', ['--ink-primary'], (g) => over(hover, g)],
+        ['hovered chip', ['--ink-primary'], (g) => over(hover, over(chip, g))],
       ]
       for (const [name, inks, on] of cases) {
         for (const ink of inks) {
