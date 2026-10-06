@@ -55,6 +55,16 @@ export interface CommandGroup {
    * in the label. Filtering them again would hide rows that genuinely match.
    */
   readonly prefiltered?: boolean
+  /**
+   * Rows that answer a term the box no longer holds — drawn dimmed, never
+   * walked to and never run.
+   *
+   * The caller keeps the previous search's hits on screen while the next one
+   * loads, so the list does not blink empty between keystrokes. Selectable,
+   * they were what Enter opened: a phone number pasted and entered at once
+   * opened the customer of the PREVIOUS lookup.
+   */
+  readonly stale?: boolean
 }
 
 /**
@@ -157,7 +167,8 @@ function PaletteDialog({
   /**
    * Filter and flatten in one pass: `sections` keeps the grouped shape for
    * rendering, `flat` is what the keyboard walks — each row knows its flat
-   * index, so hover and arrows move the same selection.
+   * index, so hover and arrows move the same selection. A stale row is drawn
+   * with index -1 and is not in `flat`, so neither the arrows nor Enter reach it.
    */
   const { sections, flat } = useMemo(() => {
     const needle = normalize(query.trim())
@@ -172,6 +183,10 @@ function PaletteDialog({
           needle &&
           !normalize(`${item.label} ${item.hint ?? ''}`).includes(needle)
         ) {
+          continue
+        }
+        if (group.stale) {
+          rows.push({ item, index: -1 })
           continue
         }
         rows.push({ item, index: flat.length })
@@ -338,7 +353,8 @@ function PaletteDialog({
           aria-label="Buyruqlar"
           className="max-h-[min(400px,45dvh)] overflow-y-auto overscroll-contain p-1.5"
         >
-          {flat.length === 0 ? (
+          {/* Stale rows still fill the list: they are what stops it blinking empty while the next lookup runs. */}
+          {sections.length === 0 ? (
             <div className="px-4 py-10 text-center">
               {/* "Nothing found" while the lookup is still running is a lie
                   that arrives before the truth and is read first. */}
@@ -360,25 +376,30 @@ function PaletteDialog({
                   {section.label}
                 </p>
                 {section.rows.map(({ item, index }) => {
-                  const isActive = index === active
+                  // A stale row (index -1) is drawn, dimmed, and answers nothing.
+                  const live = index >= 0
+                  const isActive = live && index === active
                   return (
                     <div
                       key={item.id}
-                      id={optionId(id, index)}
+                      id={live ? optionId(id, index) : undefined}
                       role="option"
                       aria-selected={isActive}
+                      aria-disabled={live ? undefined : true}
                       // mouseMOVE, not mouseenter: with mouseenter a parked
                       // cursor recaptures the selection every time the list
                       // scrolls under it, and the arrows fight the mouse.
                       onMouseMove={() => {
-                        if (!isActive) setActive(index)
+                        if (live && !isActive) setActive(index)
                       }}
                       // Keep the input focused through the click — the blur
                       // would land a frame before run() and flicker focus.
                       onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => run(item)}
-                      className="flex h-10 cursor-pointer items-center gap-2.5 rounded-lg px-2.5"
-                      style={{ background: isActive ? 'var(--grid)' : 'transparent' }}
+                      onClick={() => {
+                        if (live) run(item)
+                      }}
+                      className={`flex h-10 items-center gap-2.5 rounded-lg px-2.5 ${live ? 'cursor-pointer' : ''}`}
+                      style={{ background: isActive ? 'var(--grid)' : 'transparent', opacity: live ? undefined : 0.5 }}
                     >
                       {item.icon && (
                         <span

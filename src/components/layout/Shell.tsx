@@ -320,6 +320,16 @@ export function Shell({
     and reads as broken. Five minutes stale because a backspace re-asks a term
     the palette answered seconds ago, and an order found by its id is the same
     order five minutes later.
+
+    BUT KEPT HITS ARE DRAWN, NEVER OPENED, UNTIL THEY ANSWER THE BOX. Query-core
+    hands the previous data to ANY pending query, a disabled one included, so a
+    term cut to «zz» kept «dilnoza»'s orders on screen with no «Kamida 3 ta
+    harf» under them, and a phone number pasted and entered at once opened the
+    PREVIOUS lookup's customer. `answered` is the one test: these hits were
+    fetched for exactly what is in the box. Until then the group is `stale` —
+    dimmed, out of the arrows and of Enter — and a box too short to search
+    shows none at all. Closing clears both terms, because reopening on an
+    empty box over the old term's hits is the same lie.
   */
   const [typed, setTyped] = useState('')
   const [lookup, setLookup] = useState('')
@@ -338,6 +348,8 @@ export function Shell({
     placeholderData: (previous) => previous,
     staleTime: 5 * 60_000,
   })
+  const typedTerm = classifySearchTerm(typed)
+  const answered = searchable && lookup === typed.trim() && !results.isPlaceholderData
 
   /*
     Nav links carry the window each section was last read in.
@@ -394,7 +406,12 @@ export function Shell({
     [pathname, search, sectionQuery],
   )
   const openPalette = useCallback(() => setPaletteOpen(true), [])
-  const closePalette = useCallback(() => setPaletteOpen(false), [])
+  const closePalette = useCallback(() => {
+    setPaletteOpen(false)
+    // The dialog's own box dies with it; the terms lifted out of it are reset here.
+    setTyped('')
+    setLookup('')
+  }, [])
   useCommandK(openPalette)
 
   /*
@@ -528,10 +545,14 @@ export function Shell({
 
       Ordered first: somebody who typed a phone number is looking for that
       customer, not for a section whose name happens to share three letters.
+
+      Only while the box holds a searchable term, and `stale` until the hits
+      answer it — see `answered` above.
     */
-    ...(results.data?.data.groups ?? []).map((group) => ({
+    ...(typedTerm.status === 'ok' ? (results.data?.data.groups ?? []) : []).map((group) => ({
       label: group.label,
       prefiltered: true,
+      stale: !answered,
       items: group.items.map((hit) => ({
         id: hit.id,
         label: hit.label,
@@ -958,8 +979,8 @@ export function Shell({
         onClose={closePalette}
         groups={paletteGroups}
         onQueryChange={setTyped}
-        busy={searchable && (results.isFetching || lookup !== typed.trim())}
-        emptyHint={shortTermHint(classifySearchTerm(typed))}
+        busy={typedTerm.status === 'ok' && (results.isFetching || lookup !== typed.trim())}
+        emptyHint={shortTermHint(typedTerm)}
         placeholder="Telefon, ID, mijoz, mahsulot yoki boʻlim…"
       />
     </div>
