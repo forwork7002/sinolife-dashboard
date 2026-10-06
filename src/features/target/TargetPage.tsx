@@ -119,6 +119,16 @@ export function TargetPage() {
   const leadStatus: Status = leads.isPending ? 'loading' : leads.isError ? 'error' : 'ready'
   const data = overview.data?.data
 
+  /*
+    The list can also shrink under the same window — «Bugun» rolling past
+    Tashkent midnight, a deal deleted — and then the page asked for is past
+    the end, the same empty table under «N ta yozuv · 3/1». Once an answer is
+    this list's own (not the previous one kept on screen), go to its last page.
+  */
+  const lastPage =
+    leads.data && !leads.isPlaceholderData ? Math.max(1, leads.data.data.pagination.totalPages) : page
+  if (page > lastPage) setPage(lastPage)
+
   const changeFilters = (next: LeadFilters) => {
     setFilters(next)
     setPage(1)

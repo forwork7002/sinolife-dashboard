@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
  * The page number is the screen's own state, not the URL's, so nothing reset
  * it when the dashboard period changed: page 3 of «Shu oy» was asked of
  * «Bugun», whose 40 leads have one page, and the table said «Bu davrda lead
- * yoʻq» under «40 ta yozuv · 3/1».
+ * yoʻq» under «40 ta yozuv · 3/1». The same list can also shrink under an
+ * unchanged window («Bugun» past midnight): the page then goes to the last one.
  */
 
 vi.mock('next/navigation', () => ({
@@ -44,6 +45,8 @@ Element.prototype.scrollIntoView = () => {}
 afterEach(cleanup)
 
 const leadRequests: Record<string, unknown>[] = []
+// «Shu oy»'s lead count; a case lowers it to shrink the list under an unchanged window.
+let monthItems = 150
 
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
@@ -54,7 +57,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
       if (path !== '/target/leads') return new Promise(() => {})
       leadRequests.push(params)
       const month = params.preset === 'this_month'
-      const totalItems = month ? 150 : 40
+      const totalItems = month ? monthItems : 40
       return Promise.resolve({
         data: {
           items: [],
@@ -93,5 +96,29 @@ describe('«Leadlar roʻyxati» — the page number', () => {
     expect(await screen.findByText('40 ta yozuv · 1/1')).toBeTruthy()
     await waitFor(() => expect(leadRequests.some((p) => p.preset === 'today')).toBe(true))
     expect(leadRequests.filter((p) => p.preset === 'today').map((p) => p.page)).toEqual([1])
+  })
+
+  it('goes to the last page there is when the same window\'s list shrinks under it', async () => {
+    monthItems = 150
+    window.history.replaceState(null, '', '/target?preset=this_month')
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TargetPage />
+      </QueryClientProvider>,
+    )
+    expect(await screen.findByText('150 ta yozuv · 1/3')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Keyingi' }))
+    expect(await screen.findByText('150 ta yozuv · 2/3')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Keyingi' }))
+    expect(await screen.findByText('150 ta yozuv · 3/3')).toBeTruthy()
+
+    // The same window answers 40 leads now — one page — and the address has not moved.
+    monthItems = 40
+    leadRequests.length = 0
+    await act(() => client.refetchQueries({ queryKey: ['target-leads'], type: 'active' }))
+
+    expect(await screen.findByText('40 ta yozuv · 1/1')).toBeTruthy()
+    await waitFor(() => expect(leadRequests.map((p) => p.page)).toEqual([3, 1]))
   })
 })
