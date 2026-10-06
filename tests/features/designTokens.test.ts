@@ -195,6 +195,21 @@ describe('the accent derivatives follow the page, not :root', () => {
   })
 })
 
+describe('a series mark on the card', () => {
+  /*
+    The «koʻk» note claimed every slot cleared 4.7:1 on the dark card and
+    3.6:1 on the light page; the tokens gave 3.82 and 2.67. What does hold,
+    and what the palette needs for a mark, is 3:1 on the card it is drawn on.
+  */
+  it('clears the 3:1 a mark needs, for all eight slots in both themes', () => {
+    for (const theme of THEMES) {
+      for (let slot = 1; slot <= 8; slot += 1) {
+        expect(contrast(colour(theme, `var(--series-${slot})`), colour(theme, 'var(--surface-raised)')), `${theme} slot ${slot}`).toBeGreaterThanOrEqual(3)
+      }
+    }
+  })
+})
+
 describe('ink on a series fill', () => {
   /*
     One theme-free #fff was said to clear every slot in both modes. It cleared
