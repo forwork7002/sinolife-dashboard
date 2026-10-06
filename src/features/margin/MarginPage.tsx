@@ -29,10 +29,22 @@ import { t } from '@/lib/messages'
 export function MarginPage() {
   const { filters, apiParams } = useDashboardFilters()
 
+  /*
+    THE SEARCH TERM NEVER REACHES THE REQUEST OR THE KEY.
+
+    The endpoint takes a period and nothing else, and the box below narrows the
+    table in the browser — but `apiParams` carries `q`, so every committed
+    search term was a new cache key: a fresh whole-window aggregate for an
+    identical payload, and the page dimmed under the placeholder while it ran.
+    Stripped here rather than in the shared hook, which every other screen
+    reads on its own terms.
+  */
+  const { q: _search, ...marginParams } = apiParams
+
   const query = useQuery({
-    queryKey: ['margin', apiParams],
+    queryKey: ['margin', marginParams],
     queryFn: ({ signal }) =>
-      apiGet<MarginDto>('/insights/margin', apiParams, signal),
+      apiGet<MarginDto>('/insights/margin', marginParams, signal),
   })
 
   /** One derivation, so no tile can disagree with its own page. */

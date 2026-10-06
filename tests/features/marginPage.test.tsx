@@ -78,6 +78,9 @@ let fetchMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/margin')
+  client = new QueryClient({
+    defaultOptions: { queries: { retry: false, refetchInterval: false, gcTime: Infinity } },
+  })
   fetchMock = vi.fn(async () => ({
     ok: true,
     status: 200,
@@ -93,15 +96,12 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+/** One client per case, so a re-render reads the same cache rather than a fresh one. */
+let client: QueryClient
+
 function page() {
   return (
-    <QueryClientProvider
-      client={
-        new QueryClient({
-          defaultOptions: { queries: { retry: false, refetchInterval: false, gcTime: Infinity } },
-        })
-      }
-    >
+    <QueryClientProvider client={client}>
       <MarginPage />
     </QueryClientProvider>
   )
@@ -114,6 +114,30 @@ const productOrder = () =>
     .slice(1)
     .map((row) => within(row).queryByText(/^Mahsulot /)?.textContent ?? '')
     .filter(Boolean)
+
+describe('the search box', () => {
+  /*
+    IT COSTS NO REQUEST. The endpoint is period-only and the box narrows the
+    table in the browser, but the search term rode `apiParams` into the key —
+    so every committed term re-ran the whole-window aggregate for an identical
+    payload, and the page dimmed while it did.
+  */
+  it('narrows the table without asking the server again', async () => {
+    window.history.replaceState(null, '', '/margin?q=mahsulot')
+    const view = render(page())
+    await screen.findByText('Mahsulot A')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('q=')
+
+    window.history.replaceState(null, '', '/margin?q=mahsulot+a')
+    view.rerender(page())
+    await screen.findByText('Mahsulotlar · 1 / 2')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(productOrder()).toEqual(['Mahsulot A'])
+  })
+})
 
 describe('the «Chegirma» sort', () => {
   it('ranks on the giveaway alone, never on the giveaway less the markup', async () => {
