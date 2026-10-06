@@ -563,9 +563,6 @@ export interface ConfirmationOrderRow {
   readonly dailyNo: number
   /** Id сделки — the Bitrix24 deal id, the key both systems look an order up by. */
   readonly bitrixId: string | null
-  /** `bx…` code parsed from the title, where the title carries one. */
-  readonly orderCode: string | null
-  readonly title: string
   readonly customerName: string | null
   /** Every number on the contact, in the portal's order. May be empty. */
   readonly customerPhones: readonly string[]
@@ -578,13 +575,9 @@ export interface ConfirmationOrderRow {
   readonly sourceName: string | null
   readonly amountMinor: bigint
   readonly currency: string
-  /** The stage the deal sits in NOW, which is what the outcome was read from. */
-  readonly stageName: string
   readonly outcome: ConfirmationOutcomeValue
-  /** Дата создания — when the order was placed. What the window selects on. */
+  /** Дата создания — when the order was placed. Shown in САНА's tooltip. */
   readonly createdAt: Date
-  /** The order's last confirmation move, which is where its status comes from. */
-  readonly movedAt: Date
   /**
    * When the order entered the queue this state belongs to.
    *
@@ -592,10 +585,6 @@ export interface ConfirmationOrderRow {
    * bot counts and so does this.
    */
   readonly queuedAt: Date | null
-  /** When it left the queue. Null while it is still in one. */
-  readonly decidedAt: Date | null
-  /** Queue time in hours, one decimal. Null while it is still waiting. */
-  readonly hoursToDecide: number | null
   /**
    * How many times this order has reached Тасдиклаш — over its WHOLE life,
    * not over the reporting window.
@@ -5954,8 +5943,6 @@ export class InsightsRepository {
       rop: string | null
       daily_no: number
       bitrix_id: string | null
-      order_code: string | null
-      title: string
       customer_name: string | null
       customer_phones: string | null
       employee_name: string
@@ -5965,12 +5952,9 @@ export class InsightsRepository {
       source_name: string | null
       amount_minor: MoneyText
       currency: string
-      stage_name: string
       outcome: ConfirmationOutcomeValue
       created_at: string
-      moved_at: string
       queued_at: string | null
-      decided_at: string | null
       queue_entries: number
       queue_returns: number
       previous_queued_at: string | null
@@ -6034,8 +6018,6 @@ export class InsightsRepository {
            p.rop,
            p.daily_no,
            d."externalId" AS bitrix_id,
-           d."orderCode" AS order_code,
-           d."title" AS title,
            cust."name" AS customer_name,
            -- Joined to text and split in TS: a text[] round-trips differently
            -- depending on the driver, a delimiter does not.
@@ -6053,9 +6035,8 @@ export class InsightsRepository {
            src."name" AS source_name,
            d."amountMinor"::text AS amount_minor,
            d."currency" AS currency,
-           st."name" AS stage_name,
            p.outcome,
-           p.created_at, p.moved_at, p.queued_at, p.decided_at,
+           p.created_at, p.queued_at,
            rep.entries AS queue_entries,
            rep.returns AS queue_returns,
            rep.previous_at AS previous_queued_at,
@@ -6063,7 +6044,6 @@ export class InsightsRepository {
          FROM page p
          JOIN "deal" d ON d."id" = p.deal_id
          JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
-         JOIN "deal_stage" st ON st."id" = d."stageId"
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
          LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
          -- LATERAL, not a join: four line items would otherwise become four
@@ -6137,14 +6117,11 @@ export class InsightsRepository {
       totalItems: int(row?.total_items ?? 0n),
       rows: (row?.page ?? []).map((r) => {
         const queuedAt = utcText(r.queued_at)
-        const decidedAt = utcText(r.decided_at)
         return {
           dealId: r.deal_id,
           rop: r.rop,
           dailyNo: r.daily_no,
           bitrixId: r.bitrix_id,
-          orderCode: r.order_code,
-          title: r.title,
           customerName: r.customer_name,
           customerPhones:
             r.customer_phones === null || r.customer_phones === ''
@@ -6157,22 +6134,13 @@ export class InsightsRepository {
           sourceName: r.source_name,
           amountMinor: money(r.amount_minor),
           currency: r.currency,
-          stageName: r.stage_name,
           outcome: r.outcome,
           createdAt: utcText(r.created_at)!,
-          movedAt: utcText(r.moved_at)!,
           queuedAt,
-          decidedAt,
           queueEntries: r.queue_entries,
           queueReturns: r.queue_returns,
           previousQueuedAt: utcText(r.previous_queued_at),
           queueHistory: visits(r.visits),
-          // Both ends or nothing: an order refused without ever being queued
-          // has no waiting time, and zero would read as "decided instantly".
-          hoursToDecide:
-            decidedAt === null || queuedAt === null
-              ? null
-              : Math.round(((decidedAt.getTime() - queuedAt.getTime()) / 3_600_000) * 10) / 10,
         }
       }),
       byRop: (row?.by_rop ?? []).map((r) => ({
@@ -6219,8 +6187,6 @@ export class InsightsRepository {
         rop: string | null
         daily_no: number
         bitrix_id: string | null
-        order_code: string | null
-        title: string
         customer_name: string | null
         customer_phones: string | null
         employee_name: string
@@ -6230,12 +6196,9 @@ export class InsightsRepository {
         source_name: string | null
         amount_minor: MoneyText
         currency: string
-        stage_name: string
         outcome: ConfirmationOutcomeValue
         created_at: Date
-        moved_at: Date
         queued_at: Date | null
-        decided_at: Date | null
         queue_entries: number
         queue_returns: number
         previous_queued_at: Date | null
@@ -6287,8 +6250,6 @@ export class InsightsRepository {
          c.rop AS rop,
          c.daily_no AS daily_no,
          d."externalId" AS bitrix_id,
-         d."orderCode" AS order_code,
-         d."title" AS title,
          cust."name" AS customer_name,
          -- Joined to text and split in TS: a text[] round-trips differently
          -- depending on the driver, a delimiter does not.
@@ -6306,12 +6267,9 @@ export class InsightsRepository {
          src."name" AS source_name,
          d."amountMinor"::text AS amount_minor,
          d."currency" AS currency,
-         st."name" AS stage_name,
          c.outcome AS outcome,
          c.created_at AS created_at,
-         c.moved_at AS moved_at,
          c.queued_at AS queued_at,
-         c.decided_at AS decided_at,
          rep.entries AS queue_entries,
          rep.returns AS queue_returns,
          rep.previous_at AS previous_queued_at,
@@ -6320,7 +6278,6 @@ export class InsightsRepository {
        FROM page c
        JOIN "deal" d ON d."id" = c.deal_id
        JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
-       JOIN "deal_stage" st ON st."id" = d."stageId"
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
        LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
        -- LATERAL, not a join: four line items would otherwise become four rows
@@ -6351,15 +6308,12 @@ export class InsightsRepository {
       totalItems: rows.length === 0 ? 0 : int(rows[0]!.total_items),
       rows: rows.map((r) => {
         const queuedAt = r.queued_at === null ? null : new Date(r.queued_at)
-        const decidedAt = r.decided_at === null ? null : new Date(r.decided_at)
 
         return {
           dealId: r.deal_id,
           rop: r.rop,
           dailyNo: int(r.daily_no),
           bitrixId: r.bitrix_id,
-          orderCode: r.order_code,
-          title: r.title,
           customerName: r.customer_name,
           customerPhones:
             r.customer_phones === null || r.customer_phones === ''
@@ -6374,22 +6328,13 @@ export class InsightsRepository {
           sourceName: r.source_name,
           amountMinor: money(r.amount_minor),
           currency: r.currency,
-          stageName: r.stage_name,
           outcome: r.outcome,
           createdAt: new Date(r.created_at),
-          movedAt: new Date(r.moved_at),
           queuedAt,
-          decidedAt,
           queueEntries: int(r.queue_entries),
           queueReturns: int(r.queue_returns),
           previousQueuedAt: r.previous_queued_at === null ? null : new Date(r.previous_queued_at),
           queueHistory: visits(r.visits),
-          // Both ends or nothing: an order refused without ever being queued
-          // has no waiting time, and zero would read as "decided instantly".
-          hoursToDecide:
-            decidedAt === null || queuedAt === null
-              ? null
-              : Math.round(((decidedAt.getTime() - queuedAt.getTime()) / 3_600_000) * 10) / 10,
         }
       }),
     }

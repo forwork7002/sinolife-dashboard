@@ -930,9 +930,6 @@ export interface ConfirmationOrderDto {
   readonly dailyNo: number | null
   /** Id сделки — the Bitrix24 deal id. */
   readonly bitrixId: string | null
-  /** `bx…` order code parsed from the title, when the title carries one. */
-  readonly orderCode: string | null
-  readonly title: string
   readonly customerName: string | null
   /** Every number on the contact. Empty when the portal holds none. */
   readonly customerPhones: readonly string[]
@@ -944,22 +941,15 @@ export interface ConfirmationOrderDto {
   /** Источник — the acquisition channel the order came in through. */
   readonly sourceName: string | null
   readonly amount: MoneyDto
-  /** The stage the deal sits in now — the evidence behind the outcome. */
-  readonly stageName: string
   readonly outcome: ConfirmationOutcome
   /** Дата создания — when the order was placed. Shown in САНА's tooltip. */
   readonly createdAt: string
-  /** The order's last confirmation move, which is where its status comes from. */
-  readonly movedAt: string
   /**
    * When it entered `C4:NEW`. What САНА shows, what the window selects on,
    * and the day № restarts on. Null only in principle — an order with no
    * arrival is not on the board.
    */
   readonly queuedAt: string | null
-  /** When it left the queue. Null while it is still in one. */
-  readonly decidedAt: string | null
-  readonly hoursToDecide: number | null
   /**
    * How many times the order has reached Тасдиклаш, over its whole life.
    *

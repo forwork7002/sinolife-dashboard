@@ -788,8 +788,6 @@ export interface ConfirmationOrderDto {
   readonly dailyNo: number | null
   /** Id сделки — the Bitrix24 id, the key both systems look an order up by. */
   readonly bitrixId: string | null
-  readonly orderCode: string | null
-  readonly title: string
   readonly customerName: string | null
   readonly customerPhones: readonly string[]
   readonly employeeName: string
@@ -799,16 +797,11 @@ export interface ConfirmationOrderDto {
   /** Источник — the acquisition channel. */
   readonly sourceName: string | null
   readonly amount: MoneyDto
-  readonly stageName: string
   readonly outcome: ConfirmationOutcomeValue
-  /** Дата создания — when the order was placed. What the window selects on. */
+  /** Дата создания — when the order was placed. Shown in САНА's tooltip. */
   readonly createdAt: string
-  /** The order's last confirmation move, which is where its status comes from. */
-  readonly movedAt: string
   /** When it entered the queue. Null when it was refused without ever being in one. */
   readonly queuedAt: string | null
-  readonly decidedAt: string | null
-  readonly hoursToDecide: number | null
   /**
    * How many times the order has reached Тасдиклаш, over its whole life.
    *
@@ -2109,8 +2102,6 @@ export class InsightsService {
         // See `ConfirmationOrderDto.dailyNo`: the backlog numbers only what is left.
         dailyNo: mode === 'backlog' ? null : r.dailyNo,
         bitrixId: r.bitrixId,
-        orderCode: r.orderCode,
-        title: r.title,
         customerName: r.customerName,
         customerPhones: r.customerPhones,
         employeeName: r.employeeName,
@@ -2121,13 +2112,9 @@ export class InsightsService {
         // The deal's OWN currency, not the app default: an order is worth what
         // it was written in, and converting it here would invent a rate.
         amount: toMoneyDto(money(r.amountMinor, r.currency)),
-        stageName: r.stageName,
         outcome: r.outcome,
         createdAt: r.createdAt.toISOString(),
-        movedAt: r.movedAt.toISOString(),
         queuedAt: r.queuedAt?.toISOString() ?? null,
-        decidedAt: r.decidedAt?.toISOString() ?? null,
-        hoursToDecide: r.hoursToDecide,
         queueEntries: r.queueEntries,
         queueReturns: r.queueReturns,
         previousQueuedAt: r.previousQueuedAt?.toISOString() ?? null,
