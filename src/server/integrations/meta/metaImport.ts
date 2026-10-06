@@ -202,6 +202,7 @@ export interface MetaImportResult {
    * account's account and campaign rows were still written.
    */
   readonly failed: readonly string[]
+  /** The run's refresh window for the worker's log — see `importMetaSpend`. */
   readonly since: string
   readonly until: string
 }
@@ -242,13 +243,21 @@ export async function importMetaSpend(
   let campaignRows = 0
   let adRows = 0
   let unread = 0
-  // The earliest day any account was read from — the run's window in the worker's log.
-  let since = today
+  /*
+    The run's window in the worker's log: the earliest day an account WITH
+    rows was read from. One read from the history start because it has none —
+    new to the token, or never spent and so asked from July every hour —
+    pinned the line at «2026-07-01 – today» for good; it sets the window only
+    when no account has rows yet, on the first run.
+  */
+  let since: string | null = null
+  let earliest = today
   for (const account of accounts) {
     let spentNow = false
     try {
       const from = fromOf(account.account_id)
-      if (from < since) since = from
+      if (from < earliest) earliest = from
+      if (adMax.get(account.account_id) && (since === null || from < since)) since = from
       const campaignFrom = campaignFromOf(account.account_id)
       const imported = await importAccount(prisma, token, account, { from, campaignFrom, today })
       rows += imported.rows
@@ -289,7 +298,7 @@ export async function importMetaSpend(
   if (unread === accounts.length && accounts.length > 0) {
     throw new Error(`hech bir akkaunt oʻqilmadi — ${failed[0]}`)
   }
-  return { accounts: accounts.length, rows, campaignRows, adRows, failed, since, until: today }
+  return { accounts: accounts.length, rows, campaignRows, adRows, failed, since: since ?? earliest, until: today }
 }
 
 /**

@@ -350,6 +350,26 @@ describe('importMetaSpend — the account grain starts per account, never at the
         ['1075542260705572', '2026-07-01'],
       ]),
     )
+    // The log's window is the refresh of the accounts that have rows: Kamron 2's July backfill does not pin it there.
+    expect(r.since).toBe('2026-09-03')
+  })
+
+  it('logs the history start as the window on the first run, when no account has rows yet', async () => {
+    const prisma = {
+      metaAdDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      metaCampaignDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      metaAdInsightDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      $transaction: async () => [],
+    } as unknown as PrismaClient
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/me/adaccounts')
+          ? new Response(JSON.stringify({ data: [{ account_id: '990016692137088', name: 'Umar - 64' }] }))
+          : new Response(JSON.stringify({ data: [] })),
+      ),
+    )
+    const r = await importMetaSpend(prisma, 'token', '2026-10-06')
     expect(r.since).toBe('2026-07-01')
   })
 })
