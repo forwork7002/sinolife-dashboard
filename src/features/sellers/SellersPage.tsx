@@ -39,12 +39,15 @@ import { t } from '@/lib/messages'
  * «sotuvchilar reytingi faqat sotuvchilar oʻz reytingini televizordan
  * koʻrishi uchun kerak» — and asked for exactly two things on it: the sellers
  * ranked on the left, the teams ranked on the right, and nothing that is not
- * a rank. Everything analytical the old page carried — the FAKT 1 / FAKT 2
- * totals band, the conversion gauge, the bonus fund, the bonus ladder, the
- * per-row Plan / Prognoz / Lid / FOT columns, the per-seller drill-down and
- * its day chart — moved to Savdo dinamikasi (`ConfirmationFaktSection`),
- * where the manager who reads those numbers actually is. Nothing about a
- * bonus is printed here at all, per the client's own note the same day.
+ * a rank. Everything analytical the old page carried left it. The FAKT 1 /
+ * FAKT 2 totals band, the conversion gauge and the bonus fund moved to Savdo
+ * dinamikasi (`ConfirmationFaktSection`), and the per-seller Prognoz to its
+ * `ForecastSection`, where the manager who reads those numbers actually is.
+ * The rest is gone altogether: the bonus ladder (2026-09-10), and the per-row
+ * Plan / Lid / FOT columns and the per-seller drill-down with its day chart,
+ * which left this screen on 2026-09-07 and whose payload fields and endpoint
+ * went on 2026-10-06. Nothing about a bonus is printed here at all, per the
+ * client's own note of 2026-09-07.
  *
  * A TELEVISION HAS NO MOUSE, and that decides the rest of the layout:
  *

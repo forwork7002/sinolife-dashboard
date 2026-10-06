@@ -7,7 +7,7 @@
  * ninety-six queries into a queue eight connections wide — the tail waited past
  * the connect timeout and the page 500'd. The same shape is everywhere in this
  * application. `/meta/alerts` runs an all-time confirmation cohort on every
- * screen once a minute; the sellers board builds that cohort twice per request
+ * screen once a minute; the sellers board builds that cohort on every request
  * and is company-wide by construction; the cohorts endpoint scans the whole
  * deal history and takes no period at all. Each of them is identical for every
  * reader, and each was being recomputed per request against one vCPU.
