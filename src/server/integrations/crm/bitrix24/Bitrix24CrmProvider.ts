@@ -22,6 +22,8 @@
 
 import {
   type CrmProvider,
+  type DealItemsOptions,
+  type DealItemsPage,
   type FetchOptions,
   type Page,
   type ProviderCapabilities,
@@ -1938,10 +1940,18 @@ export class Bitrix24CrmProvider implements CrmProvider {
    *
    * `crm.deal.productrows.get` takes one deal at a time. Reading line items for
    * all 415 591 deals would take days and tell us nothing: the lead and triage
-   * funnels carry no products. The 16 500 deals that produce money do.
+   * funnels carry no products. The 16 500 deals that produce money do — plus
+   * any deal the sync names in `dealExternalIds` (one that just lost its money,
+   * and so its lines).
+   *
+   * `dealsRead` is every deal answered, a deal with no rows left included: the
+   * read is all-or-nothing (`productRows`), so each one is answered in full and
+   * the sync may drop the stored lines it no longer lists.
    */
-  async fetchDealItems(_o?: FetchOptions): Promise<Page<RawDealItem>> {
-    const wanted = [...new Set([...this.itemDealsOwed, ...this.itemDealIds])]
+  async fetchDealItems(options: DealItemsOptions = {}): Promise<DealItemsPage> {
+    const wanted = [
+      ...new Set([...this.itemDealsOwed, ...this.itemDealIds, ...(options.dealExternalIds ?? [])]),
+    ]
     if (wanted.length === 0) return this.page([])
 
     const answered = await this.productRows(wanted)
@@ -2000,7 +2010,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }
 
     this.progress(`  deal items: ${items.length}`)
-    return this.page(items)
+    return { items, dealsRead: [...answered.keys()] }
   }
 
   /**

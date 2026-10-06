@@ -79,7 +79,20 @@ describe('reading line items', () => {
 
     expect(asked).toEqual([['1001', '1002', '1003']])
     expect(page.items.map((i) => i.externalId)).toEqual(['1001-0', '1001-1', '1002-0', '1002-1'])
+    // Answered in full, the deal with no lines left included — the sync may
+    // drop whatever else it holds for these three.
+    expect(page.dealsRead).toEqual(['1001', '1002', '1003'])
     expect(provider.budget.state(new Date()).byMethod[0]?.method).toBe(PRODUCT_ROWS)
+  })
+
+  it('also reads a deal the sync names, though it carries no money', async () => {
+    const { provider, asked } = portal(() => [], () => [])
+    await provider.fetchDeals()
+
+    const page = await provider.fetchDealItems({ dealExternalIds: ['2001'] })
+
+    expect(asked).toEqual([['2001']])
+    expect(page.dealsRead).toEqual(['2001'])
   })
 
   it('fails on a refused command and holds the method, not the portal', async () => {

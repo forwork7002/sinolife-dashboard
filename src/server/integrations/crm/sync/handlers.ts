@@ -169,6 +169,19 @@ export function historyLeftAtSql(scoped: boolean): string {
 }
 
 /**
+ * The most one line-item reconciliation may delete: 25 lines, or 5% of the
+ * lines stored for the deals it read if that is more.
+ *
+ * A real edit takes a line or two off an order. Most of a run's lines «gone»
+ * at once is far likelier to be the portal answering product rows empty than
+ * a morning of edits — so a pass like that deletes nothing and says so, as
+ * `goneLimit` and `relinkLimit` do.
+ */
+export function surplusLineLimit(stored: number): number {
+  return Math.max(25, Math.ceil(stored * 0.05))
+}
+
+/**
  * Above this many deals, close the whole table in one pass instead.
  *
  * A FULL run touches every deal there is, and handing a hundred thousand ids
@@ -802,6 +815,18 @@ export function createSyncHandlers(
     ...lifecycleColumns(),
   ]
 
+  /**
+   * Deals a deals batch saw lose ALL their money, for the next line-item read.
+   *
+   * The provider reads line items only for deals that carry money, so an order
+   * whose every product was removed — its amount falls to zero with them —
+   * was never read again and kept the lines it no longer has. The deals pass
+   * is the one place that sees both amounts, so it names them; DEAL_ITEMS
+   * hands them to the provider (`dealExternalIds`) and its reconciliation
+   * drops what the portal no longer lists.
+   */
+  const emptiedDeals = new Set<string>()
+
   const deals: EntitySyncHandler<RawDeal> = {
     entity: 'DEALS',
     externalIdOf: (record) => record.externalId,
@@ -917,11 +942,11 @@ export function createSyncHandlers(
         Apart, a failed insert sent the engine to its record-by-record retry,
         which read the NEW owner as "before" and lost the change for good.
       */
-      const existing = await prisma.$transaction(
+      const stored = await prisma.$transaction(
         async (tx) => {
           const before = await tx.deal.findMany({
             where: { externalSource: source, externalId: { in: ids(batch) } },
-            select: { id: true, externalId: true, employeeId: true },
+            select: { id: true, externalId: true, employeeId: true, amountMinor: true },
           })
           await bulkUpsert({
             prisma: tx,
@@ -933,10 +958,17 @@ export function createSyncHandlers(
           const inRegistration = written.filter((r) => leadPipelines.has(link(pipelineMap, r.pipelineExternalId) ?? ''))
           const changes = ownerChangesOf(before, inRegistration, employeeMap)
           if (changes.length > 0) await tx.dealOwnerChange.createMany({ data: changes })
-          return new Set(before.map((r) => r.externalId!))
+          return before
         },
         { maxWait: 10_000, timeout: 60_000 },
       )
+      const existing = new Set(stored.map((r) => r.externalId!))
+
+      // An order that lost all its money lost its lines with it — see `emptiedDeals`.
+      const paidBefore = new Set(stored.filter((r) => (r.amountMinor ?? 0n) > 0n).map((r) => r.externalId))
+      for (const record of written) {
+        if (record.amountMinor === 0n && paidBefore.has(record.externalId)) emptiedDeals.add(record.externalId)
+      }
 
       await rememberWritten(
         resolver,
@@ -964,10 +996,31 @@ export function createSyncHandlers(
     ...lifecycleColumns(),
   ]
 
+  /**
+   * The line keys each deal came back with in this run, for `finalize`.
+   *
+   * Only the deals the provider says it read IN FULL (`dealsRead`), a deal with
+   * no lines left included. In-process like `touchedDeals` below, and cleared
+   * by `finalize`: a run that fails before it leaves them for the next run,
+   * whose newer read of a deal replaces the older one.
+   */
+  const linesRead = new Map<string, Set<string>>()
+
   const dealItems: EntitySyncHandler<RawDealItem> = {
     entity: 'DEAL_ITEMS',
     externalIdOf: (record) => record.externalId,
-    fetch: (provider, options) => provider.fetchDealItems(options),
+    async fetch(provider, options) {
+      const emptied = options.cursor === undefined ? [...emptiedDeals] : []
+      if (options.cursor === undefined) emptiedDeals.clear()
+      // Cleared before the read on purpose: the Bitrix24 provider keeps what a
+      // failed read did not settle (`itemDealsOwed`), these deals included.
+      const page = await provider.fetchDealItems(
+        emptied.length > 0 ? { ...options, dealExternalIds: emptied } : options,
+      )
+      for (const dealId of page.dealsRead ?? []) linesRead.set(dealId, new Set())
+      for (const item of page.items) linesRead.get(item.dealExternalId)?.add(item.externalId)
+      return page
+    },
     async persist(batch) {
       const existing = new Set(
         (
@@ -1070,6 +1123,73 @@ export function createSyncHandlers(
       })
 
       return { created, updated, skipped }
+    },
+
+    /**
+     * Drop the lines the portal no longer lists — per deal, never per batch.
+     *
+     * A line's key is its POSITION (`${dealId}-${index}`: the portal gives
+     * product rows no id of their own), and the upsert only ever wrote what
+     * came back. So an order that went from [Collagen, Zextra] to [Zextra]
+     * kept a second Zextra at position 1 for good: its lines summed past its
+     * amount, margin counted that revenue and its cost twice, and the brand
+     * rule, Sverka and the queue's Продукт column read a product the order no
+     * longer had.
+     *
+     * Here, not in `persist`: the engine retries a failed batch one record at
+     * a time, and a delete scoped to the batch would then take every line's
+     * siblings with it. Only deals the provider read in full are touched, and
+     * past `surplusLineLimit` nothing is deleted — the run says PARTIAL and the
+     * reason.
+     */
+    async finalize() {
+      const read = [...linesRead]
+      linesRead.clear()
+      if (read.length === 0) return
+
+      const dealIds = read.map(([dealId]) => dealId)
+      const kept = read.flatMap(([, keys]) => [...keys])
+      // ONE population for the count and the delete, so the guard measures
+      // exactly what would go.
+      const scope = `FROM "deal_item" AS t
+          JOIN "deal" AS d ON d."id" = t."dealId"
+         WHERE d."externalSource" = $1::"ExternalSource"
+           AND d."externalId" = ANY($2::text[])
+           AND t."externalSource" = $1::"ExternalSource"
+           AND t."externalId" IS NOT NULL`
+      const surplus = `AND NOT EXISTS (
+            SELECT 1 FROM unnest($3::text[]) AS k("externalId") WHERE k."externalId" = t."externalId"
+          )`
+
+      await prisma.$transaction(
+        async (tx) => {
+          const [counted] = await tx.$queryRawUnsafe<{ stored: bigint; surplus: bigint }[]>(
+            `SELECT (SELECT count(*) ${scope})::bigint AS stored,
+                    (SELECT count(*) ${scope} ${surplus})::bigint AS surplus`,
+            source,
+            dealIds,
+            kept,
+          )
+          const stored = Number(counted?.stored ?? 0)
+          const extra = Number(counted?.surplus ?? 0)
+          if (extra === 0) return
+
+          const limit = surplusLineLimit(stored)
+          if (extra > limit) {
+            throw new Error(
+              `${dealIds.length} ta bitimning ${stored} ta qatoridan ${extra} tasini portal endi koʻrsatmaydi — ` +
+                `bu juda koʻp (chegara ${limit}), hech narsa oʻchirilmadi`,
+            )
+          }
+          await tx.$executeRawUnsafe(
+            `DELETE FROM "deal_item" WHERE "id" IN (SELECT t."id" ${scope} ${surplus})`,
+            source,
+            dealIds,
+            kept,
+          )
+        },
+        { maxWait: 10_000, timeout: 120_000 },
+      )
     },
   }
 
