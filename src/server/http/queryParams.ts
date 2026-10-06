@@ -67,14 +67,23 @@ const nameList = z
  * a reused leap-day link answered 1 March's numbers with a 200 under a picker
  * that said 29.02. The string has to come back unchanged from its own date —
  * the check `registration/schema.ts` and `rnp/costs/schema.ts` already make.
+ *
+ * BOTH CHECKS ABORT. A failed check is continuable in zod 4: the transform is
+ * skipped, but `periodQuerySchema`'s `superRefine` still ran — on the raw
+ * string — and its `.getTime()` threw a TypeError, which the handler answers as
+ * a 500 and logs as a fault, for a typo in a pasted link («2026-9-01»).
+ * Aborting skips the object's refinement, so the answer is the field's 400.
  */
 const isoDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date in YYYY-MM-DD format')
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00.000Z`)
-    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
-  }, 'Not a valid calendar date')
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { error: 'Expected a date in YYYY-MM-DD format', abort: true })
+  .refine(
+    (value) => {
+      const date = new Date(`${value}T00:00:00.000Z`)
+      return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+    },
+    { error: 'Not a valid calendar date', abort: true },
+  )
   .transform((value) => new Date(`${value}T00:00:00.000Z`))
 
 /** Ten years, in milliseconds. See the span check in `periodQuerySchema`. */

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import { rowScopeFor, type Principal } from '@/server/auth/rbac'
 import {
@@ -128,8 +129,11 @@ describe('filter parsing end to end', () => {
 
   it('refuses a date the calendar does not have, rather than rolling it into the next month', () => {
     // A leap-day link reused in 2026 answered 1 March's numbers with a 200.
-    for (const day of ['2026-02-29', '2026-02-30', '2026-04-31', '2026-13-01', '2026-00-10']) {
-      expect(() => buildFilters(`preset=custom&from=${day}&to=${day}`, manager), day).toThrow()
+    // A ZodError, not merely a throw: it is the one error the handler answers
+    // as a 400 — anything else is a 500, which is what these once were.
+    for (const day of ['2026-02-29', '2026-02-30', '2026-04-31', '2026-13-01', '2026-00-10', '2026-9-01']) {
+      expect(() => buildFilters(`preset=custom&from=${day}&to=${day}`, manager), day).toThrow(ZodError)
+      expect(() => buildFilters(`preset=custom&from=2026-01-01&to=${day}`, manager), day).toThrow(ZodError)
     }
     const leap = buildFilters('preset=custom&from=2024-02-29&to=2024-02-29', manager)
     expect(leap.from?.toISOString()).toBe('2024-02-29T00:00:00.000Z')
