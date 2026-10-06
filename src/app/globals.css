@@ -885,14 +885,6 @@ body {
   line-height: 1.1;
 }
 
-/**
- * Recharts focuses its own wrapper.
- *
- * The default browser outline on that box adds nothing — but `outline: none`
- * with no replacement removes a keyboard user's only way of knowing where they
- * are. `:focus-visible` shows the house ring for the keyboard and stays out of
- * the way for the mouse.
- */
 /* Neon under a plot line — dark only (--line-glow is `none` in light). A
    filter on a handful of paths, never on bars or grid: cheap, and the glow
    never touches a mark that has to be measured against its neighbour. */
@@ -901,12 +893,26 @@ body {
   filter: var(--line-glow);
 }
 
-.recharts-wrapper:focus,
+/**
+ * Recharts focuses its own svg surface.
+ *
+ * recharts 3 puts the chart's tab stop on `svg.recharts-surface` (tabIndex 0,
+ * role="application" — its keyboard layer, on by default), never on the
+ * `.recharts-wrapper` div around it, which only hears focus bubble up. The
+ * ring was written on the wrapper until 2026-10-06, so a keyboard reader
+ * tabbing onto a chart saw nothing at all: the surface's own outline was
+ * removed and the replacement could never match.
+ *
+ * The default browser outline on that box adds nothing — but `outline: none`
+ * with no replacement removes a keyboard user's only way of knowing where they
+ * are. `:focus-visible` shows the house ring for the keyboard and stays out of
+ * the way for the mouse.
+ */
 .recharts-surface:focus {
   outline: none;
 }
 
-.recharts-wrapper:focus-visible {
+.recharts-surface:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius-panel-sm);
