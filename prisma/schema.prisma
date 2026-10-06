@@ -653,6 +653,11 @@ model Product {
   externalId     String?
   name           String
   sku            String?
+  /// A trade offer's product (`catalog.product.offer` `parentId`) — the offer
+  /// «Sinolife collagen marine kakao» (676) belongs to «Collagen Marine
+  /// Sinolife» (674). Null for a product. «Sverka» reads the PARENT's `sku`
+  /// (XML_ID), because that is the code MoySklad files the order line under.
+  parentExternalId String?
   categoryId     String?
   /// List price in minor units. Null when the source does not publish one.
   priceMinor     BigInt?
@@ -1761,4 +1766,93 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([createdAt])
   @@map("audit_log")
+}
+
+// ---------------------------------------------------------------------------
+// MoySklad · customer orders, read directly («Sverka», 2026-10-06)
+//
+// The warehouse's own record of every order the portal hands it. A Bitrix24
+// integration on the client's side creates one «Заказ покупателя» per Доставка
+// deal and stamps the deal's id on it («ID сделки в BX», and `code` «bx…»), so
+// the two systems meet on THE DEAL ID — never on a name, a phone or a sum.
+//
+// GET ONLY, by `importMoyskladOrders` from the sync worker. Never joined by a
+// foreign key: an order whose deal we have not synced (or that Bitrix24 no
+// longer has) is exactly what «Sverka» exists to show.
+// ---------------------------------------------------------------------------
+
+/// One MoySklad customer order.
+model MoyskladOrder {
+  /// MoySklad's own UUID.
+  id           String   @id
+  /// «bx10043» — the document number.
+  name         String
+  /// The Bitrix24 deal id, digits only: «ID сделки в BX», else the digits of
+  /// `code` («bx1071642»). Null when the order names no deal at all.
+  bitrixDealId String?
+  /// The document date (`moment`), MoySklad's Moscow time converted to UTC.
+  moment       DateTime
+  /// The order's status as MoySklad names it («В пути», «Успешно», …).
+  stateName    String?
+  /// Totals in UZS minor units (MoySklad sends kopecks = tiyin, ×100).
+  sumMinor     BigInt
+  payedMinor   BigInt   @default(0)
+  shippedMinor BigInt   @default(0)
+  /// «Продавцы (new)» — the seller as the warehouse was told.
+  sellerName   String?
+  /// The MoySklad project — the ROP team, «Sevinch(ROP)».
+  projectName  String?
+  /// «Логистика» / «Регион» attributes, as typed.
+  logistics    String?
+  region       String?
+  /// MoySklad's «Проведено». An unposted order is still listed.
+  applicable   Boolean  @default(true)
+  /// MoySklad's `updated` — the import's watermark.
+  updatedAtSource DateTime
+  importedAt   DateTime @default(now()) @updatedAt
+
+  items MoyskladOrderItem[]
+
+  @@index([bitrixDealId])
+  @@index([moment])
+  @@index([updatedAtSource])
+  @@map("moysklad_order")
+}
+
+/// One position of a MoySklad order.
+model MoyskladOrderItem {
+  /// MoySklad's position UUID.
+  id          String @id
+  orderId     String
+  /// The assortment's `externalCode` — equal to the Bitrix24 product's
+  /// XML_ID (`product.sku`), which is how the two catalogues meet.
+  productCode String?
+  productName String
+  /// Pieces. A float because MoySklad sends one; every order seen carries
+  /// whole numbers.
+  quantity    Float
+  /// Per unit, UZS minor units, before the discount.
+  priceMinor  BigInt
+  /// MoySklad's discount, in basis points (12.5 % → 1250).
+  discountBp  Int    @default(0)
+  /// price × quantity × (1 − discount), rounded to the minor unit.
+  totalMinor  BigInt
+
+  order MoyskladOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("moysklad_order_item")
+}
+
+/// The MoySklad import's own clock — one row, id 'orders'. `moysklad_order
+/// ."importedAt"` only moves when an order changed, so a quiet night and a
+/// revoked token would read the same; this records every run.
+model MoyskladSync {
+  id            String    @id
+  lastSuccessAt DateTime?
+  lastError     String?
+  lastErrorAt   DateTime?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("moysklad_sync")
 }

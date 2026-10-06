@@ -61,6 +61,7 @@ import { relinkDealContacts } from '../src/server/integrations/crm/sync/contactR
 import { sweepRecentConfirmations } from '../src/server/integrations/crm/sync/recentDeletions'
 import { closedTriageDealIds, rereadClosedTriageDeals } from '../src/server/integrations/crm/sync/triageMoves'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
+import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
 import { zonedDateKey } from '../src/server/domain/period/period'
 import {
   type DealsBackfill,
@@ -135,6 +136,23 @@ const ROISTAT_EVERY = Number(process.env.SYNC_ROISTAT_EVERY ?? 60)
  */
 const META_EVERY = Number(process.env.SYNC_META_EVERY ?? 60)
 const META_TOKEN = process.env.META_ACCESS_TOKEN?.trim() || null
+
+/**
+ * MoySklad customer orders for «Sverka», every N ticks — about six minutes at
+ * the 120 s tick. Off without `MOYSKLAD_TOKEN`. In-process like Meta: an
+ * incremental read is one or two requests to MoySklad, never to Bitrix24.
+ * Every `MOYSKLAD_SWEEP_RUNS`-th read (the first included) also lists every
+ * order id and drops the ones MoySklad deleted — about ten more requests.
+ */
+const MOYSKLAD_EVERY = Number(process.env.SYNC_MOYSKLAD_EVERY ?? 3)
+const MOYSKLAD_TOKEN = process.env.MOYSKLAD_TOKEN?.trim() || null
+const MOYSKLAD_SWEEP_RUNS = 10
+/**
+ * Pages of 100 one read may take. The first, whole-table read is ≈100 pages
+ * (≈6 minutes); at 15 a turn it is spread over ~7 turns of ~1 minute each,
+ * so the Bitrix24 sync is never held for long.
+ */
+const MOYSKLAD_MAX_PAGES = 15
 
 /**
  * How many ticks between deletion sweeps. Default: 60 = hourly.
@@ -976,6 +994,9 @@ async function main() {
       (SWEEP_EVERY > 0 ? ` Oxirgi tozalash: ${lastSweepAt?.toISOString() ?? 'yozilmagan'}.` : '') +
       (ROISTAT_EVERY > 0 ? ` Roistat har ${ROISTAT_EVERY} tsiklda.` : ' Roistat oʻchirilgan.') +
       (META_TOKEN && META_EVERY > 0 ? ` Meta har ${META_EVERY} tsiklda.` : ' Meta oʻchirilgan (token yoʻq).') +
+      (MOYSKLAD_TOKEN && MOYSKLAD_EVERY > 0
+        ? ` MoySklad har ${MOYSKLAD_EVERY} tsiklda.`
+        : ' MoySklad oʻchirilgan (token yoʻq).') +
       (SWEEP_EVERY > 0
         ? ` Oʻchirilganlarni tozalash har ${SWEEP_EVERY} tsiklda.`
         : ' Tozalash oʻchirilgan.') +
@@ -994,6 +1015,8 @@ async function main() {
   }
 
   let tick = 0
+  /** MoySklad reads this process has made — every tenth also sweeps deletions. */
+  let moyskladRuns = 0
   /**
    * Consecutive failures, for backoff.
    *
@@ -1547,6 +1570,31 @@ async function main() {
         for (const refused of r.failed) console.warn(`  ${stamp()} meta akkaunt oʻqilmadi — ${refused}`)
       } catch (error) {
         console.warn(`  ${stamp()} meta muvaffaqiyatsiz: ${(error as Error).message}`)
+      }
+    }
+
+    /*
+      MoySklad for «Sverka», on the same «never tick 0» rule, offset by one
+      tick from the hour's Meta and Roistat passes. A failure is logged and
+      retried on the next turn — MoySklad being down must never cost a
+      Bitrix24 tick.
+    */
+    if (MOYSKLAD_TOKEN && MOYSKLAD_EVERY > 0 && tick > 0 && (tick + 1) % MOYSKLAD_EVERY === 0 && !stopping) {
+      const sweep = moyskladRuns % MOYSKLAD_SWEEP_RUNS === 0
+      moyskladRuns += 1
+      const msStarted = Date.now()
+      try {
+        const r = await importMoyskladOrders(prisma, MOYSKLAD_TOKEN, { sweep, maxPages: MOYSKLAD_MAX_PAGES })
+        console.log(
+          `  ${stamp()} moysklad: ${r.orders} buyurtma, ${r.items} pozitsiya` +
+            (r.partial ? ' (davomi keyingi safar)' : '') +
+            (r.skipped > 0 ? `, sanasiz ${r.skipped}` : '') +
+            (r.deleted === null ? '' : `, oʻchirilgan ${r.deleted}`) +
+            `  (${((Date.now() - msStarted) / 1000).toFixed(1)}s)`,
+        )
+      } catch (error) {
+        console.warn(`  ${stamp()} moysklad muvaffaqiyatsiz: ${(error as Error).message}`)
+        await recordMoyskladFailure(prisma, error as Error).catch(() => undefined)
       }
     }
 

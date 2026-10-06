@@ -457,6 +457,7 @@ export function createSyncHandlers(
         const data = {
           name: record.name,
           sku: record.sku ?? null,
+          parentExternalId: record.parentExternalId ?? null,
           priceMinor: record.priceMinor ?? null,
           currency: record.currency,
           isActive: record.isActive,

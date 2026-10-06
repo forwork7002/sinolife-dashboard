@@ -22,6 +22,7 @@
     "verify": "npm run typecheck && npm run lint && npm run test",
     "bitrix:import": "tsx scripts/import.ts",
     "meta:import": "tsx scripts/importMeta.ts",
+    "moysklad:import": "tsx scripts/importMoysklad.ts",
     "bitrix:worker": "node --import tsx scripts/syncWorker.ts",
     "bitrix:meter": "tsx scripts/portalMeter.ts",
     "bitrix:cost": "tsx scripts/portalCost.ts",

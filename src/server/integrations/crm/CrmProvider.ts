@@ -111,6 +111,8 @@ export interface RawProductCategory extends ExternalRecord {
 export interface RawProduct extends ExternalRecord {
   readonly name: string
   readonly sku?: string
+  /** A trade offer's product (its `parentId`). Absent on a product. */
+  readonly parentExternalId?: string
   readonly categoryExternalId?: string
   /** Minor units. Absent when the source publishes no list price. */
   readonly priceMinor?: bigint

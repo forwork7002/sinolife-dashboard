@@ -1291,7 +1291,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
     if (!scopes.has('catalog')) return []
 
     try {
-      const catalogues = await this.listAll<{ iblockId: number }>(
+      const catalogues = await this.listAll<{ iblockId: number; productIblockId?: number | null }>(
         'catalog.catalog.list',
         {},
         'catalogues',
@@ -1301,18 +1301,27 @@ export class Bitrix24CrmProvider implements CrmProvider {
       const rows: RawProduct[] = []
 
       for (const catalogue of catalogues) {
+        /*
+          THE OFFERS BLOCK ALSO NAMES EACH OFFER'S PRODUCT. «Sverka» needs it:
+          a deal sells the offer («Sinolife collagen marine kakao», 676) and
+          MoySklad files that line under the product's XML_ID (674's). Asked
+          only of the offers block (`productIblockId` set) — a products block
+          has no such property to select.
+        */
+        const offers = Boolean(catalogue.productIblockId)
         const products = await this.listAll<{
           id: number
           iblockId: number
           name: string
           purchasingPrice?: string | number | null
           active?: string
+          parentId?: { value?: string | number | null } | null
         }>(
           'catalog.product.list',
           {
             // iblockId is mandatory in the select as well as the filter — the
             // portal rejects the call outright without it.
-            select: ['id', 'iblockId', 'name', 'purchasingPrice', 'active'],
+            select: ['id', 'iblockId', 'name', 'purchasingPrice', 'active', ...(offers ? ['parentId'] : [])],
             filter: { iblockId: catalogue.iblockId },
             order: { id: 'ASC' },
           },
@@ -1346,6 +1355,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
             })(),
             currency: 'UZS',
             isActive: p.active !== 'N',
+            ...(offers && p.parentId?.value ? { parentExternalId: String(p.parentId.value) } : {}),
           })
         }
       }
