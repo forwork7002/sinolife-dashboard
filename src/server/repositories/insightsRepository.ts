@@ -4466,10 +4466,11 @@ export class InsightsRepository {
       WHAT IT HAS TO WORK OVER. The three queries that use this predicate join
       different things — the tiles and the ROP panel join only `deal` and
       `customer`, the list also joins employee, stage and source. So the
-      predicate may only depend on what ALL THREE have: the `numbered` CTE
-      aliased `c`, `d` and `cust`. Everything else is reached by a correlated
-      EXISTS rather than an outer join, which keeps one definition of "search"
-      instead of three that can drift apart.
+      predicate may only depend on what ALL THREE have: the cohort aliased
+      `c` (`scoped` or `visible`, both carrying `operator_id`), `d` and
+      `cust`. Everything else is reached by a correlated EXISTS rather than an
+      outer join, which keeps one definition of "search" instead of three that
+      can drift apart.
 
       TWO KINDS OF MATCH. Text columns match on a plain substring. Phone and
       amount cannot: the phone is displayed masked and formatted (+99894***0037)
@@ -4494,9 +4495,22 @@ export class InsightsRepository {
             OR d."deliveryAddress" ILIKE '%' || ${param} || '%'
             OR c.rop ILIKE '%' || ${param} || '%'
             OR cust."name" ILIKE '%' || ${param} || '%'
+            /*
+              THE ОПЕРАТОР THE ROW PRINTS, NOT THE DEAL'S ASSIGNEE.
+
+              This matched d."employeeId" from 2026-08-29, and the column moved
+              to the operator on 2026-09-04 without it. The assignee drifts to
+              back office while an order is processed (556 July orders sat on
+              the head of Операцион), so searching a seller's name dropped
+              every reassigned order of theirs from the rows, the tiles and the
+              ROP panel, and searching the back-office head found orders each
+              labelled with somebody else. c.operator_id is the person the
+              classified CTE resolved for the ОПЕРАТОР column and the scope
+              alike, carried by both doors every caller selects from.
+            */
             OR EXISTS (
               SELECT 1 FROM "employee" emp
-               WHERE emp."id" = d."employeeId" AND emp."fullName" ILIKE '%' || ${param} || '%'
+               WHERE emp."id" = c.operator_id AND emp."fullName" ILIKE '%' || ${param} || '%'
             )
             OR EXISTS (
               SELECT 1 FROM "sales_source" ss
