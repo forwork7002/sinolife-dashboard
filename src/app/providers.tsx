@@ -58,6 +58,22 @@ export function Providers({
             staleTime: 115_000,
 
             /**
+             * Half an hour in the cache after the last reader leaves.
+             *
+             * There is no dashboard layout: every screen's queries live in its
+             * page component, which unmounts on every navigation. At the
+             * library's five-minute default, ten minutes on «Tasdiqlash» was
+             * enough to throw «Savdo dinamikasi»'s answer away, and going back
+             * to it drew skeletons and waited the whole round trip (~1–1.6 s on
+             * the heavier endpoints) instead of painting the last figures at
+             * once. Kept, they are past `staleTime` by then, so the return
+             * still refetches them — behind the figures, not instead of them.
+             * Sign-out clears the cache (`Shell`), so nothing outlives the
+             * account that read it.
+             */
+            gcTime: 30 * 60_000,
+
+            /**
              * Not while the tab is hidden.
              *
              * A dashboard left open in a background tab for a week would
