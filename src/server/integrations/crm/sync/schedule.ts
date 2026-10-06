@@ -152,6 +152,42 @@ export function planTick(state: {
 export const SWEEP_RETRY_MS = 60 * 60_000
 
 /**
+ * How the daily sweep's REFUSAL row begins in `sync_log`.
+ *
+ * The startup read dates the sweep by its own `DEALS` / `FULL` rows, and a
+ * refusal (`sweepLimit`) is one of them: PARTIAL, waiting a day like a
+ * success. A manual `npm run bitrix:resync -- DEALS` is a FULL engine run as
+ * well, and PARTIAL whenever it skipped a deal — read as a sweep, it would
+ * put the real one off by up to a day. So the read takes a PARTIAL row only
+ * when its message begins with this.
+ */
+export const SWEEP_REFUSED_MARK = 'tozalash rad etildi'
+
+/** What the daily sweep did: deleted what the walk no longer returned, or refused to. */
+export type SweepOutcome =
+  | { readonly refused: false; readonly seen: number; readonly deleted: number }
+  | { readonly refused: true; readonly seen: number; readonly gone: number; readonly reason: string }
+
+/**
+ * The daily sweep's own `sync_log` row, which the next process reads back at
+ * startup. `recordsRead` is the portal's deal count. A sweep that ran is a
+ * SUCCESS with the rows it deleted in `recordsUpdated`; one `sweepLimit`
+ * refused is PARTIAL, with the rows it would have deleted in
+ * `recordsSkipped` and its reason after `SWEEP_REFUSED_MARK`.
+ */
+export function sweepLogRow(outcome: SweepOutcome, startedAt: Date, finishedAt: Date) {
+  const row = { entity: 'DEALS', mode: 'FULL', startedAt, finishedAt, recordsRead: outcome.seen } as const
+  return outcome.refused
+    ? ({
+        ...row,
+        status: 'PARTIAL',
+        recordsSkipped: outcome.gone,
+        errorMessage: `${SWEEP_REFUSED_MARK}: ${outcome.reason}`,
+      } as const)
+    : ({ ...row, status: 'SUCCESS', recordsUpdated: outcome.deleted } as const)
+}
+
+/**
  * A one-off re-read of recent deals, requested in code when a new deal column
  * lands — «Target tahlili»'s `targetolog`, `creative` and `primarySource` on
  * 2026-09-19. Without it those columns fill only on deals the portal happens

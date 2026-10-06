@@ -72,7 +72,9 @@ import {
   REFERENCE_MARKER,
   RESOLVE,
   runOneOff,
+  SWEEP_REFUSED_MARK,
   SWEEP_RETRY_MS,
+  sweepLogRow,
 } from '../src/server/integrations/crm/sync/schedule'
 import {
   classifyRefusal,
@@ -922,8 +924,10 @@ async function main() {
       SWEEP_MS > 0
         ? prisma.syncLog.findFirst({
             where: {
-              // PARTIAL is a sweep the guard refused — it waits a day too.
-              status: { in: ['SUCCESS', 'PARTIAL'] },
+              // A sweep the guard refused waits a day too — but only the
+              // sweep's own row: a manual `bitrix:resync -- DEALS` writes
+              // DEALS / FULL / PARTIAL whenever it skips a deal.
+              OR: [{ status: 'SUCCESS' }, { status: 'PARTIAL', errorMessage: { startsWith: SWEEP_REFUSED_MARK } }],
               entity: 'DEALS',
               mode: 'FULL',
               finishedAt: { gt: new Date(now - 2 * SWEEP_MS) },
@@ -1321,8 +1325,11 @@ async function main() {
       (lastSweepFailedAt === null || sweepNow.getTime() - lastSweepFailedAt.getTime() >= SWEEP_RETRY_MS)
     if (sweepDue && tick > 0 && calm === 0 && !provider.gate.isOpen() && !stopping && dealsHandler) {
       const sweepStarted = Date.now()
+      // The walk, for the relink below: after a sweep that deleted or was
+      // refused, never after one that failed.
+      let contacts: Map<string, string | null> | null = null
       try {
-        const contacts = await provider.listDealContacts()
+        contacts = await provider.listDealContacts()
         const live = new Set(contacts.keys())
         const deleted = (await dealsHandler.deleteMissing?.(live)) ?? 0
         lastSweepAt = new Date()
@@ -1330,20 +1337,14 @@ async function main() {
         /*
           THE SWEEP'S OWN RECORD — the next process reads it back at startup.
           `recordsRead` is the portal's deal count and `recordsUpdated` the
-          rows deleted here. A write failure costs one early sweep after the
-          next restart, so it is reported and not fatal.
+          rows deleted here (`sweepLogRow`). A write failure costs one early
+          sweep after the next restart, so it is reported and not fatal.
         */
         await prisma.syncLog
           .create({
             data: {
               provider: 'BITRIX24',
-              entity: 'DEALS',
-              mode: 'FULL',
-              status: 'SUCCESS',
-              startedAt: new Date(sweepStarted),
-              finishedAt: lastSweepAt,
-              recordsRead: live.size,
-              recordsUpdated: deleted,
+              ...sweepLogRow({ refused: false, seen: live.size, deleted }, new Date(sweepStarted), lastSweepAt),
             },
           })
           .catch((error: unknown) => console.warn(`  ${stamp()} ! tozalash yozuvi saqlanmadi:`, error))
@@ -1355,12 +1356,61 @@ async function main() {
           `  ${stamp()} tozalash: portalda ${live.size} bitim, ${deleted} ta oʻchirildi` +
             `  (${((Date.now() - sweepStarted) / 1000).toFixed(1)}s)`,
         )
+      } catch (error) {
+        if (error instanceof SweepRefusedError) {
+          /*
+            REFUSED IS NOT FAILED, AND IT IS NOT TRIED AGAIN IN AN HOUR.
 
-        /*
-          MERGED CONTACTS, FROM THE SAME READ — see `contactRelink.ts`. Its own
-          try: the deletions above are done and recorded, and a relink that
-          refuses must not make the sweep look failed and run again in an hour.
-        */
+            `sweepLimit` found more deals missing from the walk than a day of
+            deletions ever is, and deleted nothing. What causes that — a
+            pipeline hidden from the webhook user, most likely — does not lift
+            in an hour, and an hourly retry would walk ~9 300 invocations into
+            it every hour: the volume both portal blocks were earned with. So it
+            stands as the day's sweep — recorded PARTIAL under
+            `SWEEP_REFUSED_MARK` with the would-be deletions as skipped (read
+            back at startup like a success), said loudly here, tried again
+            tomorrow. The relink below runs all the same.
+          */
+          lastSweepAt = new Date()
+          lastSweepFailedAt = null
+          await prisma.syncLog
+            .create({
+              data: {
+                provider: 'BITRIX24',
+                ...sweepLogRow(
+                  { refused: true, seen: error.seen, gone: error.gone, reason: error.message },
+                  new Date(sweepStarted),
+                  lastSweepAt,
+                ),
+              },
+            })
+            .catch((logError: unknown) => console.warn(`  ${stamp()} ! tozalash yozuvi saqlanmadi:`, logError))
+          console.error(
+            `  ${stamp()} ✗ tozalash rad etildi — ${error.message}. Webhook foydalanuvchisi` +
+              ' hamma voronkalarni koʻra olishini tekshiring; ertaga yana uriniladi.',
+          )
+        } else {
+          // Never fatal: a failed sweep leaves stale rows, which is the state we
+          // were already in. Losing the tick loop over it would be worse.
+          contacts = null
+          lastSweepFailedAt = new Date()
+          console.warn(`  ${stamp()} tozalash muvaffaqiyatsiz: ${(error as Error).message}`)
+        }
+      }
+
+      /*
+        MERGED CONTACTS, FROM THE SAME READ — see `contactRelink.ts`. Its own
+        try: the sweep above is settled and recorded, and a relink that
+        refuses must not make the sweep look failed and run again in an hour.
+
+        AFTER A REFUSED SWEEP TOO (2026-10-06). The relink re-points only
+        deals the walk returned — and the walk is complete, or
+        `listDealContacts` would have thrown — under its own `relinkLimit`.
+        Waiting with the refusal stopped merge relinking, which «Mijoz
+        qaytishi» counts on, for as long as the refusal stood: a pipeline
+        hidden from the webhook stands for days.
+      */
+      if (contacts) {
         try {
           const relinkStarted = new Date()
           const r = await relinkDealContacts(prisma, 'BITRIX24', contacts)
@@ -1386,47 +1436,6 @@ async function main() {
           )
         } catch (error) {
           console.warn(`  ${stamp()} kontakt bogʻlanishi muvaffaqiyatsiz: ${(error as Error).message}`)
-        }
-      } catch (error) {
-        if (error instanceof SweepRefusedError) {
-          /*
-            REFUSED IS NOT FAILED, AND IT IS NOT TRIED AGAIN IN AN HOUR.
-
-            `sweepLimit` found more deals missing from the walk than a day of
-            deletions ever is, and deleted nothing. What causes that — a
-            pipeline hidden from the webhook user, most likely — does not lift
-            in an hour, and an hourly retry would walk ~9 300 invocations into
-            it every hour: the volume both portal blocks were earned with. So it
-            stands as the day's sweep — recorded PARTIAL with the would-be
-            deletions as skipped (read back at startup like a success), said
-            loudly here, tried again tomorrow. The relink waits with it.
-          */
-          lastSweepAt = new Date()
-          lastSweepFailedAt = null
-          await prisma.syncLog
-            .create({
-              data: {
-                provider: 'BITRIX24',
-                entity: 'DEALS',
-                mode: 'FULL',
-                status: 'PARTIAL',
-                startedAt: new Date(sweepStarted),
-                finishedAt: lastSweepAt,
-                recordsRead: error.seen,
-                recordsSkipped: error.gone,
-                errorMessage: error.message,
-              },
-            })
-            .catch((logError: unknown) => console.warn(`  ${stamp()} ! tozalash yozuvi saqlanmadi:`, logError))
-          console.error(
-            `  ${stamp()} ✗ tozalash rad etildi — ${error.message}. Webhook foydalanuvchisi` +
-              ' hamma voronkalarni koʻra olishini tekshiring; ertaga yana uriniladi.',
-          )
-        } else {
-          // Never fatal: a failed sweep leaves stale rows, which is the state we
-          // were already in. Losing the tick loop over it would be worse.
-          lastSweepFailedAt = new Date()
-          console.warn(`  ${stamp()} tozalash muvaffaqiyatsiz: ${(error as Error).message}`)
         }
       }
     }

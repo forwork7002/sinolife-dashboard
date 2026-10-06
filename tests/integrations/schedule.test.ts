@@ -11,6 +11,8 @@ import {
   RESOLVE,
   RESOLVE_GAP_MS,
   runOneOff,
+  SWEEP_REFUSED_MARK,
+  sweepLogRow,
 } from '@/server/integrations/crm/sync/schedule'
 
 /**
@@ -210,5 +212,46 @@ describe('runOneOff', () => {
       throw new Error('Connection terminated unexpectedly')
     })
     expect(outcome).toEqual({ settled: false, reason: 'Connection terminated unexpectedly' })
+  })
+})
+
+/**
+ * THE SWEEP'S OWN ROW, WHICH THE NEXT PROCESS READS BACK AT STARTUP.
+ *
+ * A refusal waits a day like a success, so it is read back too — but a manual
+ * `bitrix:resync -- DEALS` is a FULL engine run that ends PARTIAL whenever it
+ * skips a deal, and read as a sweep it would put the real one off by a day.
+ * The startup read takes a PARTIAL row only under `SWEEP_REFUSED_MARK`.
+ */
+describe('sweepLogRow', () => {
+  const started = new Date('2026-10-06T00:00:00.000Z')
+  const finished = new Date('2026-10-06T00:01:40.000Z')
+
+  it('records a sweep that ran as a success, with the rows it deleted', () => {
+    expect(sweepLogRow({ refused: false, seen: 464_396, deleted: 3 }, started, finished)).toEqual({
+      entity: 'DEALS',
+      mode: 'FULL',
+      status: 'SUCCESS',
+      startedAt: started,
+      finishedAt: finished,
+      recordsRead: 464_396,
+      recordsUpdated: 3,
+    })
+  })
+
+  it('records a refusal as PARTIAL under the mark, with the rows it would have deleted', () => {
+    const row = sweepLogRow(
+      { refused: true, seen: 279_816, gone: 184_580, reason: 'deal: … juda koʻp' },
+      started,
+      finished,
+    )
+    expect(row).toMatchObject({
+      entity: 'DEALS',
+      mode: 'FULL',
+      status: 'PARTIAL',
+      recordsRead: 279_816,
+      recordsSkipped: 184_580,
+      errorMessage: `${SWEEP_REFUSED_MARK}: deal: … juda koʻp`,
+    })
   })
 })
