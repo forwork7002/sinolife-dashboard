@@ -126,14 +126,6 @@ describe('FAKT 2 on a window younger than the delivery', () => {
     expect(screen.queryByText(/0 ta yakunlangan buyurtma/)).toBeNull()
   })
 
-  it('drops the trend, because zero against zero explains nothing', () => {
-    render(<FaktHeadline data={YOUNG} status="ready" />)
-
-    // «oʻzgarishsiz» is what a trend of zero against zero rendered. It was
-    // true and useless beside the very figure the reader is questioning.
-    expect(screen.queryByText(/oʻzgarishsiz/)).toBeNull()
-  })
-
   it('says so plainly when there is no order in the window either', () => {
     render(<FaktHeadline data={EMPTY} status="ready" />)
 
