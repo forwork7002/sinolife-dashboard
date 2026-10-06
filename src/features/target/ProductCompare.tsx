@@ -50,7 +50,7 @@ export function ProductCompare({
   }
 
   const products = meta.products.filter((p) => p.product !== 'Boshqa')
-  // The products' own total: HR, Kosmetika and an unmapped account are in «Лид база»'s Jami, never in this hero.
+  // The columns drawn below, summed: HR, Kosmetika and an unmapped account are in «Лид база»'s Jami, never in this hero.
   const total = meta.productsTotal
   const pair = products.length === 2
   const verdicts = productVerdicts(products)
@@ -76,11 +76,14 @@ export function ProductCompare({
           >
             {usd(total.spendUsd)}
           </p>
-          <p className="mt-1.5 text-[12.5px] tabular" style={{ color: 'var(--ink-muted)' }}>
-            {formatNumber(total.bitrixLeads)} ta Bitrix24 lead · 1 lead{' '}
-            {usd(total.costPerBitrixLeadUsd)} · {formatNumber(total.orders)} buyurtma · tushum{' '}
-            {formatCompactUzs(total.deliveredMoney.amount)} soʻm
-          </p>
+          {/* No column, nothing bought: «0 ta Bitrix24 lead» would contradict the Bitrix24 tiles below. */}
+          {products.length > 0 && (
+            <p className="mt-1.5 text-[12.5px] tabular" style={{ color: 'var(--ink-muted)' }}>
+              {formatNumber(total.bitrixLeads)} ta Bitrix24 lead · 1 lead{' '}
+              {usd(total.costPerBitrixLeadUsd)} · {formatNumber(total.orders)} buyurtma · tushum{' '}
+              {formatCompactUzs(total.deliveredMoney.amount)} soʻm
+            </p>
+          )}
         </div>
         {meta.importedAt && (
           <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>

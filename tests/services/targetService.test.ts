@@ -206,6 +206,42 @@ describe('metaBlock — the «Лид база» sheet', () => {
     expect(block.total.costPerBitrixLeadUsd).toBeCloseTo(679.56 / 500, 6)
   })
 
+  describe('a window where one product has not spent yet («Bugun» before Zextra\'s first dollar)', () => {
+    const oneProduct = (metaRows: ReturnType<typeof row>[]) =>
+      metaBlock({
+        rows: metaRows,
+        importedAt: new Date('2026-09-19T06:00:00Z'),
+        window: { from: '2026-08-01', to: '2026-08-01' },
+        // Zextra's page already has leads, orders and money; its accounts have no row.
+        sources: [
+          { key: 'sinolifeuz', ...ZERO, leads: 400, orders: 40, deliveredMinor: 1_000_000_000n },
+          { key: 'zextrauzb', ...ZERO, leads: 100, orders: 10, deliveredMinor: 500_000_000n },
+        ],
+        productOfSource: new Map([
+          ['sinolifeuz', 'Collagen' as const],
+          ['zextrauzb', 'Zextra' as const],
+        ]),
+        usdRate: 12_000,
+      })
+
+    it('heads the hero with the one column drawn — Collagen\'s money over Collagen\'s leads, not Zextra\'s too', () => {
+      const one = oneProduct([row('990016692137088', 'Umar - 64', '2026-08-01', 217_970_000n, 199)])
+      expect(one.products.map((p) => p.product)).toEqual(['Collagen'])
+      expect({ product: 'Collagen', ...one.productsTotal }).toEqual(one.products[0])
+      expect(one.productsTotal).toMatchObject({ spendUsd: 217.97, bitrixLeads: 400, orders: 40 })
+      expect(one.productsTotal.costPerBitrixLeadUsd).toBeCloseTo(217.97 / 400, 6)
+      // The «Лид база» Jami still counts Zextra's page.
+      expect(one.total).toMatchObject({ bitrixLeads: 500, orders: 50 })
+    })
+
+    it('heads nothing when neither product spent — zero, never both products\' pages under 0 $', () => {
+      const none = oneProduct([row('999', 'Yangi akkaunt', '2026-08-01', 5_000_000n)])
+      expect(none.products.map((p) => p.product)).toEqual(['Boshqa'])
+      expect(none.productsTotal).toMatchObject({ spendUsd: 0, bitrixLeads: 0, orders: 0, costPerBitrixLeadUsd: null })
+      expect(none.total.bitrixLeads).toBe(500)
+    })
+  })
+
   it('pairs a product with its own pages only, never with other sources', () => {
     const collagen = block.products.find((p) => p.product === 'Collagen')!
     expect(collagen.bitrixLeads).toBe(400)

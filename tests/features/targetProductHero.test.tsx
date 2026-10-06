@@ -77,9 +77,14 @@ describe('ProductCompare — the hero', () => {
     expect(line).not.toContain(usd(1.9))
   })
 
-  it('names no product when none of them spent', () => {
-    render(<ProductCompare meta={{ ...META, products: [product('Boshqa', { spendUsd: 400 })], productsTotal: totals({}) }} status="ready" />)
+  it('names no product when none of them spent, and prints no «what it bought» line under 0 $', () => {
+    const { container } = render(
+      <ProductCompare meta={{ ...META, products: [product('Boshqa', { spendUsd: 400 })], productsTotal: totals({}) }} status="ready" />,
+    )
     expect(screen.getByText('Reklamaga ketgan pul')).toBeTruthy()
     expect(screen.queryByText(/Reklamaga ketgan pul — Boshqa/)).toBeNull()
+    // «0 ta Bitrix24 lead» would contradict the Bitrix24 tiles below, which count the pages' real leads.
+    expect(container.textContent).not.toContain('ta Bitrix24 lead')
+    expect(screen.getByText('Bu davrda Meta akkauntlarida sarf yozilmagan.')).toBeTruthy()
   })
 })

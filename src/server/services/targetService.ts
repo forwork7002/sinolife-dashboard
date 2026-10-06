@@ -206,9 +206,10 @@ export interface MetaBlockDto {
   /** Every account, «Boshqa» included — the «Лид база» Jami row: no dollar dropped. */
   readonly total: MetaProductTotalsDto
   /**
-   * Collagen and Zextra only — the hero «Reklamaga ketgan pul — Collagen va
-   * Zextra»: the two product columns under it summed, its «1 lead» their
-   * spend over their pages' leads, never HR's or Kosmetika's money over them.
+   * The product columns drawn under the hero «Reklamaga ketgan pul — Collagen
+   * va Zextra», summed: its «1 lead» their spend over their own pages' leads,
+   * never HR's or Kosmetika's money over them. A product with no Meta row in
+   * the window has no column, so its pages are left out too; with none, zero.
    */
   readonly productsTotal: MetaProductTotalsDto
   /** UZS per USD used for ROAS — the ad ledger's rate. */
@@ -474,6 +475,13 @@ export function metaBlock(input: {
   const products = PRODUCT_ORDER.filter((p) => ordered.some((a) => a.column.product === p)).map(
     (product) => ({ product, ...productTotals([product]) }),
   )
+  /*
+    The hero sums the product columns actually drawn under it. Read off both
+    products' pages, a window before Zextra's first dollar («Bugun» in the
+    early hours) headed «Reklamaga ketgan pul — Collagen» with Collagen's
+    money over Collagen's and Zextra's leads, orders and tushum.
+  */
+  const drawn = TARGET_PRODUCTS.filter((p) => products.some((d) => d.product === p))
 
   return {
     importedAt: input.importedAt?.toISOString() ?? null,
@@ -499,7 +507,7 @@ export function metaBlock(input: {
     })),
     products,
     total: productTotals(null),
-    productsTotal: productTotals(TARGET_PRODUCTS),
+    productsTotal: productTotals(drawn),
     usdRate: input.usdRate,
   }
 }
