@@ -118,23 +118,30 @@ export const SKIP_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
  * `durationSec`, `connected` and `failedCode` on conflict (only `createdAt` is
  * insert-only in `CALL_COLUMNS`), so the second read corrects the row.
  *
- * DEALS AND STAGE_HISTORY OVERLAP BY THREE MINUTES, FOR THE WATERMARK'S OWN
- * SECOND. Bitrix24 filters `>DATE_MODIFY` / `>CREATED_TIME` in WHOLE SECONDS,
- * STRICTLY GREATER, and `isoLocal` drops the milliseconds. A row stamped in
- * the same second the run started, but not yet visible when the run read, is
+ * DEALS, STAGE_HISTORY AND CUSTOMERS OVERLAP BY THREE MINUTES, FOR A ROW
+ * THAT BECOMES VISIBLE AFTER THE READ. Bitrix24 filters in WHOLE SECONDS —
+ * `>CREATED_TIME` for stage history, strictly greater, and `>=DATE_MODIFY` for
+ * deals and contacts — and `isoLocal` drops the milliseconds, while the cursor
+ * is this run's own start. A row stamped just before that start but committed
+ * after the read (or stamped behind a worker clock that runs ahead) is
  * therefore excluded by every later run — no skip, no failure, nothing
- * logged. Production, 2026-10-01: deal 1050732 was created straight into
+ * logged; the strictly-greater filter only widens it to the start's own
+ * second. Production, 2026-10-01: deal 1050732 was created straight into
  * C4:NEW at 06:15:07 UTC; the STAGE_HISTORY run that started at 06:15:07.054
  * read 8 rows, skipped none, and stored 06:15:07 as the cursor. The arrival
  * was never read again, so the order was missing from Тасдиқлаш навбати and
  * from FAKT 1 while the client's board showed it as Тасдиқланди. One row in
  * 3 339 C4:NEW arrivals from 1 September to 1 October, which is why nothing
- * else caught it.
+ * else caught it. CUSTOMERS joined on 2026-10-06: a contact lost that way was
+ * never imported (the relink only re-points deals to customers already
+ * stored), and its order kept no customer — no name or phone on the queue, no
+ * buyer for «Mijoz qaytishi» or «Факт1 мижоз».
  * Three minutes is more than one tick, and every write is an idempotent
  * upsert, so the re-read costs a page and changes nothing that was right.
  */
 const SETTLE_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
   CALLS: 3 * 60 * 60_000,
+  CUSTOMERS: 3 * 60_000,
   DEALS: 3 * 60_000,
   STAGE_HISTORY: 3 * 60_000,
 }

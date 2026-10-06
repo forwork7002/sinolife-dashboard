@@ -619,7 +619,8 @@ describe('watermark after a run that skipped records', () => {
     // skipping, so a skip rewind buys it nothing. But it does rewind now, on
     // every run, for an unrelated reason: see the settle-lookback block at the
     // end of this file. Asserting it stays put here would pin the bug.
-    for (const entity of ['EMPLOYEES', 'CUSTOMERS', 'DEAL_ITEMS'] as const) {
+    // CUSTOMERS left the list on 2026-10-06 for the same reason.
+    for (const entity of ['EMPLOYEES', 'DEAL_ITEMS'] as const) {
       expect(nextWatermark(entity, NOW, 5)).toEqual(NOW)
     }
   })
@@ -692,12 +693,46 @@ describe('watermark for a record that settles after it is first read', () => {
   })
 
   it('leaves an entity with no settle lookback alone on a clean run', () => {
-    expect(nextWatermark('CUSTOMERS', NOW, 0)).toEqual(NOW)
+    expect(nextWatermark('EMPLOYEES', NOW, 0)).toEqual(NOW)
   })
 
-  it('overlaps DEALS and STAGE_HISTORY by three minutes on every run', () => {
+  it('overlaps DEALS, STAGE_HISTORY and CUSTOMERS by three minutes on every run', () => {
     expect(nextWatermark('DEALS', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60_000)
     expect(nextWatermark('STAGE_HISTORY', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60_000)
+    expect(nextWatermark('CUSTOMERS', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60_000)
+  })
+
+  /*
+    CUSTOMERS reads `>=DATE_MODIFY` in whole seconds from its own start. A
+    contact stamped a second BEFORE that start and committed after the read
+    was excluded by every later run, and nothing ever imported it — its order
+    kept no customer, no name or phone on the queue.
+  */
+  it('re-reads a contact stamped before the run start that appeared after the read', async () => {
+    const table = new FakeTable()
+    const contact: Row = { externalId: 'c-form', value: 'contact', updatedAtSource: new Date(NOW.getTime() - 1_000) }
+    let visible = false
+
+    const handler = makeHandler('CUSTOMERS', [], table, {
+      // Bitrix24's filter for contacts: whole seconds, at or after.
+      async fetch(_provider: CrmProvider, options: FetchOptions): Promise<Page<Row>> {
+        const since = options.updatedSince
+          ? Math.floor(options.updatedSince.getTime() / 1000) * 1000
+          : -Infinity
+        return { items: [contact].filter((r) => visible && r.updatedAtSource!.getTime() >= since) }
+      },
+    })
+    const store = new FakeStore()
+    await store.setCursor('DEMO', 'CUSTOMERS', new Date(NOW.getTime() - 2 * 60_000))
+    const { engine } = engineWith([handler], store, { CUSTOMERS: true })
+
+    await engine.runEntity('CUSTOMERS', 'INCREMENTAL')
+    expect(table.rows.has('c-form')).toBe(false)
+
+    visible = true
+    await engine.runEntity('CUSTOMERS', 'INCREMENTAL')
+
+    expect(table.rows.has('c-form')).toBe(true)
   })
 
   /*
