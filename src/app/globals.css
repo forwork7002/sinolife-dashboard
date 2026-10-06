@@ -1395,7 +1395,10 @@ body::after {
 }
 
 .thead-sticky.is-scrolled {
-  box-shadow: 0 1px 0 var(--border-strong), var(--shadow-card);
+  /* As a variable as well, so a PINNED header cell — whose own box-shadow is
+     its column's seam — can stack the band's rule under it (`.tcol-sticky`). */
+  --band-rule: 0 1px 0 var(--border-strong), var(--shadow-card);
+  box-shadow: var(--band-rule);
 }
 
 /* The shadow fades in rather than popping at scroll pixel one — but a fade
@@ -1439,7 +1442,9 @@ body::after {
   bottom: 0;
   z-index: 1;
   background: var(--surface-sunken);
-  box-shadow: 0 -1px 0 var(--border-strong);
+  /* A variable too, for the pinned cells of the total — see `.thead-sticky.is-scrolled`. */
+  --band-rule: 0 -1px 0 var(--border-strong);
+  box-shadow: var(--band-rule);
 }
 
 /**
@@ -1461,8 +1466,10 @@ body::after {
  * from the client's own Excel exports.
  *
  * THE CONFIRMATION QUEUE NO LONGER PINS ANYTHING — the client asked on
- * 2026-09-11 for plain columns («zakrepit ustun kerak emas»). The one caller
- * left is Logistika's day sheet (`stickyColumns={1}`, its date).
+ * 2026-09-11 for plain columns («zakrepit ustun kerak emas»). It was not the
+ * last caller, as this note once said: the others pin a name or a date —
+ * Logistika's day sheet and ROP strip, Qoʻngʻiroqlar, the «Lidlar» and
+ * «Reklama samarasi» tables, Roistat, payroll's teams.
  *
  * ON THE CELLS AND NOT THE COLUMN, for the reason `.thead-sticky` records:
  * there is no such thing as a sticky <col>, and sticky on a <tr> is still
@@ -1475,7 +1482,9 @@ body::after {
  * `--surface-raised` and not `--surface-sunken`: these are DATA cells, and they
  * must go on reading as part of their row rather than as a band of chrome, so
  * they take the card's own background (`.card`) — the surface the rest of the
- * row is already painted on.
+ * row is already painted on. The ground is `--pin-ground`, so the hover and the
+ * header's and total's own cells can change it in one place and the seam below
+ * follows.
  *
  * THE HOVER WASH HAD TO BE PUT BACK BY HAND. The row paints its hover on <tr>,
  * and an opaque cell lifted out of the flow paints over it — so the pinned
@@ -1492,13 +1501,28 @@ body::after {
 .tcol-sticky {
   position: sticky;
   z-index: 1;
-  background: var(--surface-raised);
+  --pin-ground: var(--surface-raised);
+  background: var(--pin-ground);
 }
 
-/* Above the pinned columns AND above the ordinary header cells: this handful
-   of cells is sticky in both directions at once, so it has to win both. */
+/*
+ * THE HEADER'S AND THE TOTAL'S PINNED CELLS ARE BAND CELLS FIRST.
+ *
+ * Sticky in both directions at once, so they have to win both: above the
+ * pinned columns, and above the band's own unpinned cells, which come later
+ * in their row at the same z-index and would otherwise paint over them as they
+ * scroll underneath — the header always had this, the total did not.
+ *
+ * And they wear the band's sunken ground, not the column's. `.tcol-sticky`
+ * comes later than `.thead-sticky` / `.tfoot-sticky` at the same weight, so
+ * until 2026-10-06 it painted every pinned header and total cell in the row
+ * colour — a raised patch in a sunken band on about thirteen tables — and its
+ * seam shadow replaced the band's own rule under them.
+ */
+.tfoot-sticky.tcol-sticky,
 .thead-sticky.tcol-sticky {
   z-index: 3;
+  --pin-ground: var(--surface-sunken);
 }
 
 /**
@@ -1523,23 +1547,25 @@ body::after {
  * place the scrolling cells are SUPPOSED to appear, and that edge carries the
  * divider below instead — a background bleed there would paint a pixel of
  * card over the first column of moving data.
+ *
+ * The bleed is the cell's own ground, whatever paints it (a hovered row, a
+ * header, a total), and under it rides the band's rule where there is one
+ * (`--band-rule`): a pinned header cell keeps the scrolled header's shadow,
+ * a pinned total cell the total's top rule.
  */
 .tcol-sticky:not(.is-edge) {
-  box-shadow: 1px 0 0 0 var(--surface-raised);
+  box-shadow: 1px 0 0 0 var(--pin-ground), var(--band-rule, 0 0 #0000);
 }
 
-tr:hover > .tcol-sticky {
-  background: var(--surface-sunken);
-}
-
-/* The wash reaches the bleed too, or the seam stays card-coloured down a lit
-   row — the same "one row read as two" the rule above exists to prevent. */
-tr:hover > .tcol-sticky:not(.is-edge) {
-  box-shadow: 1px 0 0 0 var(--surface-sunken);
+/* The row's wash reaches its pinned cells, and through --pin-ground their
+   bleed — BODY rows only. A header or a total is not a row you point at: the
+   header's corner used to flip colour under the pointer. */
+tbody tr:hover > .tcol-sticky {
+  --pin-ground: var(--surface-sunken);
 }
 
 .tcol-sticky.is-edge {
-  box-shadow: 1px 0 0 var(--border);
+  box-shadow: 1px 0 0 var(--border), var(--band-rule, 0 0 #0000);
 }
 
 /* The «RNP» sheet carries the same state on its scroll box instead of on each
@@ -1547,7 +1573,10 @@ tr:hover > .tcol-sticky:not(.is-edge) {
    redraw on the first sideways scroll), and draws it with its own
    `.rnp-label` / `.rnp-edge` rules below. */
 .tcol-sticky.is-edge.is-scrolled-x {
-  box-shadow: 1px 0 0 var(--border-strong), 6px 0 12px -6px rgb(0 0 0 / 0.28);
+  box-shadow:
+    1px 0 0 var(--border-strong),
+    6px 0 12px -6px rgb(0 0 0 / 0.28),
+    var(--band-rule, 0 0 #0000);
 }
 
 /* The «RNP» sheet pins План обший, Факт and Прогноз beside its label, each at
