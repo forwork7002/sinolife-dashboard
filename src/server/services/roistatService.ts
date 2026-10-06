@@ -202,13 +202,33 @@ function spendOfBrand(days: readonly SpendDay[], brand: BrandFilter): readonly S
   return brand === 'all' ? days : days.filter((d) => brandMatches(brand, d.product))
 }
 
+/** The overview's two Bitrix cohort scans: this window's every grouping set, the previous window's total. */
+interface BitrixScan {
+  /** Which build this is — the table memo's key carries it (see `overview`). */
+  readonly build: number
+  readonly current: readonly RoistatBitrixRow[]
+  readonly previous: readonly RoistatBitrixRow[]
+}
+
 const overviewCache = ttlCache<RoistatOverviewDto>(120_000, LIVE_CACHE)
 const daysCache = ttlCache<RoistatDaysDto>(120_000, LIVE_CACHE)
+/*
+  The two scans, memoised apart from the table (2026-10-06). Neither depends
+  on the cut or its drill parent, and the brand reaches them only as `keyed`:
+  one brand-keyed scan serves Collagen, Zextra and «Brendsiz» alike, narrowed
+  after it (`bitrixOfBrand`). Inside the table's memo they ran again for every
+  tab, drill level and brand slice — walking the eleven cuts cost ~22
+  month-long cohort scans on the one-vCPU database where 2 do. The rows are
+  only read (narrowed and grouped into new arrays), never changed.
+*/
+const bitrixScanCache = ttlCache<BitrixScan>(120_000, LIVE_CACHE)
+let bitrixScanBuilds = 0
 
 /** Test seam: each case builds its own answer, and the memo would hand the first one to the rest. */
 export function resetRoistatCaches(): void {
   overviewCache.clear()
   daysCache.clear()
+  bitrixScanCache.clear()
 }
 
 export class RoistatService {
@@ -225,11 +245,17 @@ export class RoistatService {
     memo. Company-wide (no scope reaches the SQL), so the key is the question:
     the window, the cut, its parent and the brand. `now` moves the «today» cells and the
     previous cohort's age, which two minutes cannot change in substance.
+    The overview's scans have a memo of their own (`bitrixScanCache`), and
+    the table's key carries the scan's build: a table is cut again the moment
+    a newer scan lands, so two stale-while-revalidate windows never stack into
+    one answer twice as old as either allows.
   */
   async overview(period: Period, query: RoistatQuery, now: Date): Promise<RoistatOverviewDto> {
     const parent = query.dim === 'adset' || query.dim === 'ad' ? (query.parent ?? '') : ''
-    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), query.dim, parent, query.brand ?? 'all'].join('|')
-    return overviewCache.get(key, () => this.buildOverview(period, query, now))
+    const brand = query.brand ?? 'all'
+    const scan = await this.bitrixScan(period, brand !== 'all', now)
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), query.dim, parent, brand, scan.build].join('|')
+    return overviewCache.get(key, () => this.buildOverview(period, query, now, scan))
   }
 
   async days(period: Period, now: Date, brand: BrandFilter = 'all'): Promise<RoistatDaysDto> {
@@ -237,7 +263,30 @@ export class RoistatService {
     return daysCache.get(key, () => this.buildDays(period, now, brand))
   }
 
-  private async buildOverview(period: Period, query: RoistatQuery, now: Date): Promise<RoistatOverviewDto> {
+  /** The overview's two scans for a window, shared by every cut, drill and brand slice of it. */
+  private bitrixScan(period: Period, keyed: boolean, now: Date): Promise<BitrixScan> {
+    // The preset too: `previousEquivalent` reads it, so two presets on one window compare against different ones.
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), keyed].join('|')
+    return bitrixScanCache.get(key, async () => {
+      const previous = previousEquivalent(period)
+      const [current, previousRows] = await Promise.all([
+        this.repository.bitrix(period, now, 'all', keyed),
+        /*
+          THE PREVIOUS COHORT AT THE SAME AGE. Read as of now, last month's
+          leads have had thirty days to become sales and this month's a few,
+          so every sales tile would show a fall that is only time. Its sales
+          are read up to the same distance past ITS start as now is past this
+          window's start. (Kval is the registrar's verdict as of now and keeps
+          a smaller form of the same lean.)
+        */
+        this.repository.bitrix(previous, new Date(now.getTime() - (period.start.getTime() - previous.start.getTime())), 'total', keyed),
+      ])
+      bitrixScanBuilds += 1
+      return { build: bitrixScanBuilds, current, previous: previousRows }
+    })
+  }
+
+  private async buildOverview(period: Period, query: RoistatQuery, now: Date, scan: BitrixScan): Promise<RoistatOverviewDto> {
     const { dim } = query
     const brand = query.brand ?? 'all'
     const keyed = brand !== 'all'
@@ -248,17 +297,7 @@ export class RoistatService {
     const previousWindow = dayRange(previous)
     const rateDay = window.to < today ? window.to : today
 
-    const [bitrixRows, bitrixPreviousRows, spendAll, spendPreviousAll, metaRowsAll, rates, importedAt, parentName] = await Promise.all([
-      this.repository.bitrix(period, now, 'all', keyed),
-      /*
-        THE PREVIOUS COHORT AT THE SAME AGE. Read as of now, last month's
-        leads have had thirty days to become sales and this month's a few,
-        so every sales tile would show a fall that is only time. Its sales
-        are read up to the same distance past ITS start as now is past this
-        window's start. (Kval is the registrar's verdict as of now and keeps
-        a smaller form of the same lean.)
-      */
-      this.repository.bitrix(previous, new Date(now.getTime() - (period.start.getTime() - previous.start.getTime())), 'total', keyed),
+    const [spendAll, spendPreviousAll, metaRowsAll, rates, importedAt, parentName] = await Promise.all([
       this.spendDays(window.from, window.to),
       this.spendDays(previousWindow.from, previousWindow.to),
       dim === 'camp' || dim === 'adset' || dim === 'ad'
@@ -268,8 +307,8 @@ export class RoistatService {
       this.repository.metaImportedAt(),
       parent ? this.repository.metaName(dim === 'adset' ? 'campaign' : 'adset', parent) : Promise.resolve(null),
     ])
-    const bitrix = bitrixOfBrand(bitrixRows, brand)
-    const bitrixPrevious = bitrixOfBrand(bitrixPreviousRows, brand)
+    const bitrix = bitrixOfBrand(scan.current, brand)
+    const bitrixPrevious = bitrixOfBrand(scan.previous, brand)
     const spend = spendOfBrand(spendAll, brand)
     const spendPrevious = spendOfBrand(spendPreviousAll, brand)
     const metaRows = keyed ? metaRowsAll.filter((row) => brandMatches(brand, adBudgetProduct(row))) : metaRowsAll

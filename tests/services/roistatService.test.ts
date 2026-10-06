@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import type { Period } from '@/server/domain/period/period'
@@ -290,6 +290,52 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
     const r = await service.overview(PERIOD, { dim: 'camp', brand: 'Collagen' }, NOW)
     expect(r.rows.map((row) => row.key)).toEqual(['100'])
     expect(r.kpi).toMatchObject({ leads: 20, sold: 1, soldUzs: 9_000_000, spendUsd: 30 })
+  })
+
+  it('scans each window once for every cut, drill and brand slice — the scans are memoised apart from the table', async () => {
+    const { service, calls } = keyedHarness()
+    const dims = ['camp', 'adset', 'ad', 'targetolog', 'form', 'source', 'product', 'region', 'rop', 'seller', 'registrator', 'days'] as const
+    // Two first visits at once share the scan in flight.
+    await Promise.all([service.overview(PERIOD, { dim: 'camp' }, NOW), service.overview(PERIOD, { dim: 'rop' }, NOW)])
+    expect(calls).toHaveLength(2)
+    for (const brand of ['all', 'Collagen', 'Zextra', 'none'] as const) {
+      for (const dim of dims) {
+        await service.overview(PERIOD, { dim, brand, parent: dim === 'adset' || dim === 'ad' ? '555' : undefined }, NOW)
+      }
+    }
+    // This window's every set and the previous window's total, plain once and brand-keyed once: 4, not 2 × 12 × 4.
+    expect(calls).toEqual([
+      { shape: 'all', keyed: false },
+      { shape: 'total', keyed: false },
+      { shape: 'all', keyed: true },
+      { shape: 'total', keyed: true },
+    ])
+  })
+
+  it('cuts the table again once a newer scan lands — two stale windows never stack into one answer', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-05T07:00:00Z'))
+      let leads = 100
+      const repository = {
+        bitrix: async () => [bitrixRow('total', { leads }), bitrixRow('rop', { rop: 'Sevinch', leads, sold: 1, soldMinor: 1_000_000_00n })],
+        meta: async () => [],
+        metaName: async () => null,
+        metaImportedAt: async () => null,
+      }
+      const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) })
+      expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(100)
+
+      // Past the TTL: the old answer is handed out while ONE rebuild of the scan runs behind it…
+      leads = 200
+      vi.setSystemTime(new Date('2026-10-05T07:02:01Z'))
+      expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(100)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      // …and the next read is cut from the new scan, not from a table rebuilt over the old one.
+      expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(200)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('asks for the brand keys only when one brand is picked', async () => {
