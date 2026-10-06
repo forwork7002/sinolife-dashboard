@@ -18,10 +18,11 @@ const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as con
  * «Targetologlar · kunlik» on «Reklama samarasi» — the client's per-targetolog
  * sheet (2026-10-05): each day's lead-form spend, the Регистрация leads the
  * targetolog's CRM forms opened, and their kval. The same `forms` block
- * «Lidlar» → «Lid manbalari» reads, so the two screens cannot disagree.
+ * «Lidlar» → «Lid manbalari» reads, so the two screens cannot disagree —
+ * built from its two scans only, never waiting on the rest of «Lidlar».
  */
 export const GET = getHandler(ACCESS, periodQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const { forms, importedAt } = await leadSourcesService.overview(period, ctx.timeZone)
+  const { forms, importedAt } = await leadSourcesService.targetologForms(period, ctx.timeZone)
   return { data: { forms, importedAt }, meta: { period: toPeriodDto(period) } }
 })

@@ -718,6 +718,14 @@ export function leadSourcesOverview(all: {
 }
 
 /*
+  The Регистрация scan alone, under the full memo below too: «Targetologlar ·
+  kunlik» needs nothing else, and must not wait on the other scans — the
+  FAKT 1 phone match can run into the 20 s statement timeout on a month (prod
+  2026-10-06), and one failed scan took the whole sheet down with it.
+*/
+const registrationCache = ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE)
+
+/*
   One memo per window in front of the three deal scans. Company-wide by
   construction — both routes that read it (`/leads/overview`,
   `/reklama/targetologs`) refuse a narrowed account — so no scope reaches it.
@@ -740,16 +748,13 @@ export class LeadSourcesService {
   ) {}
 
   async overview(period: Period, timeZone: string, brand: BrandFilter = 'all'): Promise<LeadSourcesOverviewDto> {
-    const window = {
-      from: zonedDateKey(period.start, timeZone),
-      to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),
-    }
-    const key = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
+    const window = periodWindow(period, timeZone)
+    const key = windowKey(period)
 
     const [scans, campaigns, importedAt] = await Promise.all([
       scanCache.get(key, async () => {
         const [registration, triage, fakt1, qualified, aiQualified, sarafan, inboundCalls] = await Promise.all([
-          this.repository.registrationDays(period),
+          this.registrationDays(period),
           this.repository.triageDays(period),
           this.insights.leadFakt1Clients(period),
           this.repository.qualifiedSources(period),
@@ -765,5 +770,49 @@ export class LeadSourcesService {
 
     // Narrowed after the memo: one scan serves both brands and the whole.
     return leadSourcesOverview({ window, ...scans, campaigns, importedAt, brand })
+  }
+
+  /**
+   * The `forms` block alone — «Targetologlar · kunlik». It reads only the
+   * Регистрация deals and the Meta campaigns, so the other scans are not run:
+   * the block is the overview's to the lead (same rows, same fold).
+   */
+  async targetologForms(
+    period: Period,
+    timeZone: string,
+  ): Promise<Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'>> {
+    const window = periodWindow(period, timeZone)
+    const [registration, campaigns, importedAt] = await Promise.all([
+      this.registrationDays(period),
+      this.meta.campaignDays(window.from, window.to),
+      this.meta.campaignsImportedAt(),
+    ])
+    const { forms, importedAt: imported } = leadSourcesOverview({
+      window,
+      registration,
+      triage: [],
+      campaigns,
+      fakt1: [],
+      qualified: [],
+      aiQualified: [],
+      sarafan: { leads: 0, qualified: 0 },
+      importedAt,
+    })
+    return { forms, importedAt: imported }
+  }
+
+  private registrationDays(period: Period): Promise<RegistrationDayRow[]> {
+    return registrationCache.get(windowKey(period), () => this.repository.registrationDays(period))
+  }
+}
+
+function windowKey(period: Period): string {
+  return [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
+}
+
+function periodWindow(period: Period, timeZone: string): { from: string; to: string } {
+  return {
+    from: zonedDateKey(period.start, timeZone),
+    to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),
   }
 }

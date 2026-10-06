@@ -443,3 +443,49 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     expect(none.inboundCalls).toBe(9)
   })
 })
+
+describe('LeadSourcesService.targetologForms', () => {
+  it('builds «Targetologlar · kunlik» from Регистрация and Meta alone — the overview\'s block to the lead', async () => {
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-07-18T00:00:00Z'),
+      customEnd: new Date('2026-07-19T00:00:00Z'),
+    })
+    const registration = [
+      reg({ day: '2026-07-18', formTitle: UMAR_FORM, leads: 3 }),
+      reg({ day: '2026-07-19', formTitle: UMAR_FORM, stage: 'Недозвон', status: 'OPEN', leads: 2 }),
+    ]
+    const campaigns = [campaign({ date: '2026-07-18', leads: 8, spendMicroUsd: 20_000_000n })]
+    const called: string[] = []
+    const never = (name: string) => async () => {
+      called.push(name)
+      throw new Error(`${name}: statement timeout`)
+    }
+    const service = (slow: boolean) =>
+      new LeadSourcesService(
+        {
+          registrationDays: async () => registration,
+          triageDays: slow ? never('triageDays') : async () => [],
+          qualifiedSources: slow ? never('qualifiedSources') : async () => [],
+          aiQualifiedStages: slow ? never('aiQualifiedStages') : async () => [],
+          pipelineSourceCount: slow ? never('pipelineSourceCount') : async () => NO_SARAFAN,
+          inboundCallCount: slow ? never('inboundCallCount') : async () => null,
+        } as never,
+        { campaignDays: async () => campaigns, campaignsImportedAt: async () => null } as never,
+        { leadFakt1Clients: slow ? never('leadFakt1Clients') : async () => [] } as never,
+      )
+
+    // The other scans failing (the FAKT 1 phone match timing out) no longer takes the sheet down.
+    const alone = await service(true).targetologForms(period, 'Asia/Tashkent')
+    expect(called).toEqual([])
+    const umar = alone.forms.owners.find((o) => o.targetolog === 'Umar')!
+    expect(umar.spendUsd).toBe(20)
+    expect(umar.metaLeads).toBe(8)
+    expect(umar.outcome.leads).toBe(5)
+
+    const whole = await service(false).overview(period, 'Asia/Tashkent')
+    expect(alone.forms).toEqual(whole.forms)
+  })
+})
