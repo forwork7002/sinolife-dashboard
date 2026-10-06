@@ -2303,7 +2303,9 @@ p {
  */
 .podium-card {
   position: relative;
-  border: 1px solid color-mix(in oklab, var(--metal) 42%, var(--border));
+  /* Width and style only: the rim's colour is the seat's
+     (`.tv-seat--N .tv-seat-card`), the only place a card is ever drawn. */
+  border: 1px solid;
   border-radius: var(--radius-panel);
   background:
     radial-gradient(
@@ -2334,8 +2336,9 @@ p {
     var(--surface-raised);
 }
 
-/** The place plaque: rosette (`BoardIcon`) + ordinal on a soft metal tint. The words
-    stay in primary ink — the metal may not carry text. */
+/** The place plaque: rosette (`BoardIcon`) + ordinal on a soft metal tint (the
+    tint is `.tv-seat-plaque`'s, the plaque's only use). The words stay in
+    primary ink — the metal may not carry text. */
 .podium-plaque {
   display: inline-flex;
   align-items: center;
@@ -2346,7 +2349,6 @@ p {
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--ink-primary);
-  background: color-mix(in oklab, var(--metal) 14%, transparent);
   border: 1px solid color-mix(in oklab, var(--metal) 40%, transparent);
 }
 
@@ -2398,14 +2400,14 @@ p {
 
 /**
  * The base rail — the podium's steps, folded into the cards' own bottom
- * edges: 3px under silver, 2 under bronze.
+ * edges: 3px under silver, 2 under bronze, in the rim's colour.
  */
 .podium-col--silver .podium-card {
-  border-bottom: 3px solid color-mix(in oklab, var(--metal) 55%, var(--border));
+  border-bottom: 3px solid;
 }
 
 .podium-col--bronze .podium-card {
-  border-bottom: 2px solid color-mix(in oklab, var(--metal) 50%, var(--border));
+  border-bottom: 2px solid;
 }
 
 /**
@@ -2556,9 +2558,8 @@ p {
   --tv-name: clamp(13px, 0.88vw, 18px);
   --tv-money: clamp(13px, 0.88vw, 18px);
   --tv-small: clamp(11px, 0.62vw, 13px);
-  --tv-seat-scale: 1;
-  --tv-seat-name: clamp(14px, calc(1.05vw * var(--tv-seat-scale)), 21px);
-  --tv-seat-figure: clamp(17px, calc(1.35vw * var(--tv-seat-scale)), 28px);
+  --tv-seat-name: clamp(14px, 1.05vw, 21px);
+  --tv-seat-figure: clamp(17px, 1.35vw, 28px);
 }
 
 .tv-col--sellers { --tv-tone: var(--series-5); }
@@ -2755,7 +2756,6 @@ p {
  */
 .record-sep {
   /* Drawn, not a glyph — the lozenge itself is SAYQAL 4a. */
-  color: color-mix(in oklab, var(--metal) 55%, transparent);
   margin: 0 22px;
 }
 
@@ -2815,7 +2815,7 @@ p {
      and the halo are SAYQAL 2b. */
   border-radius: 999px;
   font-size: 17px;
-  border: 1px solid color-mix(in oklab, var(--tv-tone) 45%, transparent);
+  border: 1px solid;
 }
 
 /*
@@ -3004,9 +3004,13 @@ p {
 /**
  * The seats: a three-column grid with the bottoms aligned, so the champion's
  * extra padding makes it a step TALLER — the podium's own shape — rather than
- * a card floating higher. Silver and bronze step their type and ring down a
- * notch each (`--tv-seat-scale`), which is what keeps first place readable
- * as first from across the room with every card the same width.
+ * a card floating higher. Silver and bronze step their ring down a notch each
+ * (`SEATS` in SellersPage: 56 / 43 / 37px) and stand on lower pedestals,
+ * which is what keeps first place readable as first from across the room.
+ * The name and the sum are one size on all three seats: `--tv-seat-name` and
+ * `--tv-seat-figure` resolve on `.tv-col`, where nothing set on a seat can
+ * reach them (a var() inside a custom property is filled in where it is
+ * declared — the :root trap DESIGN TOKENS describes).
  */
 .tv-podium {
   flex-shrink: 0;
@@ -3149,10 +3153,6 @@ p {
   .tv-seat--2 {
     --tv-pedestal: var(--tv-step);
   }
-  .tv-seat-card {
-    padding-left: 8px;
-    padding-right: 8px;
-  }
 }
 /*
  * THE NARROW TWO-COLUMN BAND — 1280 to 1599, a 720p television or a zoomed
@@ -3169,8 +3169,8 @@ p {
  */
 @media (min-width: 1280px) and (max-width: 1599px) {
   .tv-col {
-    --tv-seat-name: clamp(12px, calc(0.95vw * var(--tv-seat-scale)), 16px);
-    --tv-seat-figure: clamp(13px, calc(1.05vw * var(--tv-seat-scale)), 18px);
+    --tv-seat-name: clamp(12px, 0.95vw, 16px);
+    --tv-seat-figure: clamp(13px, 1.05vw, 18px);
   }
   .tv-col-optional {
     display: none;
@@ -3181,8 +3181,8 @@ p {
    * it 148px at 1366: the words stood 1.2px outside the pill on either side,
    * on the old board and on this one, measured on production figures. Same
    * answer as the sum above it, type rather than layout: 10px of type, 6px of
-   * pill padding instead of 10, and the card's side padding at the 8px a phone
-   * already uses. That is 136px of text in 142px of pill at 1366, two lines as
+   * pill padding instead of 10, and the card's side padding at 8px instead of
+   * 12. That is 136px of text in 142px of pill at 1366, two lines as
    * before, and the podium is not a pixel taller. Under ~1340 even that does
    * not fit, and there the pill WRAPS before «oldinda» (see `PodiumSeat`)
    * instead of spilling.
@@ -3216,9 +3216,6 @@ p {
     max-width: 36px;
   }
 }
-
-.tv-seat--2 { --tv-seat-scale: 0.9; }
-.tv-seat--3 { --tv-seat-scale: 0.82; }
 
 .tv-seat-card {
   display: flex;
@@ -3402,17 +3399,15 @@ p {
   box-shadow: inset 0 -1px 0 var(--grid);
 }
 /*
- * On a phone the pinned name cell has to be narrow, or the sums slide under
- * it before they can be read: the chase may break between «Oldingiga» and
- * its figure (the figure itself never breaks — see `Chase`), which brings
- * the cell down from the width of one long line to the width of the sum.
+ * On a phone the list gives its side padding to the table (4px, not 10), so
+ * the pinned name cell keeps as much of the row as it can — see the chase
+ * line's own phone rule below for how that cell is kept narrow. The cells
+ * keep the board's 6.2px × 8px: the phone-only padding once written here sat
+ * ABOVE `.tv-row > td` at equal specificity and never applied.
  */
 @media (max-width: 639px) {
   .tv-list {
     padding: 0 4px 8px;
-  }
-  .tv-row > td {
-    padding: 8px 6px;
   }
 }
 
@@ -3889,7 +3884,6 @@ p {
 /* 4 · RECORD MARQUEE lozenge + FAKT SWITCH. */
 /* 4a · the lozenge is DRAWN, not a font's ◆ (the month label keeps its shipped tracking and size) */
 .record-wall .record-sep {
-  font-size: 0;
   width: 6px;
   height: 6px;
   align-self: center;
