@@ -119,14 +119,19 @@ export interface RnpTeamFaktPlan {
 const monthDate = (month: string) => new Date(`${month}-01T00:00:00Z`)
 
 /*
-  A SAVE QUEUES FOR A CONNECTION AS LONG AS A READ DOES (2026-10-06). Prisma
-  gives a transaction 2 s to get one (`maxWait`'s default); the pool lets
-  every other query queue for 20 s (`connectionTimeoutMillis`, prisma.ts).
-  With all eight connections busy for over 2 s — a cold month build beside
-  another screen — a typed plan, cost or «Ходим сони» failed with P2028 and
-  its cell turned red, while every read on the page waited and succeeded.
+  A TRANSACTION QUEUES FOR A CONNECTION AS LONG AS A PLAIN QUERY DOES
+  (2026-10-06). Prisma gives a transaction 2 s to get one (`maxWait`'s
+  default); the pool lets every other query queue for 20 s
+  (`connectionTimeoutMillis`, prisma.ts). With all eight connections busy
+  for over 2 s — a cold month build beside another screen — a typed plan,
+  cost or «Ходим сони» failed with P2028 and its cell turned red, while every
+  read on the page waited and succeeded. ONE constant for this file's four
+  transactions — the three saves and the registration history's — and
+  `rnpPlanSave.test.ts` reads the pool's figure out of prisma.ts, so a pool
+  that waits longer or shorter fails the gate instead of leaving these
+  behind.
 */
-const SAVE_MAX_WAIT_MS = 20_000
+const CONNECTION_WAIT_MS = 20_000
 
 /*
   EVERY BOUND IS A NAIVE UTC TIMESTAMP, like the columns it is compared with.
@@ -234,7 +239,7 @@ export class RnpRepository {
             await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${Math.trunc(statementTimeoutMs)}`)
             return tx.$queryRawUnsafe<Row[]>(sql, from, to, this.tz)
           },
-          { maxWait: 20_000, timeout: statementTimeoutMs + 5_000 },
+          { maxWait: CONNECTION_WAIT_MS, timeout: statementTimeoutMs + 5_000 },
         )
       : await this.prisma.$queryRawUnsafe<Row[]>(sql, from, to, this.tz)
     return rows.map((r) => ({
@@ -512,7 +517,7 @@ export class RnpRepository {
               update: { amountSom: BigInt(c.value), updatedBy: by },
             })
       }),
-      { maxWait: SAVE_MAX_WAIT_MS },
+      { maxWait: CONNECTION_WAIT_MS },
     )
   }
 
@@ -538,7 +543,7 @@ export class RnpRepository {
               update: { heads: c.value, updatedBy: by },
             })
       }),
-      { maxWait: SAVE_MAX_WAIT_MS },
+      { maxWait: CONNECTION_WAIT_MS },
     )
   }
 
@@ -612,7 +617,7 @@ export class RnpRepository {
             update: { valueCenti: centi(c.value), updatedBy: by },
           })
       }
-    }, { maxWait: SAVE_MAX_WAIT_MS, timeout: 15_000 })
+    }, { maxWait: CONNECTION_WAIT_MS, timeout: 15_000 })
   }
 }
 

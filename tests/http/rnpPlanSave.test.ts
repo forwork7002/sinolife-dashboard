@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import { parseCost, parseDecimal, pastedCells } from '@/features/rnp/RnpCostCell'
@@ -186,26 +189,42 @@ describe('RnpRepository.savePlanCells', () => {
 /*
   A save waits for a connection as long as a read does (2026-10-06): with
   Prisma's 2 s default a typed cell failed (P2028) while the pool kept every
-  read on the page queued — and answered — for 20 s.
+  read on the page queued — and answered — for 20 s. The pool's figure is
+  read out of prisma.ts, so a pool that waits longer or shorter fails here
+  rather than leaving the repository's transactions behind.
 */
-describe('RnpRepository — every typed save waits the pool’s 20 s for a connection, not Prisma’s 2 s', () => {
-  it('passes maxWait to the plan, cost and «Ходим сони» transactions', async () => {
+describe('RnpRepository — every transaction waits the pool’s 20 s for a connection, not Prisma’s 2 s', () => {
+  const poolWaitMs = Number(
+    /connectionTimeoutMillis: ([\d_]+)/
+      .exec(readFileSync(resolve(process.cwd(), 'src/server/db/prisma.ts'), 'utf8'))![1]!
+      .replaceAll('_', ''),
+  )
+
+  it('passes the pool’s wait to the plan, cost and «Ходим сони» saves and to the registration history’s read', async () => {
     const options: unknown[] = []
     const { client } = fakePrisma()
+    // What an interactive transaction is handed: the plan tables, and the raw reads of the history scan.
+    const tx = { ...client, $executeRawUnsafe: async () => 0, $queryRawUnsafe: async () => [] }
     const recording = {
-      ...client,
+      ...tx,
       rnpManualCost: { deleteMany: () => 'delete', upsert: () => 'upsert' },
       rnpManualHeadcount: { deleteMany: () => 'delete', upsert: () => 'upsert' },
       $transaction: async (work: unknown, o: unknown) => {
         options.push(o)
-        return typeof work === 'function' ? (work as (tx: unknown) => Promise<unknown>)(client) : work
+        return typeof work === 'function' ? (work as (t: unknown) => Promise<unknown>)(tx) : work
       },
     }
     const repo = new RnpRepository(recording as never)
     await repo.savePlanCells('2026-10', [{ team: 'Lola', metric: 'plan_pct', value: 80 }], 'u1')
     await repo.saveManualCosts([{ day: '2026-10-01', project: 'Collagen', line: 'bloggers', value: 1_000_000 }], 'u1')
     await repo.saveManualHeadcount([{ day: '2026-10-01', rop: 'Lola', value: 12 }], 'u1')
-    expect(options).toEqual([{ maxWait: 20_000, timeout: 15_000 }, { maxWait: 20_000 }, { maxWait: 20_000 }])
+    await repo.registrationDays('2026-09-01', '2026-09-29', 60_000)
+    expect(options).toEqual([
+      { maxWait: poolWaitMs, timeout: 15_000 },
+      { maxWait: poolWaitMs },
+      { maxWait: poolWaitMs },
+      { maxWait: poolWaitMs, timeout: 65_000 },
+    ])
   })
 })
 
