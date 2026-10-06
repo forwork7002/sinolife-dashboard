@@ -50,7 +50,8 @@ export function ProductCompare({
   }
 
   const products = meta.products.filter((p) => p.product !== 'Boshqa')
-  const total = meta.total
+  // The products' own total: HR, Kosmetika and an unmapped account are in «Лид база»'s Jami, never in this hero.
+  const total = meta.productsTotal
   const pair = products.length === 2
   const verdicts = productVerdicts(products)
 
@@ -64,7 +65,9 @@ export function ProductCompare({
           <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
             {pair
               ? 'Reklamaga ketgan pul — Collagen va Zextra'
-              : `Reklamaga ketgan pul — ${PRODUCT_LABEL[products[0]?.product ?? 'Boshqa']}`}
+              : products[0]
+                ? `Reklamaga ketgan pul — ${PRODUCT_LABEL[products[0].product]}`
+                : 'Reklamaga ketgan pul'}
           </p>
           <p
             className="figure-hero mt-1"

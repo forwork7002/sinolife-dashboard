@@ -29,7 +29,7 @@ import {
   type TargetLeadRow,
   type TargetRepository,
 } from '@/server/repositories/targetRepository'
-import type { TargetProductFilter, TargetScope } from '@/server/domain/types'
+import { TARGET_PRODUCTS, type TargetProductFilter, type TargetScope } from '@/server/domain/types'
 
 import type { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
@@ -203,7 +203,14 @@ export interface MetaBlockDto {
   readonly targetologs: readonly MetaTargetologDto[]
   readonly owners: readonly MetaOwnerDto[]
   readonly products: readonly MetaProductDto[]
+  /** Every account, «Boshqa» included — the «Лид база» Jami row: no dollar dropped. */
   readonly total: MetaProductTotalsDto
+  /**
+   * Collagen and Zextra only — the hero «Reklamaga ketgan pul — Collagen va
+   * Zextra»: the two product columns under it summed, its «1 lead» their
+   * spend over their pages' leads, never HR's or Kosmetika's money over them.
+   */
+  readonly productsTotal: MetaProductTotalsDto
   /** UZS per USD used for ROAS — the ad ledger's rate, with its date. */
   readonly usdRate: number | null
   readonly usdRateDate: string | null
@@ -406,12 +413,13 @@ export function metaBlock(input: {
       return { date, total: usd(total), cells: columns.map((c) => usd(cells.get(c.key) ?? 0n)) }
     })
 
-  const productTotals = (product: MetaProduct | null): MetaProductTotalsDto => {
-    const accs = ordered.filter((a) => product === null || a.column.product === product)
+  /** The owners and pages of `products`; null is every owner, «Boshqa» included. */
+  const productTotals = (products: readonly MetaProduct[] | null): MetaProductTotalsDto => {
+    const accs = ordered.filter((a) => products === null || products.includes(a.column.product))
     const spend = accs.reduce((n, a) => n + a.spend, 0n)
     const sources = input.sources.filter((s) => {
       const p = input.productOfSource.get(s.key)
-      return p !== undefined && (product === null || p === product)
+      return p !== undefined && (products === null || products.includes(p))
     })
     const sum = (pick: (s: TargetGroupRow) => number) => sources.reduce((n, s) => n + pick(s), 0)
     const bitrixLeads = sum((s) => s.leads)
@@ -466,7 +474,7 @@ export function metaBlock(input: {
   }
 
   const products = PRODUCT_ORDER.filter((p) => ordered.some((a) => a.column.product === p)).map(
-    (product) => ({ product, ...productTotals(product) }),
+    (product) => ({ product, ...productTotals([product]) }),
   )
 
   return {
@@ -493,6 +501,7 @@ export function metaBlock(input: {
     })),
     products,
     total: productTotals(null),
+    productsTotal: productTotals(TARGET_PRODUCTS),
     usdRate: input.usdRate,
     usdRateDate: input.usdRateDate,
   }

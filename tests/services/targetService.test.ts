@@ -195,6 +195,18 @@ describe('metaBlock — the «Лид база» sheet', () => {
     expect(block.days[1]!.cells.at(-1)).toBe(5)
   })
 
+  it('heads «Collagen va Zextra» with the two products alone — no «Boshqa» money over their leads', () => {
+    const products = block.products.filter((p) => p.product !== 'Boshqa')
+    const spend = products.reduce((n, p) => n + p.spendUsd, 0)
+    expect(block.productsTotal.spendUsd).toBe(674.56)
+    expect(block.productsTotal.spendUsd).toBeCloseTo(spend, 6)
+    expect(block.productsTotal.bitrixLeads).toBe(500)
+    expect(block.productsTotal.costPerBitrixLeadUsd).toBeCloseTo(674.56 / 500, 6)
+    expect(block.productsTotal.deliveredMoney).toEqual(block.total.deliveredMoney)
+    // The «Лид база» Jami keeps the unmapped 5 $.
+    expect(block.total.costPerBitrixLeadUsd).toBeCloseTo(679.56 / 500, 6)
+  })
+
   it('pairs a product with its own pages only, never with other sources', () => {
     const collagen = block.products.find((p) => p.product === 'Collagen')!
     expect(collagen.bitrixLeads).toBe(400)
