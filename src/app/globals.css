@@ -1448,8 +1448,8 @@ body::after {
   background: var(--surface-sunken);
 }
 
-.thead-sticky.is-scrolled,
-:where([data-scrolled] > table > thead > tr) > .thead-sticky {
+:where([data-scrolled] > table > thead > tr) > .thead-sticky,
+.thead-sticky.is-scrolled {
   box-shadow: 0 1px 0 var(--border-strong), var(--shadow-card);
 }
 
@@ -1597,11 +1597,17 @@ tr:hover > .tcol-sticky:not(.is-edge) {
   box-shadow: 1px 0 0 var(--border);
 }
 
-/* `[data-scrolled-x]` is the state set on the scroll box, not on each cell —
-   DataTable's and the «RNP» sheet's, whose cells a React state would redraw
-   on the first sideways scroll (`RnpSheetTable.tsx`). */
+/* `[data-scrolled-x]` is that state, set on DataTable's scroll box rather than
+   on each cell — as a React state it redrew every row on the first sideways
+   scroll. The «RNP» sheet sets it too (`RnpSheetTable.tsx`) and draws it with
+   its own `.rnp-label` / `.rnp-edge` rules below. A header's or a total's
+   pinned cell keeps its band's rule under the divider, where the band
+   declares one (`--band-rule`). */
 [data-scrolled-x] .tcol-sticky.is-edge {
-  box-shadow: 1px 0 0 var(--border-strong), 6px 0 12px -6px rgb(0 0 0 / 0.28);
+  box-shadow:
+    1px 0 0 var(--border-strong),
+    6px 0 12px -6px rgb(0 0 0 / 0.28),
+    var(--band-rule, 0 0 #0000);
 }
 
 /* The «RNP» sheet pins План обший, Факт and Прогноз beside its label, each at
