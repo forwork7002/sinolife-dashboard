@@ -58,6 +58,29 @@ export class ApiClientError extends Error {
 }
 
 /**
+ * The body as an envelope, or a failure the screens can print.
+ *
+ * Not every answer is ours to shape: the platform's proxy answers a 502/503/504
+ * with an HTML page during a restart or an upstream timeout, and a crashed
+ * route can answer an empty 500. Parsed blind, that rejected with a bare
+ * SyntaxError — «Unexpected token '<', "<!DOCTYPE "… is not valid JSON» printed
+ * on every card in place of the house error text, the status lost with it. An
+ * abort still throws as itself, so a cancelled request never reads as a fault.
+ */
+async function readEnvelope<B>(response: Response): Promise<B> {
+  try {
+    return (await response.json()) as B
+  } catch (error) {
+    if ((error as { name?: unknown } | null)?.name === 'AbortError') throw error
+    throw new ApiClientError(
+      response.ok ? 'BAD_RESPONSE' : 'UPSTREAM_UNAVAILABLE',
+      'Server vaqtincha javob bermadi. Qayta urinib koʻring.',
+      response.status,
+    )
+  }
+}
+
+/**
  * Fetch and unwrap the envelope.
  *
  * An error envelope becomes a typed throw carrying the correlation id, so the
@@ -79,9 +102,9 @@ export async function apiGet<T>(
     headers: { accept: 'application/json' },
   })
 
-  const body = (await response.json()) as
-    | ApiSuccess<T>
-    | { error: { code: string; message: string }; meta: ResponseMeta }
+  const body = await readEnvelope<
+    ApiSuccess<T> | { error: { code: string; message: string }; meta: ResponseMeta }
+  >(response)
 
   if (!response.ok || 'error' in body) {
     const error = 'error' in body ? body.error : { code: 'UNKNOWN', message: 'Unknown error' }
@@ -117,7 +140,7 @@ export async function apiWrite<T>(
     body: JSON.stringify(body),
   })
 
-  const payload = (await response.json()) as
+  const payload = await readEnvelope<
     | ApiSuccess<T>
     | {
         error: {
@@ -127,6 +150,7 @@ export async function apiWrite<T>(
         }
         meta: ResponseMeta
       }
+  >(response)
 
   if (!response.ok || 'error' in payload) {
     const error =
