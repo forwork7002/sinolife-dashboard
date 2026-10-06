@@ -39,4 +39,13 @@ describe('resolvePresetParam', () => {
     expect(resolvePresetParam('custom', null, '2026-08-23')).toBe('today')
     expect(resolvePresetParam('custom', null, null)).toBe('today')
   })
+
+  it('refuses the bounds the API refuses: no calendar day, an end before its start, over ten years', () => {
+    // «2026-9» typed into a month field Firefox draws as plain text.
+    expect(resolvePresetParam('custom', '2026-9-01', '2026-09-30')).toBe('today')
+    expect(resolvePresetParam('custom', '2026-02-30', '2026-03-05')).toBe('today')
+    expect(resolvePresetParam('custom', '2026-08-23', '2026-08-01')).toBe('today')
+    expect(resolvePresetParam('custom', '2010-01-01', '2026-08-01')).toBe('today')
+    expect(resolvePresetParam('custom', '2016-08-01', '2026-08-01')).toBe('custom')
+  })
 })

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
+import { isCustomWindow } from '@/lib/customWindow'
 import { APP_TIME_ZONE } from '@/lib/format'
 import { t } from '@/lib/messages'
 
@@ -249,17 +250,28 @@ function PeriodPicker({
     */
     const notFuture = (iso: string) => (iso > todayIso() ? todayIso() : iso)
 
+    /*
+      A FIELD HALF TYPED OR CLEARED APPLIES NOTHING. Firefox and Safari on a
+      desk draw `type="month"` as plain text, so «2026-9» reached the API as
+      `from=2026-9-01` (a 400 on every request, then remembered for every
+      screen), and «09.2026» or an emptied field threw inside this handler.
+    */
+    const pick = (selection: PeriodSelection) => {
+      if (isCustomWindow(selection.from, selection.to)) onPick(selection)
+    }
+
     switch (mode) {
       case 'day':
-        return onPick({ preset: 'custom', from: day, to: day })
+        return pick({ preset: 'custom', from: day, to: day })
       case 'month':
-        return onPick({
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return
+        return pick({
           preset: 'custom',
           from: `${month}-01`,
           to: notFuture(lastDayOfMonth(month)),
         })
       case 'year':
-        return onPick({
+        return pick({
           preset: 'custom',
           from: `${year}-01-01`,
           to: notFuture(`${year}-12-31`),
@@ -267,7 +279,7 @@ function PeriodPicker({
       case 'range':
         // Swap rather than reject: someone who picks the end first meant a
         // range, and refusing it teaches them to distrust the control.
-        return onPick(
+        return pick(
           rangeFrom <= rangeTo
             ? { preset: 'custom', from: rangeFrom, to: rangeTo }
             : { preset: 'custom', from: rangeTo, to: rangeFrom },

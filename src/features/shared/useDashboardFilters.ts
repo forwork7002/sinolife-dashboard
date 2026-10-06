@@ -7,6 +7,7 @@ import { rememberPeriod, rememberedPeriod } from './periodMemory'
 
 import { PERIOD_PRESETS, type PeriodPreset, type PeriodSelection } from '@/components/layout/PeriodFilter'
 import { CONFIRMATION_OUTCOMES, type ConfirmationOutcome } from '@/lib/api'
+import { isCustomWindow } from '@/lib/customWindow'
 
 /**
  * Dashboard filter state, held in the URL.
@@ -228,7 +229,8 @@ export function resolvePresetParam(
   from: string | null,
   to: string | null,
 ): PeriodPreset {
-  if (value === 'custom') return from && to ? 'custom' : DEFAULTS.preset
+  // Both bounds, and bounds the API accepts: a real day each, in order, ten years at most.
+  if (value === 'custom') return isCustomWindow(from, to) ? 'custom' : DEFAULTS.preset
   return (PERIOD_PRESETS as readonly string[]).includes(value ?? '')
     ? (value as PeriodPreset)
     : DEFAULTS.preset

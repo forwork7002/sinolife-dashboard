@@ -73,6 +73,16 @@ describe('remembering the window', () => {
     expect(periodQuery()).toBe('')
   })
 
+  it('refuses a custom range the API would refuse, so it cannot ride every nav link', () => {
+    // Remembered, it put a 400 on every screen the sidebar opened.
+    rememberPeriod({ preset: 'custom', from: '2026-9-01', to: '2026-09-30' })
+    expect(rememberedPeriod()).toBeNull()
+    expect(periodQuery()).toBe('')
+
+    const backwards = JSON.stringify({ window: { preset: 'custom', from: '2026-08-15', to: '2026-08-01' } })
+    expect(periodQuery(backwards)).toBe('')
+  })
+
   it('forgets it, so "clear filters" really clears it', () => {
     rememberPeriod({ preset: 'this_week' })
 
