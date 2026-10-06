@@ -309,16 +309,20 @@ export function LogisticsPage() {
         */}
         {summary && summary.revivedOrders > 0 && (
           /*
-            WHAT «Отказ» OVERSTATES. An order refused and then delivered anyway
-            is money already counted inside Успешно; printing the number bounds
-            how much of the loss column is not a loss. Decided against the LAST
+            REFUSED AND DELIVERED ANYWAY — A RECOVERY, NOT A PART OF «Отказ».
+            The six columns are each order's CURRENT stage, and an order whose
+            last delivery came after its last refusal stands at or past
+            Доставлено: it is counted in Успешно and was never one of the
+            Отказ orders. This line used to say «Отказ koʻrsatgan
+            yoʻqotishdan N tasi … yetkazilgan», and a reader who took N off
+            Отказ understated the loss by exactly N. Decided against the LAST
             refusal, so a parcel delivered, bounced and then refused does not
             count as a recovery.
           */
           <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-            Отказ koʻrsatgan yoʻqotishdan{' '}
-            <strong>{formatNumber(summary.revivedOrders)} tasi</strong> ({formatFullUzs(summary.revived.amount)}{' '}
-            soʻm) keyinchalik baribir yetkazilgan — bu pul allaqachon Успешно ichida sanalgan.
+            <strong>{formatNumber(summary.revivedOrders)} ta buyurtma</strong> ({formatFullUzs(summary.revived.amount)}{' '}
+            soʻm) avval rad etilgan, keyin baribir yetkazilgan — ular Отказ ustunida emas,
+            yetkazilgani uchun Успешно ichida sanalgan.
           </p>
         )}
 

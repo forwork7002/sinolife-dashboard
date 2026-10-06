@@ -850,7 +850,7 @@ export interface LogisticsDto {
     readonly unroutedOrders: number
     /** Expected 0. Non-zero is a `countsAsRevenue` double-count announcing itself. */
     readonly offRevenueOrders: number
-    /** Refused, then delivered anyway — how much «Отказ» overstates the loss. */
+    /** Refused, then delivered anyway — outside «Отказ» (it stands in Успешно), never taken off the loss. */
     readonly revivedOrders: number
     readonly revived: MoneyDto
     readonly medianDays: number | null

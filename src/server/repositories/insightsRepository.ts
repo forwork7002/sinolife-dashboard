@@ -460,9 +460,11 @@ export interface LogisticsCut {
   readonly agedMinor: bigint
   readonly medianWaitingDays: number | null
   /**
-   * Refused, and then delivered anyway — how much the «Отказ» column
-   * overstates the loss. Decided against the LAST refusal, so a parcel that
-   * was delivered, bounced and then refused is not reported as a recovery.
+   * Refused, and then delivered anyway — refusals that recovered, and NOT a
+   * part of the «Отказ» column: `bucket` is the CURRENT stage, and an order
+   * whose last delivery outlived its last refusal stands in Успешно. Decided
+   * against the LAST refusal, so a parcel that was delivered, bounced and
+   * then refused is not reported as a recovery.
    */
   readonly revivedOrders: number
   readonly revivedMinor: bigint
@@ -2867,9 +2869,11 @@ export class InsightsRepository {
         /*
           «QAYTARIB OLINDI» — refused, and then delivered anyway.
 
-          Bounds how much the Отказ column overstates the loss. Both sides
-          come from CTEs already scanned; see refused_at for why the last
-          refusal and not the first.
+          A recovery, and NOT a part of the Отказ column: bucket is the
+          CURRENT stage, and a delivery after the last refusal means the
+          order stands at or past Доставлено, so it sits in Успешно. Both
+          sides come from CTEs already scanned; see refused_at for why the
+          last refusal and not the first.
         */
         (dv.last_delivered_at IS NOT NULL
          AND rf.refused_at IS NOT NULL
