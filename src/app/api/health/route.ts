@@ -22,12 +22,25 @@ import { NextResponse } from 'next/server'
 
 import { prisma } from '@/server/db/prisma'
 import { logger } from '@/server/logging/logger'
+import { rnpFirstWarmPending } from '@/server/services/rnpWarmer'
+
+/*
+  A NEW SERVER IS NOT READY UNTIL «RNP JADVALI» IS WARM — for at most this
+  long after it starts (see `rnpWarmer.ts`). The platform probes 30 s after
+  start, then every 30 s, and restarts after 3 failures in a row: «warming»
+  can fail the 30 s and 60 s probes at most, and the 90 s probe is past the
+  grace whatever the build is doing, so a deploy is delayed, never failed.
+*/
+const WARMING_GRACE_S = 75
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(): Promise<NextResponse> {
   try {
     await prisma.$queryRaw`SELECT 1`
+    if (rnpFirstWarmPending() && process.uptime() < WARMING_GRACE_S) {
+      return NextResponse.json({ status: 'warming' }, { status: 503, headers: { 'cache-control': 'no-store' } })
+    }
     return NextResponse.json({ status: 'ok' }, { headers: { 'cache-control': 'no-store' } })
   } catch (error) {
     logger.error({ err: error }, 'Health check failed: database unreachable')

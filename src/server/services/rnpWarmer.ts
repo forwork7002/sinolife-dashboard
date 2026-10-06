@@ -26,6 +26,26 @@ import { logger } from '@/server/logging/logger'
 
 export const RNP_WARM_EVERY_MS = 4 * 60_000
 
+/*
+  THE FIRST BUILD HOLDS BACK A DEPLOY (2026-10-06, «RNP sekin»). A fresh
+  server's first build took 38.7 s on production, and there were ten deploys
+  that day: each left the sheet cold for whoever opened it next. `/api/health`
+  reads this and answers «warming» until the first build is done, so the
+  platform keeps the old, warm server serving meanwhile — bounded there by
+  `WARMING_GRACE_S`, so a slow or failing build never fails a deploy.
+
+  ON `globalThis`, NOT A MODULE VARIABLE: `instrumentation.ts` and the route
+  handlers are separate bundles in one process, and each would get its own
+  copy of a module-level flag.
+*/
+const FIRST_WARM = Symbol.for('sinolife.rnp.firstWarmPending')
+type WarmFlag = { [FIRST_WARM]?: boolean }
+
+/** True from the warmer's start until its first build has finished, well or not; false where no warmer runs. */
+export function rnpFirstWarmPending(): boolean {
+  return (globalThis as WarmFlag)[FIRST_WARM] === true
+}
+
 interface Timers {
   setInterval(fn: () => void, ms: number): { unref?: () => void }
 }
@@ -35,6 +55,7 @@ export function startRnpWarmer(
   timers: Timers = globalThis as unknown as Timers,
 ): () => Promise<void> {
   let running: Promise<void> | null = null
+  ;(globalThis as WarmFlag)[FIRST_WARM] = true
   const tick = (): Promise<void> => {
     if (running) return running
     const started = Date.now()
@@ -43,6 +64,7 @@ export function startRnpWarmer(
       .catch((error: unknown) => logger.warn({ err: error }, 'rnp warm-up failed; the next tick tries again'))
       .finally(() => {
         running = null
+        ;(globalThis as WarmFlag)[FIRST_WARM] = false
       })
     return running
   }

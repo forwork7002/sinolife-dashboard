@@ -5,7 +5,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { RNP_WARM_EVERY_MS, startRnpWarmer } = await import('@/server/services/rnpWarmer')
+const { RNP_WARM_EVERY_MS, rnpFirstWarmPending, startRnpWarmer } = await import('@/server/services/rnpWarmer')
 const { logger } = await import('@/server/logging/logger')
 
 function fakeTimers() {
@@ -76,5 +76,16 @@ describe('startRnpWarmer', () => {
     expect(warn).toHaveBeenCalledWith({ err: timeout }, 'rnp warm-up failed; the next tick tries again')
     info.mockRestore()
     warn.mockRestore()
+  })
+
+  it('holds the first-build flag until that build is done, well or not — /api/health reads it', async () => {
+    let fail!: (e: Error) => void
+    const warm = vi.fn(() => new Promise<void>((_, reject) => (fail = reject)))
+    const { timers } = fakeTimers()
+    const tick = startRnpWarmer(warm, timers)
+    expect(rnpFirstWarmPending()).toBe(true)
+    fail(new Error('statement timeout'))
+    await tick()
+    expect(rnpFirstWarmPending()).toBe(false)
   })
 })
