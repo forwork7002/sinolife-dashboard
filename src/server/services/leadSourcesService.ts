@@ -46,7 +46,7 @@ import {
   leadTile,
 } from '@/server/domain/leads/leadSources'
 import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
-import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
+import { type Period, type PeriodPreset, periodLengthInDays, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import { type BrandFilter, type TargetProduct, brandMatches } from '@/server/domain/types'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
 import type {
@@ -773,6 +773,22 @@ const scanCache = ttlCache<{
   inboundCalls: number | null
 }>(120_000, LIVE_CACHE)
 
+/*
+  KEPT WARM (2026-10-06, «Lidlar juda sekin ochilayapti»). The memos above
+  hand out an answer up to seven minutes old at once, but a window nobody
+  read for longer — the first look of the morning, after a quiet spell, after
+  every deploy — was built in front of its reader: six scans, the FAKT 1
+  phone match alone 4.4 s on average on a month. `warm` builds the windows
+  the tab opens on («Bugun», the dashboard default, and «Shu oy») every
+  `LEADS_WARM_EVERY_MS` from `src/instrumentation.ts`, through `overview` —
+  the same memo keys, the same scans, so a reader is handed exactly what they
+  would have waited for. Working hours only: at night nobody reads them.
+*/
+export const LEADS_WARM_EVERY_MS = 3 * 60_000
+const LEADS_WARM_PRESETS: readonly PeriodPreset[] = ['today', 'this_month']
+/** Tashkent hours [from, to) the warmer runs in. */
+const LEADS_WARM_HOURS = [7, 23] as const
+
 export class LeadSourcesService {
   constructor(
     private readonly repository: LeadSourcesRepository,
@@ -814,6 +830,14 @@ export class LeadSourcesService {
 
     // Narrowed after the memo: one scan serves both brands and the whole.
     return leadSourcesOverview({ window, ...scans, fakt1, campaigns, importedAt, brand })
+  }
+
+  /** Builds the windows the tab opens on into the memos, one after another — see `LEADS_WARM_EVERY_MS`. */
+  async warm(now: Date, timeZone: string): Promise<void> {
+    const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone }).format(now))
+    if (hour < LEADS_WARM_HOURS[0] || hour >= LEADS_WARM_HOURS[1]) return
+    // One at a time: two cold months side by side would take the pool from every other screen.
+    for (const preset of LEADS_WARM_PRESETS) await this.overview(resolvePeriod(preset, { timeZone, now }), timeZone)
   }
 
   /**

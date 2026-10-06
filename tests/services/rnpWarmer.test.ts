@@ -5,7 +5,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { RNP_WARM_EVERY_MS, rnpFirstWarmPending, startRnpWarmer } = await import('@/server/services/rnpWarmer')
+const { RNP_WARM_EVERY_MS, firstWarmPending, startRnpWarmer, startWarmer } = await import('@/server/services/rnpWarmer')
 const { logger } = await import('@/server/logging/logger')
 
 function fakeTimers() {
@@ -83,9 +83,28 @@ describe('startRnpWarmer', () => {
     const warm = vi.fn(() => new Promise<void>((_, reject) => (fail = reject)))
     const { timers } = fakeTimers()
     const tick = startRnpWarmer(warm, timers)
-    expect(rnpFirstWarmPending()).toBe(true)
+    expect(firstWarmPending()).toBe(true)
+    // The first build starts on the next microtask; asking for it starts it now.
+    const first = tick()
     fail(new Error('statement timeout'))
-    await tick()
-    expect(rnpFirstWarmPending()).toBe(false)
+    await first
+    expect(firstWarmPending()).toBe(false)
+  })
+
+  it('stays pending until EVERY warmer has finished its first build', async () => {
+    let finishRnp!: () => void
+    let finishLeads!: () => void
+    const { timers } = fakeTimers()
+    const rnp = startRnpWarmer(() => new Promise<void>((resolve) => (finishRnp = resolve)), timers)
+    const rnpFirst = rnp()
+    // The second waits for the first, as instrumentation.ts starts them — pending from the start all the same.
+    const leads = startWarmer('leads', () => new Promise<void>((resolve) => (finishLeads = resolve)), 60_000, timers, rnpFirst)
+    finishRnp()
+    await rnpFirst
+    expect(firstWarmPending()).toBe(true)
+    const leadsFirst = leads()
+    finishLeads()
+    await leadsFirst
+    expect(firstWarmPending()).toBe(false)
   })
 })

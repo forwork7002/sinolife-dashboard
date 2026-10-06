@@ -14,8 +14,9 @@ const { GET } = await import('@/app/api/health/route')
   after it starts — so a deploy is delayed behind the first build, never
   failed by it (rnpWarmer.ts).
 */
-const FLAG = Symbol.for('sinolife.rnp.firstWarmPending')
-const setPending = (v: boolean | undefined) => ((globalThis as Record<symbol, unknown>)[FLAG] = v)
+const FLAG = Symbol.for('sinolife.firstWarmPending')
+const setPending = (v: boolean | undefined) =>
+  ((globalThis as Record<symbol, unknown>)[FLAG] = v === undefined ? undefined : new Set(v ? ['rnp'] : []))
 
 describe('/api/health while the first RNP build runs', () => {
   afterEach(() => {

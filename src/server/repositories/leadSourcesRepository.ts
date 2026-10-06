@@ -3,7 +3,7 @@ import { env } from '@/server/config/env'
 import { CALL_DATA_FLOOR, callWindowStart } from '@/lib/callQuality'
 import type { Period } from '@/server/domain/period/period'
 
-import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql } from './leadFormSql'
+import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, sourceDescriptionSql } from './leadFormSql'
 
 /**
  * Регистрация deals created on one day, from one source, sitting in one stage
@@ -97,13 +97,25 @@ export class LeadSourcesRepository {
       }[]
     >(
       `
-      WITH ${formAliasCteSql('$1', '$2')}
+      /*
+        ONE READ OF THE WINDOW'S DEALS (\`reg\`, MATERIALIZED): the form aliases
+        come from the rows this scan counts, so a repeat lead's form costs no
+        second pass over the window (as RNP's \`registrationDaysSql\`).
+      */
+      WITH reg AS MATERIALIZED (
+        SELECT d."createdAtSource" AS created, d."title" AS title, ${sourceDescriptionSql('d')} AS sd,
+               d."sourceId", d."stageId", d."status", d."aiQualifiedAt"
+        FROM "deal" d
+        JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+        WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      ),
+      ${formAliasOverSql('(SELECT r.sd, r.title FROM reg r) fd')}
       SELECT
         /*
           ::text, never a bare ::date — node-postgres builds a DATE at LOCAL
           midnight, which on a Tashkent machine is the day before.
         */
-        (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
+        (r.created AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
         s."externalId" AS source_id,
         s."name" AS source,
         /*
@@ -113,17 +125,15 @@ export class LeadSourcesRepository {
           all. A repeat lead's form comes from its SOURCE_DESCRIPTION
           (leadFormSql.ts).
         */
-        ${dealFormTitleSql('d', 's', 'fa')} AS form_title,
+        ${leadFormTitleSql('r.title', 'r.sd', 's."externalId"', 'fa.title')} AS form_title,
         st."name" AS stage,
-        d."status"::text AS status,
-        (d."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
+        r."status"::text AS status,
+        (r."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
         count(*)::bigint AS leads
-      FROM "deal" d
-      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
-      LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
-      LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
-      ${formAliasJoinSql('d', 'fa')}
-      WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+      FROM reg r
+      LEFT JOIN "deal_stage" st ON st."id" = r."stageId"
+      LEFT JOIN "sales_source" s ON s."id" = r."sourceId"
+      LEFT JOIN form_alias fa ON fa.sd = r.sd
       GROUP BY 1, 2, 3, 4, 5, 6, 7
       `,
       period.start,

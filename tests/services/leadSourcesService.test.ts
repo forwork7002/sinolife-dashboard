@@ -580,3 +580,31 @@ describe('LeadSourcesService.overview — a slow «Факт1 мижоз»', () =
     expect(fakt1Calls).toBe(1)
   })
 })
+
+describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', () => {
+  it('builds «Bugun» then «Shu oy» by working hours, through the reader\'s own memo keys, and nothing at night', async () => {
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const windows: string[] = []
+    const service = new LeadSourcesService(
+      {
+        registrationDays: async (p: { preset: string }) => {
+          windows.push(p.preset)
+          return []
+        },
+        triageDays: async () => [],
+        qualifiedSources: async () => [],
+        aiQualifiedStages: async () => [],
+        pipelineSourceCount: async () => NO_SARAFAN,
+        inboundCallCount: async () => null,
+      } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { leadFakt1Clients: async () => [] } as never,
+    )
+    // 03:00 Tashkent: nobody reads it.
+    await service.warm(new Date('2026-05-11T22:00:00Z'), 'Asia/Tashkent')
+    expect(windows).toEqual([])
+    // 10:00 Tashkent.
+    await service.warm(new Date('2026-05-12T05:00:00Z'), 'Asia/Tashkent')
+    expect(windows).toEqual(['today', 'this_month'])
+  })
+})
