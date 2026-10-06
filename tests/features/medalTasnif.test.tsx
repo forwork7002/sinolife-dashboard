@@ -150,7 +150,7 @@ describe('MedalTasnif — medal kaliti', () => {
       place: 99,
     })
     const codesAt = (now: bigint) =>
-      buildSellerMedals({ months: [fact('2026-07-01', past), fact('2026-08-01', now)], days: [], runningMonth: '2026-09', runningDay: '2026-09-01' })
+      buildSellerMedals({ months: [fact('2026-07-01', past), fact('2026-08-01', now)], days: [], unsettledMonth: '2026-09', unsettledDay: '2026-09-01' })
         .find((r) => r.employeeId === 'a')!
         .medals.map((m) => m.code)
     expect(codesAt(atRule)).toContain('jump')

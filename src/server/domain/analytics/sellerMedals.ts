@@ -162,6 +162,31 @@ export const ROOKIE_PLACE = 10
  */
 const ROOKIE_FROM_MONTH = '2026-09'
 
+/**
+ * How long a day or a month keeps changing AFTER it ends — no medal is decided
+ * on one until this many days have passed since its end.
+ *
+ * The facts are bucketed by the queue arrival (`queued_at`) and FAKT 2 is
+ * where each order stands NOW, so a closed day's or month's FAKT 2 keeps
+ * landing for days: by arrival day on 2026-09-04, 03-sen 94 confirmed /
+ * 0 delivered, 02-sen 80 / 20, 31-avg 99 / 73 — still a quarter undelivered
+ * after four days. Decided the morning after, a 🌅 moved to whoever's
+ * regional parcels landed later, and a month's 🥇 / 🎯 / 💯 were decided on a
+ * cohort whose last days were mostly on the road: exactly the medal that «bir
+ * odamdan ikkinchisiga ko'chib yurardi» which skipping the running day and
+ * month was meant to stop.
+ */
+export const SETTLE_DAYS = 7
+
+/**
+ * The instant a period must have ENDED by to be settled: `SETTLE_DAYS` before
+ * `now`. Read in the reporting zone, its day and month are the first ones NOT
+ * yet settled — the `unsettledDay` / `unsettledMonth` the engine takes.
+ */
+export function settleCutoff(now: Date): Date {
+  return new Date(now.getTime() - SETTLE_DAYS * 86_400_000)
+}
+
 interface Draft {
   readonly employeeId: string
   readonly medals: SellerMedal[]
@@ -170,17 +195,22 @@ interface Draft {
 export interface SellerMedalsInput {
   readonly months: readonly SellerMonthFact[]
   readonly days: readonly SellerDayFact[]
-  /** `YYYY-MM` — hali yopilmagan oy. Seriya va oylik medallar undan qochadi. */
-  readonly runningMonth: string
   /**
-   * `YYYY-MM-DD`, hisobot mintaqasida — hali tugamagan kun.
-   *
-   * Xuddi `runningMonth` oylik medallarni chetlab o'tgani kabi, ⚡ va 🌅 shu
-   * kunni chetlab o'tadi. Kun tugamaguncha uning `place`i har soatda
-   * o'zgaradi: bugungi 🌅 kechqurun almashib ketardi — televizorda medal
-   * bir odamdan ikkinchisiga ko'chib yurardi.
+   * `YYYY-MM` — the first month NOT yet settled: the running one, or one that
+   * ended less than `SETTLE_DAYS` ago. It and every later month give no month
+   * medal, and no streak, jump, rookie or year reads them.
    */
-  readonly runningDay: string
+  readonly unsettledMonth: string
+  /**
+   * `YYYY-MM-DD`, in the reporting zone — the first day NOT yet settled. It
+   * and every later day give neither ⚡ nor 🌅.
+   *
+   * Until then a day's `place` keeps moving — every hour while it runs, as
+   * orders are confirmed, and for days after it as they are delivered — so a
+   * 🌅 decided earlier would move from one seller to another on the
+   * television. See `SETTLE_DAYS`.
+   */
+  readonly unsettledDay: string
 }
 
 export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMedalRow[] {
@@ -199,10 +229,12 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
     YOPILMAGAN OY MEDAL BERMAYDI. Uning o'rni har kuni o'zgaradi, ya'ni
     oltin medal ertalab berilib kechqurun olinardi — bu taxtani buzuq
     qiladi. Xuddi shu sabab `📅` va `📈` ham yopilgan oyda hisoblanadi.
+    Nor does a month closed less than `SETTLE_DAYS` ago: its FAKT 2 is still
+    landing, and the places with it.
   */
   const byMonth = new Map<string, SellerMonthFact[]>()
   for (const m of input.months) {
-    if (m.month.slice(0, 7) === input.runningMonth) continue
+    if (m.month.slice(0, 7) >= input.unsettledMonth) continue
     const bucket = byMonth.get(m.month)
     if (bucket) bucket.push(m)
     else byMonth.set(m.month, [m])
@@ -367,11 +399,12 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
   }
 
   // --- 🏆 yil chempioni, faqat YOPILGAN yil ------------------------------
-  const runningYear = input.runningMonth.slice(0, 4)
+  // A year whose December has not settled is still running.
+  const unsettledYear = input.unsettledMonth.slice(0, 4)
   const byYear = new Map<string, Map<string, bigint>>()
   for (const monthKey of closedMonths) {
     const year = monthKey.slice(0, 4)
-    if (year === runningYear) continue
+    if (year >= unsettledYear) continue
     const totals = byYear.get(year) ?? new Map<string, bigint>()
     for (const m of byMonth.get(monthKey)!) {
       totals.set(m.employeeId, (totals.get(m.employeeId) ?? 0n) + m.deliveredMinor)
@@ -400,8 +433,9 @@ export function buildSellerMedals(input: SellerMedalsInput): readonly SellerMeda
   for (const d of input.days) {
     // JORIY KUN MEDAL BERMAYDI — xuddi joriy oy kabi. Kun tugamaguncha
     // `place`i har soatda o'zgaradi, ya'ni bugungi g'olib kechqurun almashib
-    // ketardi, va ⚡ ni ham xuddi shunday yo'qotib-topib turardi.
-    if (d.day === input.runningDay) continue
+    // ketardi, va ⚡ ni ham xuddi shunday yo'qotib-topib turardi. Nor does a
+    // day that ended less than `SETTLE_DAYS` ago: its deliveries still move it.
+    if (d.day >= input.unsettledDay) continue
     // PULSIZ KUN G'OLIBLIK EMAS. `place` hamma qatnashgan kun uchun
     // beriladi, shu jumladan hech kim yetkazmagan kun uchun ham — u yerdagi
     // «1-o'rin» tie-break natijasi, yutuq emas.

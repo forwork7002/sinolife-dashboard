@@ -31,7 +31,7 @@ import {
 } from '@/server/domain/analytics/pulse'
 import { BONUS_TIERS, bonusEligible } from '@/server/domain/analytics/sellerBonus'
 import { mergeSellerTeamSlices } from '@/server/domain/analytics/sellerTeams'
-import { type SellerMedal, buildSellerMedals } from '@/server/domain/analytics/sellerMedals'
+import { type SellerMedal, buildSellerMedals, settleCutoff } from '@/server/domain/analytics/sellerMedals'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { scopedPeriod } from '@/server/domain/employees/branches'
 import { brandTeams } from '@/server/domain/rnp/rnpSheet'
@@ -847,7 +847,9 @@ export class SellerBoardService {
    * about two days, which is exactly why the ordering falls back to FAKT 1 —
    * see `recordsSql`. A running month is marked on the DTO rather than hidden:
    * a champion who is winning a month that is not over is a different claim
-   * from one who won it, and the screen says which.
+   * from one who won it, and the screen says which. A month stays marked for
+   * `SETTLE_DAYS` after it ends, because its FAKT 2 — and so its champion —
+   * is still landing (2026-10-06).
    */
   async records(ctx: AnalyticsContext): Promise<SellerRecordsDto> {
     const filters = boardFilters(ctx)
@@ -887,7 +889,10 @@ export class SellerBoardService {
       filters,
     )
 
-    const runningMonth = monthKey(ctx.now, period.timeZone)
+    // The first month not yet settled — the running one, or one that ended
+    // less than `SETTLE_DAYS` ago. It and every later month are a lead, not
+    // a record.
+    const unsettledMonth = monthKey(settleCutoff(ctx.now), period.timeZone)
 
     return {
       from: period.start.toISOString(),
@@ -897,7 +902,7 @@ export class SellerBoardService {
         const delivered = r.deliveredMinor > 0n
         return {
           month: r.month,
-          running: r.month.slice(0, 7) === runningMonth,
+          running: r.month.slice(0, 7) >= unsettledMonth,
           employeeId: r.employeeId,
           fullName: r.fullName,
           rop: r.rop,
@@ -963,12 +968,19 @@ export class SellerBoardService {
   ): Promise<SellerMedalsDto> {
     const facts = await this.insights.sellerMedalFacts(scopedPeriod(period, filters), filters)
 
+    /*
+      SETTLED, NOT MERELY OVER (2026-10-06). The first day and month NOT yet
+      settled — still running, or ended less than `SETTLE_DAYS` ago — in the
+      reporting zone; a medal is decided only on what came before them. With
+      no horizon these were today and this month, which is what this read
+      passed until then.
+    */
+    const settled = settleCutoff(ctx.now)
     const rows = buildSellerMedals({
       months: facts.months,
       days: facts.days,
-      runningMonth: monthKey(ctx.now, period.timeZone),
-      // Tugamagan kun ⚡ ham, 🌅 ham bermaydi — hisobot mintaqasidagi bugun.
-      runningDay: zonedDateKey(ctx.now, period.timeZone),
+      unsettledMonth: monthKey(settled, period.timeZone),
+      unsettledDay: zonedDateKey(settled, period.timeZone),
     })
 
     return {

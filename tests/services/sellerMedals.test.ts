@@ -155,3 +155,60 @@ describe('medal servisi', () => {
     expect(calls.n).toBe(1)
   })
 })
+
+/**
+ * SETTLED, NOT MERELY OVER — 2026-10-06.
+ *
+ * A closed day's or month's FAKT 2 keeps landing for days (by arrival day on
+ * 2026-09-04: 02-sen 80 confirmed / 20 delivered, 31-avg 99 / 73), and the
+ * places move with it. A medal is decided only once `SETTLE_DAYS` have passed
+ * since the period ENDED, so it cannot move from one seller to another after
+ * the television has shown it.
+ */
+describe('medals wait for the period to settle', () => {
+  beforeEach(() => resetSellerMedalsCache())
+
+  const september = [
+    {
+      month: '2026-09-01',
+      employeeId: 'e1',
+      fullName: 'Marjona Xayrullayeva',
+      confirmedOrders: 40,
+      confirmedMinor: 50n * MLN,
+      deliveredOrders: 30,
+      deliveredMinor: 30n * MLN,
+      place: 1,
+    },
+  ]
+
+  it('decides September’s podium only once September has settled', async () => {
+    const service = new SellerBoardService({} as never, repoWith(september, [], { n: 0 }) as never)
+    const codesAt = async (now: string) => {
+      // The memo is keyed on the window START, so a second clock in one case
+      // would be served the first one's answer.
+      resetSellerMedalsCache()
+      const dto = await service.medals(contextAt(new Date(now)))
+      return dto.sellers.find((s) => s.employeeId === 'e1')!.medals.map((m) => m.code)
+    }
+
+    // 3 October, Tashkent: September closed two days ago, its last week on the road.
+    expect(await codesAt('2026-10-03T06:00:00Z')).not.toContain('month-gold')
+    // 7 October 23:59 — still under a week since it ended.
+    expect(await codesAt('2026-10-07T18:59:00Z')).not.toContain('month-gold')
+    // 8 October 00:00, Tashkent: a week since September ended.
+    expect(await codesAt('2026-10-07T19:00:00Z')).toContain('month-gold')
+  })
+
+  it('gives a day’s 🌅 a week after the day, not the morning after', async () => {
+    const days = [{ day: '2026-10-02', employeeId: 'e1', confirmedOrders: 3, deliveredMinor: 5n * MLN, place: 1 }]
+    const service = new SellerBoardService({} as never, repoWith(september, days, { n: 0 }) as never)
+    const codesAt = async (now: string) => {
+      resetSellerMedalsCache()
+      const dto = await service.medals(contextAt(new Date(now)))
+      return dto.sellers.find((s) => s.employeeId === 'e1')!.medals.map((m) => m.code)
+    }
+
+    expect(await codesAt('2026-10-03T06:00:00Z')).not.toContain('day-winner')
+    expect(await codesAt('2026-10-10T06:00:00Z')).toContain('day-winner')
+  })
+})

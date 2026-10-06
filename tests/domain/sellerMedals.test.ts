@@ -33,8 +33,8 @@ function day(over: Partial<SellerDayFact> & { employeeId: string }): SellerDayFa
   }
 }
 
-const build = (months: SellerMonthFact[], days: SellerDayFact[] = [], runningDay = '2026-09-01') =>
-  buildSellerMedals({ months, days, runningMonth: '2026-09', runningDay })
+const build = (months: SellerMonthFact[], days: SellerDayFact[] = [], unsettledDay = '2026-09-01') =>
+  buildSellerMedals({ months, days, unsettledMonth: '2026-09', unsettledDay })
 
 const rowOf = <T extends { employeeId: string }>(rows: readonly T[], id: string) =>
   rows.find((r) => r.employeeId === id)!
@@ -47,6 +47,27 @@ describe('oylik medallar faqat YOPILGAN oyda beriladi', () => {
       month({ employeeId: 'a', month: '2026-09-01', place: 1, deliveredOrders: 1, deliveredMinor: 10n * MLN }),
     ])
     expect(codes(rowOf(rows, 'a'))).not.toContain('month-gold')
+  })
+
+  it('gives nothing for the first unsettled month, nor for any month after it', () => {
+    /*
+      `unsettledMonth` is the first month NOT yet settled — in the first week
+      of October that is September, with October running after it. Both have
+      places that are still moving; neither may be read as closed.
+    */
+    const rows = buildSellerMedals({
+      months: [
+        month({ employeeId: 'a', month: '2026-08-01', place: 1, deliveredOrders: 1, deliveredMinor: 10n * MLN }),
+        month({ employeeId: 'b', month: '2026-09-01', place: 1, deliveredOrders: 1, deliveredMinor: 10n * MLN }),
+        month({ employeeId: 'c', month: '2026-10-01', place: 1, deliveredOrders: 1, deliveredMinor: 10n * MLN }),
+      ],
+      days: [],
+      unsettledMonth: '2026-09',
+      unsettledDay: '2026-09-26',
+    })
+    expect(codes(rowOf(rows, 'a'))).toContain('month-gold')
+    expect(codes(rowOf(rows, 'b'))).not.toContain('month-gold')
+    expect(codes(rowOf(rows, 'c'))).not.toContain('month-gold')
   })
 
   it('yopilgan oyning 1-2-3 o‘rni oltin, kumush, bronza beradi', () => {
@@ -196,8 +217,8 @@ describe('seriya medallari', () => {
         month({ employeeId: 'a', month: '2026-09-01', place: 1, deliveredOrders: 1, deliveredMinor: 40n * MLN }),
       ],
       days: [],
-      runningMonth: '2026-10',
-      runningDay: '2026-10-01',
+      unsettledMonth: '2026-10',
+      unsettledDay: '2026-10-01',
     })
     expect(codes(rowOf(rows, 'a'))).not.toContain('streak-fire')
     expect(codes(rowOf(rows, 'a'))).not.toContain('streak-steady')
@@ -265,7 +286,23 @@ describe('kun medallari', () => {
     expect(row?.medals.some((m) => m.code === 'day-record')).toBeFalsy()
   })
 
-  it('xuddi shu fixture, lekin kun runningDay dan ERTAROQ bo‘lsa — ikkalasi ham beriladi', () => {
+  it('gives no day medal for a day after the first unsettled one either', () => {
+    // Settled through 4 September: the 6th is still collecting deliveries.
+    const rows = build(
+      [month({ employeeId: 'a', deliveredOrders: 1, deliveredMinor: 10n * MLN })],
+      [
+        day({ employeeId: 'a', day: '2026-09-04', place: 1, deliveredMinor: MLN }),
+        day({ employeeId: 'b', day: '2026-09-06', place: 1, deliveredMinor: 5n * MLN }),
+      ],
+      '2026-09-05',
+    )
+    expect(codes(rowOf(rows, 'a'))).toContain('day-winner')
+    // b's day is the bigger one, and still neither medal: it has not settled.
+    expect(codes(rowOf(rows, 'a'))).toContain('day-record')
+    expect(rows.find((r) => r.employeeId === 'b')?.medals ?? []).toEqual([])
+  })
+
+  it('xuddi shu fixture, lekin kun unsettledDay dan ERTAROQ bo‘lsa — ikkalasi ham beriladi', () => {
     const rows = build(
       [month({ employeeId: 'a', deliveredOrders: 1, deliveredMinor: 10n * MLN })],
       [day({ employeeId: 'a', day: '2026-09-09', place: 1, deliveredMinor: MLN })],
@@ -299,8 +336,8 @@ describe('yil chempioni va yangi yulduz', () => {
         month({ employeeId: 'a', month: '2026-10-01', place: 7, deliveredOrders: 1, deliveredMinor: MLN }),
       ],
       days: [],
-      runningMonth: '2026-11',
-      runningDay: '2026-11-01',
+      unsettledMonth: '2026-11',
+      unsettledDay: '2026-11-01',
     })
     expect(codes(rowOf(rows, 'a'))).toContain('rookie')
   })
@@ -312,8 +349,8 @@ describe('yil chempioni va yangi yulduz', () => {
         month({ employeeId: 'a', month: '2026-11-01', place: 2, deliveredOrders: 1, deliveredMinor: MLN }),
       ],
       days: [],
-      runningMonth: '2026-12',
-      runningDay: '2026-12-01',
+      unsettledMonth: '2026-12',
+      unsettledDay: '2026-12-01',
     })
     expect(codes(rowOf(rows, 'a'))).not.toContain('rookie')
   })
@@ -384,8 +421,8 @@ describe('medallar ESHIKSIZ — jami pul medalni yashira olmaydi', () => {
         month({ employeeId: 'b', month: '2025-11-01', place: 2, deliveredOrders: 1, deliveredMinor: 1n * MLN }),
       ],
       days: [],
-      runningMonth: '2026-09',
-      runningDay: '2026-09-01',
+      unsettledMonth: '2026-09',
+      unsettledDay: '2026-09-01',
     })
     const champion = rowOf(rows, 'a').medals.find((m) => m.code === 'year-champion')!
     expect(champion).toBeDefined()

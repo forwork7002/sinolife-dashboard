@@ -105,6 +105,36 @@ describe('which figure the wall calls the record', () => {
     ])
   })
 
+  it('keeps a closed month a lead until it has settled', async () => {
+    /*
+      A closed month's FAKT 2 is still landing for days after it ends, and its
+      champion with it — so «Rekord» waits SETTLE_DAYS past the month's end,
+      as the medals do. Before that the wall says «Yetakchi».
+    */
+    const insights = {
+      confirmationSellerRecords: async () => [
+        row({ month: '2026-09-01', deliveredMinor: mln(128), deliveredOrders: 74 }),
+      ],
+    } as unknown as InsightsRepository
+    const service = new SellerBoardService({} as SellerBoardRepository, insights)
+    const runningAt = async (now: Date) => {
+      // The memo is keyed on the window start: one clock per build.
+      resetSellerRecordsCache()
+      const period = resolvePeriod('today', { timeZone: TZ, now })
+      const ctx = {
+        period,
+        comparison: previousEquivalent(period),
+        currency: 'UZS',
+        filters: { restrictToEmployeeIds: null },
+        now,
+      } as unknown as AnalyticsContext
+      return (await service.records(ctx)).months[0]!.running
+    }
+
+    expect(await runningAt(new Date('2026-10-03T09:00:00+05:00'))).toBe(true)
+    expect(await runningAt(new Date('2026-10-08T00:00:00+05:00'))).toBe(false)
+  })
+
   it('reads the running month in the reporting zone, not the server’s', async () => {
     /*
       A server in UTC is five hours behind Tashkent, so for the first five

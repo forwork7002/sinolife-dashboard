@@ -162,9 +162,10 @@ function RecordEntry({ record }: { record: SellerRecordDto }) {
       <span className="record-month">
         {/*
           THE MONTH'S STATE, IN THE WORD. «Rekord» is a month that is over and
-          can no longer change; «Yetakchi» is the month still running, whose
-          leader may yet lose the place. Without it, a running month's smaller
-          figure reads as a record having collapsed.
+          can no longer change — a week past its end, once its late deliveries
+          are in (`SETTLE_DAYS`); «Yetakchi» is a month still running or still
+          settling, whose leader may yet lose the place. Without it, a running
+          month's smaller figure reads as a record having collapsed.
         */}
         {record.running ? 'Yetakchi' : 'Rekord'} · {monthLabel(record.month)}
       </span>

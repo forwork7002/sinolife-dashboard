@@ -1341,7 +1341,10 @@ export interface SellerBoardDto {
 export interface SellerRecordDto {
   /** First day of the month, `YYYY-MM-DD`, in the reporting timezone. */
   readonly month: string
-  /** True while the month is still running — a lead, not yet a record. */
+  /**
+   * True while the month is still running, and for `SETTLE_DAYS` (7) after it
+   * ends while its FAKT 2 is still landing — a lead, not yet a record.
+   */
   readonly running: boolean
   readonly employeeId: string
   readonly fullName: string
