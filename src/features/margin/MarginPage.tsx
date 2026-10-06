@@ -82,7 +82,14 @@ export function MarginPage() {
     if (key === 'revenue') return row.revenue.amount
     if (key === 'gross') return row.gross?.amount ?? null
     if (key === 'margin') return row.margin
-    if (key === 'discount') return row.discount.amount - row.overList.amount
+    /*
+      THE GIVEAWAY ALONE, never the giveaway less the markup. The cell leads
+      with `discount` and prints `overList` under it as a separate fact,
+      because the repository splits the two by sign so they are never netted;
+      a sort on the difference put a 2 mln giveaway above a 10 mln one that
+      also sold 9 mln over list, under a column whose cells say otherwise.
+    */
+    if (key === 'discount') return row.discount.amount
     return null
   }
 
