@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  forgetPeriod,
   periodMemoryServerSnapshot,
   periodMemorySnapshot,
   periodQuery,
@@ -82,14 +81,6 @@ describe('remembering the window', () => {
     const backwards = JSON.stringify({ window: { preset: 'custom', from: '2026-08-15', to: '2026-08-01' } })
     expect(periodQuery(backwards)).toBe('')
   })
-
-  it('forgets it, so "clear filters" really clears it', () => {
-    rememberPeriod({ preset: 'this_week' })
-
-    forgetPeriod()
-
-    expect(rememberedPeriod()).toBeNull()
-  })
 })
 
 describe('when storage will not cooperate', () => {
@@ -111,7 +102,6 @@ describe('when storage will not cooperate', () => {
     // The dates on screen are correct either way; they just will not be there
     // next time. Nothing may propagate to the render.
     expect(() => rememberPeriod({ preset: 'today' })).not.toThrow()
-    expect(() => forgetPeriod()).not.toThrow()
   })
 
   it('ignores a stored value that is not an object', () => {

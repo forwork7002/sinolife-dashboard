@@ -127,18 +127,6 @@ export function rememberPeriod(selection: PeriodSelection): void {
   }
 }
 
-/** Drop the remembered window, so "clear filters" really clears it. */
-export function forgetPeriod(): void {
-  if (typeof window === 'undefined') return
-
-  try {
-    window.localStorage.removeItem(KEY)
-    refresh()
-  } catch {
-    /* see rememberPeriod */
-  }
-}
-
 /** The query string every nav link carries, so the window survives a move. */
 export function periodQuery(memory?: string): string {
   const stored = memory === undefined
