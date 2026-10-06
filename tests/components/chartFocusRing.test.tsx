@@ -43,6 +43,8 @@ describe('the chart focus ring', () => {
     const ring = /\.recharts-surface:focus-visible\s*\{([^}]*)\}/.exec(CSS)
     expect(ring).not.toBeNull()
     expect(ring![1]).toMatch(/outline:\s*2px solid var\(--accent\)/)
+    // Square: a radius on the svg would clip the plot's corners while focused.
+    expect(ring![1]).not.toMatch(/border-radius/)
 
     // The outline it replaces is removed on the same element…
     expect(CSS).toMatch(/\.recharts-surface:focus\s*\{\s*outline:\s*none;\s*\}/)

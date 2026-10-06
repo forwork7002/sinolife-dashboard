@@ -948,6 +948,11 @@ body {
  * with no replacement removes a keyboard user's only way of knowing where they
  * are. `:focus-visible` shows the house ring for the keyboard and stays out of
  * the way for the mouse.
+ *
+ * SQUARE, unlike the wrapper's ring was meant to be: an svg clips its own
+ * content (`overflow: hidden` is its default) to its border radius, so a
+ * rounded ring would shave the plot's corners for as long as the chart had
+ * focus.
  */
 .recharts-surface:focus {
   outline: none;
@@ -956,7 +961,6 @@ body {
 .recharts-surface:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--radius-panel-sm);
 }
 
 /* ===========================================================================
