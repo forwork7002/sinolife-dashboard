@@ -186,6 +186,12 @@ const PRODUCT_ROWS = 'crm.deal.productrows.get'
  */
 const ITEM_READ_ATTEMPTS = 3
 
+/**
+ * How long an enumeration item a fresh `crm.deal.fields` did not know stays
+ * written off (`deadLabels`) before a deal naming it may ask again.
+ */
+const DEAD_LABEL_MS = 60 * 60_000
+
 /** One row of `crm.deal.productrows.get`, as far as this file reads it. */
 interface ProductRow {
   readonly PRODUCT_ID: string
@@ -428,8 +434,15 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private enumLabels: Map<string, Map<string, string>> | undefined
   /** `field:id` pairs the page being mapped named and `enumLabels` lacked. */
   private readonly labelMisses = new Set<string>()
-  /** Pairs a fresh `crm.deal.fields` did not know either: deleted items, never re-read for. */
+  /**
+   * Pairs a fresh `crm.deal.fields` did not know either — deleted items, most
+   * likely — not re-read for until `DEAD_LABEL_MS` after the first was
+   * written off. For good, one stale or partial answer pinned a real item, and
+   * its column was written NULL for the life of the process.
+   */
   private readonly deadLabels = new Set<string>()
+  /** When `deadLabels` began filling; it is emptied `DEAD_LABEL_MS` later. */
+  private deadLabelsSince = 0
   private grantedScopes: Set<string> | undefined
 
   constructor(options: Bitrix24ProviderOptions) {
@@ -1084,16 +1097,20 @@ export class Bitrix24CrmProvider implements CrmProvider {
    *
    * Only a NEW miss asks: a pair a fresh read did not know either is a deleted
    * item that old deals still carry, and asking for it every page would be a
-   * `crm.deal.fields` per tick for nothing. An idle tick names nothing, so it
-   * costs nothing — `portalBudget.test.ts`'s pinned hour is unchanged.
+   * `crm.deal.fields` per tick for nothing — so it is written off, for an hour
+   * (`deadLabels`): at most one more read an hour while such deals keep
+   * coming. An idle tick names nothing, so it costs nothing —
+   * `portalBudget.test.ts`'s pinned hour is unchanged.
    */
   private async toRawDeals(rows: readonly Record<string, string>[]): Promise<RawDeal[]> {
+    if (this.deadLabels.size > 0 && Date.now() - this.deadLabelsSince >= DEAD_LABEL_MS) this.deadLabels.clear()
     this.labelMisses.clear()
     let deals = rows.map((d) => this.toRawDeal(d))
 
     if ([...this.labelMisses].some((miss) => !this.deadLabels.has(miss)) && (await this.reloadEnumLabels())) {
       this.labelMisses.clear()
       deals = rows.map((d) => this.toRawDeal(d))
+      if (this.deadLabels.size === 0) this.deadLabelsSince = Date.now()
       for (const miss of this.labelMisses) this.deadLabels.add(miss)
     }
 

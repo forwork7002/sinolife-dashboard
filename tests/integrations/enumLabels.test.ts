@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { Bitrix24CrmProvider } from '@/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
 import { UF } from '@/server/integrations/crm/bitrix24/mapping'
@@ -83,6 +83,35 @@ describe('enumeration labels', () => {
     expect(state.fieldReads).toBe(2)
     expect(await targetologsOf(provider)).toEqual([undefined])
     expect(state.fieldReads).toBe(2)
+  })
+
+  /*
+    WRITTEN OFF FOR AN HOUR, NOT FOR THE PROCESS. A re-read that came back
+    without the item — a stale or partial answer — used to pin it dead until
+    the next deploy, and every deal naming it was written NULL in between.
+  */
+  it('asks again, an hour on, about an item a fresh answer did not know', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-06T09:00:00.000Z'))
+      let list: Record<string, string> = { '898': 'Eldor' }
+      const { provider, state } = portal(() => list)
+      state.deals = ['900']
+      expect(await targetologsOf(provider)).toEqual([undefined])
+      expect(state.fieldReads).toBe(2)
+
+      // «Umar» is on the list now, but inside the hour nobody asks.
+      list = { '898': 'Eldor', '900': 'Umar' }
+      vi.setSystemTime(new Date('2026-10-06T09:59:00.000Z'))
+      expect(await targetologsOf(provider)).toEqual([undefined])
+      expect(state.fieldReads).toBe(2)
+
+      vi.setSystemTime(new Date('2026-10-06T10:00:00.000Z'))
+      expect(await targetologsOf(provider)).toEqual(['Umar'])
+      expect(state.fieldReads).toBe(3)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('keeps the labels it had when the re-read is refused, and asks again later', async () => {
