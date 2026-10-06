@@ -163,8 +163,17 @@ export interface PayrollDto {
  * `analytics:read:all`, so a narrowed account is refused rather than served a
  * narrowed payroll. If this screen is ever opened to a ROP, the scope goes in
  * this key in the same commit or the memo goes.
+ *
+ * PLAIN, NOT STALE-WHILE-REVALIDATE (2026-10-06). The rows under it
+ * (`rowsCache`) already hand out an expired answer while they refresh behind
+ * the reader. A second stale layer here rebuilt its DTO behind the reader
+ * FROM those stale rows, so every poll was served rows one poll older than
+ * either layer alone — 240 s behind at the screen's 120 s poll, and up to
+ * 2 × (ttl + stale) at worst, past the bound `ttlCache` promises. Expired,
+ * this memo makes its reader wait for `build()`, which is arithmetic over
+ * memoised rows: only a window nothing has read yet costs a scan.
  */
-const payrollCache = ttlCache<PayrollDto>(120_000, LIVE_CACHE)
+const payrollCache = ttlCache<PayrollDto>(120_000)
 
 /**
  * ONE WINDOW'S DELIVERED ROWS, memoised on the window alone — 2026-10-06.
@@ -178,9 +187,20 @@ const payrollCache = ttlCache<PayrollDto>(120_000, LIVE_CACHE)
  * the current period's rows are served on every poll and refreshed behind
  * the reader; only the comparison's scan is ever waited for. The window is the
  * whole question: the rows are the same delivered FAKT 2 whichever table pays
- * them and in whatever currency, so neither is in the key.
+ * them and in whatever currency, so neither is in the key. This is the ONE
+ * stale-while-revalidate layer on the screen — see `payrollCache` for why the
+ * DTO over it is not another.
  */
 const rowsCache = ttlCache<ConfirmationSellerRatingRow[]>(120_000, LIVE_CACHE)
+
+/**
+ * Test seam: both memos are module state, shared by every case in a worker —
+ * the hazard `resetSellerBoardCache` describes.
+ */
+export function resetPayrollCache(): void {
+  payrollCache.clear()
+  rowsCache.clear()
+}
 
 export class PayrollService {
   constructor(private readonly insights: InsightsRepository) {}
