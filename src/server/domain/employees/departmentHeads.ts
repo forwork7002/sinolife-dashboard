@@ -20,11 +20,16 @@ import type { SectionValue } from '@/lib/sections'
 import type { DataScopeValue } from '@/server/domain/types'
 import { isSalesTeamName } from './roles'
 
-/** One unit in the tree. Only the edge matters here. */
+/** One unit in the tree: its edge, and whether the portal still has it. */
 export interface DepartmentNode {
   readonly id: string
   readonly name: string
   readonly parentId: string | null
+  /**
+   * False for a unit Bitrix24 no longer returns — the sync retires such a
+   * unit rather than deleting it (2026-10-06). Left out, a unit is active.
+   */
+  readonly isActive?: boolean
 }
 
 /** A unit the portal names but nobody heads. */
@@ -212,6 +217,12 @@ export function departmentHeads(
  * this line the administrator searches a list of seventeen for a name that
  * cannot be there, concludes the screen is broken, and files a ticket against
  * the dashboard for a field that has to be filled in Bitrix24.
+ *
+ * A RETIRED UNIT IS NOT NAMED. The sync keeps a unit deleted in Bitrix24 as a
+ * row, inactive and with its head cleared, so it reads as headless — and the
+ * note would send the administrator to fill `UF_HEAD` on a unit that is gone.
+ * Only this note leaves it out: `departmentHeads` counts it among a branch's
+ * descendants, as the scope it previews does.
  */
 export function headlessUnits(
   units: readonly DepartmentNode[],
@@ -219,6 +230,6 @@ export function headlessUnits(
 ): HeadlessUnit[] {
   const named = new Set(headed.filter((unit) => unit.head !== null).map((unit) => unit.id))
   return units
-    .filter((unit) => !named.has(unit.id))
+    .filter((unit) => unit.isActive !== false && !named.has(unit.id))
     .map((unit) => ({ id: unit.id, name: unit.name }))
 }

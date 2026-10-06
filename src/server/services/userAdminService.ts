@@ -170,8 +170,10 @@ export interface DepartmentHeadsPayload {
 
 export async function listDepartmentHeads(): Promise<DepartmentHeadsPayload> {
   const [units, headed] = await Promise.all([
-    // The whole tree, for the descendant count. Twenty rows on this portal.
-    prisma.department.findMany({ select: { id: true, name: true, parentId: true } }),
+    // The whole tree, for the descendant count — retired units included, as
+    // the scope includes them (see below); `headlessUnits` leaves those out of
+    // its note itself. Twenty rows on this portal.
+    prisma.department.findMany({ select: { id: true, name: true, parentId: true, isActive: true } }),
     prisma.department.findMany({
       /*
         NO `isActive` FILTER, deliberately, and it is the scope's own rule

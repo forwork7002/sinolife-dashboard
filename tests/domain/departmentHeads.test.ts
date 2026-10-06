@@ -182,4 +182,27 @@ describe('what the list says before the account exists', () => {
       'team-a',
     )
   })
+
+  /*
+    A UNIT BITRIX24 DELETED IS NOT «HEADLESS».
+
+    The sync keeps it as a row, inactive and with its head cleared, so it
+    would read as a unit nobody heads — and the note would send the
+    administrator to Bitrix24 to fill `UF_HEAD` on a unit that is gone. It is
+    still a descendant: the scope a branch head is offered walks it.
+  */
+  it('leaves a retired unit out of the note, and in the descendant count', () => {
+    const withRetired: DepartmentNode[] = [
+      ...TREE,
+      { id: 'gone', name: 'Husniddin(ROP)', parentId: 'branch', isActive: false },
+    ]
+
+    const named = headlessUnits(withRetired, [unit('team-a', 'Charos(ROP)', 'emp-rop')]).map((u) => u.id)
+    expect(named).not.toContain('gone')
+    expect(named).toContain('team-b')
+
+    const rows = departmentHeads(withRetired, [unit('branch', 'Тошкент онлайн', 'emp-2')])
+    // branch → team-a, team-b, squad, gone
+    expect(rows[0].heads[0].descendants).toBe(4)
+  })
 })
