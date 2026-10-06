@@ -21,8 +21,8 @@ import { SlicePicker, muted } from './reklamaUi'
  * one block per targetolog, a row per day, «$ · лид · лид $ · % · кв лид ·
  * кв лид $», the period's total above the days.
  *
- * $ is the targetolog's lead-form campaigns' spend (Meta, OUTCOME_LEADS) and
- * matches the sheet to the dollar (03.09: Eldor 284,6 / 284,0, Umar 229,9 /
+ * $ (now «Rasxod $», the website campaigns apart) is the targetolog's
+ * lead-form campaigns' spend (Meta, OUTCOME_LEADS); it matched the sheet to the dollar (03.09: Eldor 284,6 / 284,0, Umar 229,9 /
  * 229,8, Timur 163,2 / 164,3). The sheet's лид matched NO source exactly —
  * 03.09 sheet | Meta | Bitrix24: Eldor 187 | 213 | 159, Umar 210 | 225 | 160,
  * Timur 145 | 151 | 0 (his forms reach no portal deal) — so both are printed,
@@ -32,27 +32,67 @@ import { SlicePicker, muted } from './reklamaUi'
  * same `forms` block «Lidlar» → «Lid manbalari» shows, so the two screens
  * agree to the lead. Its own request, so the Meta tables above do not wait on
  * the deal scan.
+ *
+ * Every other dollar of the targetolog's accounts sits beside it, as Umar
+ * reports his day (03.10.2026: «Rasxod 223.87$ · Lid 248 · Cpl 0.90$», «Sms
+ * rasxod 48.44$ · Sms soni 291», «Sayt rasxod 11.86$ · Lid 1»): the website
+ * campaigns come out of the forms' $ into «Sayt» (so «лид $» and «кв лид $»
+ * here price the forms alone, while «Lid manbalari» still divides the forms
+ * with the site), the message campaigns are
+ * «SMS», hiring is «HR», and «Jami $» is all of it — the card had read the
+ * forms and the site together (235,8 $) and nothing else.
  */
 
 type Params = Readonly<Record<string, string | number>>
 
 type Data = Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'>
 
-const COLUMNS = ['$', 'Meta лид', 'Bitrix лид', 'лид $', '%', 'кв лид', 'кв лид $'] as const
+const COLUMNS = [
+  'Rasxod $',
+  'Meta лид',
+  'лид $',
+  'Sayt $',
+  'Sayt лид',
+  'SMS $',
+  'SMS soni',
+  'SMS narxi',
+  'HR $',
+  'Boshqa $',
+  'Jami $',
+  'Bitrix лид',
+  '%',
+  'кв лид',
+  'кв лид $',
+] as const
 
-const COLUMN_HINT: Partial<Record<(typeof COLUMNS)[number], string>> = {
-  'Meta лид': 'Meta hisoblagan lid-forma lidlari',
+type Column = (typeof COLUMNS)[number]
+
+const COLUMN_HINT: Partial<Record<Column, string>> = {
+  'Rasxod $': 'Lid-forma kampaniyalari sarfi (Sayt kampaniyalarisiz)',
+  'Meta лид': 'Meta hisoblagan lid-forma lidlari (Sayt lidlarisiz)',
+  'лид $': 'Rasxod $ ÷ Meta лид',
+  'Sayt $': 'Nomida «Sayt» boʻlgan lid kampaniyalari sarfi',
+  'Sayt лид': 'Sayt kampaniyalari lidlari (Meta)',
+  'SMS $': 'Xabar (DM, Sms) kampaniyalari sarfi',
+  'SMS soni': 'Meta hisoblagan boshlangan yozishmalar',
+  'SMS narxi': 'SMS $ ÷ SMS soni',
+  'HR $': 'Ishga olish (vakansiya) kampaniyalari sarfi',
+  'Boshqa $': 'Trafik, sotuv va boshqa maqsadli kampaniyalar',
+  'Jami $': 'Rasxod + Sayt + SMS + HR + Boshqa — akkauntlardan ketgan hamma pul',
   'Bitrix лид': 'Targetolog CRM-formasi Bitrix24 Регистрация ga ochgan bitimlar',
-  'лид $': '$ ÷ Meta лид',
   '%': 'кв лид ÷ Bitrix лид',
   'кв лид': 'Bitrix лид dan kval boʻlgani',
-  'кв лид $': '$ ÷ кв лид',
+  'кв лид $': 'Rasxod $ ÷ кв лид',
 }
 
 /** The sheet's yellow «лид» column, as a tint that reads in both themes. */
 const LEAD_TINT = 'color-mix(in oklab, var(--status-warning) 16%, transparent)'
 const HEAD_TINT = 'color-mix(in oklab, var(--accent) 10%, var(--surface-raised))'
 const TOTAL_TINT = 'color-mix(in oklab, var(--status-good) 14%, var(--surface-raised))'
+/** «Jami $» down the card, so the day's whole spend is found at a glance. */
+const SUM_TINT = 'color-mix(in oklab, var(--status-good) 10%, transparent)'
+
+const columnTint = (c: Column) => (c === 'Meta лид' ? LEAD_TINT : c === 'Jami $' ? SUM_TINT : undefined)
 
 export function TargetologDaySection({ params, brand }: { params: Params; brand: DashboardBrand }) {
   const query = useQuery({
@@ -75,7 +115,7 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Targetologlar · kunlik"
-        hint="Har targetolog alohida, kunma-kun: $ — lid-forma kampaniyalari sarfi (Meta); Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan."
+        hint="Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan."
       />
       {brand === 'all' && products.length > 1 && (
         <SlicePicker<MetaProduct>
@@ -123,14 +163,11 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
 function OwnerSheet({ owner }: { owner: FormOwnerDto }) {
   const tone = PRODUCT_TONE[owner.product]
   // The server's own totals, never the rounded days re-added: «Lid manbalari» prints the same figures.
-  const total = {
-    spendUsd: owner.spendUsd,
-    metaLeads: owner.metaLeads,
-    leads: owner.outcome.leads,
-    success: owner.outcome.success,
-  }
+  const total = { ...owner, leads: owner.outcome.leads, success: owner.outcome.success }
+  // «Boshqa $» only on a card that has any: most targetologs run nothing but forms and messages.
+  const columns = COLUMNS.filter((c) => c !== 'Boshqa $' || owner.otherUsd > 0)
   return (
-    /* As wide as its eight columns, never wider than a phone: there the table scrolls inside the card. */
+    /* As wide as its columns, never wider than a phone: there the table scrolls inside the card. */
     <Card className="w-max max-w-[calc(100vw-2.5rem)] shrink-0 snap-start overflow-hidden p-0">
       <h3
         className="px-3 py-2 text-sm font-semibold"
@@ -153,13 +190,13 @@ function OwnerSheet({ owner }: { owner: FormOwnerDto }) {
               <th scope="col" className="px-2 py-1 text-left text-[11px] font-medium" style={muted}>
                 Sana
               </th>
-              {COLUMNS.map((c) => (
+              {columns.map((c) => (
                 <th
                   key={c}
                   scope="col"
                   title={COLUMN_HINT[c]}
                   className="px-2 py-1 text-right text-[11px] font-medium whitespace-nowrap"
-                  style={{ ...muted, background: c === 'Meta лид' ? LEAD_TINT : undefined }}
+                  style={{ ...muted, background: columnTint(c) }}
                 >
                   {c}
                 </th>
@@ -170,7 +207,7 @@ function OwnerSheet({ owner }: { owner: FormOwnerDto }) {
               <th scope="row" className="px-2 py-1.5 text-left font-semibold">
                 Jami
               </th>
-              <Figures cells={total} strong />
+              <Figures cells={total} columns={columns} strong />
             </tr>
           </thead>
           <tbody>
@@ -179,7 +216,7 @@ function OwnerSheet({ owner }: { owner: FormOwnerDto }) {
                 <th scope="row" className="border-t border-[var(--border)] px-2 py-1 text-left font-normal whitespace-nowrap">
                   {dayLabel(day.date)}
                 </th>
-                <Figures cells={day} />
+                <Figures cells={day} columns={columns} />
               </tr>
             ))}
           </tbody>
@@ -189,33 +226,45 @@ function OwnerSheet({ owner }: { owner: FormOwnerDto }) {
   )
 }
 
-/** The figures of a row: what the sheet derives, derived here from the same four counts. */
-function Figures({
-  cells,
-  strong = false,
-}: {
-  cells: Pick<FormDayDto, 'spendUsd' | 'metaLeads' | 'leads' | 'success'>
-  strong?: boolean
-}) {
-  const { spendUsd, metaLeads, leads, success } = cells
-  const values = [
-    spendUsd > 0 ? formatUsd(spendUsd) : null,
-    metaLeads > 0 ? rnpNumber(metaLeads) : null,
-    leads > 0 ? rnpNumber(leads) : null,
-    spendUsd > 0 && metaLeads > 0 ? formatUsd(spendUsd / metaLeads) : null,
-    leads > 0 ? rnpPercent((success / leads) * 100) : null,
-    success > 0 ? rnpNumber(success) : null,
-    spendUsd > 0 && success > 0 ? formatUsd(spendUsd / success) : null,
-  ]
+type Cells = Omit<FormDayDto, 'date'>
+
+/**
+ * The figures of a row: what the sheet derives, derived here from the
+ * server's counts. «Rasxod» and «Meta лид» are the forms less the website
+ * campaigns, which have columns of their own.
+ */
+function Figures({ cells, columns, strong = false }: { cells: Cells; columns: readonly Column[]; strong?: boolean }) {
+  const { formUsd, metaLeads, leads, success, siteUsd, siteLeads, smsUsd, smsCount, hrUsd, otherUsd, totalUsd } = cells
+  const formLeads = metaLeads - siteLeads
+  const usd = (v: number) => (v > 0 ? formatUsd(v) : null)
+  const count = (v: number) => (v > 0 ? rnpNumber(v) : null)
+  const per = (spend: number, n: number) => (spend > 0 && n > 0 ? formatUsd(spend / n) : null)
+  const value: Record<Column, string | null> = {
+    'Rasxod $': usd(formUsd),
+    'Meta лид': count(formLeads),
+    'лид $': per(formUsd, formLeads),
+    'Sayt $': usd(siteUsd),
+    'Sayt лид': count(siteLeads),
+    'SMS $': usd(smsUsd),
+    'SMS soni': count(smsCount),
+    'SMS narxi': per(smsUsd, smsCount),
+    'HR $': usd(hrUsd),
+    'Boshqa $': usd(otherUsd),
+    'Jami $': usd(totalUsd),
+    'Bitrix лид': count(leads),
+    '%': leads > 0 ? rnpPercent((success / leads) * 100) : null,
+    'кв лид': count(success),
+    'кв лид $': per(formUsd, success),
+  }
   return (
     <>
-      {values.map((v, i) => (
+      {columns.map((c) => (
         <td
-          key={COLUMNS[i]}
-          className={`px-2 py-1 text-right whitespace-nowrap ${strong ? 'font-semibold' : ''} ${strong ? '' : 'border-t border-[var(--border)]'}`}
-          style={{ background: COLUMNS[i] === 'Meta лид' ? LEAD_TINT : undefined, ...(v === null ? muted : null) }}
+          key={c}
+          className={`px-2 py-1 text-right whitespace-nowrap ${strong || c === 'Jami $' ? 'font-semibold' : ''} ${strong ? '' : 'border-t border-[var(--border)]'}`}
+          style={{ background: columnTint(c), ...(value[c] === null ? muted : null) }}
         >
-          {v ?? '—'}
+          {value[c] ?? '—'}
         </td>
       ))}
     </>

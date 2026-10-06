@@ -571,7 +571,7 @@ function formDaysView(
   const owners = data?.forms.owners ?? []
   const chosen = owners.find((o) => o.key === slice)
   const days = chosen ? chosen.days : data?.forms.days
-  const dayTotal: FormDayDto | undefined = chosen
+  const dayTotal: FormDayCells | undefined = chosen
     ? { date: '', spendUsd: chosen.spendUsd, metaLeads: chosen.metaLeads, leads: chosen.outcome.leads, success: chosen.outcome.success }
     : data
       ? {
@@ -595,7 +595,7 @@ function formDaysView(
       />
     ),
     table: (
-      <DataTable<DayRow<FormDayDto>>
+      <DataTable<DayRow<FormDayCells>>
         columns={formDayColumns}
         rows={owners.length > 0 ? dayRowsOf(days, dayTotal) : []}
         rowKey={(r) => r.key}
@@ -738,7 +738,10 @@ function Reach({ value, meta }: { value: number | null; meta: number }) {
   )
 }
 
-const formDayColumns: readonly Column<DayRow<FormDayDto>>[] = [
+/** The lead-form columns only: the other expenses are «Reklama samarasi»'s. */
+type FormDayCells = Pick<FormDayDto, 'date' | 'spendUsd' | 'metaLeads' | 'leads' | 'success'>
+
+const formDayColumns: readonly Column<DayRow<FormDayCells>>[] = [
   { key: 'date', header: 'Kun', rowHeader: true, render: (r) => <DayCell date={r.date} /> },
   { key: 'meta', header: 'Meta lid', align: 'right', numeric: true, render: (r) => count(r.cells.metaLeads) },
   {

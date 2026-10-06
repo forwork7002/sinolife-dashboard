@@ -32,7 +32,14 @@ import {
   LEAD_SOURCE_VOCABULARY,
   SARAFAN_PIPELINE_ID,
 } from '@/server/integrations/crm/bitrix24/mapping'
-import { type MetaProduct, adBudgetProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
+import {
+  type CampaignChannel,
+  type MetaProduct,
+  adBudgetProduct,
+  campaignChannel,
+  isSiteCampaign,
+  ownerOf,
+} from '@/server/integrations/meta/accounts'
 import {
   type LeadChannel,
   type LeadTile,
@@ -79,7 +86,33 @@ export interface LeadOutcomeDto {
   readonly successPercent: number | null
 }
 
-export interface FormDayDto {
+/**
+ * What else a targetolog's accounts spent beside the lead forms — Umar's
+ * nightly report (03.10.2026) gives each line: «Rasxod», «Sms rasxod · Sms
+ * soni», «Sayt rasxod · Lid soni»; HR is the hiring campaigns.
+ */
+export interface FormExpenseDto {
+  /** `spendUsd` less the website campaigns — Umar's «Rasxod». */
+  readonly formUsd: number
+  /** The website lead campaigns (`isSiteCampaign`): already inside `spendUsd`, their leads inside `metaLeads`. */
+  readonly siteUsd: number
+  readonly siteLeads: number
+  /** Message campaigns (DM, «Sms»): spend and the conversations Meta counted. */
+  readonly smsUsd: number
+  readonly smsCount: number
+  /** Hiring campaigns. */
+  readonly hrUsd: number
+  /** Traffic, awareness, sales — on no sheet. */
+  readonly otherUsd: number
+  /**
+   * Everything: `spendUsd` + sms + HR + other. Under a brand (`ofBrand`) the
+   * hiring and unmapped campaigns are gone first, so there HR is 0 and the
+   * total leaves them out; «Targetologlar · kunlik» reads the whole.
+   */
+  readonly totalUsd: number
+}
+
+export interface FormDayDto extends FormExpenseDto {
   readonly date: string
   /** The targetolog's lead-form campaigns' spend that day — «Отчёт Т»'s $. */
   readonly spendUsd: number
@@ -89,7 +122,7 @@ export interface FormDayDto {
 }
 
 /** One targetolog's lead forms: what Meta counted, what reached the portal. */
-export interface FormOwnerDto {
+export interface FormOwnerDto extends FormExpenseDto {
   readonly key: string
   readonly targetolog: string
   readonly product: MetaProduct
@@ -281,8 +314,53 @@ function outcomeCells(a: OutcomeAcc): LeadOutcomeDto {
   return { leads, ...a, successPercent: percent(a.success, leads) }
 }
 
+/** `FormExpenseDto` in micro-dollars. */
+interface ExpenseAcc {
+  site: bigint
+  siteLeads: number
+  sms: bigint
+  smsCount: number
+  hr: bigint
+  other: bigint
+}
+
+const expenseZero = (): ExpenseAcc => ({ site: 0n, siteLeads: 0, sms: 0n, smsCount: 0, hr: 0n, other: 0n })
+
+function addExpense(into: ExpenseAcc, from: ExpenseAcc): void {
+  into.site += from.site
+  into.siteLeads += from.siteLeads
+  into.sms += from.sms
+  into.smsCount += from.smsCount
+  into.hr += from.hr
+  into.other += from.other
+}
+
+/** A campaign's day onto its expense line; a lead form adds only when it is the website's (the rest is `spend`). */
+function addCampaignExpense(into: ExpenseAcc, row: CampaignDayRow, channel: CampaignChannel): void {
+  if (channel === 'form') {
+    if (!isSiteCampaign(row.campaignName)) return
+    into.site += row.spendMicroUsd
+    into.siteLeads += row.leads
+  } else if (channel === 'dm') {
+    into.sms += row.spendMicroUsd
+    into.smsCount += row.conversations
+  } else if (channel === 'hiring') into.hr += row.spendMicroUsd
+  else into.other += row.spendMicroUsd
+}
+
+const expenseCells = (spend: bigint, a: ExpenseAcc): FormExpenseDto => ({
+  formUsd: usd(spend - a.site),
+  siteUsd: usd(a.site),
+  siteLeads: a.siteLeads,
+  smsUsd: usd(a.sms),
+  smsCount: a.smsCount,
+  hrUsd: usd(a.hr),
+  otherUsd: usd(a.other),
+  totalUsd: usd(spend + a.sms + a.hr + a.other),
+})
+
 /** A targetolog's day: spend summed in micro-dollars, converted once. */
-interface FormDayAcc {
+interface FormDayAcc extends ExpenseAcc {
   spend: bigint
   metaLeads: number
   leads: number
@@ -295,6 +373,7 @@ const formDayCells = (date: string, a: FormDayAcc): FormDayDto => ({
   metaLeads: a.metaLeads,
   leads: a.leads,
   success: a.success,
+  ...expenseCells(a.spend, a),
 })
 
 interface TileAcc {
@@ -404,6 +483,7 @@ export function leadSourcesOverview(all: {
     accounts: Set<string>
     spend: bigint
     metaLeads: number
+    expense: ExpenseAcc
     outcome: OutcomeAcc
     days: Map<string, FormDayAcc>
   }
@@ -421,7 +501,7 @@ export function leadSourcesOverview(all: {
     outcome: OutcomeAcc
   }
 
-  const formDayZero = (): FormDayAcc => ({ spend: 0n, metaLeads: 0, leads: 0, success: 0 })
+  const formDayZero = (): FormDayAcc => ({ spend: 0n, metaLeads: 0, leads: 0, success: 0, ...expenseZero() })
   const owners = new Map<string, FormAcc>()
   const ownerAcc = (o: { key: string; targetolog: string; product: MetaProduct }) =>
     mapGet(owners, o.key, () => ({
@@ -430,6 +510,7 @@ export function leadSourcesOverview(all: {
       accounts: new Set<string>(),
       spend: 0n,
       metaLeads: 0,
+      expense: expenseZero(),
       outcome: outcomeZero(),
       days: new Map(),
     }))
@@ -522,15 +603,22 @@ export function leadSourcesOverview(all: {
     fakt1All.add(row.client)
   }
 
-  // --- Meta: lead-form campaigns only, onto the owner their account maps to
+  /*
+    Meta, onto the owner their account maps to: the lead forms are `spend`;
+    every other campaign is an expense line beside it. An owner with no form
+    and no lead stays out of the block below, whatever else it spent.
+  */
   for (const row of input.campaigns) {
-    if (campaignChannel(row.objective, row.campaignName, row.accountId) !== 'form') continue
+    const channel = campaignChannel(row.objective, row.campaignName, row.accountId)
     const owner = ownerOf(row.accountId, row.accountName)
     const acc = ownerAcc({ key: `${owner.product}|${owner.targetolog}`, ...owner })
+    const day = mapGet(acc.days, row.date, formDayZero)
+    addCampaignExpense(acc.expense, row, channel)
+    addCampaignExpense(day, row, channel)
+    if (channel !== 'form') continue
     acc.accounts.add(row.accountName)
     acc.spend += row.spendMicroUsd
     acc.metaLeads += row.leads
-    const day = mapGet(acc.days, row.date, formDayZero)
     day.spend += row.spendMicroUsd
     day.metaLeads += row.leads
   }
@@ -562,6 +650,7 @@ export function leadSourcesOverview(all: {
         accounts: [...o.accounts].sort(),
         spendUsd: usd(o.spend),
         metaLeads: o.metaLeads,
+        ...expenseCells(o.spend, o.expense),
         outcome,
         reachPercent: percent(outcome.leads, o.metaLeads),
         costPerLeadUsd: perUnit(o.spend, outcome.leads),
@@ -572,6 +661,7 @@ export function leadSourcesOverview(all: {
           formDays[i]!.metaLeads += cell.metaLeads
           formDays[i]!.leads += cell.leads
           formDays[i]!.success += cell.success
+          addExpense(formDays[i]!, cell)
           return formDayCells(date, cell)
         }),
       }

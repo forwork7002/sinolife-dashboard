@@ -99,7 +99,7 @@ describe('leadSourcesOverview', () => {
     campaigns: [
       campaign({ leads: 8, spendMicroUsd: 20_000_000n }),
       campaign({ date: '2026-09-19', leads: 2, spendMicroUsd: 5_000_000n }),
-      // A DM campaign is not a form: its money and conversations stay off this tab.
+      // A DM campaign is not a form: its money and conversations are the targetolog's «SMS», never the form's $.
       campaign({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'DM', leads: 0, conversations: 99, spendMicroUsd: 9_000_000n }),
       // An account nobody mapped still gets a row, under its own name.
       campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', leads: 4, spendMicroUsd: 1_000_000n }),
@@ -267,10 +267,38 @@ describe('leadSourcesOverview', () => {
     expect(umar.spendUsd).toBe(25)
     expect(umar.costPerLeadUsd).toBe(5)
     expect(umar.costPerSuccessUsd).toBeCloseTo(25 / 3)
-    // The day's lead-form spend rides each day — the DM campaign's 9 $ does not.
+    // The day's lead-form spend rides each day — the DM campaign's 9 $ and the hiring 7 $ ride beside it.
     expect(umar.days).toEqual([
-      { date: '2026-09-18', spendUsd: 20, metaLeads: 8, leads: 3, success: 3 },
-      { date: '2026-09-19', spendUsd: 5, metaLeads: 2, leads: 2, success: 0 },
+      {
+        date: '2026-09-18',
+        spendUsd: 20,
+        metaLeads: 8,
+        leads: 3,
+        success: 3,
+        formUsd: 20,
+        siteUsd: 0,
+        siteLeads: 0,
+        smsUsd: 9,
+        smsCount: 99,
+        hrUsd: 7,
+        otherUsd: 0,
+        totalUsd: 36,
+      },
+      {
+        date: '2026-09-19',
+        spendUsd: 5,
+        metaLeads: 2,
+        leads: 2,
+        success: 0,
+        formUsd: 5,
+        siteUsd: 0,
+        siteLeads: 0,
+        smsUsd: 0,
+        smsCount: 0,
+        hrUsd: 0,
+        otherUsd: 0,
+        totalUsd: 5,
+      },
     ])
   })
 
@@ -363,6 +391,58 @@ describe('leadSourcesOverview', () => {
     expect(zs.outcome.success).toBe(2)
     expect(dm.pages.at(-1)!.name).toBe('Instagram')
     expect(dm.conversations).toBe(8)
+  })
+})
+
+describe('leadSourcesOverview — a targetolog\'s other expenses', () => {
+  // Umar · Collagen on 03.10.2026, as Meta had it: forms 223.97 $ / 248, «Sayt-1» 11.87 $ / 1, DM + Sms 48.51 $.
+  const campaigns = [
+    campaign({ date: '2026-09-18', campaignName: '03/10 A', leads: 248, spendMicroUsd: 223_970_000n }),
+    campaign({ date: '2026-09-18', campaignName: 'Sayt-1', leads: 1, spendMicroUsd: 11_870_000n }),
+    campaign({
+      date: '2026-09-18',
+      accountId: '990016692137088',
+      accountName: 'Umar - 64',
+      campaignName: 'Sms-008',
+      objective: 'OUTCOME_ENGAGEMENT',
+      conversations: 291,
+      spendMicroUsd: 48_510_000n,
+    }),
+    campaign({ date: '2026-09-18', campaignName: 'Vakansiya', objective: 'OUTCOME_LEADS', spendMicroUsd: 5_000_000n }),
+    campaign({ date: '2026-09-19', campaignName: 'Trafik', objective: 'OUTCOME_TRAFFIC', spendMicroUsd: 2_000_000n }),
+    // Newgen_davi01 runs no form: it stays out of the block, whatever it spends.
+    campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', objective: 'OUTCOME_ENGAGEMENT', spendMicroUsd: 9_000_000n }),
+  ]
+  const forms = leadSourcesOverview({
+    window: WINDOW,
+    registration: [],
+    triage: [],
+    campaigns,
+    fakt1: [],
+    qualified: [],
+    aiQualified: [],
+    sarafan: NO_SARAFAN,
+    importedAt: null,
+  }).forms
+
+  it('splits the site, messages, hiring and the rest beside the forms, and totals them', () => {
+    expect(forms.owners.map((o) => o.key)).toEqual(['Collagen|Umar'])
+    const umar = forms.owners[0]!
+    expect(umar).toMatchObject({
+      spendUsd: 235.84,
+      metaLeads: 249,
+      formUsd: 223.97,
+      siteUsd: 11.87,
+      siteLeads: 1,
+      smsUsd: 48.51,
+      smsCount: 291,
+      hrUsd: 5,
+      otherUsd: 2,
+      totalUsd: 291.35,
+    })
+    expect(umar.days[0]).toMatchObject({ spendUsd: 235.84, siteUsd: 11.87, smsUsd: 48.51, hrUsd: 5, totalUsd: 289.35 })
+    expect(umar.days[1]).toMatchObject({ spendUsd: 0, otherUsd: 2, totalUsd: 2 })
+    expect(forms.days[0]!.totalUsd).toBe(289.35)
   })
 })
 

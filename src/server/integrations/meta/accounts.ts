@@ -136,6 +136,20 @@ export function campaignChannel(objective: string, name: string, accountId: stri
 }
 
 /**
+ * A lead campaign that sends people to the website, not to a Meta form.
+ * Umar reports it apart from his forms (03.10.2026: «Rasxod 223.87$ · Lid
+ * 248» and «Sayt rasxod 11.86$ · Lid 1» — Meta: lead campaigns 235.84 $ /
+ * 249 leads, «Sayt-1» among them at 11.87 $ / 1). Meta's objective is the
+ * same OUTCOME_LEADS, so only the name tells it apart. Read only among the
+ * lead campaigns: a «Sayt» traffic or sales campaign is «other».
+ */
+const SITE = /sayt|сайт|\bsite\b|website/i
+
+export function isSiteCampaign(name: string): boolean {
+  return SITE.test(name)
+}
+
+/**
  * The product a campaign's money counts towards in the ad budget, or null
  * when it counts towards none: an unmapped («Boshqa») account, or a hiring
  * campaign. The RNP sheet's «Жами бюджет» and the «Квал лид нархи» tile on

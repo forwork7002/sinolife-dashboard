@@ -34,7 +34,19 @@ export interface LeadOutcomeDto {
   readonly successPercent: number | null
 }
 
-export interface FormDayDto {
+/** Beside the lead forms: the website campaigns (inside `spendUsd`), messages, hiring, the rest; `totalUsd` is all of it. */
+export interface FormExpenseDto {
+  readonly formUsd: number
+  readonly siteUsd: number
+  readonly siteLeads: number
+  readonly smsUsd: number
+  readonly smsCount: number
+  readonly hrUsd: number
+  readonly otherUsd: number
+  readonly totalUsd: number
+}
+
+export interface FormDayDto extends FormExpenseDto {
   readonly date: string
   readonly spendUsd: number
   readonly metaLeads: number
@@ -42,7 +54,7 @@ export interface FormDayDto {
   readonly success: number
 }
 
-export interface FormOwnerDto {
+export interface FormOwnerDto extends FormExpenseDto {
   readonly key: string
   readonly targetolog: string
   readonly product: MetaProduct
