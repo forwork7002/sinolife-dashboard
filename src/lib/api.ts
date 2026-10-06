@@ -1323,8 +1323,9 @@ export interface SellerForecastDto {
  */
 export interface FaktForecastPointDto {
   readonly date: string
-  readonly fakt1: number
-  readonly fakt2: number
+  /** Null when that fact has nothing to project from while the other does — never a zero. */
+  readonly fakt1: number | null
+  readonly fakt2: number | null
 }
 
 /** One queue state's slice: how many orders, and what they were worth. */

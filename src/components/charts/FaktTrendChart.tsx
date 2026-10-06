@@ -16,7 +16,7 @@ import {
 import { endpointDot, endpointLabelWidth } from '@/components/charts/chartEndpoint'
 import { ChartTooltipPanel } from '@/components/charts/chartTooltip'
 import type { FaktForecastPointDto, FaktTrendPointDto } from '@/lib/api'
-import { formatDateShort, formatFullUzs, formatNumber, formatUzs } from '@/lib/format'
+import { NO_VALUE, formatDateShort, formatFullUzs, formatNumber, formatUzs } from '@/lib/format'
 import { t } from '@/lib/messages'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 
@@ -526,7 +526,14 @@ export function chartRows(
   forecast: readonly FaktForecastPointDto[],
 ): ChartRow[] {
   const lastActual = data.length - 1
-  const joins = forecast.length > 0
+  /*
+    PER FACT, because one of the two can have no projection while the other
+    does — FAKT 1 projected on a morning nothing has been delivered yet. A
+    fact whose continuation is null all the way gets no junction either: a
+    dashed series of one point draws nothing, and only hovering would find it.
+  */
+  const joins1 = forecast.some((point) => point.fakt1 !== null)
+  const joins2 = forecast.some((point) => point.fakt2 !== null)
 
   return [
     ...data.map((point, index) => ({
@@ -538,8 +545,8 @@ export function chartRows(
       /* THE JUNCTION. The last measured bucket carries its value on the
          projected keys as well, so the two strokes meet on one point instead
          of leaving a bucket-wide hole between them. */
-      fakt1Projected: joins && index === lastActual ? point.fakt1 : null,
-      fakt2Projected: joins && index === lastActual ? point.fakt2 : null,
+      fakt1Projected: joins1 && index === lastActual ? point.fakt1 : null,
+      fakt2Projected: joins2 && index === lastActual ? point.fakt2 : null,
       projected: false,
     })),
     ...forecast.map((point) => ({
@@ -584,15 +591,17 @@ function FaktTooltip({ active, payload }: { active?: boolean; payload?: TooltipP
       <ChartTooltipPanel
         header={point.label}
         rows={[
+          /* An em dash for a fact with no projection, never «0 soʻm» — the
+             same rule every «prognoz» column on the page follows. */
           {
             swatch: 'var(--series-2)',
             label: `${t.chart.fakt1} · prognoz`,
-            value: formatUzs(point.fakt1Projected ?? 0),
+            value: point.fakt1Projected === null ? NO_VALUE : formatUzs(point.fakt1Projected),
           },
           {
             swatch: 'var(--series-3)',
             label: `${t.chart.fakt2} · prognoz`,
-            value: formatUzs(point.fakt2Projected ?? 0),
+            value: point.fakt2Projected === null ? NO_VALUE : formatUzs(point.fakt2Projected),
           },
         ]}
         footer="Shu surʼatda davom etsa — oʻlchov emas, hisob"

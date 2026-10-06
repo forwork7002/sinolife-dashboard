@@ -220,9 +220,32 @@ describe('every row and every team is projected on the SAME clock', () => {
       column headed «prognoz» tells a seller who has taken an order this
       morning that their month ends at nothing. Zero money is not zero
       evidence, and the screen prints an em dash for it.
+
+      NULL, NOT «NULL OR ZERO». This read `fakt1?.amount ?? 0` and passed on
+      the very zero it was written to forbid, while the service sent 0 for
+      every seller with nothing delivered.
     */
-    expect(quiet.forecast.fakt1?.amount ?? 0).toBe(0)
+    expect(quiet.forecast.fakt1).toBeNull()
+    expect(quiet.forecast.fakt2).toBeNull()
     expect(quiet.ordered.amount).toBe(0)
+  })
+
+  it('leaves a fact with nothing landed at NULL for the company and the team too', async () => {
+    /*
+      «Bugun» at 15:00, or any morning: a third of the day's orders confirmed
+      and not one delivered yet — delivery lags the arrival by about two days.
+      FAKT 1 projects; FAKT 2 has nothing to project from, and printed «0 soʻm»
+      on the company's tile and every team's row until 2026-10-06.
+    */
+    const { forecast, teams } = await boardOver(
+      [rating({ employeeId: 'a', rop: 'Lola', confirmedMinor: mln(100), deliveredMinor: 0n })],
+      'today',
+      new Date('2026-09-09T15:00:00+05:00'),
+    )
+
+    expect(forecast.fakt1).not.toBeNull()
+    expect(forecast.fakt2).toBeNull()
+    expect(teams.find((t) => t.rop === 'Lola')!.forecast.fakt2).toBeNull()
   })
 })
 
@@ -243,8 +266,8 @@ describe('the chart continuation is drawn on the trend’s own calendar', () => 
   it('spreads exactly the money still to come, and nothing more', async () => {
     const { forecast, totals } = await boardOver(ONE_SELLER)
 
-    const drawn = (pick: (b: (typeof forecast.buckets)[number]) => number) =>
-      forecast.buckets.reduce((a, b) => a + pick(b), 0)
+    const drawn = (pick: (b: (typeof forecast.buckets)[number]) => number | null) =>
+      forecast.buckets.reduce((a, b) => a + (pick(b) ?? 0), 0)
 
     // The dashed area IS the gap between the tile and the total beside it. A
     // truncating split loses a minor unit per bucket and lands short by an
@@ -275,6 +298,34 @@ describe('the chart continuation is drawn on the trend’s own calendar', () => 
 
     expect(stride(trend)).toBe(86_400_000)
     expect(stride(forecast.buckets)).toBe(stride(trend))
+  })
+
+  it('continues a fact with nothing landed as null, never as a line at zero', async () => {
+    // The 9th of September: FAKT 1 on pace, nothing delivered yet.
+    const { forecast } = await boardOver([
+      rating({ employeeId: 'a', rop: 'Lola', confirmedMinor: mln(100), deliveredMinor: 0n }),
+    ])
+
+    /*
+      `?? 0n` over an empty spread drew FAKT 2 dashed along zero to the 30th —
+      the chart saying the month ends at nothing, on exactly the mornings the
+      tiles above it were taught not to.
+    */
+    expect(forecast.buckets.length).toBe(21)
+    for (const bucket of forecast.buckets) {
+      expect(bucket.fakt1).toBeGreaterThan(0)
+      expect(bucket.fakt2).toBeNull()
+    }
+  })
+
+  it('draws no continuation at all when neither fact has landed', async () => {
+    const { forecast } = await boardOver([
+      rating({ employeeId: 'a', rop: 'Lola', confirmedMinor: 0n, deliveredMinor: 0n }),
+    ])
+
+    expect(forecast.fakt1).toBeNull()
+    expect(forecast.fakt2).toBeNull()
+    expect(forecast.buckets).toEqual([])
   })
 
   it('draws no continuation when the window has no whole bucket left', async () => {

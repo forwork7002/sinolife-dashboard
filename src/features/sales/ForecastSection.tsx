@@ -125,14 +125,37 @@ export function ForecastBand({
   /*
     ONE QUESTION ANSWERS THE WHOLE BLOCK: is there a projection at all?
 
-    `fakt1` and `fakt2` are null together — they are divided by the same
-    elapsed fraction — so the absence is a property of the PERIOD rather than
-    of either fact, and it is stated once at the top instead of as eight em
-    dashes the reader has to interpret. Three different absences reach here and
-    the sentence names each: the period is over, too little of it has elapsed
-    to divide by, or the board is still loading.
+    `fakt1` and `fakt2` are divided by the same elapsed fraction, so when the
+    PERIOD refuses a projection they are null together, and the absence is
+    stated once at the top instead of as eight em dashes the reader has to
+    interpret. Four absences reach here and the sentence names each: the
+    period is over, too little of it has elapsed to divide by, nothing has
+    landed yet to project from, or the board is still loading.
+
+    ONE FACT CAN ALSO BE NULL ALONE (2026-10-06): a straight line through
+    zero is zero, so a fact with no money yet has no projection — FAKT 2 on
+    any morning nothing has been delivered, while FAKT 1 is already
+    projecting. That tile prints an em dash and its hint says why, rather
+    than «0 soʻm» under a heading that says «prognoz».
   */
   const projecting = forecast?.fakt1 != null || forecast?.fakt2 != null;
+
+  /*
+    NOTHING HAS LANDED YET — told apart from «erta» by the money, which the
+    reader can see, rather than by the 2% floor, which lives on the server.
+  */
+  const nothingYet =
+    totals !== undefined &&
+    totals.ordered.amount === 0 &&
+    totals.won.amount === 0;
+
+  /** The hint under one projected tile: what has landed, and why it is not projected. */
+  const landedHint = (hasProjection: boolean, landed: number) =>
+    !projecting || !totals
+      ? undefined
+      : hasProjection
+        ? `hozir ${formatFullUzs(landed)}`
+        : `hozir ${formatFullUzs(landed)} — prognoz uchun hali asos yoʻq`;
 
   /*
     The last instant INSIDE the window, which is the date a reader recognises.
@@ -172,6 +195,8 @@ export function ForecastBand({
           </>
         ) : forecast.elapsedPercent >= 100 ? (
           "Davr yakunlangan — bu allaqachon natija, prognoz emas."
+        ) : nothingYet ? (
+          "Bu davrda hali FAKT 1 ham, FAKT 2 ham yoʻq — prognoz qiladigan narsa yoʻq."
         ) : (
           "Davrning juda oz qismi oʻtdi — prognoz uchun erta."
         )}
@@ -185,11 +210,7 @@ export function ForecastBand({
           money="full"
           status={status}
           accent="var(--series-2)"
-          hint={
-            projecting && totals
-              ? `hozir ${formatFullUzs(totals.ordered.amount)}`
-              : undefined
-          }
+          hint={landedHint(forecast?.fakt1 != null, totals?.ordered.amount ?? 0)}
         />
         <StatTile
           label="FAKT 2 · davr yakuni prognozi"
@@ -198,11 +219,7 @@ export function ForecastBand({
           money="full"
           status={status}
           accent="var(--series-3)"
-          hint={
-            projecting && totals
-              ? `hozir ${formatFullUzs(totals.won.amount)}`
-              : undefined
-          }
+          hint={landedHint(forecast?.fakt2 != null, totals?.won.amount ?? 0)}
         />
         {/*
               WHAT IS STILL TO COME, which is the half of a forecast a floor

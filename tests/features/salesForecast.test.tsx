@@ -82,14 +82,17 @@ function board(over: {
   fakt1: number | null
   fakt2: number | null
   rows?: readonly SellerBoardRowDto[]
+  /** What has landed so far — September's live figures unless a case says otherwise. */
+  ordered?: number
+  won?: number
 }): SellerBoardDto {
   return {
     rows: over.rows ?? [],
     teams: [],
     basis: 'confirmation_queue',
     totals: {
-      ordered: money(1_103_710_001),
-      won: money(666_820_000),
+      ordered: money(over.ordered ?? 1_103_710_001),
+      won: money(over.won ?? 666_820_000),
     },
     forecast: {
       elapsedPercent: over.elapsedPercent,
@@ -175,6 +178,45 @@ describe('the three absences are named, never printed as a zero', () => {
 
     expect(screen.getByText(/prognoz uchun erta/)).toBeDefined()
     expect(screen.queryByText(/Davr yakunlangan/)).toBeNull()
+  })
+
+  it('says nothing has landed yet rather than that it is too early', () => {
+    /*
+      Mid-period, and not one order confirmed or delivered: the server has
+      nothing to divide, so both facts arrive null. «prognoz uchun erta»
+      would send the reader back later for a projection that time alone will
+      not produce.
+    */
+    render(
+      <ForecastBand
+        data={board({ elapsedPercent: 27.9, fakt1: null, fakt2: null, ordered: 0, won: 0 })}
+        status="ready"
+      />,
+    )
+
+    expect(screen.getByText(/hali FAKT 1 ham, FAKT 2 ham yoʻq/)).toBeDefined()
+    expect(screen.queryByText(/prognoz uchun erta/)).toBeNull()
+    expect(screen.queryByText(/Davr yakunlangan/)).toBeNull()
+  })
+
+  it('prints an em dash for a fact with nothing landed, beside one that projects', () => {
+    /*
+      «Bugun» at 15:00: FAKT 1 on pace, nothing delivered yet. The FAKT 2
+      projection and what is left of it are em dashes — the service sent them
+      as «0 soʻm» until 2026-10-06 — and the tile says why.
+    */
+    render(
+      <ForecastBand
+        data={board({ elapsedPercent: 62.5, fakt1: 3_954_158_426, fakt2: null, won: 0 })}
+        status="ready"
+      />,
+    )
+
+    expect(figure(formatFullUzs(3_954_158_426))).toBeGreaterThan(0)
+    expect(screen.getByText('hozir 0 — prognoz uchun hali asos yoʻq')).toBeDefined()
+    // The projection tile and its «kutilayotgan qoldiq».
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByText(/Shu surʼatda davom etsa/)).toBeDefined()
   })
 
   it('prints an em dash for a seller with no projection, and never 0 soʻm', () => {

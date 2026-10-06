@@ -25,7 +25,11 @@ import type { FaktForecastPointDto, FaktTrendPointDto } from '@/lib/api'
 const day = (date: string, fakt1: number, fakt2: number): FaktTrendPointDto =>
   ({ date, fakt1, fakt2, orders: 3 }) as unknown as FaktTrendPointDto
 
-const projected = (date: string, fakt1: number, fakt2: number): FaktForecastPointDto => ({
+const projected = (
+  date: string,
+  fakt1: number | null,
+  fakt2: number | null,
+): FaktForecastPointDto => ({
   date,
   fakt1,
   fakt2,
@@ -103,6 +107,24 @@ describe('weaving the forecast into the trend Recharts draws', () => {
       expect(row.fakt2Projected).toBeNull()
       expect(row.projected).toBe(false)
     }
+  })
+
+  it('opens no junction for a fact that has nothing to project', () => {
+    /*
+      A morning with FAKT 1 on pace and nothing delivered: the server sends
+      FAKT 2's continuation as null, never as zero. Seeding the junction
+      anyway would leave a one-point dashed series hovering on the last
+      measured bucket — invisible until a pointer finds it.
+    */
+    const rows = chartRows(MEASURED, [
+      projected('2026-09-10T00:00:00.000Z', 110, null),
+      projected('2026-09-11T00:00:00.000Z', 110, null),
+    ])
+    const junction = rows[MEASURED.length - 1]!
+
+    expect(junction.fakt1Projected).toBe(120)
+    expect(junction.fakt2Projected).toBeNull()
+    for (const row of rows.filter((r) => r.projected)) expect(row.fakt2Projected).toBeNull()
   })
 
   it('draws the forecast alone rather than throwing when nothing has landed yet', () => {
