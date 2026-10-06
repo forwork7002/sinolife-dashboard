@@ -81,6 +81,11 @@ export function LeadsPage() {
   })
 
   const status: Status = statusOf(overview)
+  // The ROP cards: their own day and their own request, so a failed overview does not take them down.
+  const slots = {
+    afterChannels: <LeadSplitCard day={day} onDay={setDay} />,
+    beforeForms: <LeadWeekCard day={day} />,
+  }
 
   return (
     <PageShell
@@ -116,21 +121,18 @@ export function LeadsPage() {
         ) : tab === 'groups' ? (
           <GroupPlanCard day={day} onDay={setDay} />
         ) : status === 'error' ? (
-          <Card className="p-5">
-            <ErrorState
-              message={overview.error instanceof Error ? overview.error.message : undefined}
-              onRetry={() => void overview.refetch()}
-            />
-          </Card>
+          <>
+            <Card className="p-5">
+              <ErrorState
+                message={overview.error instanceof Error ? overview.error.message : undefined}
+                onRetry={() => void overview.refetch()}
+              />
+            </Card>
+            {slots.afterChannels}
+            {slots.beforeForms}
+          </>
         ) : (
-          <LeadSourcesSection
-            data={overview.data?.data}
-            status={status}
-            slots={{
-              afterChannels: <LeadSplitCard day={day} onDay={setDay} />,
-              beforeForms: <LeadWeekCard day={day} />,
-            }}
-          />
+          <LeadSourcesSection data={overview.data?.data} status={status} slots={slots} />
         )}
       </div>
     </PageShell>
