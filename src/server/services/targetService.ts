@@ -211,9 +211,8 @@ export interface MetaBlockDto {
    * spend over their pages' leads, never HR's or Kosmetika's money over them.
    */
   readonly productsTotal: MetaProductTotalsDto
-  /** UZS per USD used for ROAS — the ad ledger's rate, with its date. */
+  /** UZS per USD used for ROAS — the ad ledger's rate. */
   readonly usdRate: number | null
-  readonly usdRateDate: string | null
 }
 
 export interface TargetLeadSaleDto {
@@ -359,7 +358,6 @@ export function metaBlock(input: {
   sources: readonly TargetGroupRow[]
   productOfSource: ReadonlyMap<string, MetaProduct | undefined>
   usdRate: number | null
-  usdRateDate: string | null
 }): MetaBlockDto {
   interface Acc {
     column: MetaColumnDto
@@ -503,7 +501,6 @@ export function metaBlock(input: {
     total: productTotals(null),
     productsTotal: productTotals(TARGET_PRODUCTS),
     usdRate: input.usdRate,
-    usdRateDate: input.usdRateDate,
   }
 }
 
@@ -640,7 +637,6 @@ export class TargetService {
         productOfSource,
         // Micro-soʻm per dollar, as the ledger stores it.
         usdRate: snapshot ? Number(snapshot.usdRateMicro) / 1_000_000 : null,
-        usdRateDate: snapshot?.rateDate ?? null,
       }),
     }
   }

@@ -178,7 +178,6 @@ describe('metaBlock — the «Лид база» sheet', () => {
       ['zextrauzb', 'Zextra' as const],
     ]),
     usdRate: 12_000,
-    usdRateDate: '19.09.2026',
   })
 
   it('sums two accounts into one targetolog column, as the sheet does', () => {
@@ -229,7 +228,6 @@ describe('metaBlock — the «Лид база» sheet', () => {
       sources: [],
       productOfSource: new Map(),
       usdRate: null,
-      usdRateDate: null,
     })
     expect(both.targetologs.map((t) => t.targetolog)).toEqual(['Kamron', 'Sobirjon'])
     const sobirjon = both.targetologs[1]!
@@ -250,7 +248,6 @@ describe('metaBlock — the «Лид база» sheet', () => {
       sources: [],
       productOfSource: new Map(),
       usdRate: null,
-      usdRateDate: null,
     })
     expect(noRate.total.roas).toBeNull()
     expect(noRate.total.costPerBitrixLeadUsd).toBeNull()

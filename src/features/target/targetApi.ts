@@ -132,7 +132,6 @@ export interface MetaBlockDto {
   /** Collagen and Zextra only — the hero above the two product columns. */
   readonly productsTotal: MetaProductTotalsDto
   readonly usdRate: number | null
-  readonly usdRateDate: string | null
 }
 
 export interface TargetLeadSaleDto {

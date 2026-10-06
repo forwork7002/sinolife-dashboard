@@ -65,7 +65,6 @@ const META: MetaBlockDto = {
   total: totals({ spendUsd: 1_900, bitrixLeads: 1_000, costPerBitrixLeadUsd: 1.9 }),
   productsTotal: totals({ spendUsd: 1_500, bitrixLeads: 1_000, costPerBitrixLeadUsd: 1.5 }),
   usdRate: 12_000,
-  usdRateDate: '06.10.2026',
 }
 
 describe('ProductCompare — the hero', () => {

@@ -51,21 +51,17 @@ export function TargetGroupTable({
   keyHeader,
   notStated,
   status,
-  errorMessage,
   onRetry,
   onPick,
-  emptyTitle,
 }: {
   rows: readonly TargetGroupDto[]
   keyHeader: string
   /** The label an empty value is filed under — drawn muted. */
   notStated: string
   status: 'loading' | 'error' | 'ready'
-  errorMessage?: string
   onRetry?: () => void
   /** Clicking a row narrows the lead list below to it. */
   onPick?: (key: string) => void
-  emptyTitle?: string
 }) {
   const [sort, setSort] = useState<SortKey>('leads')
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
@@ -84,7 +80,6 @@ export function TargetGroupTable({
       rows={sorted}
       rowKey={(row) => row.key}
       status={status}
-      errorMessage={errorMessage}
       onRetry={onRetry}
       onRowClick={onPick ? (row) => onPick(row.key) : undefined}
       sort={sort}
@@ -96,7 +91,7 @@ export function TargetGroupTable({
           setOrder('desc')
         }
       }}
-      emptyTitle={emptyTitle ?? 'Bu davrda lead yoʻq'}
+      emptyTitle="Bu davrda lead yoʻq"
       emptyBody="Tanlangan davrda bu manbalardan hech narsa kelmagan."
       minWidth={1080}
       maxHeight="55dvh"
