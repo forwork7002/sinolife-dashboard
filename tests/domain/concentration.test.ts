@@ -1,12 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  HHI_CONCENTRATED_BP,
-  HHI_MODERATE_BP,
   REPURCHASE_HORIZON_DAYS,
   countForCoverage,
-  hhiBand,
-  hhiBp,
   pareto,
   topShareOfTotalPercent,
 } from '@/server/domain/analytics/concentration'
@@ -92,50 +88,6 @@ describe('pareto', () => {
       customersFor80Percent: null,
       totalCustomers: 0,
     })
-  })
-})
-
-// ---------------------------------------------------------------------------
-// HHI
-// ---------------------------------------------------------------------------
-
-describe('hhiBp', () => {
-  it('scores a monopoly at 10000', () => {
-    expect(hhiBp([123_456_789n])).toBe(10_000)
-  })
-
-  it('scores ten equal channels at 1000', () => {
-    expect(hhiBp(Array.from({ length: 10 }, () => 7n))).toBe(1_000)
-  })
-
-  it('scores four equal channels at exactly the concentrated threshold', () => {
-    expect(hhiBp([25n, 25n, 25n, 25n])).toBe(HHI_CONCENTRATED_BP)
-  })
-
-  it('squares exact shares, not per-group rounded ones', () => {
-    // Shares 2/3 and 1/3: HHI = (66.67² + 33.33²) ≈ 5555. Rounding each share
-    // to whole bp before squaring would land elsewhere.
-    expect(hhiBp([2n, 1n])).toBe(5_555)
-  })
-
-  it('ignores non-positive groups — no money means no share', () => {
-    expect(hhiBp([50n, 50n, 0n])).toBe(5_000)
-  })
-
-  it('returns null over no revenue — unmeasured, not "diversified"', () => {
-    expect(hhiBp([])).toBeNull()
-    expect(hhiBp([0n, 0n])).toBeNull()
-  })
-})
-
-describe('hhiBand', () => {
-  it('maps the DOJ thresholds, boundaries reading as the more alarming band', () => {
-    expect(hhiBand(10_000)).toBe('concentrated')
-    expect(hhiBand(HHI_CONCENTRATED_BP)).toBe('concentrated')
-    expect(hhiBand(HHI_CONCENTRATED_BP - 1)).toBe('moderate')
-    expect(hhiBand(HHI_MODERATE_BP)).toBe('moderate')
-    expect(hhiBand(HHI_MODERATE_BP - 1)).toBe('diversified')
-    expect(hhiBand(0)).toBe('diversified')
   })
 })
 

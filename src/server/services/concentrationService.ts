@@ -12,18 +12,12 @@
  * it goes through `toMoneyDto` like everywhere else.
  */
 
-import {
-  type HhiBand,
-  hhiBand,
-  hhiBp,
-  pareto,
-} from '@/server/domain/analytics/concentration'
+import { pareto } from '@/server/domain/analytics/concentration'
 import { ratePercent, roundPercent } from '@/server/domain/analytics/metrics'
 import type { Period } from '@/server/domain/period/period'
 import type {
   ConcentrationRepository,
   CustomerRevenueBreakdown,
-  GroupRevenueRow,
   RepeatStats,
 } from '@/server/repositories/concentrationRepository'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
@@ -38,15 +32,16 @@ import { LIVE_CACHE, ttlCache } from './ttlCache'
  * `analytics:read:all`, takes no scope, and `trailingDays` anchors the window
  * to the Tashkent day, so the key is stable from midnight to midnight.
  *
- * THE KEY IS THE TWO INSTANTS AND NOTHING ELSE, because they are all the four
- * statements read — the zone is already spent resolving them, and the
+ * THE KEY IS THE TWO INSTANTS AND NOTHING ELSE, because they are everything
+ * both statements read — the zone is already spent resolving them, and the
  * repurchase horizon is a constant. The REPOSITORY'S answer is what is stored,
- * not the DTO, so no rounding or banding rule can be served stale under a key
- * that does not name it.
+ * not the DTO, so no rounding rule can be served stale under a key that does
+ * not name it.
  */
-const concentrationCache = ttlCache<
-  [CustomerRevenueBreakdown, GroupRevenueRow[], GroupRevenueRow[], RepeatStats]
->(5 * 60_000, LIVE_CACHE)
+const concentrationCache = ttlCache<[CustomerRevenueBreakdown, RepeatStats]>(
+  5 * 60_000,
+  LIVE_CACHE,
+)
 
 /**
  * Test seam. The memo is module-level, so it outlives a case that swaps the
@@ -77,22 +72,6 @@ export interface ConcentrationParetoDto {
   readonly nullCustomerSharePercent: number | null
 }
 
-export interface HhiCutDto {
-  /** Herfindahl–Hirschman index, 0-10000. Null when the cut has no revenue. */
-  readonly hhi: number | null
-  /** Plain-language band: >=2500 concentrated, >=1500 moderate, else diversified. */
-  readonly band: HhiBand | null
-  /** Groups with revenue that entered the index. */
-  readonly groups: number
-  /** Revenue share of the null (unset) group, excluded from the index. */
-  readonly nullSharePercent: number | null
-}
-
-export interface ConcentrationHhiDto {
-  readonly bySource: HhiCutDto
-  readonly byRegion: HhiCutDto
-}
-
 export interface ConcentrationRepeatDto {
   /** First → second purchase interval, days, over pairs completed in the period. */
   readonly medianDaysBetweenFirstAndSecond: number | null
@@ -117,7 +96,6 @@ export interface ConcentrationRepeatDto {
 
 export interface ConcentrationDto {
   readonly pareto: ConcentrationParetoDto
-  readonly hhi: ConcentrationHhiDto
   readonly repeat: ConcentrationRepeatDto
 }
 
@@ -141,39 +119,11 @@ export class ConcentrationService {
 
   async concentration(period: Period): Promise<ConcentrationDto> {
     const key = `${period.start.toISOString()}|${period.end.toISOString()}`
-    const [customers, bySource, byRegion, repeat] = await concentrationCache.get(key, () =>
-      Promise.all([
-        this.repo.customerRevenue(period),
-        this.repo.revenueBySource(period),
-        this.repo.revenueByRegion(period),
-        this.repo.repeatStats(period),
-      ]),
+    const [customers, repeat] = await concentrationCache.get(key, () =>
+      Promise.all([this.repo.customerRevenue(period), this.repo.repeatStats(period)]),
     )
 
     const p = pareto(customers.revenuesMinor)
-
-    /**
-     * The null group is excluded from the index and reported beside it.
-     *
-     * An index treats every group as one actor; "source not set" is not an
-     * actor, it is missing data, and folding it in would let a sloppy month
-     * of data entry read as a big diversified channel.
-     */
-    const cut = (rows: readonly GroupRevenueRow[]): HhiCutDto => {
-      const known = rows.filter((r) => r.label !== null).map((r) => r.revenueMinor)
-      const nullMinor = rows
-        .filter((r) => r.label === null)
-        .reduce((sum, r) => sum + r.revenueMinor, 0n)
-      const totalMinor = rows.reduce((sum, r) => sum + r.revenueMinor, 0n)
-      const index = hhiBp(known)
-
-      return {
-        hhi: index,
-        band: index === null ? null : hhiBand(index),
-        groups: known.filter((value) => value > 0n).length,
-        nullSharePercent: roundedRate(nullMinor, totalMinor),
-      }
-    }
 
     return {
       pareto: {
@@ -184,10 +134,6 @@ export class ConcentrationService {
         customersFor80Percent: p.customersFor80Percent,
         totalCustomers: p.totalCustomers,
         nullCustomerSharePercent: roundedRate(customers.nullCustomerMinor, customers.totalMinor),
-      },
-      hhi: {
-        bySource: cut(bySource),
-        byRegion: cut(byRegion),
       },
       repeat: {
         medianDaysBetweenFirstAndSecond:

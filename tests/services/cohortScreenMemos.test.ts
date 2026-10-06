@@ -167,19 +167,11 @@ describe('InsightsService.customerFlow', () => {
 })
 
 function concentrationService() {
-  const builds = { customers: 0, bySource: 0, byRegion: 0, repeat: 0 }
+  const builds = { customers: 0, repeat: 0 }
   const repository = {
     customerRevenue: async () => {
       builds.customers += 1
       return { revenuesMinor: [], nullCustomerMinor: 0n, totalMinor: 0n }
-    },
-    revenueBySource: async () => {
-      builds.bySource += 1
-      return []
-    },
-    revenueByRegion: async () => {
-      builds.byRegion += 1
-      return []
     },
     repeatStats: async () => {
       builds.repeat += 1
