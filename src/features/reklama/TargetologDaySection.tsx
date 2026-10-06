@@ -103,13 +103,19 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
 
   const owners = query.data?.data.forms.owners ?? []
   const products = (['Collagen', 'Zextra', 'Boshqa'] as const).filter((p) => owners.some((o) => o.product === p))
-  // The page's brand switch wins over this picker, which then steps aside — two switches would contradict.
-  // «Brendsiz» is the forms no brand claims («Boshqa»). The product picked may have no targetolog this
-  // period: fall back to the first that has one.
-  const product: MetaProduct =
-    brand === 'none' ? 'Boshqa' : brand !== 'all' ? brand : products.includes(picked) ? picked : (products[0] ?? picked)
+  /*
+    The page's brand switch wins over this picker, which then steps aside — two switches would
+    contradict. Under one brand the server has already narrowed the answer by «Lidlar»'s rules
+    (`ofBrand`: a lead by its «Проект», page or form; money by its ad budget), so every card it
+    returns is shown: a card's own product can differ — a form naming no targetolog is «Boshqa» by
+    name and Collagen by its leads. With both brands the picker chooses; the product picked may
+    have no targetolog this period: fall back to the first that has one.
+  */
+  const product: MetaProduct = products.includes(picked) ? picked : (products[0] ?? picked)
   // The biggest spender first, as the sheet opens on Eldor.
-  const shown = owners.filter((o) => o.product === product).sort((a, b) => b.spendUsd - a.spendUsd)
+  const shown = owners
+    .filter((o) => brand !== 'all' || o.product === product)
+    .sort((a, b) => b.spendUsd - a.spendUsd)
 
   return (
     <section className="flex min-w-0 flex-col gap-3">

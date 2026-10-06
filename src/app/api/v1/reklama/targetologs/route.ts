@@ -1,6 +1,6 @@
 import { toPeriodDto } from '@/server/domain/period/period'
 import { getHandler, periodFrom } from '@/server/http/handler'
-import { periodQuerySchema } from '@/server/http/queryParams'
+import { reklamaOverviewQuerySchema } from '@/server/http/queryParams'
 import { leadSourcesService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
@@ -20,9 +20,10 @@ const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as con
  * targetolog's CRM forms opened, and their kval. The same `forms` block
  * «Lidlar» → «Lid manbalari» reads, so the two screens cannot disagree —
  * built from its two scans only, never waiting on the rest of «Lidlar».
+ * Narrowed by the page's brand switch on the server, by «Lidlar»'s rules.
  */
-export const GET = getHandler(ACCESS, periodQuerySchema, async (ctx) => {
+export const GET = getHandler(ACCESS, reklamaOverviewQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const { forms, importedAt } = await leadSourcesService.targetologForms(period, ctx.timeZone)
+  const { forms, importedAt } = await leadSourcesService.targetologForms(period, ctx.timeZone, ctx.query.brand)
   return { data: { forms, importedAt }, meta: { period: toPeriodDto(period) } }
 })

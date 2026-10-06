@@ -52,7 +52,7 @@ export function ReklamaPage() {
     return out
   }, [apiParams.preset, apiParams.from, apiParams.to])
 
-  // The brand reaches the overview only: «Targetologlar · kunlik» narrows its own answer in place.
+  // The brand reaches both requests, and each answer is narrowed on the server by the rules «Lidlar» uses.
   const overviewParams = useMemo(() => (brand === 'all' ? params : { ...params, brand }), [params, brand])
 
   const overview = useQuery({
@@ -85,7 +85,7 @@ export function ReklamaPage() {
           <>
             <Tiles data={data} status={status} brand={brand} />
             {/* The client's per-targetolog day sheet, full width so the targetologs stand side by side. */}
-            <TargetologDaySection params={params} brand={brand} />
+            <TargetologDaySection params={overviewParams} brand={brand} />
             {/* The HR · Kosmetika table sits beside the sheets on a wide screen, above them on a phone. */}
             <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start">
               <aside className="min-w-0 xl:sticky xl:top-0 xl:col-start-2 xl:row-start-1">

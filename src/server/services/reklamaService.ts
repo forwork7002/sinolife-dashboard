@@ -43,6 +43,7 @@ import type {
   ReklamaRepository,
 } from '@/server/repositories/reklamaRepository'
 
+import { leadBrand } from './rnpService'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -360,12 +361,17 @@ const SIDE_NAMES: Readonly<Record<SideColumn, string>> = { hr: 'HR', kosmetika: 
  * move from one month to the next.
  *
  * `brand` (the brand switch, `BRAND_FILTERS`) narrows all three ledgers
- * before anything is summed: the pages and their leads to that brand's pages
- * (`TARGET_SOURCE_PRODUCT` — every lead here is a target page's, so this is
- * `leadBrand`'s answer too), the Meta rows to that brand's AD BUDGET
- * (`adBudgetProduct`, as every other screen reads a brand's money). What no
- * budget claims — hiring campaigns, HR Eldor, Kosmetika, an unmapped account —
- * is «Brendsiz», so Collagen + Zextra + Brendsiz is «Hammasi» to the cent.
+ * before anything is summed: a lead by `leadBrand`, as «Lidlar», RNP and
+ * Roistat file it — its «Проект» first (2026-10-06), so a sinolifeuz lead
+ * whose project is Zextra is Zextra's and a «Kosmetika» one «Brendsiz»; else
+ * its page (`TARGET_SOURCE_PRODUCT`, every lead here being a target page's).
+ * The pages are that brand's, plus any other page still holding one of its
+ * leads — dropping that page would drop the lead from every total — and only
+ * a page of the slice's own brand carries its DM money. The Meta rows go to
+ * that brand's AD BUDGET (`adBudgetProduct`, as every other screen reads a
+ * brand's money). What no budget claims — hiring campaigns, HR Eldor,
+ * Kosmetika, an unmapped account — is «Brendsiz», so Collagen + Zextra +
+ * Brendsiz is «Hammasi» to the cent and to the lead.
  */
 export function reklamaOverview(input: {
   window: { from: string; to: string }
@@ -377,11 +383,13 @@ export function reklamaOverview(input: {
 }): ReklamaOverviewDto {
   const brand = input.brand ?? 'all'
   if (brand !== 'all') {
+    const leadRows = input.leadRows.filter((row) => brandMatches(brand, leadBrand(row.sourceId, null, row.productLine)))
+    const pagesWithLeads = new Set(leadRows.map((row) => row.sourceId))
     input = {
       ...input,
       brand: 'all',
-      pages: input.pages.filter((page) => brandMatches(brand, page.product)),
-      leadRows: input.leadRows.filter((row) => brandMatches(brand, TARGET_SOURCE_PRODUCT[row.sourceId])),
+      pages: input.pages.filter((page) => brandMatches(brand, page.product) || pagesWithLeads.has(page.key)),
+      leadRows,
       campaignRows: input.campaignRows.filter((row) => brandMatches(brand, adBudgetProduct(row))),
     }
   }
@@ -483,7 +491,8 @@ export function reklamaOverview(input: {
   const dmPricedDays = days.map(() => dmZero())
   const dmPriced = dmZero()
   const dmPages: DmPageDto[] = input.pages.map((page) => {
-    const carriesDmSpend = dmPageOf.get(page.product) === page.key
+    // Another brand's DM page, shown for this slice's leads, carries none of the slice's money.
+    const carriesDmSpend = dmPageOf.get(page.product) === page.key && brandMatches(brand, page.product)
     const byDay = dm.get(page.key)
     const total = dmZero()
     const pageDays = days.map((date, i) => {
