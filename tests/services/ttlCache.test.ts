@@ -186,3 +186,118 @@ describe('ttlCache with staleMs (stale-while-revalidate)', () => {
     expect(builds).toBe(1)
   })
 })
+
+/**
+ * `refresh` — the warmer's call (2026-10-06 audit). `get` past the TTL hands
+ * out the old answer and rebuilds BEHIND its caller, so a warmer awaiting it
+ * moved on in milliseconds with the build still running: «Lidlar» started
+ * both windows' scans side by side every three minutes.
+ */
+describe('ttlCache.refresh', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('builds a key nothing holds, and a reader meanwhile shares that build', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000 })
+    let builds = 0
+    let release!: (n: number) => void
+    let warmed = false
+    const tick = cache
+      .refresh('k', () => {
+        builds++
+        return new Promise<number>((resolve) => (release = resolve))
+      })
+      .then(() => (warmed = true))
+    const reader = cache.get('k', async () => ++builds)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(warmed).toBe(false)
+    release(1)
+    await tick
+    expect(await reader).toBe(1)
+    expect(builds).toBe(1)
+  })
+
+  it('waits for the rebuild past the TTL; a reader meanwhile gets the old answer and starts none', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000 })
+    expect(await cache.get('k', async () => 1)).toBe(1)
+    vi.advanceTimersByTime(61_000)
+
+    let release!: (n: number) => void
+    let warmed = false
+    const tick = cache.refresh('k', () => new Promise<number>((resolve) => (release = resolve))).then(() => (warmed = true))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(warmed).toBe(false)
+    let readerBuilds = 0
+    expect(await cache.get('k', async () => ++readerBuilds)).toBe(1)
+    expect(readerBuilds).toBe(0)
+    release(2)
+    await tick
+    expect(await cache.get('k', async () => 99)).toBe(2)
+  })
+
+  it('joins the rebuild a reader started rather than starting a second', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000 })
+    await cache.get('k', async () => 1)
+    vi.advanceTimersByTime(61_000)
+    let release!: (n: number) => void
+    let builds = 0
+    expect(
+      await cache.get('k', () => {
+        builds++
+        return new Promise<number>((resolve) => (release = resolve))
+      }),
+    ).toBe(1)
+    let warmed = false
+    const tick = cache.refresh('k', async () => ++builds).then(() => (warmed = true))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(warmed).toBe(false)
+    release(2)
+    await tick
+    expect(builds).toBe(1)
+    expect(await cache.get('k', async () => 99)).toBe(2)
+  })
+
+  it('builds nothing inside the TTL — a reader\'s rebuild has just landed', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000 })
+    await cache.get('k', async () => 1)
+    vi.advanceTimersByTime(30_000)
+    let builds = 0
+    await cache.refresh('k', async () => ++builds)
+    expect(builds).toBe(0)
+    expect(await cache.get('k', async () => 99)).toBe(1)
+  })
+
+  it('rejects when its rebuild fails, keeps the old answer, and leaves the log to its caller', async () => {
+    const errors: unknown[] = []
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000, onError: (_key, error) => errors.push(error) })
+    await cache.get('k', async () => 1)
+    vi.advanceTimersByTime(61_000)
+    await expect(cache.refresh('k', () => Promise.reject(new Error('statement timeout')))).rejects.toThrow('statement timeout')
+    expect(await cache.get('k', async () => 99)).toBe(1)
+    expect(errors).toEqual([])
+  })
+
+  it('hears of a first build that fails while it waits on it past the TTL', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000 })
+    let fail!: (error: Error) => void
+    const reader = cache.get('k', () => new Promise<number>((_resolve, reject) => (fail = reject)))
+    vi.advanceTimersByTime(61_000)
+    const tick = cache.refresh('k', async () => 99)
+    fail(new Error('statement timeout'))
+    await expect(reader).rejects.toThrow('statement timeout')
+    await expect(tick).rejects.toThrow('statement timeout')
+  })
+
+  it('rebuilds an answer too old to show, as a first build', async () => {
+    const cache = ttlCache<number>(60_000, { staleMs: 60_000 })
+    await cache.get('k', async () => 1)
+    vi.advanceTimersByTime(121_000)
+    await cache.refresh('k', async () => 2)
+    expect(await cache.get('k', async () => 99)).toBe(2)
+  })
+})
