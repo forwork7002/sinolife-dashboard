@@ -569,8 +569,18 @@ interface TooltipPayload {
 /**
  * Payload → rows. The mapping stays here, beside the chart that knows what
  * its series mean; the drawing lives in ChartTooltipPanel, shared app-wide.
+ *
+ * Exported for `tests/features/faktTooltip.test.tsx`: a projected row printed
+ * «0 soʻm» for a fact with no projection, and the plot cannot show it — the
+ * tooltip is reached only by hovering.
  */
-function FaktTooltip({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) {
+export function FaktTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean
+  payload?: TooltipPayload[]
+}) {
   if (!active || !payload?.length) return null
   const point = payload[0]?.payload
   if (!point) return null
