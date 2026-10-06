@@ -1326,9 +1326,18 @@ export class InsightsRepository {
              \`Организация сотрудника\` at the moment of sale and never rewrites
              it, which is the whole reason this cut can be trusted across a
              seller changing team — the same field and the same fallback
-             Logistika's per-ROP strip reads. */
+             Logistika's per-ROP strip reads.
+
+             THE FALLBACK IS THE OPERATOR WHO SOLD IT, NOT THE DEAL'S HOLDER
+             TODAY, for the reason the classified CTE gives: the portal moves
+             a deal to back office while it is processed, so ASSIGNED_BY_ID
+             drifts (556 July orders once sat on the head of Операцион). The
+             fallback decides the team for every unstamped order, which is
+             most cohort rows before 2026, and read off the holder it filed
+             those customers under «(ROP yoʻq)» while Logistika named the
+             team that sold them. */
           d."operatorTeamSource" AS team_source,
-          d."employeeId" AS employee_id,`
+          COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id,`
               : ''
           }
           (

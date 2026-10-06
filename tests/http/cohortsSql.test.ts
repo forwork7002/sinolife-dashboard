@@ -349,6 +349,12 @@ describe('the team cut is absent unless it was asked for', () => {
        Logistika's per-ROP strip reads. Reversed, a seller who changes team
        drags their whole acquisition history across with them. */
     expect(scoped.indexOf('operatorTeamSource')).toBeLessThan(scoped.indexOf('departmentId'))
+    /* And the fallback's department is the OPERATOR's — the person who sold
+       the order — before the deal's assignee, the resolution Logistika's
+       classified CTE joins on. Read off the assignee alone, an unstamped
+       order sitting on back office files its customer under «(ROP yoʻq)». */
+    expect(scoped).toContain('COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id')
+    expect(scoped).not.toContain('d."employeeId" AS employee_id')
   })
 
   it('cuts the cohort at its source, so nothing downstream can fall out of step', async () => {
