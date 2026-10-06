@@ -282,6 +282,19 @@ describe('ttlCache.refresh', () => {
     expect(errors).toEqual([])
   })
 
+  it('hears of a reader\'s rebuild that fails as `onError` does — the one failure, told twice', async () => {
+    const errors: unknown[] = []
+    const cache = ttlCache<number>(60_000, { staleMs: 600_000, onError: (_key, error) => errors.push(error) })
+    await cache.get('k', async () => 1)
+    vi.advanceTimersByTime(61_000)
+    let fail!: (error: Error) => void
+    expect(await cache.get('k', () => new Promise<number>((_resolve, reject) => (fail = reject)))).toBe(1)
+    const tick = cache.refresh('k', async () => 99)
+    fail(new Error('statement timeout'))
+    await expect(tick).rejects.toThrow('statement timeout')
+    expect(errors).toHaveLength(1)
+  })
+
   it('hears of a first build that fails while it waits on it past the TTL', async () => {
     const cache = ttlCache<number>(60_000, { staleMs: 600_000 })
     let fail!: (error: Error) => void

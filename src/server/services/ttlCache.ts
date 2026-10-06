@@ -67,14 +67,17 @@ export interface TtlCache<T> {
   /**
    * A warmer's: resolves once `key` holds an answer no older than the TTL,
    * building it if it must, and rejects when that build fails (the old
-   * answer stays, and nothing goes to `onError` — the warmer logs its own).
+   * answer stays). A rebuild it starts is its caller's to report and never
+   * reaches `onError`; a reader's rebuild it joins reaches both, so that
+   * failure is logged twice.
    *
    * WHY `get` WILL NOT DO (2026-10-06 audit). Past the TTL, `get` hands out
    * the old answer and rebuilds BEHIND its caller, so a warmer awaiting it
    * resolved in milliseconds with the build still running: every 3 minutes
-   * «Lidlar»'s moved straight on to its next window, both windows' scans side
-   * by side on an 8-connection pool, and its «warmed» log timed nothing.
-   * `RnpService` fixed the same on 2026-10-02 (`staleWhileRevalidate`).
+   * «Lidlar»'s warmer moved straight on to its next window, both windows'
+   * scans side by side on an 8-connection pool, and its «warmed» log timed
+   * nothing. `RnpService` fixed the same on 2026-10-02
+   * (`staleWhileRevalidate`).
    *
    * Nothing held, or too old to show: a first build, as a reader's — one who
    * arrives meanwhile shares it. Still within the TTL (a reader's rebuild has
@@ -103,11 +106,16 @@ export interface TtlCacheOptions {
    * and the screen nothing.
    *
    * A failed rebuild keeps the old answer (until it ages past `ttlMs +
-   * staleMs`) and goes to `onError`; only a reader with nothing to show is
-   * told of a failure. An answer is therefore at most `ttlMs + staleMs` old.
+   * staleMs`) and goes to `onError` — except a rebuild a `refresh` started:
+   * its caller hears of it. Only a reader with nothing to show is told of a
+   * failure. An answer is therefore at most `ttlMs + staleMs` old.
    */
   readonly staleMs?: number
-  /** Hears of a rebuild that failed behind its readers — nobody else does. */
+  /**
+   * Hears of a rebuild that failed behind its readers — nobody else does,
+   * save a `refresh` that joined it. A rebuild a `refresh` started is its
+   * caller's to report and never comes here.
+   */
   readonly onError?: (key: string, error: unknown) => void
 }
 
