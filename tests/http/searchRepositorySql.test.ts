@@ -147,6 +147,22 @@ describe('the deal hits', () => {
   })
 })
 
+describe('a blank first number', () => {
+  /*
+    The sync stores the contact's PHONE[0] as the portal sent it, '' included,
+    and COALESCE keeps ''. Every link built from it read q=, which opens the
+    whole year's queue unfiltered.
+  */
+  it('falls through to the next number on the deal hits and the customers alike', async () => {
+    const calls: Call[] = []
+    await repositoryCapturing(calls).search('Dilnoza', null)
+    const [deals, customers] = calls.map((c) => stripped(c.sql))
+
+    expect(deals).toContain(`COALESCE(NULLIF(btrim(cust."phone"), ''), cust."phones"[1]) AS customer_phone`)
+    expect(customers).toContain(`COALESCE(NULLIF(btrim(c."phone"), ''), c."phones"[1]) AS phone`)
+  })
+})
+
 describe('scope', () => {
   it('reaches every row-bearing statement as the joined employee list', async () => {
     const calls: Call[] = []

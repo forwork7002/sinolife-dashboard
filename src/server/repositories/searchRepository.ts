@@ -213,7 +213,12 @@ export class SearchRepository {
         d."orderCode" AS order_code,
         d."title" AS title,
         cust."name" AS customer_name,
-        COALESCE(cust."phone", cust."phones"[1]) AS customer_phone,
+        /*
+          A blank first number is no number. The sync stores PHONE[0] as the
+          portal sent it, '' included, and COALESCE keeps '' — a link carrying
+          q= then opened the whole year's queue unfiltered.
+        */
+        COALESCE(NULLIF(btrim(cust."phone"), ''), cust."phones"[1]) AS customer_phone,
         d."amountMinor"::text AS amount_minor,
         d."currency" AS currency,
         d."createdAtSource" AS created_at,
@@ -299,7 +304,8 @@ export class SearchRepository {
       SELECT
         c."id" AS customer_id,
         c."name" AS name,
-        COALESCE(c."phone", c."phones"[1]) AS phone,
+        -- A blank first number falls through, as on the deal hits: q= is no search.
+        COALESCE(NULLIF(btrim(c."phone"), ''), c."phones"[1]) AS phone,
         count(d."id")::bigint AS orders,
         max(d."createdAtSource") AS last_order_at
       FROM hits h
