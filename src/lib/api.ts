@@ -770,8 +770,6 @@ export interface PayrollTeamDto {
   readonly totalDelta: DeltaDto
 }
 
-export type PayrollHalf = 'full' | 'first' | 'second'
-
 export interface PayrollDto {
   readonly scheme: 'month' | 'half' | 'week'
   /** True while the period is still running — the totals are partial. */
