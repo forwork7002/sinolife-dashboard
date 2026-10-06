@@ -67,6 +67,7 @@ import {
   type DealsBackfill,
   isBackfillDue,
   isPassDue,
+  isResolvePassDue,
   SWEEP_RETRY_MS,
 } from '../src/server/integrations/crm/sync/schedule'
 import {
@@ -341,6 +342,22 @@ const REFERENCE: SyncEntityValue[] = [
   'SOURCES',
   'CALLS',
 ]
+
+/**
+ * What a deal the DEALS pass had to SKIP is waiting for — run ahead of the
+ * schedule when it skips (`isResolvePassDue`, `RESOLVE_GAP_MS`).
+ *
+ * A deal is skipped when its employee or its stage is unknown, and both arrive
+ * only with the reference pass, every three hours — well past the 95 / 35
+ * minutes the watermark rewinds after a skip. So a seller hired at ten whose
+ * first order went straight into C4:NEW lost the deal row until somebody
+ * touched it again and the arrival row for good: off Тасдиқлаш and FAKT 1, the
+ * bug class of 935632 and 1050732. SOURCES rides along because it is one
+ * request. DEPARTMENTS does not: a pass is dated by its first entity
+ * (`REFERENCE[0]`) when the next process starts, and this one must not pass
+ * for the full one; a new hire's new unit waits for that.
+ */
+const RESOLVE: SyncEntityValue[] = ['EMPLOYEES', 'STAGES', 'SOURCES']
 
 const url: string = DATABASE_URL
 const webhook: string = WEBHOOK_URL
@@ -1034,6 +1051,9 @@ async function main() {
   let calm = 0
   /** A reference pass that fell inside the calm and still has to run. */
   let referenceOwed = false
+  /** Skipped deals asked for `RESOLVE` on the next tick, and when it last ran. */
+  let resolveOwed = false
+  let lastResolveAt: Date | null = null
 
   while (!stopping) {
     const started = Date.now()
@@ -1099,9 +1119,13 @@ async function main() {
     const referenceDue: boolean = isPassDue(lastReferenceAt, new Date(), REFERENCE_MS) || referenceOwed
     referenceOwed = referenceDue && calm > 0
     const withReference = referenceDue && calm === 0
-    const entities = withReference ? [...REFERENCE, ...HOT] : HOT
+    // The full pass re-reads all of `RESOLVE` itself.
+    const withResolve = !withReference && resolveOwed && calm === 0
+    const entities = withReference ? [...REFERENCE, ...HOT] : withResolve ? [...RESOLVE, ...HOT] : HOT
     // Stamped when the pass is ATTEMPTED — see the startup read for why.
     if (withReference) lastReferenceAt = new Date()
+    if (withResolve) lastResolveAt = new Date()
+    if (withReference || withResolve) resolveOwed = false
 
     // Zeroed per tick, so the line below reports THIS tick's cost rather than
     // the process total. The baskets are kept — they belong to the portal's
@@ -1112,6 +1136,16 @@ async function main() {
       const results = await engine.runAll(entities, 'INCREMENTAL')
       const changed = results.reduce((sum, r) => sum + r.recordsCreated + r.recordsUpdated, 0)
       const failed = results.filter((r) => r.status === 'FAILED')
+
+      // A deal skipped for an employee or stage we do not hold yet — see `RESOLVE`.
+      const dealsSkipped = results.find((r) => r.entity === 'DEALS')?.recordsSkipped ?? 0
+      if (isResolvePassDue(dealsSkipped, [lastReferenceAt, lastResolveAt], new Date())) {
+        resolveOwed = true
+        console.log(
+          `  ${stamp()} ${dealsSkipped} bitim yozilmadi (xodimi yoki bosqichi hali yoʻq) —` +
+            ' keyingi tsiklda xodimlar, bosqichlar va manbalar qayta oʻqiladi',
+        )
+      }
 
       /*
         THE SUBSTRING MATCH IS GONE, AND WITH IT ITS BLIND SPOT.

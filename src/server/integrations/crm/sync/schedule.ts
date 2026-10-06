@@ -34,6 +34,40 @@ export function isPassDue(
 }
 
 /**
+ * How long after one pass that could resolve a skipped deal the next may run.
+ *
+ * A DEALS run SKIPS a deal whose employee or stage it does not know yet — a
+ * seller hired, a stage added since the last reference pass — and the
+ * reference pass is three-hourly (`REFERENCE_EVERY` 180, 2026-09-16). The
+ * watermark rewinds 95 minutes for DEALS and 35 for STAGE_HISTORY after a skip
+ * (`SKIP_LOOKBACK_MS`), so waiting for the scheduled pass let the deal, and the
+ * C4:NEW arrival it brought, fall out of both windows for good. A skip now
+ * brings the resolving entities forward instead; twenty minutes plus a tick
+ * stays inside the thirty-five, and bounds what a skip that never resolves (a
+ * deal assigned to somebody the portal no longer lists) can cost: one small
+ * pass per twenty minutes, while the deal is still being re-read.
+ */
+export const RESOLVE_GAP_MS = 20 * 60_000
+
+/**
+ * Whether a DEALS run's skips should bring the reference data forward.
+ *
+ * `lastPasses` are the passes that re-read it — the scheduled reference pass
+ * and the forced one — and only the newest counts: a skip seconds after a
+ * pass that already re-read everything waits for the gap rather than asking
+ * the same question again.
+ */
+export function isResolvePassDue(
+  dealsSkipped: number,
+  lastPasses: readonly (Date | null)[],
+  now: Date,
+): boolean {
+  if (dealsSkipped <= 0) return false
+  const times = lastPasses.filter((at): at is Date => at !== null).map((at) => at.getTime())
+  return isPassDue(times.length > 0 ? new Date(Math.max(...times)) : null, now, RESOLVE_GAP_MS)
+}
+
+/**
  * How long a FAILED sweep waits before it is tried again.
  *
  * On the tick counter a failure simply waited out the next full period. On a

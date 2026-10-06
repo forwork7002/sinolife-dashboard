@@ -56,15 +56,19 @@ import type { CrmProvider, FetchOptions, Page } from '@/server/integrations/crm/
  * one to four orders a day over the four days before it.
  *
  * DEALS HAS THE SAME SHAPE against a different reference: it drops a deal whose
- * employee or stage it cannot resolve, and reference data reloads only every 30
- * TICKS. A tick is at least the interval and has no ceiling — a slow one runs
- * long and the next starts immediately — so "thirty ticks" is not thirty
- * minutes and a lookback sized to the clock has to allow for that. Ninety-five
- * minutes covers thirty ticks averaging three, and it costs nothing to be
- * generous here: over five hours of production, DEALS skipped on none of its
- * 293 runs, so this is insurance that almost never fires. STAGE_HISTORY, which
- * fires on about one run in ten, keeps the tighter window its race actually
- * needs — the deal it is waiting for lands in the very next tick.
+ * employee or stage it cannot resolve. These windows were sized when reference
+ * data reloaded every 30 TICKS; since 2026-09-16 it reloads every three hours,
+ * past both of them, so a skip that waited for the scheduled pass was a skip
+ * for good — the deal until somebody touched it again, its C4:NEW arrival
+ * forever. A DEALS run that skips now has the worker re-read what a deal waits
+ * on (`RESOLVE` in syncWorker.ts) on the next tick, at most once per
+ * `RESOLVE_GAP_MS` (twenty minutes). Ninety-five minutes covers that wait with
+ * room for slow ticks — a tick is at least the interval and has no ceiling —
+ * and it costs nothing to be generous: over five hours of production, DEALS
+ * skipped on none of its 293 runs. STAGE_HISTORY, which fires on about one run
+ * in ten, keeps the tighter window its own race needs: the deal it waits for
+ * lands in the very next tick, and a stage the client just added comes with
+ * the same forced pass, twenty minutes and a tick inside its thirty-five.
  *
  * DEAL_ITEMS is absent on purpose: it reads the in-process state the DEALS pass
  * just left behind rather than a watermark, so it cannot lose this race. CALLS

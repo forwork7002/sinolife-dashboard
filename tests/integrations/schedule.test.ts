@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isBackfillDue, isPassDue } from '@/server/integrations/crm/sync/schedule'
+import { isBackfillDue, isPassDue, isResolvePassDue, RESOLVE_GAP_MS } from '@/server/integrations/crm/sync/schedule'
 
 /**
  * A DEPLOY MUST NOT COST THE PORTAL A PASS.
@@ -66,5 +66,33 @@ describe('isBackfillDue — the one-off deals re-read', () => {
     const night = at('2026-09-20T02:00:00+05:00')
     expect(isBackfillDue(backfill, false, night, TZ, at('2026-09-20T01:30:00+05:00'))).toBe(false)
     expect(isBackfillDue(backfill, false, night, TZ, at('2026-09-20T00:59:00+05:00'))).toBe(true)
+  })
+})
+
+/**
+ * A DEALS SKIP BRINGS THE REFERENCE DATA FORWARD — not the whole pass, and not
+ * on every tick. The skip windows are 95 / 35 minutes; the scheduled pass is
+ * three hours away.
+ */
+describe('isResolvePassDue — what a skipped deal asks for', () => {
+  const ago = (ms: number) => new Date(NOW.getTime() - ms)
+
+  it('asks nothing of a run that skipped nothing', () => {
+    expect(isResolvePassDue(0, [null, null], NOW)).toBe(false)
+  })
+
+  it('asks at once when nothing has re-read the reference data yet', () => {
+    expect(isResolvePassDue(1, [null, null], NOW)).toBe(true)
+  })
+
+  it('waits out the gap after the newest pass, whichever kind it was', () => {
+    expect(isResolvePassDue(1, [ago(THREE_HOURS - 60_000), ago(5 * 60_000)], NOW)).toBe(false)
+    expect(isResolvePassDue(1, [ago(5 * 60_000), null], NOW)).toBe(false)
+    expect(isResolvePassDue(1, [ago(RESOLVE_GAP_MS), ago(RESOLVE_GAP_MS + 60_000)], NOW)).toBe(true)
+  })
+
+  it('stays inside the shortest skip window, so the arrival row is still re-read', () => {
+    // STAGE_HISTORY rewinds 35 minutes after a skip; the gap plus a slow tick fits.
+    expect(RESOLVE_GAP_MS + 5 * 60_000).toBeLessThan(35 * 60_000)
   })
 })

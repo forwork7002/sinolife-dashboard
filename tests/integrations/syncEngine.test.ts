@@ -10,6 +10,7 @@ import {
   isCleanRun,
   nextWatermark,
 } from '@/server/integrations/crm/sync/SyncEngine'
+import { isResolvePassDue } from '@/server/integrations/crm/sync/schedule'
 
 // ---------------------------------------------------------------------------
 // In-memory fakes — the engine's seams make a database unnecessary here.
@@ -596,10 +597,11 @@ describe('watermark after a run that skipped records', () => {
     // Stage history waits on a deal that lands in the very next tick.
     expect(nextWatermark('STAGE_HISTORY', NOW, 1).getTime()).toBe(NOW.getTime() - 35 * 60_000)
     /*
-      Deals wait on reference data instead, which reloads every thirty TICKS —
-      and a tick has no ceiling, so the window has to allow for slow ones. It
-      is affordable because it almost never fires: over five hours of
-      production DEALS skipped on none of its 293 runs.
+      Deals wait on reference data instead, which a skip brings forward within
+      twenty minutes (`RESOLVE_GAP_MS`) — and a tick has no ceiling, so the
+      window has to allow for slow ones. It is affordable because it almost
+      never fires: over five hours of production DEALS skipped on none of its
+      293 runs.
     */
     expect(nextWatermark('DEALS', NOW, 1).getTime()).toBe(NOW.getTime() - 95 * 60_000)
   })
@@ -752,6 +754,75 @@ describe('watermark for a record that settles after it is first read', () => {
     expect(nextWatermark('CALLS', later, 0).getTime()).toBeGreaterThan(
       nextWatermark('CALLS', NOW, 0).getTime(),
     )
+  })
+})
+
+/**
+ * A SKIP THAT WAITS ON REFERENCE DATA, ACROSS THE THREE-HOURLY PASS.
+ *
+ * A seller hired after the reference pass: their order, straight into C4:NEW,
+ * is skipped by DEALS (unknown employee) and its arrival by STAGE_HISTORY
+ * (deal not written). The windows rewind 95 and 35 minutes; the reference pass
+ * is three hours away. The worker's loop is reproduced here only as far as the
+ * decision it makes after each tick — `isResolvePassDue`.
+ */
+describe('a skip that waits on reference data', () => {
+  const TICK = 2 * 60_000
+
+  async function simulate(forcePass: boolean) {
+    let clock = NOW
+    let employeeKnown = false
+    const deals = new FakeTable()
+    const history = new FakeTable()
+
+    const dealHandler = makeHandler('DEALS', [{ externalId: 'd-1', value: 'deal', updatedAtSource: NOW }], deals, {
+      async persist(batch: readonly Row[]) {
+        const writable = employeeKnown ? batch : []
+        return { ...deals.upsert(writable), skipped: batch.length - writable.length }
+      },
+    })
+    const historyHandler = makeHandler('STAGE_HISTORY', [{ externalId: 'h-1', value: 'C4:NEW', updatedAtSource: NOW }], history, {
+      async persist(batch: readonly Row[]) {
+        const writable = batch.filter(() => deals.rows.has('d-1'))
+        return { ...history.upsert(writable), skipped: batch.length - writable.length }
+      },
+    })
+
+    const store = new FakeStore()
+    // An ordinary running worker: both cursors one tick behind the order.
+    await store.setCursor('DEMO', 'DEALS', new Date(NOW.getTime() - TICK))
+    await store.setCursor('DEMO', 'STAGE_HISTORY', new Date(NOW.getTime() - TICK))
+    const engine = new SyncEngine({
+      provider: fakeProvider({ DEALS: true, STAGE_HISTORY: true }),
+      store,
+      handlers: [dealHandler, historyHandler],
+      now: () => clock,
+    })
+
+    // The scheduled pass ran ten minutes before the order and next runs in three hours.
+    const lastReference = new Date(NOW.getTime() - 10 * 60_000)
+    let lastResolve: Date | null = null
+    let owed = false
+    for (let tick = 0; tick < 90; tick++) {
+      clock = new Date(NOW.getTime() + tick * TICK)
+      const scheduled = clock.getTime() - lastReference.getTime() >= 3 * 60 * 60_000
+      if (owed || scheduled) {
+        employeeKnown = true
+        lastResolve = clock
+        owed = false
+      }
+      const [dealRun] = await engine.runAll(['DEALS', 'STAGE_HISTORY'], 'INCREMENTAL')
+      if (forcePass && isResolvePassDue(dealRun!.recordsSkipped, [lastReference, lastResolve], clock)) owed = true
+    }
+    return { deal: deals.rows.has('d-1'), arrival: history.rows.has('h-1') }
+  }
+
+  it('loses the order and its arrival when only the scheduled pass can resolve them', async () => {
+    expect(await simulate(false)).toEqual({ deal: false, arrival: false })
+  })
+
+  it('writes both once a skip brings the pass forward, inside both windows', async () => {
+    expect(await simulate(true)).toEqual({ deal: true, arrival: true })
   })
 })
 
