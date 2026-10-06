@@ -34,7 +34,7 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
-import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql } from './leadFormSql'
+import { dealFormTitleSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, sourceDescriptionSql } from './leadFormSql'
 import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
 
 /** Deals handed to one ROP on one day. `rop` null: not handed to a ROP team. */
@@ -262,29 +262,39 @@ export class RnpRepository {
       SOURCE_DESCRIPTION (leadFormSql.ts), so it is not brandless here while
       «Roistat» and «Lidlar» give it a brand.
     */
-    const form = dealFormTitleSql('d', 's', 'fa')
-    const duplicate = `COALESCE(st."name", '') ~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'`
+    const duplicate = `COALESCE(r.stage, '') ~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'`
+    /*
+      ONE READ OF THE WINDOW'S DEALS (`reg`, MATERIALIZED): the form aliases
+      are built from the same rows the first arm counts, so recovering a
+      repeat lead's form costs no second pass over the month — this is the
+      scan that runs 7–10 s cold on production.
+    */
     return `
-      WITH ${formAliasCteSql(lo, hi)},
-      arms AS (
-        SELECT ${day('d."createdAtSource"')} AS day,
-               s."externalId" AS source_id,
-               ${form} AS form_title,
-               count(*) FILTER (WHERE p."role" = 'LEAD' AND NOT ${duplicate}) AS leads,
-               count(*) FILTER (WHERE p."role" = 'LEAD' AND ${duplicate}) AS duplicates,
-               0::bigint AS qualified,
-               count(*) FILTER (WHERE p."role" = 'AI_TRIAGE') AS ai
+      WITH reg AS MATERIALIZED (
+        SELECT d."createdAtSource" AS created, p."role"::text AS role, st."name" AS stage,
+               s."externalId" AS source_id, d."title" AS title, ${sourceDescriptionSql('d')} AS sd
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" IN ('LEAD', 'AI_TRIAGE')
         LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
         LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
-        ${formAliasJoinSql('d', 'fa')}
         WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
+      ),
+      ${formAliasOverSql(`(SELECT r.sd, r.title FROM reg r WHERE r.role = 'LEAD') fd`)},
+      arms AS (
+        SELECT ${day('r.created')} AS day,
+               r.source_id,
+               ${leadFormTitleSql('r.title', 'r.sd', 'r.source_id', 'fa.title')} AS form_title,
+               count(*) FILTER (WHERE r.role = 'LEAD' AND NOT ${duplicate}) AS leads,
+               count(*) FILTER (WHERE r.role = 'LEAD' AND ${duplicate}) AS duplicates,
+               0::bigint AS qualified,
+               count(*) FILTER (WHERE r.role = 'AI_TRIAGE') AS ai
+        FROM reg r
+        LEFT JOIN form_alias fa ON fa.sd = r.sd
         GROUP BY 1, 2, 3
         UNION ALL
         SELECT ${day('d."closedAt"')} AS day,
                s."externalId" AS source_id,
-               ${form} AS form_title,
+               ${dealFormTitleSql('d', 's', 'fa')} AS form_title,
                0, 0, count(*), 0
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'

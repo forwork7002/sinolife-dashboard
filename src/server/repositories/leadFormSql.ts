@@ -33,22 +33,30 @@ export function sourceDescriptionSql(deal: string): string {
 }
 
 /**
- * The `form_alias` CTE (without `WITH`): each unambiguous short name of a
- * form, from the Регистрация form deals created in [`from`, `to`).
+ * The `form_alias` CTE (without `WITH`) over `rows` — a relation aliased
+ * `fd` with an `sd` and a `title` column, Регистрация deals only: each
+ * unambiguous short name of a form.
  */
-export function formAliasCteSql(from: string, to: string): string {
-  const sd = sourceDescriptionSql('fd')
+export function formAliasOverSql(rows: string): string {
   return `form_alias AS MATERIALIZED (
-        SELECT ${sd} AS sd, min(fd."title") AS title
-        FROM "deal" fd
-        JOIN "pipeline" fp ON fp."id" = fd."pipelineId" AND fp."role" = 'LEAD'
-        WHERE fd."createdAtSource" >= ${from} AND fd."createdAtSource" < ${to}
-          AND fd."title" LIKE '%CRM-форм%'
-          AND ${sd} IS NOT NULL
+        SELECT fd.sd, min(fd.title) AS title
+        FROM ${rows}
+        WHERE fd.title LIKE '%CRM-форм%' AND fd.sd IS NOT NULL
         GROUP BY 1
         -- One form per short name, its NBSP and quote spellings folded; an ambiguous name is nobody's.
-        HAVING count(DISTINCT btrim(translate(substring(fd."title" from 'CRM-форм[аы][[:space:]]*[«"“]([^»"”]+)'), chr(160), ' '))) = 1
+        HAVING count(DISTINCT btrim(translate(substring(fd.title from 'CRM-форм[аы][[:space:]]*[«"“]([^»"”]+)'), chr(160), ' '))) = 1
       )`
+}
+
+/** The `form_alias` CTE (without `WITH`) from the Регистрация deals created in [`from`, `to`). */
+export function formAliasCteSql(from: string, to: string): string {
+  return formAliasOverSql(`(
+          SELECT ${sourceDescriptionSql('ad')} AS sd, ad."title" AS title
+          FROM "deal" ad
+          JOIN "pipeline" ap ON ap."id" = ad."pipelineId" AND ap."role" = 'LEAD'
+          WHERE ad."createdAtSource" >= ${from} AND ad."createdAtSource" < ${to}
+            AND ad."title" LIKE '%CRM-форм%'
+        ) fd`)
 }
 
 /** `LEFT JOIN form_alias <alias>` on a deal's description. */

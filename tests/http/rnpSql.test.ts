@@ -78,9 +78,17 @@ describe('RnpRepository statements', () => {
     expect(sql).toMatch(/sum\(leads\)::bigint AS leads[\s\S]*sum\(qualified\)::bigint AS qualified[\s\S]*GROUP BY 1, 2, 3\s*$/)
   })
 
+  it('reads the window\'s deals once: the form aliases come from the rows the first arm counts', () => {
+    const sql = bare(RnpRepository.registrationDaysSql())
+    // `reg` and the closedAt arm — no third pass for the aliases.
+    expect(sql.match(/FROM "deal"/g)).toHaveLength(2)
+    expect(sql).toContain('reg AS MATERIALIZED (')
+    expect(sql).toContain(`FROM (SELECT r.sd, r.title FROM reg r WHERE r.role = 'LEAD') fd`)
+  })
+
   it('spells the duplicate stage\'s case out rather than trusting the locale', () => {
     const sql = bare(RnpRepository.registrationDaysSql())
-    expect(sql).toContain(`NOT COALESCE(st."name", '') ~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'`)
+    expect(sql).toContain(`NOT COALESCE(r.stage, '') ~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'`)
     expect(sql).not.toContain('~*')
     expect(sql).toMatch(/d\."status" = 'WON' AND d\."closedAt"/)
   })

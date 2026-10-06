@@ -21,6 +21,6 @@ describe('leadFormSql', () => {
   it('lends a short name to a «Ген лид» deal only, and only a name that is one form', () => {
     expect(sql).not.toMatch(/ELSE fa\.title/)
     expect(formAliasCteSql('$1', '$2')).toMatch(/HAVING count\(DISTINCT btrim\(translate\(/)
-    expect(formAliasCteSql('$1', '$2')).toContain(`fd."createdAtSource" >= $1 AND fd."createdAtSource" < $2`)
+    expect(formAliasCteSql('$1', '$2')).toContain(`ad."createdAtSource" >= $1 AND ad."createdAtSource" < $2`)
   })
 })
