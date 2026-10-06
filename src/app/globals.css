@@ -420,6 +420,8 @@
   --glass-shadow: 0 1px 2px rgba(20, 30, 80, 0.05), 0 8px 24px -14px rgba(30, 50, 120, 0.22);
   /* Theme-free, and spent only on --glass-float: see .glass-float. */
   --glass-frost: blur(18px) saturate(1.4);
+  /* How much of the page a modal scrim lets through (`.backdrop-dim`). */
+  --scrim-mix: 60%;
 
   /**
    * The backdrop — four soft pools of light over --page, painted by `html`.
@@ -1098,6 +1100,46 @@ body {
   outline-offset: 2px;
 }
 
+/*
+ * THE ONE TRANSPARENCY FALLBACK — reduced transparency, more contrast, forced
+ * colours — and it is one block because every glass surface is a token.
+ *
+ * A reader who asks for less transparency gets none: each glass token points
+ * at its solid twin (the card and a float at --surface-raised, the chrome at
+ * --surface, a control's well at --surface-sunken, its chip at
+ * --surface-raised, the hover wash at --grid), the frost becomes `none`, the
+ * backdrop's pools go, and the aurora and the grain with them. Contrast-more
+ * asks for the cleanest possible ground and forced colours throws the palette
+ * away, so they take the same ground: the canvas is --page again and every
+ * check above holds by construction rather than by margin. A scrim gets
+ * denser instead of disappearing — it is what says a dialog is modal.
+ *
+ * This is why no glass is written into a component: a colour in a style prop
+ * is a colour this block cannot reach (`tests/features/glassSurfaces.test.ts`).
+ * `:root[data-theme]` as well as `:root`, after both dark blocks, so it wins
+ * over a forced theme at the same weight.
+ */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  :root,
+  :root[data-theme] {
+    --backdrop: none;
+    --glass-card: var(--surface-raised);
+    --glass-card-top: rgba(0, 0, 0, 0);
+    --glass-chrome: var(--surface);
+    --glass-float: var(--surface-raised);
+    --glass-well: var(--surface-sunken);
+    --glass-raised: var(--surface-raised);
+    --glass-hover: var(--grid);
+    --glass-frost: none;
+    --scrim-mix: 85%;
+  }
+
+  body::after,
+  .page-atmosphere::before {
+    display: none;
+  }
+}
+
 /* ===========================================================================
  * LAYOUT — how wide a page is allowed to be
  * ======================================================================== */
@@ -1352,23 +1394,9 @@ body::after {
     color-mix(in oklab, var(--accent) var(--glow-hero-mix, 0%), transparent);
 }
 
-/* The atmosphere degrades to nothing, never to less-legible. A translucent
-   wash is the one thing reduced-transparency is about; forced colours
-   flattens the palette the aurora is mixed from; contrast-more asks for the
-   cleanest possible ground. In every case the canvas is simply --page again
-   and the check above becomes moot rather than marginal. */
-@media (prefers-reduced-transparency: reduce) {
-  .page-atmosphere::before {
-    display: none;
-  }
-}
-
-@media (prefers-contrast: more), (forced-colors: active) {
-  body::after,
-  .page-atmosphere::before {
-    display: none;
-  }
-}
+/* The atmosphere degrades to nothing, never to less-legible: see the one
+   transparency fallback at the end of BASE, which hides the aurora and the
+   grain and takes the backdrop away. */
 
 /* ===========================================================================
  * SURFACE PRIMITIVES
@@ -1971,18 +1999,13 @@ tbody tr:hover > .tcol-sticky {
  * NO BLUR since 2026-10-06. It blurred the whole viewport 2px for as long as
  * the scrim was up, the largest backdrop pass in the house, to soften a page
  * the frosted panel over it now blurs where it matters. The tint alone says
- * "inactive". The transparency fallback makes it denser (the end of BASE).
+ * "inactive". Its density is --scrim-mix, so the transparency fallback (the
+ * end of BASE) can make it denser without a rule of its own.
  */
 .backdrop-dim {
-  background: color-mix(in oklab, var(--page) 60%, transparent);
+  background: color-mix(in oklab, var(--page) var(--scrim-mix), transparent);
 }
 
-@media (prefers-reduced-transparency: reduce) {
-  .backdrop-dim {
-    backdrop-filter: none;
-    background: color-mix(in oklab, var(--page) 85%, transparent);
-  }
-}
 
 /**
  * Command-palette entrance.

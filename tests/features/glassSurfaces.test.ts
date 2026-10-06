@@ -272,3 +272,57 @@ describe('the controls are glass, at one radius and two heights', () => {
     }
   })
 })
+
+describe('the one transparency fallback', () => {
+  const MEDIA = '@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active)'
+  const at = CSS.indexOf(`${MEDIA} {`)
+  const block = CSS.slice(at, CSS.indexOf('\n}\n', at))
+  const overrides = new Map(
+    [...(/:root,\s*:root\[data-theme\]\s*\{([^}]*)\}/.exec(block)?.[1] ?? '').matchAll(/(--[\w-]+):\s*([^;]+);/g)].map((m) => [m[1]!, m[2]!.trim()]),
+  )
+  const light = /(?:^|\})\s*:root\s*\{([^}]*)\}/.exec(CSS)![1]!
+  const translucent = [...light.matchAll(/(--glass-[\w-]+):\s*rgba\(\d+, \d+, \d+, ([\d.]+)\);/g)]
+    .filter((m) => Number(m[2]) < 1)
+    .map((m) => m[1]!)
+
+  /*
+    Reduced transparency, more contrast and forced colours are ONE block, and
+    it reaches every glass surface because every glass surface is a token:
+    each translucent token points at an opaque twin, the frost is `none`, the
+    backdrop goes. A glass token added without a twin here fails.
+  */
+  it('points every translucent glass token at an opaque twin, and drops the frost and the backdrop', () => {
+    expect(at).toBeGreaterThan(-1)
+    expect(translucent.length).toBeGreaterThanOrEqual(8)
+    for (const name of translucent.filter((n) => n !== '--glass-edge')) {
+      expect(overrides.get(name), name).toMatch(/^var\(--(surface|surface-raised|surface-sunken|grid)\)$|^rgba\(0, 0, 0, 0\)$/)
+    }
+    expect(overrides.get('--glass-frost')).toBe('none')
+    expect(overrides.get('--backdrop')).toBe('none')
+    expect(Number(overrides.get('--scrim-mix')?.replace('%', ''))).toBeGreaterThan(60)
+  })
+
+  it('hides the aurora and the grain, and comes after both dark blocks so it wins over a forced theme', () => {
+    expect(block).toMatch(/body::after,\s*\.page-atmosphere::before\s*\{\s*display: none;\s*\}/)
+    expect(at).toBeGreaterThan(CSS.indexOf(':root[data-theme="dark"] {'))
+    expect(at).toBeGreaterThan(CSS.indexOf(':root:where(:not([data-theme="light"])) {'))
+    // The only reduced-transparency / contrast-more rules in the file are this block's.
+    expect(CSS.match(/prefers-reduced-transparency|prefers-contrast/g)).toHaveLength(2)
+  })
+
+  /*
+    A colour in a style prop is a colour the block cannot reach, so glass is
+    never written into a component: no rgba, no translucent mix of a surface.
+    (global-error.tsx is the exception the house allows: it renders when the
+    stylesheet itself may not have loaded, and paints opaque literals.)
+  */
+  it('is reachable because no component writes a translucent surface of its own', () => {
+    const tsx = (dir: string) =>
+      (readdirSync(join(process.cwd(), dir), { recursive: true }) as string[]).filter((f) => f.endsWith('.tsx')).map((f) => `${dir}/${f}`)
+    const offenders = ['src/components', 'src/features', 'src/app']
+      .flatMap(tsx)
+      .filter((file) => file !== 'src/app/global-error.tsx')
+      .filter((file) => /rgba\(|color-mix\(in oklab, var\(--(surface[\w-]*|page)\) \d+%, transparent\)/.test(source(file)))
+    expect(offenders).toEqual([])
+  })
+})
