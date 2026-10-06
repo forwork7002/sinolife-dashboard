@@ -195,8 +195,8 @@ heroes, it is none. Its number is the page's single `.figure-hero`.
 `.brackets` draws two 12px L-corners in `--border-strong` at opposing corners,
 6px inside the edge — the registration marks of an instrument that has been
 aligned. Once per page at most, on the lead instrument; a second pair demotes
-both to decoration. Both `.brackets` and `.glow-track` draw with `::after`, so
-they never stack on one element: glow on the card, brackets on a wrapper.
+both to decoration. The corners are the element's own `::before` and
+`::after`, so anything else that draws a pseudo-element goes on a wrapper.
 
 In dark mode the hero figure carries a 24px halo of the page accent at
 `--glow-hero-mix` (18% dark, 0% light — the mix collapses to transparent, so
@@ -208,18 +208,6 @@ layer exists to refuse.
 **No blank stat tiles on a hero band.** Every big number there carries a
 sparkline, a meter, or the fraction it was computed from. A hero that is only
 a number is a poster, not an instrument.
-
-### The hover glow
-
-`.glow-track` is the mouse-tracked radial on interactive cards: ink at 5%,
-480px, following `--mx`/`--my` custom properties that **the component sets
-from `mousemove`** (pixels from the card's rect; 50%/50% default). Ink, never
-the accent — a glow that changed hue per page would make the same gesture look
-like a different affordance on different screens. The entire rule lives inside
-`(hover: hover) and (prefers-reduced-motion: no-preference)`; outside the
-guard the pseudo-element is never created. It sets `position: relative` on the
-card (the glow needs a containing block); a call site that needs the card
-positioned otherwise wraps it.
 
 ### The keyboard layer
 
@@ -266,15 +254,6 @@ decoration beside a word or an accessible name — the glyph+word rule stands,
 colour is never the only channel, and the glyph is never the only channel
 either.
 
-### The crosshair glides
-
-Two transitions give charts the instrument feel with no scripting: the
-Recharts cursor line eases to the hovered index over 90ms instead of
-teleporting, and the active dot swells into place over 120ms. Both live inside
-the reduced-motion guard — a gliding crosshair is precisely the chased motion
-the preference asks to stop, and where an engine cannot transition SVG
-geometry the cursor simply snaps, which is the same honest fallback.
-
 ---
 
 ## Motion
@@ -289,8 +268,6 @@ view stops competing for attention before the new one asks for it.
 | `.rise` | a single element arrives, 6px up and fading |
 | `.stagger` | children arrive in sequence — set `--i` per child, capped at 8 |
 | `.grow-x` | a bar scales from its baseline, so the length reads as a value arriving |
-| `.draw-in` | a line draws itself once; needs `--len` set to the measured path length |
-| `.card-interactive` | hover lift — **only** for a card that actually does something |
 
 Nothing here carries information the static rendering does not. Motion is the
 delivery, never the message. Every rule sits inside a
@@ -398,9 +375,9 @@ itself by roughly 2.3×, and the bar is the half the eye reads.
 inconvenient, the fix is a better label, not a different denominator.
 
 **Reserved colours stay reserved.** Status steps are a state, never a rank: a
-list ranked with `--status-critical` and `--status-serious` says the top item
-is a crisis and the rest are serious problems, a judgement nobody made. Rank
-takes an ordinal ramp or nothing.
+list ranked with `--status-critical` and `--status-warning` says the top item
+is a crisis and the rest are problems, a judgement nobody made. Rank takes an
+ordinal ramp or nothing.
 
 **`--series-8` may not be a page accent.** It is 4.1 ΔE from
 `--status-critical` in light mode, so a page accented with it makes red mean

@@ -118,16 +118,12 @@ export function PeriodFilter({
     /*
       FULL WIDTH ON A PHONE, ITS OWN WIDTH ON A DESK.
 
-      Seven presets and the picker are ~470px laid out flat, and a phone's
-      content column is ~360. Flat, they ran 114px past the edge of every
-      page and the whole page could be dragged sideways to reach "Shu yil".
-      Below sm the row scrolls inside itself instead, edge to edge — the
-      negative margin lets it run under the page's own padding so the first
-      and last buttons sit flush with the content when scrolled to either end,
-      and the scrollbar is hidden because a thumb does not need one.
+      Three presets and the picker fit a phone's ~360px content column flat,
+      so the row no longer scrolls. It did while it carried six presets: about
+      470px, which ran past the edge of every page (see VISIBLE_PRESETS).
 
-      The picker popover hangs off THIS wrapper, not the scroller: a popover
-      inside an overflow container is clipped by it.
+      The picker popover hangs off THIS wrapper, so it spans the row on a
+      phone and anchors to its right edge on a desk.
     */
     <div ref={container} className="relative w-full sm:w-auto">
       <div className="flex w-full items-center gap-1.5 sm:w-auto">

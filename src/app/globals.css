@@ -126,7 +126,6 @@
      channel. */
   --status-good: #00733a;
   --status-warning: #915c00;
-  --status-serious: #ab4500;
   --status-critical: #d02222;
 
   --delta-up: #006a31;
@@ -401,7 +400,6 @@
 
     --status-good: #2fb862;
     --status-warning: #d9a01c;
-    --status-serious: #f0762e;
     --status-critical: #f0524e;
 
     --delta-up: #2fb862;
@@ -531,7 +529,6 @@
 
   --status-good: #2fb862;
   --status-warning: #d9a01c;
-  --status-serious: #f0762e;
   --status-critical: #f0524e;
 
   --delta-up: #2fb862;
@@ -637,22 +634,6 @@
   --accent-ink: color-mix(in oklab, var(--accent) 88%, var(--ink-primary));
 }
 
-@theme inline {
-  --color-page: var(--page);
-  --color-surface: var(--surface);
-  --color-surface-raised: var(--surface-raised);
-  --color-surface-sunken: var(--surface-sunken);
-  --color-ink: var(--ink-primary);
-  --color-ink-secondary: var(--ink-secondary);
-  --color-ink-muted: var(--ink-muted);
-  --color-grid: var(--grid);
-  --color-axis: var(--axis);
-  --color-hairline: var(--border);
-  --color-accent: var(--accent);
-  --radius-card: var(--radius-panel);
-  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-
 /* ===========================================================================
  * BASE
  * ======================================================================== */
@@ -745,8 +726,7 @@ body {
   axis on every chart the same tabular figures the tables use, and a Y axis
   of amounts stops wobbling as the window changes.
 */
-.recharts-cartesian-axis-tick-value,
-.recharts-polar-angle-axis-tick-value {
+.recharts-cartesian-axis-tick-value {
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum" 1, "lnum" 1;
 }
@@ -1092,13 +1072,11 @@ body::after {
  * aligned. Used ONCE per page at most, on the lead .card-hero — a second
  * pair on the same screen demotes both to decoration.
  *
- * position:relative for the same documented reason as .glow-track: the
- * corners need this box as their containing block, and this unlayered file
- * outranks a Tailwind position utility — wrap the card if it must be
- * positioned some other way. Do NOT stack .brackets with .glow-track on one
- * element: both claim ::after, and the cascade would weld the two rules into
- * one broken pseudo. Put the glow on the card and the brackets on a wrapper
- * (or vice versa) if a panel ever needs both.
+ * position:relative because the corners need this box as their containing
+ * block, and this unlayered file outranks a Tailwind position utility — wrap
+ * the card if it must be positioned some other way. Both corners are the
+ * element's own ::before and ::after, so nothing else that draws a pseudo may
+ * share the element: put it on a wrapper instead.
  */
 .brackets {
   position: relative;
@@ -1158,29 +1136,6 @@ body::after {
 .card-hero .figure-hero {
   text-shadow: 0 0 24px
     color-mix(in oklab, var(--accent) var(--glow-hero-mix, 0%), transparent);
-}
-
-/**
- * Crosshair glide + active-dot pop — the instrument's needle.
- *
- * The Recharts cursor line eases to the hovered index instead of teleporting,
- * and the active dot swells into place: the TradingView feel, delivered in
- * two transitions with no scripting. 90ms tracks the hand closely enough to
- * feel attached; the dot gets 120ms because r animates area, which reads
- * faster than it is. SVG geometry attributes are CSS-transitionable in
- * modern engines; where an engine disagrees, the cursor snaps — exactly the
- * behaviour reduced-motion gets on purpose, since both rules live inside the
- * guard and a gliding crosshair is precisely the chased motion the
- * preference asks to stop.
- */
-@media (prefers-reduced-motion: no-preference) {
-  .recharts-tooltip-cursor {
-    transition: x1 90ms var(--ease-out), x2 90ms var(--ease-out);
-  }
-
-  .recharts-active-dot circle {
-    transition: r 120ms var(--ease-out);
-  }
 }
 
 /* The atmosphere degrades to nothing, never to less-legible. A translucent
@@ -1267,82 +1222,6 @@ body::after {
     linear-gradient(var(--surface-raised), var(--surface-raised)) padding-box,
     linear-gradient(180deg, var(--edge-hero-top), var(--edge-hero-bottom)) border-box;
   box-shadow: var(--shadow-raised), var(--edge-highlight);
-}
-
-/**
- * A card that responds to the pointer.
- *
- * Only for cards that DO something — a link, a drill-down. A hover state on a
- * card that cannot be clicked is a promise the interface does not keep.
- */
-@media (hover: hover) {
-  .card-interactive {
-    transition:
-      box-shadow 200ms var(--ease-out),
-      transform 200ms var(--ease-out),
-      border-color 200ms var(--ease-out);
-  }
-
-  .card-interactive:hover {
-    box-shadow: var(--shadow-raised), var(--edge-highlight);
-    border-color: var(--border-strong);
-    transform: translateY(-2px);
-  }
-
-  .card-interactive:active {
-    transform: translateY(0);
-    transition-duration: 60ms;
-  }
-}
-
-/**
- * The mouse-tracked hover glow — interactive cards only.
- *
- * Linear's recipe: a radial highlight that follows the pointer across the
- * card, so the card answers the hand before it is clicked. The component
- * feeds --mx/--my from mousemove; this file only paints. Ink at 5%, never
- * the accent — a glow that changed hue per page would make the same gesture
- * look like a different affordance on different screens — and 5% is enough
- * to register while staying far too faint to compete with the figures the
- * card exists to show.
- *
- * The whole effect sits behind (hover: hover) AND no-preference: on touch
- * there is no pointer to track, and a highlight that chases the hand is
- * exactly the motion the preference asks us not to make. Outside the guard
- * the pseudo-element is never created at all.
- *
- * `position: relative` here knowingly breaks the .gauge rule ("positioning
- * belongs to the call site"): the glow needs a containing block, or inset:0
- * quietly sizes it to some positioned ancestor instead of the card. This
- * stylesheet is unlayered and beats Tailwind's utilities, so a call site
- * that needs the card itself positioned differently wraps it — the wrapper
- * takes the position, the card keeps the glow.
- */
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .glow-track {
-    position: relative;
-  }
-
-  .glow-track::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    /* Light ON the card, never a layer IN FRONT of it: clicks, hovers and
-       text selection pass straight through. */
-    pointer-events: none;
-    background: radial-gradient(
-      480px circle at var(--mx, 50%) var(--my, 50%),
-      color-mix(in oklab, var(--ink-primary) 5%, transparent),
-      transparent 40%
-    );
-    opacity: 0;
-    transition: opacity 300ms var(--ease-out);
-  }
-
-  .glow-track:hover::after {
-    opacity: 1;
-  }
 }
 
 /**
@@ -1592,11 +1471,11 @@ tr:hover > .tcol-sticky:not(.is-edge) {
   box-shadow: 1px 0 0 var(--border);
 }
 
-/* `[data-scrolled-x]` is the same state set on the scroll box instead of on
-   each cell — the «RNP» sheet's ~370 pinned cells, which a React state would
-   redraw on the first sideways scroll (`RnpSheetTable.tsx`). */
-.tcol-sticky.is-edge.is-scrolled-x,
-[data-scrolled-x] .tcol-sticky.is-edge {
+/* The «RNP» sheet carries the same state on its scroll box instead of on each
+   of its ~370 pinned cells (`[data-scrolled-x]`, which a React state would
+   redraw on the first sideways scroll), and draws it with its own
+   `.rnp-label` / `.rnp-edge` rules below. */
+.tcol-sticky.is-edge.is-scrolled-x {
   box-shadow: 1px 0 0 var(--border-strong), 6px 0 12px -6px rgb(0 0 0 / 0.28);
 }
 
@@ -1676,7 +1555,7 @@ tr:hover > .tcol-sticky:not(.is-edge) {
  * The keyboard layer of the interface. Everything in this section is chrome,
  * never data: it may borrow the elevation system, and it must never borrow a
  * series or status colour. Its two animations carry `reduce` overrides via
- * keyframe redefinition, same pattern as `pulse` below.
+ * keyframe redefinition.
  * ======================================================================== */
 
 /**
@@ -1871,32 +1750,6 @@ tr:hover > .tcol-sticky:not(.is-edge) {
   .stagger > *:nth-child(7) { animation-delay: 240ms; }
 }
 
-/**
- * The live-data pulse.
- *
- * Shown only while a request is genuinely in flight. A dot that pulses
- * permanently stops carrying information within about a day, so the component
- * turns the animation off between fetches rather than leaving it running.
- */
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-  }
-}
-
 @keyframes shimmer {
   100% {
     transform: translateX(100%);
@@ -1927,34 +1780,6 @@ tr:hover > .tcol-sticky:not(.is-edge) {
 @media (prefers-reduced-motion: reduce) {
   .skeleton::after {
     animation: none;
-  }
-}
-
-/**
- * Chart draw-in.
- *
- * A line that draws itself left to right, once, on first paint.
- *
- * The element MUST carry `pathLength="1"`. That attribute renormalises the
- * path's own length to 1 for every length-based property, which is what lets
- * a dash animation work without anyone measuring the geometry in JavaScript.
- * The alternative — a `--len` custom property the component sets from
- * `getTotalLength()` — fails silently when it is forgotten: no error, just a
- * line that never appears or never animates.
- */
-@keyframes draw {
-  from {
-    stroke-dashoffset: 1;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .draw-in {
-    stroke-dasharray: 1;
-    animation: draw 800ms var(--ease-out) both;
   }
 }
 
@@ -2424,17 +2249,6 @@ p {
   .drawer-backdrop-enter {
     animation: none;
   }
-}
-
-/*
-  A scroller a thumb drives needs no bar. Used only where the content itself
-  makes the overflow obvious — a row of buttons cut at the screen's edge.
-*/
-.no-scrollbar {
-  scrollbar-width: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
 }
 
 /*
