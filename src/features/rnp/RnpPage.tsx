@@ -185,6 +185,8 @@ export function RnpPage() {
           <Card as="div" className="min-h-[320px] min-w-0 flex-1 overflow-hidden p-0 max-sm:min-h-[calc(100dvh-5rem)]">
             <RnpSheetTable
               lines={lines}
+              // The uncut sheet: a line keeps its key through the brand and ROP cuts.
+              allLines={data.lines}
               blocks={data.blocks}
               days={data.days}
               today={data.today}

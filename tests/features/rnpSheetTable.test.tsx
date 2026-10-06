@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { RnpColumnScope } from '@/features/rnp/RnpColumnResizer'
 import { RnpSheetTable, scrollToToday } from '@/features/rnp/RnpSheetTable'
 import { RNP_ADDED_TEAM_NOTE, type RnpBlockDto, type RnpLine, type RnpRowDto } from '@/features/rnp/rnpApi'
+import { brandLines, ropLines } from '@/features/rnp/rnpDerive'
 import { DEFAULT_WIDTH, STORAGE_KEY, reloadColumnWidths, storedWidths } from '@/features/rnp/rnpColumnWidths'
 
 /**
@@ -857,5 +858,49 @@ describe('RnpSheetTable — drag to scroll', () => {
     Object.defineProperty(box, 'scrollLeft', { configurable: true, get: () => 0 })
     fireEvent.scroll(box)
     expect(box.hasAttribute('data-scrolled-x')).toBe(false)
+  })
+})
+
+/*
+  The brand switch filters the sheet and lifts the brand's P&L to the top;
+  «ROP» keeps one team under headings of its own (2026-10-06). A line is
+  keyed by its place in the payload, so a cut hands every kept line its own
+  row back — its memo holds — and never another line's.
+*/
+describe('RnpSheetTable — a line keeps its key through the brand and ROP cuts', () => {
+  const CUT: RnpLine[] = [
+    { kind: 'title', row: 4, team: null, label: 'Маркетинг COLLAGEN', sub: 'Хаёт', tone: 'section', brand: 'Collagen' },
+    { kind: 'value', row: 102, team: 'Lola', label: 'Продажа (первичка) факт1', sub: 'Лола РОП', tone: 'team', fact: 'plain', bold: true, key: 'lids', brand: 'Collagen' },
+    { kind: 'value', row: 106, team: 'Lola', label: 'Сумма факт 1 сум', sub: null, tone: 'plain', fact: 'fakt', bold: false, key: 'sum', brand: 'Collagen' },
+    { kind: 'value', row: 140, team: 'Asliddin', label: 'Буюртма сони', sub: 'Аслиддин РОП', tone: 'team', fact: 'plain', bold: false, key: 'kompaniya', brand: 'Zextra' },
+    { kind: 'value', row: 250, team: 'Lola', label: 'Логистика  Сумма факт1', sub: 'Лола РОП', tone: 'section', fact: 'fakt', bold: false, key: 'lg:Lola:fakt1', brand: 'Collagen' },
+    // The team's part again after its logistics: «ROP» opens a second heading of the same name.
+    { kind: 'value', row: 108, team: 'Lola', label: 'Ходим сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: null, brand: 'Collagen' },
+    { kind: 'value', row: 394, team: null, label: 'Коллаген проект', sub: null, tone: 'section', fact: 'fakt', bold: true, key: 'pj:collagen:fakt1', brand: 'Collagen' },
+  ]
+  const view = (lines: readonly RnpLine[]) => (
+    <RnpColumnScope>
+      <RnpSheetTable lines={lines} allLines={CUT} blocks={BLOCKS} days={DAYS} today="2026-09-03" />
+    </RnpColumnScope>
+  )
+  const labels = (container: HTMLElement) => bodyRows(container).map((tr) => tr.querySelector('th')!.textContent)
+
+  it('hands a line the brand cut keeps its own row, not the one that stood at its index', () => {
+    const { container, rerender } = render(view(brandLines(CUT, 'all')))
+    const lids = rowNamed(container, 'Продажа (первичка) факт1')
+    const sum = rowNamed(container, 'Сумма факт 1 сум')
+    rerender(view(brandLines(CUT, 'Collagen')))
+    expect(labels(container)[0]).toBe('Коллаген проект') // the P&L lifted to the top, Zextra's team gone
+    expect(rowNamed(container, 'Продажа (первичка) факт1')).toBe(lids)
+    expect(rowNamed(container, 'Сумма факт 1 сум')).toBe(sum)
+  })
+
+  it('keys every line of a brand and ROP cut apart — two headings of one team included', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const { container } = render(view(ropLines(brandLines(CUT, 'Collagen'), 'Lola', 'Лола РОП')))
+    expect(labels(container).filter((label) => label === 'Лола РОП — ROP bloki')).toHaveLength(2)
+    expect(labels(container)).toHaveLength(7)
+    expect(error.mock.calls.filter(([message]) => String(message).includes('same key'))).toEqual([])
+    error.mockRestore()
   })
 })
