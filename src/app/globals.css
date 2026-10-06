@@ -1435,7 +1435,11 @@ body::after {
  * so it scrolls away with it. `.is-scrolled` — set by the container's scroll
  * handler — puts one back as a shadow and adds the card shadow under it, so
  * the header reads as floating over the rows, which is what it is now
- * actually doing.
+ * actually doing. DataTable marks its BOX instead (`[data-scrolled]`), so the
+ * first scroll redraws no row; the child combinators keep a table nested in a
+ * cell from taking its parent's state, and `:where()` keeps the rule at one
+ * class, BELOW `.tcol-sticky`'s seam and divider — a pinned header cell keeps
+ * those, as it did when it lost to them at equal weight on source order.
  */
 .thead-sticky {
   position: sticky;
@@ -1444,7 +1448,8 @@ body::after {
   background: var(--surface-sunken);
 }
 
-.thead-sticky.is-scrolled {
+.thead-sticky.is-scrolled,
+:where([data-scrolled] > table > thead > tr) > .thead-sticky {
   box-shadow: 0 1px 0 var(--border-strong), var(--shadow-card);
 }
 
@@ -1536,8 +1541,8 @@ body::after {
  * `border-collapse: collapse`, where a cell's borders are painted by the table
  * and do not travel with a cell that has been lifted out. Same trap, same cure,
  * as the two rules above. It is drawn only once the rows have actually moved
- * sideways — `.is-scrolled-x` — because a divider over a table that is not
- * scrolled is a line claiming a split that is not happening.
+ * sideways — `[data-scrolled-x]` on the box — because a divider over a table
+ * that is not scrolled is a line claiming a split that is not happening.
  */
 .tcol-sticky {
   position: sticky;
@@ -1592,10 +1597,9 @@ tr:hover > .tcol-sticky:not(.is-edge) {
   box-shadow: 1px 0 0 var(--border);
 }
 
-/* `[data-scrolled-x]` is the same state set on the scroll box instead of on
-   each cell — the «RNP» sheet's ~370 pinned cells, which a React state would
-   redraw on the first sideways scroll (`RnpSheetTable.tsx`). */
-.tcol-sticky.is-edge.is-scrolled-x,
+/* `[data-scrolled-x]` is the state set on the scroll box, not on each cell —
+   DataTable's and the «RNP» sheet's, whose cells a React state would redraw
+   on the first sideways scroll (`RnpSheetTable.tsx`). */
 [data-scrolled-x] .tcol-sticky.is-edge {
   box-shadow: 1px 0 0 var(--border-strong), 6px 0 12px -6px rgb(0 0 0 / 0.28);
 }
