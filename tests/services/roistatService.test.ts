@@ -338,6 +338,41 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
     }
   })
 
+  it('never re-cuts a table behind its reader over the scan that is being replaced', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-05T07:00:00Z'))
+      let spendReads = 0
+      const repository = {
+        bitrix: async () => [bitrixRow('total', { leads: 1 })],
+        meta: async () => [],
+        metaName: async () => null,
+        metaImportedAt: async () => null,
+      }
+      const reklama = {
+        campaignDays: async () => {
+          spendReads += 1
+          return []
+        },
+      }
+      const service = new RoistatService(repository as never, reklama, { forDays: async (d: readonly string[]) => d.map(() => 12_000) })
+      await service.overview(PERIOD, { dim: 'rop' }, NOW)
+      // A table's Meta reads: this window's spend and the previous one's.
+      expect(spendReads).toBe(2)
+
+      // Past both TTLs: the scan rebuilds behind the reader, and the table cut from it is handed out as it is…
+      vi.setSystemTime(new Date('2026-10-05T07:02:01Z'))
+      await service.overview(PERIOD, { dim: 'rop' }, NOW)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(spendReads).toBe(2)
+      // …then cut once, from the new scan.
+      await service.overview(PERIOD, { dim: 'rop' }, NOW)
+      expect(spendReads).toBe(4)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('asks for the brand keys only when one brand is picked', async () => {
     const { service, calls } = keyedHarness()
     await service.overview(PERIOD, { dim: 'days', brand: 'all' }, NOW)

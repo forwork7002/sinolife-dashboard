@@ -208,7 +208,18 @@ interface BitrixScan {
   readonly previous: readonly RoistatBitrixRow[]
 }
 
-const overviewCache = ttlCache<RoistatOverviewDto>(120_000, LIVE_CACHE)
+/** The scans' TTL, the production sync tick; the table's life is derived from it. */
+const SCAN_TTL_MS = 120_000
+/*
+  A table lives as long as the scan it was cut from can be handed out (that
+  TTL and LIVE_CACHE's stale window) and is never rebuilt behind a reader. It
+  is cut after its scan, so it expires only after that scan has, and by then
+  the scan is rebuilding and the table's key, which carries the scan's build,
+  is about to move on. Rebuilt then, it cut the OLD scan again (the Meta reads
+  once more per open cut, every cycle) and was dropped the moment the new
+  scan landed; the next read cuts it once, from the new scan.
+*/
+const overviewCache = ttlCache<RoistatOverviewDto>(SCAN_TTL_MS + (LIVE_CACHE.staleMs ?? 0))
 const daysCache = ttlCache<RoistatDaysDto>(120_000, LIVE_CACHE)
 /*
   The two scans, memoised apart from the table (2026-10-06). Neither depends
@@ -219,7 +230,7 @@ const daysCache = ttlCache<RoistatDaysDto>(120_000, LIVE_CACHE)
   month-long cohort scans on the one-vCPU database where 2 do. The rows are
   only read (narrowed and grouped into new arrays), never changed.
 */
-const bitrixScanCache = ttlCache<BitrixScan>(120_000, LIVE_CACHE)
+const bitrixScanCache = ttlCache<BitrixScan>(SCAN_TTL_MS, LIVE_CACHE)
 let bitrixScanBuilds = 0
 
 /** Test seam: each case builds its own answer, and the memo would hand the first one to the rest. */
