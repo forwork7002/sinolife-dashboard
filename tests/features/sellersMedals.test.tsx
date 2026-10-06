@@ -509,7 +509,7 @@ describe('medal ustidagi karta — tasnif va shu sotuvchining medali', () => {
     const card = tip()!
     expect(card.querySelector('.medal-tip-name')!.textContent).toBe('Oy chempioni ×3')
     expect(card.querySelector('.medal-tasnif-group')!.textContent).toBe('Oliy mukofot')
-    expect(card.querySelector('.medal-tip-rule')!.textContent).toBe('oy yakunida 1-oʻrin')
+    expect(card.querySelector('.medal-tip-rule')!.textContent).toBe('oy yakunida 1-oʻrin · 7 kundan keyin beriladi')
     expect(card.querySelector('.medal-tip-when')!.textContent).toBe('3 marta · oxirgisi Avgust 2026')
     // Kartadagi medal chizmasi jim — nomni matn aytadi.
     expect(card.querySelector('svg.medal-mark')!.closest('[aria-hidden="true"]')).not.toBeNull()

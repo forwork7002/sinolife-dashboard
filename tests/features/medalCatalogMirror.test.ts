@@ -37,6 +37,17 @@ describe('medalCatalog mirrors sellerMedals', () => {
     expect(Object.keys(server).filter((name) => levelish.test(name))).toEqual([])
   })
 
+  it('the place medals name the engine’s settle horizon, not the period’s end (2026-10-06)', () => {
+    /*
+      A year, a month or a day is decided only `SETTLE_DAYS` after it ends,
+      while its FAKT 2 is still being delivered. A rule that said «oy
+      yakunida» alone promised the floor a medal a week before it lands.
+    */
+    for (const code of ['year-champion', 'month-gold', 'month-silver', 'month-bronze', 'day-winner'] as const) {
+      expect(frontend.MEDAL_RULES[code]).toContain(`${server.SETTLE_DAYS} kundan keyin beriladi`)
+    }
+  })
+
   it('an unknown code (a server deployed ahead of an open tab) is dropped, never looked up', () => {
     const unknown = { code: 'future-medal', count: 1, at: null, amount: null, orders: null, percent: null }
     const known = { code: 'month-gold', count: 1, at: '2026-08-01', amount: null, orders: null, percent: null }

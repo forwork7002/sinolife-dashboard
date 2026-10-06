@@ -152,12 +152,18 @@ export function seatMedals(medals: readonly SellerMedalDto[], cap: number): read
  * ko'chirilgan — qatlam qoidasi importni taqiqlaydi —
  * `tests/features/medalTasnif.test.tsx` chegaralarni motor konstantalari va
  * motorning o'zi bilan solishtiradi.
+ *
+ * THE PLACE MEDALS SAY WHEN THEY LAND (2026-10-06). The engine decides a
+ * year, a month or a day only `SETTLE_DAYS` (7) after it ends, while its
+ * FAKT 2 is still being delivered — so «oy yakunida 1-oʻrin» alone promised a
+ * medal on the 1st that appears on the 8th. Typed out for the layer rule;
+ * `tests/features/medalCatalogMirror.test.ts` holds the number to the engine's.
  */
 export const MEDAL_RULES: Readonly<Record<MedalCode, string>> = Object.freeze({
-  'year-champion': 'yil yakunida 1-oʻrin',
-  'month-gold': 'oy yakunida 1-oʻrin',
-  'month-silver': 'oy yakunida 2-oʻrin',
-  'month-bronze': 'oy yakunida 3-oʻrin',
+  'year-champion': 'yil yakunida 1-oʻrin · 7 kundan keyin beriladi',
+  'month-gold': 'oy yakunida 1-oʻrin · 7 kundan keyin beriladi',
+  'month-silver': 'oy yakunida 2-oʻrin · 7 kundan keyin beriladi',
+  'month-bronze': 'oy yakunida 3-oʻrin · 7 kundan keyin beriladi',
   'streak-fire': '3 oy ketma-ket top-3 da',
   'conversion-master': 'oyning eng yuqori konversiyasi (20+ buyurtma)',
   'day-record': 'eng katta kunlik savdo rekordi',
@@ -165,7 +171,7 @@ export const MEDAL_RULES: Readonly<Record<MedalCode, string>> = Object.freeze({
   'clean-month': 'oyda 80% va undan koʻp yetkazilgan (20+ buyurtma)',
   jump: 'oʻtgan oydan 1,5 barobar koʻp savdo',
   rookie: 'birinchi toʻliq oyida top-10 da',
-  'day-winner': 'kun yakunida 1-oʻrin',
+  'day-winner': 'kun yakunida 1-oʻrin · 7 kundan keyin beriladi',
   'work-month': 'ish kunlarining 60% va undan koʻpida savdo',
   'first-sale': 'birinchi yetkazilgan savdo',
 })
