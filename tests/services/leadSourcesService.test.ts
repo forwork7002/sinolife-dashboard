@@ -778,7 +778,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
       const tick = async () => {
         let done = false
         const warming = service.warm(new Date(), 'Asia/Tashkent').then(() => (done = true))
-        // A window: registration 1 s, the five scans two at a time 3 s, FAKT 1 1 s. Two windows: 10 s.
+        // Each window: registration 1 s, the five scans two at a time 3 s; then each window's FAKT 1, 1 s. 10 s in all.
         await vi.advanceTimersByTimeAsync(9_999)
         expect(done).toBe(false)
         await vi.advanceTimersByTimeAsync(1)
@@ -793,6 +793,55 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
       await tick()
       expect(reads).toBe(28)
       expect(peak).toBe(2)
+    })
+  })
+
+  describe('a memo that fails (2026-10-06 review)', () => {
+    /** Each read logged as «<read> <preset>»; `fails` names the one that throws. */
+    const warmer = async (reads: string[], fails: string) => {
+      const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+      const read = <T,>(name: string, rows: T) => async (period: { preset: string }) => {
+        reads.push(`${name} ${period.preset}`)
+        if (`${name} ${period.preset}` === fails) throw new Error('canceling statement due to statement timeout')
+        return rows
+      }
+      return new LeadSourcesService(
+        {
+          registrationDays: read('registrationDays', []),
+          triageDays: read('triageDays', []),
+          qualifiedSources: read('qualifiedSources', []),
+          aiQualifiedStages: read('aiQualifiedStages', []),
+          pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
+          inboundCallCount: read('inboundCallCount', null),
+        } as never,
+        { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+        { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
+      )
+    }
+
+    it('still builds «Shu oy» when «Bugun»\'s «Факт1 мижоз» fails — the tab answers without it — and reports it', async () => {
+      const reads: string[] = []
+      const service = await warmer(reads, 'leadFakt1Clients today')
+      // 10:00 Tashkent. Thrown at the end, for «leads warm-up failed».
+      await expect(service.warm(new Date('2026-08-12T05:00:00Z'), 'Asia/Tashkent')).rejects.toThrow('statement timeout')
+      expect(reads.filter((r) => r.endsWith(' this_month')).map((r) => r.split(' ')[0]).sort()).toEqual([
+        'aiQualifiedStages',
+        'inboundCallCount',
+        'leadFakt1Clients',
+        'pipelineSourceCount',
+        'qualifiedSources',
+        'registrationDays',
+        'triageDays',
+      ])
+      // Every window's other memos come first: a slow phone match holds up none of them.
+      expect(reads.slice(-2)).toEqual(['leadFakt1Clients today', 'leadFakt1Clients this_month'])
+    })
+
+    it('ends the tick when «Bugun»\'s Регистрация fails — the month\'s heavier scans would only add to the strain', async () => {
+      const reads: string[] = []
+      const service = await warmer(reads, 'registrationDays today')
+      await expect(service.warm(new Date('2026-01-13T05:00:00Z'), 'Asia/Tashkent')).rejects.toThrow('statement timeout')
+      expect(reads).toEqual(['registrationDays today'])
     })
   })
 

@@ -844,7 +844,7 @@ function processWide<T>(name: string, make: () => T): T {
 const registrationCache = processWide('registrationCache', () => ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE))
 
 /*
-  «Факт1 мижоз» on its own memo, and never awaited past `FAKT1_WAIT_MS`: the
+  «Факт1 мижоз» on its own memo, a reader never waits past `FAKT1_WAIT_MS`: the
   phone match is the heaviest scan of the tab (prod 2026-10-05: mean 4.4 s,
   max 19.4 s on a month, against a 20 s statement timeout). A reader who
   arrives first gets the tab without it; the query keeps running and fills
@@ -900,7 +900,8 @@ const scanCache = processWide('scanCache', () => ttlCache<WindowScans>(120_000, 
   moved straight on to «Shu oy», and both windows' scans — 14–16 statements,
   the FAKT 1 phone match twice — met on an 8-connection pool every three
   minutes, while «leads warmed» timed nothing and never heard of a failure.
-  Now each memo is `refresh`ed in turn, window by window, and the scans go
+  Now each memo is `refresh`ed in turn — Регистрация and the scans window by
+  window, then every window's «Факт1 мижоз» (see `warm`) — and the scans go
   `LEADS_WARM_SCANS_AT_ONCE` at a time, as `RnpService.monthRows` does:
   behind no reader, a few seconds longer cost nobody anything. A reader's
   cold miss still runs them all at once. The Meta reads are not memoised,
@@ -978,13 +979,31 @@ export class LeadSourcesService {
     const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone }).format(now))
     if (hour < LEADS_WARM_HOURS[0] || hour >= LEADS_WARM_HOURS[1]) return
     // One at a time: two cold months side by side would take the pool from every other screen.
-    for (const preset of LEADS_WARM_PRESETS) {
-      const period = resolvePeriod(preset, { timeZone, now })
-      const key = windowKey(period)
-      await registrationCache.refresh(key, () => this.repository.registrationDays(period))
-      await scanCache.refresh(key, () => this.scans(period, LEADS_WARM_SCANS_AT_ONCE))
-      await fakt1Cache.refresh(key, () => this.insights.leadFakt1Clients(period))
+    const windows = LEADS_WARM_PRESETS.map((preset) => resolvePeriod(preset, { timeZone, now }))
+    for (const period of windows) {
+      await registrationCache.refresh(windowKey(period), () => this.repository.registrationDays(period))
+      await scanCache.refresh(windowKey(period), () => this.scans(period, LEADS_WARM_SCANS_AT_ONCE))
     }
+    /*
+      «Факт1 мижоз» LAST, AND ITS FAILURE STOPS NOTHING (2026-10-06 review).
+      The tab answers without it (`fakt1Cache`), yet built in turn with each
+      window's other memos, a phone match timing out on «Bugun» left «Shu oy»
+      cold for the tick — which `overview`, waiting no longer than
+      `FAKT1_WAIT_MS`, never did. Every window's is tried, and the first
+      failure is thrown after, for the warmer to log. A failure above still
+      ends the tick: those memos are the tab itself, and when «Bugun»'s fail
+      the month's heavier scans would only add to the strain — the next tick
+      tries again.
+    */
+    let failure: { error: unknown } | undefined
+    for (const period of windows) {
+      try {
+        await fakt1Cache.refresh(windowKey(period), () => this.insights.leadFakt1Clients(period))
+      } catch (error) {
+        failure ??= { error }
+      }
+    }
+    if (failure) throw failure.error
   }
 
   /**
