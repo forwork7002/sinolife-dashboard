@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { toPeriodDto } from '@/server/domain/period/period'
 import { analyticsQuerySchema, brandFilter } from '@/server/http/queryParams'
 import { getHandler, periodFrom } from '@/server/http/handler'
 import { AnalyticsService } from '@/server/services/analyticsService'
@@ -165,36 +166,45 @@ export const GET = getHandler(ACCESS, schema, async (ctx) => {
   */
   const context = AnalyticsService.context(period, ctx.currency, ctx.query, ctx.now)
 
+  /*
+    THE WINDOW AND NOTHING ELSE (2026-10-06). Nothing this route answers reads
+    `context.comparison` since the board's FAKT 2 trend went, so `periodMeta`'s
+    comparison window, and the «Taqqoslash davri qisqartirildi» chip `PageShell`
+    prints off its truncation flag (on the 31st after a 30-day month), would
+    describe a comparison neither the television nor Savdo dinamikasi shows.
+  */
+  const meta = { period: toPeriodDto(period) }
+
   if (ctx.query.include === 'records') {
     return {
       data: await sellerBoardService.records(context),
-      meta: AnalyticsService.periodMeta(context),
+      meta,
     }
   }
 
   if (ctx.query.include === 'faktTrend') {
     return {
       data: await sellerBoardService.faktTrend(context),
-      meta: AnalyticsService.periodMeta(context),
+      meta,
     }
   }
 
   if (ctx.query.include === 'sources') {
     return {
       data: await sellerBoardService.sources(context),
-      meta: AnalyticsService.periodMeta(context),
+      meta,
     }
   }
 
   if (ctx.query.include === 'medals') {
     return {
       data: await sellerBoardService.medals(context),
-      meta: AnalyticsService.periodMeta(context),
+      meta,
     }
   }
 
   return {
     data: await sellerBoardService.board(context, ctx.query.basis),
-    meta: AnalyticsService.periodMeta(context),
+    meta,
   }
 })
