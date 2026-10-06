@@ -135,16 +135,22 @@ describe('which figure the wall calls the record', () => {
     expect(await runningAt(new Date('2026-10-08T00:00:00+05:00'))).toBe(false)
   })
 
-  it('reads the running month in the reporting zone, not the server’s', async () => {
+  it('reads the settle cutoff in the reporting zone, not the server’s', async () => {
     /*
       A server in UTC is five hours behind Tashkent, so for the first five
-      hours of every Tashkent month the two disagree about which month is
-      running — and the wall would print the new month's leader as a settled
-      record. `monthKey` asks in APP_TIMEZONE for exactly that reason.
+      hours of every Tashkent day the two disagree about which day — and so
+      which month — the cutoff `SETTLE_DAYS` back falls in. At 01:00 on
+      8 October in Tashkent the cutoff is 1 October and September has
+      settled; read in UTC it is still 30 September, and the wall would keep
+      September a lead. `monthKey` asks in APP_TIMEZONE for exactly that
+      reason. (Placed on the settle boundary since the cutoff moved there: at
+      the turn of the month itself both zones now agree the month is unsettled.)
     */
-    const justPastMidnight = new Date('2026-10-01T01:00:00+05:00') // 30 Sep 20:00 UTC
+    const justPastMidnight = new Date('2026-10-08T01:00:00+05:00') // 7 Oct 20:00 UTC
     const insights = {
-      confirmationSellerRecords: async () => [row({ month: '2026-10-01', confirmedMinor: mln(1) })],
+      confirmationSellerRecords: async () => [
+        row({ month: '2026-09-01', deliveredMinor: mln(128), deliveredOrders: 74 }),
+      ],
     } as unknown as InsightsRepository
     const service = new SellerBoardService(
       {} as SellerBoardRepository,
@@ -159,8 +165,8 @@ describe('which figure the wall calls the record', () => {
       now: justPastMidnight,
     } as unknown as AnalyticsContext
 
-    const october = (await service.records(ctx)).months[0]!
-    expect(october.running).toBe(true)
+    const september = (await service.records(ctx)).months[0]!
+    expect(september.running).toBe(false)
   })
 })
 
