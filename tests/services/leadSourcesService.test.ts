@@ -716,6 +716,52 @@ describe('LeadSourcesService.overview — the leads and their kval from one rebu
   })
 })
 
+describe('LeadSourcesService.overview — a reader\'s cold miss (2026-10-06 review)', () => {
+  it('runs every read at once — only the warmer goes two scans at a time', async () => {
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-02-10T00:00:00Z'),
+      customEnd: new Date('2026-02-11T00:00:00Z'),
+    })
+    const inFlight: string[] = []
+    const answers: (() => void)[] = []
+    /** A read that answers only when the test lets it. */
+    const read = <T,>(name: string, rows: T) => () => {
+      inFlight.push(name)
+      return new Promise<T>((resolve) => answers.push(() => resolve(rows)))
+    }
+    const service = new LeadSourcesService(
+      {
+        registrationDays: read('registrationDays', [reg({ day: '2026-02-10', formTitle: UMAR_FORM, leads: 2 })]),
+        triageDays: read('triageDays', []),
+        qualifiedSources: read('qualifiedSources', []),
+        aiQualifiedStages: read('aiQualifiedStages', []),
+        pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
+        inboundCallCount: read('inboundCallCount', null),
+      } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
+    )
+
+    const answer = service.overview(period, 'Asia/Tashkent')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    // Nothing has answered and every read is out — the five scans with them, where the warmer's pace shows two.
+    expect([...inFlight].sort()).toEqual([
+      'aiQualifiedStages',
+      'inboundCallCount',
+      'leadFakt1Clients',
+      'pipelineSourceCount',
+      'qualifiedSources',
+      'registrationDays',
+      'triageDays',
+    ])
+    for (const release of answers) release()
+    expect((await answer).funnel.total).toBe(2)
+  })
+})
+
 describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', () => {
   it('builds «Bugun» then «Shu oy» by working hours, through the reader\'s own memo keys, and nothing at night', async () => {
     const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
