@@ -51,6 +51,13 @@ window.matchMedia = ((query: string) => ({
 })) as unknown as typeof window.matchMedia
 
 const { CohortPage } = await import('@/features/cohort/CohortPage')
+/*
+  THE REAL `Providers`, for the one case about a DEFAULT. The application-wide
+  `refetchInterval` is what a query inherits when it says nothing, so a client
+  assembled here would be the test asserting against its own fixture — the
+  argument `cohortStale.test.tsx` makes for the same import.
+*/
+const { Providers } = await import('@/app/providers')
 
 function cohortRow(cohort: string, size: number) {
   const cumulative = [0, 20, 30]
@@ -312,6 +319,40 @@ describe('the cohort matrix, cut by acquiring team', () => {
     fireEvent.focus(picker())
     await act(async () => {})
     expect(listReads()).toHaveLength(1)
+  })
+
+  /*
+    AND IT DOES NOT POLL ONCE IT HAS BEEN FETCHED.
+
+    `picking` never resets, so a query that inherited the application's 120 s
+    timer re-ran the attribution form of the slowest statement in the product
+    every two minutes for as long as the tab stayed open — for a list of team
+    names. Rendered under the REAL `Providers`, because the defect is the
+    default; only `setInterval` is faked, which is the one timer TanStack's
+    `refetchInterval` runs on, so the fetch, React and `waitFor` keep their
+    own clocks.
+  */
+  it('does not re-read the team list on the application-wide poll', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      render(
+        <Providers>
+          <CohortPage />
+        </Providers>,
+      )
+      await act(async () => {})
+      await openPicker()
+      expect(listReads()).toHaveLength(1)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(121_000)
+      })
+      await act(async () => {})
+
+      expect(listReads()).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('re-reads the matrix under its own key and writes the team into the URL', async () => {

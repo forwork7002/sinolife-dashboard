@@ -200,6 +200,19 @@ export function CohortPage() {
       apiGet<CohortSummaryDto>('/insights/cohorts', { months: 3, include: 'rops' }, signal),
     enabled: picking,
     staleTime: 5 * 60_000,
+    /*
+      NO POLLING, said out loud — the app-wide default is a 120 s timer.
+
+      Left unset, the first reach for the picker started that timer, and
+      `picking` never resets, so from then on every open tab re-ran the
+      attribution form of the slowest statement in the product every two
+      minutes — two and a half times the matrix's own cadence — for a list of
+      team names that changes when a department is renamed. `staleTime` alone
+      could not stop it: the timer does not consult staleness (see the matrix
+      read below). A focus or a remount past the five minutes still refreshes
+      it, which is as fresh as a list of teams needs to be.
+    */
+    refetchInterval: false,
   })
 
   const query = useQuery({
