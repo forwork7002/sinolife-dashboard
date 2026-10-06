@@ -197,8 +197,9 @@ The strengths are load-bearing, not taste. The worst-case backdrop under the
 12px lead line — html's own pool, the accent blob where that line sits, the
 grain's mean — keeps every ink at its 4.5:1 floor, with light-mode
 `--ink-muted` the tight one (4.58:1). The first version of that arithmetic
-left html's pool out; with it the old muted read 4.45:1. Raising `--atmos-mix-*` or `--grain-alpha`
-re-runs that arithmetic or does not happen. Under
+left html's pool out; with it the old muted read 4.45:1. Raising
+`--atmos-mix-*` or `--grain-alpha` re-runs that arithmetic or does not
+happen. Under
 `prefers-reduced-transparency`, `prefers-contrast: more` and forced colours
 the atmosphere degrades to nothing, never to less-legible.
 
