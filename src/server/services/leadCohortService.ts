@@ -31,6 +31,15 @@ export const LEAD_COHORT_MAX_DAYS = 92
 /** Days in the default window, today included. */
 const LEAD_COHORT_DEFAULT_DAYS = 14
 
+/*
+  The earliest day a window may reach — where `registration/schema`'s
+  `calendarDay` starts. Nothing before `LEAD_COHORT_START` is a cohort
+  anyway; the floor is for PostgreSQL's `date`, which has no year 0:
+  «0001-01-05» defaulted its start to «0000-12-23», and `$3::date` made it
+  a 500 (2026-10-06 review).
+*/
+const LEAD_COHORT_FLOOR = '2025-01-01'
+
 const rowsCache = ttlCache<{ rows: LeadDealRow[]; names: Map<string, string>; teams: Map<string, string> }>(LEAD_COHORT_TTL_MS)
 
 export function resetLeadCohortCaches(): void {
@@ -43,8 +52,9 @@ const shiftDay = (day: string, by: number) =>
 /**
  * The window the reader asked for, made sane: missing ends default to the
  * last `LEAD_COHORT_DEFAULT_DAYS`, the end never passes today, an inverted
- * pair is swapped and anything wider than `LEAD_COHORT_MAX_DAYS` keeps its
- * END and loses its start. Exported for its test.
+ * pair is swapped, anything wider than `LEAD_COHORT_MAX_DAYS` keeps its END
+ * and loses its start, and neither end is before `LEAD_COHORT_FLOOR`.
+ * Exported for its test.
  */
 export function leadCohortWindow(input: { from?: string; to?: string; today: string }): { from: string; to: string } {
   let to = input.to && input.to < input.today ? input.to : input.today
@@ -54,6 +64,9 @@ export function leadCohortWindow(input: { from?: string; to?: string; today: str
   if (to > input.today) to = input.today
   const earliest = shiftDay(to, -(LEAD_COHORT_MAX_DAYS - 1))
   if (from < earliest) from = earliest
+  // Last, so a start shifted back from the end is held too.
+  if (to < LEAD_COHORT_FLOOR) to = LEAD_COHORT_FLOOR
+  if (from < LEAD_COHORT_FLOOR) from = LEAD_COHORT_FLOOR
   return { from, to }
 }
 

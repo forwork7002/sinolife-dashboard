@@ -44,6 +44,17 @@ describe('leadCohortWindow', () => {
     expect(w.to).toBe('2026-09-24')
     expect(w.from).toBe('2026-06-25')
   })
+
+  it('never reaches before 2025 — PostgreSQL has no year 0 (2026-10-06 review)', () => {
+    // «0001-01-05» defaulted its start to «0000-12-23», which `$3::date` refused: a 500.
+    expect(leadCohortWindow({ to: '0001-01-05', today: '2026-10-06' })).toEqual({ from: '2025-01-01', to: '2025-01-01' })
+    expect(leadCohortWindow({ from: '0002-01-01', to: '0002-03-01', today: '2026-10-06' })).toEqual({
+      from: '2025-01-01',
+      to: '2025-01-01',
+    })
+    // A start shifted back from the end is held as well.
+    expect(leadCohortWindow({ to: '2025-01-05', today: '2026-10-06' })).toEqual({ from: '2025-01-01', to: '2025-01-05' })
+  })
 })
 
 describe('LeadCohortService', () => {

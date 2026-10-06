@@ -14,8 +14,8 @@ import { brandFilter } from '@/server/http/queryParams'
   where a 400 is right. No range, unlike `registration/schema`'s `calendarDay`:
   the date box sends every keystroke of a typed year (0002 → 0020 → 0202 …),
   a refused one would put the error card in place of the whole tab, filters
-  included, and the service already clamps any real day to a window that ends
-  by today.
+  included, and the service already clamps any real day into a window from
+  2025-01-01 to today (`leadCohortWindow`).
 */
 const day = z
   .string()
