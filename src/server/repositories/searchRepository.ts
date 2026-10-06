@@ -48,6 +48,12 @@ export interface SearchDealRow {
   readonly createdAt: Date
   readonly stageName: string
   readonly employeeName: string | null
+  /**
+   * Whether the deal ever arrived in Тасдиклаш (C4:NEW) — the confirmation
+   * queue's cohort is made of exactly those, so only such a deal can be found
+   * there by its own id. A База twin or a Регистрация lead never arrives.
+   */
+  readonly queued: boolean
 }
 
 export interface SearchCustomerRow {
@@ -188,6 +194,7 @@ export class SearchRepository {
         created_at: Date
         stage_name: string
         employee_name: string | null
+        queued: boolean
       }[]
     >(
       `
@@ -204,7 +211,16 @@ export class SearchRepository {
         d."currency" AS currency,
         d."createdAtSource" AS created_at,
         st."name" AS stage_name,
-        e."fullName" AS employee_name
+        e."fullName" AS employee_name,
+        /*
+          An arrival in Тасдиклаш, as the queue's cohort reads one. At most a
+          hundred hits, each probed on (dealId, enteredAt).
+        */
+        EXISTS (
+          SELECT 1 FROM "deal_stage_history" sh
+            JOIN "deal_stage" ss ON ss."id" = sh."stageId"
+           WHERE sh."dealId" = d."id" AND ss."confirmationSignal" = 'CONFIRM_NEW'
+        ) AS queued
       FROM hits h
       JOIN "deal" d ON d."id" = h."id"
       JOIN "deal_stage" st ON st."id" = d."stageId"
@@ -229,6 +245,7 @@ export class SearchRepository {
       createdAt: r.created_at,
       stageName: r.stage_name,
       employeeName: r.employee_name,
+      queued: r.queued,
     }))
   }
 

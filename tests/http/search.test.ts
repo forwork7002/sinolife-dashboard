@@ -35,6 +35,7 @@ const FOUND: SearchResults = {
       createdAt: new Date('2026-08-31T04:09:00.000Z'),
       stageName: 'Тасдиклаш · Заказ тасдиклаш',
       employeeName: 'Quvondiqova Gulmira',
+      queued: true,
     },
   ],
   customers: [
@@ -159,6 +160,50 @@ describe('where a result takes you', () => {
 
     expect(deal.href).toContain('/confirmation?')
     expect(deal.href).toContain('q=925842')
+  })
+
+  /*
+    THE QUEUE CAN ONLY FIND WHAT ARRIVED IN IT. A phone lists every deal of the
+    customer, newest first — the База twin made after delivery, a fresh
+    Регистрация lead — and their own ids opened an empty board for the row
+    just listed. The customer's phone finds the family there.
+  */
+  it('opens a deal that never reached the queue by its customer’s phone', async () => {
+    const twin = {
+      ...FOUND.deals[0]!,
+      dealId: 'd2',
+      bitrixId: '1010043',
+      orderCode: 'bx10043',
+      stageName: 'База · Новый',
+      queued: false,
+    }
+    const lead = { ...twin, dealId: 'd3', bitrixId: '1012001', orderCode: null, stageName: 'Регистрация · Новый лид' }
+    const dto = await serviceReturning({ ...FOUND, deals: [twin, lead] }).search(
+      principal(),
+      scopeOf(principal()),
+      '998901234567',
+      'UZS',
+    )
+    const [twinHit, leadHit] = dto.groups.find((g) => g.key === 'deals')!.items
+
+    expect(twinHit!.href).toContain(`q=${encodeURIComponent('+998901234567')}`)
+    expect(leadHit!.href).toContain(`q=${encodeURIComponent('+998901234567')}`)
+    expect(twinHit!.href).not.toContain('q=1010043')
+  })
+
+  it('falls back to the order code, then the id, for such a deal with no phone', async () => {
+    const twin = { ...FOUND.deals[0]!, customerPhone: null, orderCode: 'bx10043', queued: false }
+    const bare = { ...twin, dealId: 'd4', orderCode: null }
+    const dto = await serviceReturning({ ...FOUND, deals: [twin, bare] }).search(
+      principal(),
+      scopeOf(principal()),
+      '925842',
+      'UZS',
+    )
+    const [byCode, byId] = dto.groups.find((g) => g.key === 'deals')!.items
+
+    expect(byCode!.href).toContain('q=bx10043')
+    expect(byId!.href).toContain('q=925842')
   })
 
   it('carries a wide window, or the row just listed would not be there', async () => {

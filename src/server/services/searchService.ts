@@ -22,7 +22,7 @@ import type { SectionValue } from '@/lib/sections'
 import { toMoneyDto, money, type MoneyDto } from '@/server/domain/money/money'
 import type { Principal } from '@/server/auth/rbac'
 import { canSeeSection, type RowScope } from '@/server/auth/rbac'
-import type { SearchRepository } from '@/server/repositories/searchRepository'
+import type { SearchDealRow, SearchRepository } from '@/server/repositories/searchRepository'
 import { classifySearchTerm } from '@/lib/searchTerm'
 
 export interface SearchHitDto {
@@ -50,6 +50,26 @@ export interface SearchDto {
 
 /** Wide enough to hold an order somebody is asking about by id. */
 const WINDOW = 'preset=this_year'
+
+/**
+ * What the confirmation queue is asked for, to show this deal's order.
+ *
+ * A DEAL THAT ARRIVED IN TASDIQLASH by the id the queue itself searches by,
+ * so the row that was listed here is the row that is highlighted there.
+ *
+ * ANY OTHER DEAL BY ITS CUSTOMER'S PHONE. The number arms list every deal of
+ * the customer, newest first, so the top hit for a delivered customer is often
+ * the База twin made ~10 days after delivery, or a fresh Регистрация lead —
+ * deals that never reach the queue, whose own id opened an empty board for the
+ * order just listed. The queue matches a phone as digits across the whole
+ * family, the twin's Доставка original included. The order code is second: it
+ * is matched as a substring there, so «bx10043» also finds «bx100431». The id
+ * is last, as before.
+ */
+function queueTerm(d: SearchDealRow): string {
+  if (d.queued) return d.bitrixId ?? d.title
+  return d.customerPhone ?? d.orderCode ?? d.bitrixId ?? d.title
+}
 
 export class SearchService {
   constructor(private readonly repository: SearchRepository) {}
@@ -83,9 +103,7 @@ export class SearchService {
           ]
             .filter(Boolean)
             .join(' · '),
-          // Searched by the id the queue itself searches by, so the row that
-          // was listed here is the row that is highlighted there.
-          href: `/confirmation?${WINDOW}&q=${encodeURIComponent(d.bitrixId ?? d.title)}`,
+          href: `/confirmation?${WINDOW}&q=${encodeURIComponent(queueTerm(d))}`,
           amount: toMoneyDto(money(d.amountMinor, d.currency || currency)),
         })),
       })

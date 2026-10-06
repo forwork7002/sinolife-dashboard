@@ -125,6 +125,18 @@ describe('a term not worth a round trip', () => {
   })
 })
 
+describe('the deal hits', () => {
+  it('say whether each deal arrived in Тасдиклаш, which is what the queue can find it by', async () => {
+    for (const term of ['925842', 'Dilnoza']) {
+      const calls: Call[] = []
+      await repositoryCapturing(calls).search(term, null)
+      expect(stripped(calls[0]!.sql)).toMatch(
+        /EXISTS \(\s*SELECT 1 FROM "deal_stage_history"[\s\S]*"confirmationSignal" = 'CONFIRM_NEW'\s*\) AS queued/,
+      )
+    }
+  })
+})
+
 describe('scope', () => {
   it('reaches every row-bearing statement as the joined employee list', async () => {
     const calls: Call[] = []
