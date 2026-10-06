@@ -87,6 +87,7 @@ describe('fetchDeals carries the five fields', () => {
                     STAGE_ID: 'C12:NEW',
                     STAGE_SEMANTIC_ID: 'P',
                     ASSIGNED_BY_ID: '5',
+                    CREATED_BY_ID: '10',
                     CONTACT_ID: '77',
                     OPPORTUNITY: '0',
                     DATE_CREATE: '2026-09-22T21:40:00+03:00',
@@ -114,5 +115,6 @@ describe('fetchDeals carries the five fields', () => {
     expect(deal.aiQualifiedAt?.toISOString()).toBe('2026-09-22T20:35:00.000Z')
     expect(deal.leadRopExternalId).toBe('8868')
     expect(deal.repeatLead).toBe('PROCESSING')
+    expect(deal.createdByExternalId).toBe('10')
   })
 })

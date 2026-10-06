@@ -168,7 +168,7 @@ export function LeadWeekCard({ day }: { day: string }) {
   const hint =
     view === 'kval'
       ? `Har bir ROP ${formatDate(day)} gacha bir oyda olgan lidlar soni (Bitrix24, «РОП (Первичка)»). Rang qanchalik toʻq boʻlsa — shuncha koʻp. Oldingi kunlar — chapga suring.`
-      : `Безквал: Регистрация voronkasida «Ответственный» shu ROP (yoki uning boʻlimidagi ismida «rop» bor registrator) boʻlgan bitimlar, yaratilgan kuni boʻyicha (${formatDate(day)} gacha bir oy, barcha bosqichlar). Oldingi kunlar — chapga suring.`
+      : `Безквал: Регистрация voronkasida shu ROP nomiga oʻtkazilgan bitimlar — «Ответственный» shu ROP (yoki uning boʻlimidagi ismida «rop» bor registrator), ROP oʻz sotuvchisiga bergani ham, 06.10 dan keyin ROPdan boshqaga oʻtgani ham; yaratilgan kuni boʻyicha (${formatDate(day)} gacha bir oy, barcha bosqichlar). Oldingi kunlar — chapga suring.`
   let grid: ReactNode = null
   if (data) {
     grid =

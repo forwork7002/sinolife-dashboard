@@ -129,6 +129,29 @@ const SOURCE_CAST = '"ExternalSource"'
  * not change this run cannot have a new answer. Deals nobody touched are
  * skipped because there is nothing to recompute, not because it is faster.
  */
+/**
+ * The «Ответственный» changes a deals batch carries: a deal already stored
+ * whose portal owner now resolves to another employee. A new deal is no
+ * change — who opened it is `createdByEmployeeId` — and an owner we cannot
+ * resolve is skipped with the deal itself. See DealOwnerChange.
+ */
+export function ownerChangesOf(
+  before: readonly { id: string; externalId: string | null; employeeId: string }[],
+  batch: readonly Pick<RawDeal, 'externalId' | 'employeeExternalId' | 'updatedAtSource'>[],
+  employeeMap: ReadonlyMap<string, string>,
+  now: Date = new Date(),
+): { dealId: string; fromEmployeeId: string; toEmployeeId: string; changedAt: Date }[] {
+  const stored = new Map(before.map((r) => [r.externalId, r]))
+  const out: { dealId: string; fromEmployeeId: string; toEmployeeId: string; changedAt: Date }[] = []
+  for (const record of batch) {
+    const row = stored.get(record.externalId)
+    const to = employeeMap.get(record.employeeExternalId)
+    if (!row || !to || to === row.employeeId) continue
+    out.push({ dealId: row.id, fromEmployeeId: row.employeeId, toEmployeeId: to, changedAt: record.updatedAtSource ?? now })
+  }
+  return out
+}
+
 export function historyLeftAtSql(scoped: boolean): string {
   return `
         UPDATE "deal_stage_history" AS h
@@ -760,6 +783,7 @@ export function createSyncHandlers(
     { name: 'leadDistributedOn', cast: 'date' },
     { name: 'aiQualifiedAt', cast: 'timestamp' },
     { name: 'leadRopEmployeeId' },
+    { name: 'createdByEmployeeId' },
     { name: 'repeatLead' },
     { name: 'isReturnCustomer' },
     { name: 'createdAtSource', cast: 'timestamp' },
@@ -774,14 +798,11 @@ export function createSyncHandlers(
     externalIdOf: (record) => record.externalId,
     fetch: (provider, options) => provider.fetchDeals(options),
     async persist(batch) {
-      const existing = new Set(
-        (
-          await prisma.deal.findMany({
-            where: { externalSource: source, externalId: { in: ids(batch) } },
-            select: { externalId: true },
-          })
-        ).map((r) => r.externalId!),
-      )
+      const before = await prisma.deal.findMany({
+        where: { externalSource: source, externalId: { in: ids(batch) } },
+        select: { id: true, externalId: true, employeeId: true },
+      })
+      const existing = new Set(before.map((r) => r.externalId!))
 
       const stageMap = await resolver.map('dealStage')
       const employeeMap = await resolver.map('employee')
@@ -870,6 +891,7 @@ export function createSyncHandlers(
           // A ROP the roster does not know yet is null, not a skipped deal:
           // the lead still counts, under «ROP koʻrsatilmagan».
           record.leadRopExternalId ? (employeeMap.get(record.leadRopExternalId) ?? null) : null,
+          record.createdByExternalId ? (employeeMap.get(record.createdByExternalId) ?? null) : null,
           record.repeatLead ?? null,
           record.isReturnCustomer ?? false,
           ts(record.createdAtSource),
@@ -889,6 +911,12 @@ export function createSyncHandlers(
         rows,
       })
 
+      const written = batch.filter((r) => stageMap.has(r.stageExternalId) && employeeMap.has(r.employeeExternalId))
+
+      // After the upsert, so a failed write records no change it did not make.
+      const changes = ownerChangesOf(before, written, employeeMap)
+      if (changes.length > 0) await prisma.dealOwnerChange.createMany({ data: changes })
+
       await rememberWritten(
         resolver,
         'deal',
@@ -898,10 +926,7 @@ export function createSyncHandlers(
         }),
       )
 
-      const counts = classify(
-        batch.filter((r) => stageMap.has(r.stageExternalId) && employeeMap.has(r.employeeExternalId)),
-        existing,
-      )
+      const counts = classify(written, existing)
       return { ...counts, skipped }
     },
   }

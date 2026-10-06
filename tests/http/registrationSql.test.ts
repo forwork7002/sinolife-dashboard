@@ -37,6 +37,14 @@ describe('distributedDaysSql', () => {
   })
 })
 
+/*
+  «Безквал», 2026-10-06. Run against a scratch PostgreSQL with the migrations
+  applied and nine synthetic Регистрация deals: a head's deal, a seller's deal
+  the desk opened, a seller's own, one with no opener, a deal that went to a
+  ROP and back to the desk, a registrar's, Davlat's, a deal moved from one ROP
+  to another, and one created 01:00 Tashkent — Azizbek 3, Maftuna 2,
+  Shohjaxon 1, unassigned 3, as seeded.
+*/
 describe('bezkvalDaysSql', () => {
   const sql = bare(RegistrationRepository.bezkvalDaysSql())
 
@@ -47,18 +55,33 @@ describe('bezkvalDaysSql', () => {
     expect(sql).toContain(`d."createdAtSource" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
   })
 
-  it('credits only a team the owner HEADS, the head read as the split reads one', () => {
-    expect(sql).toContain(`WHERE h."headId" = d."employeeId" AND h."isActive"`)
+  it('credits a team the owner HEADS first, the head read as the split reads one', () => {
+    expect(sql).toContain(`WHERE h."headId" = e."id" AND h."isActive"`)
     expect(sql).toContain(`ORDER BY (h."id" = e."departmentId") DESC, h."name"`)
-    expect(sql).not.toContain('dep."name"')
+    expect(sql.indexOf('h."headId" = e."id"')).toBeLessThan(sql.indexOf('dep."id" = e."departmentId"'))
   })
 
   it('credits a registrar named «… rop» to the ROP unit the portal lists them in, the primary first', () => {
     expect(sql).toContain(`FROM "department_member" m`)
     expect(sql).toContain(`JOIN "department" md ON md."id" = m."departmentId" AND md."isActive"`)
-    expect(sql).toContain(`WHERE m."employeeId" = d."employeeId"`)
+    expect(sql).toContain(`WHERE m."employeeId" = e."id"`)
     expect(sql).toContain(`AND e."fullName" ~* '(^|[^[:alpha:]])rop([^[:alpha:]]|$)'`)
     expect(sql).toContain(`ORDER BY m."isPrimary" DESC, md."name"`)
+  })
+
+  it('credits a seller\'s deal to their primary ROP team only when someone else opened it', () => {
+    expect(sql).toContain(`WHERE dep."id" = e."departmentId" AND dep."isActive"`)
+    expect(sql).toContain(`AND d."createdByEmployeeId" IS NOT NULL`)
+    expect(sql).toContain(`AND d."createdByEmployeeId" <> d."employeeId"`)
+  })
+
+  it('falls back to the last recorded hand-over to a ROP, read by the same owner rule', () => {
+    expect(sql).toContain(`FROM "deal_owner_change" c`)
+    expect(sql).toContain(`JOIN "employee" he ON he."id" = c."toEmployeeId"`)
+    expect(sql).toContain(`WHERE h."headId" = he."id" AND h."isActive"`)
+    expect(sql).toContain(`AND he."fullName" ~* '(^|[^[:alpha:]])rop([^[:alpha:]]|$)'`)
+    expect(sql).toContain(`WHERE c."dealId" = d."id" AND x.rop IS NOT NULL`)
+    expect(sql).toContain(`ORDER BY c."changedAt" DESC, c."createdAt" DESC`)
   })
 
   it('counts every stage, as the portal filter does', () => {

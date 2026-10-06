@@ -582,6 +582,10 @@ model Employee {
   soldDeals  Deal[]      @relation("DealOperator")
   /// Leads the portal routed to this person as ROP. See Deal.leadRopEmployeeId.
   routedLeads Deal[]     @relation("DealLeadRop")
+  /// Deals this person opened. See Deal.createdByEmployeeId.
+  openedDeals Deal[]     @relation("DealCreator")
+  ownerChangesFrom DealOwnerChange[] @relation("OwnerChangeFrom")
+  ownerChangesTo   DealOwnerChange[] @relation("OwnerChangeTo")
   kpis       Kpi[]
   calls      CallRecord[]
   heads      Department[] @relation("DepartmentHead")
@@ -891,6 +895,12 @@ model Deal {
   aiQualifiedAt      DateTime?
   /// UF_CRM_1789454012 «РОП (Первичка)» — the ROP the lead was routed to.
   leadRopEmployeeId  String?
+  /// CREATED_BY_ID — who opened the deal. Differs from `employeeId` once the
+  /// deal was handed to someone else: Регистрация deals are opened by the desk
+  /// (Дониёр, the admin) and given to a ROP, who may pass them on to a seller
+  /// of theirs. «Безквал» reads the two together. Null on rows written before
+  /// 2026-10-06 until the sync reads them again.
+  createdByEmployeeId String?
   /// UF_CRM_178973948309676 «Такрор лид» — BOUGHT («Такрор - харид қилган»),
   /// PROCESSING («Такрор - обработка»), OTHER for an item added later. Null is
   /// a NEW lead, and that is the portal's own meaning of the empty field.
@@ -917,11 +927,13 @@ model Deal {
   /// employee must not block the delete of a row that still has a real owner.
   operatorEmployee Employee?       @relation("DealOperator", fields: [operatorEmployeeId], references: [id], onDelete: SetNull)
   leadRop          Employee?       @relation("DealLeadRop", fields: [leadRopEmployeeId], references: [id], onDelete: SetNull)
+  createdBy        Employee?       @relation("DealCreator", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   source       SalesSource?       @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   items        DealItem[]
   payments     Payment[]
   stageHistory DealStageHistory[]
+  ownerChanges DealOwnerChange[]
   calls        CallRecord[]
 
   @@unique([externalSource, externalId])
@@ -981,6 +993,31 @@ model DealStageHistory {
   @@index([dealId, enteredAt])
   @@index([stageId, enteredAt])
   @@map("deal_stage_history")
+}
+
+/// Every «Ответственный» change the sync has seen, from 2026-10-06.
+///
+/// The portal keeps this history on its timeline but no REST method returns
+/// it (`crm.stagehistory.list` is stages only), so the sync records it: when
+/// a deal it reads again names another owner than the row holds, one row
+/// here. The sync reads changed deals about once a minute, so an owner who
+/// held a deal for less than that can be missed. `changedAt` is the deal's
+/// DATE_MODIFY at the read that saw the change. Nothing before 2026-10-06 can
+/// be recovered.
+model DealOwnerChange {
+  id             String   @id @default(cuid())
+  dealId         String
+  fromEmployeeId String?
+  toEmployeeId   String?
+  changedAt      DateTime
+  createdAt      DateTime @default(now())
+
+  deal         Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  fromEmployee Employee? @relation("OwnerChangeFrom", fields: [fromEmployeeId], references: [id], onDelete: SetNull)
+  toEmployee   Employee? @relation("OwnerChangeTo", fields: [toEmployeeId], references: [id], onDelete: SetNull)
+
+  @@index([dealId, changedAt])
+  @@map("deal_owner_change")
 }
 
 /// Telephony, from voximplant.statistic.get.

@@ -106,14 +106,21 @@ export class RegistrationRepository {
   }
 
   /**
-   * The Регистрация deals created each day, by the team their «Ответственный»
-   * heads — of two, the one they sit in, as `leadRopSql` reads a head — then,
-   * for a registrar whose portal name carries «rop» («Davlat imomaliyev 104
-   * rop», the client 2026-10-05), the ROP unit the portal lists them in
-   * (`department_member`; the primary first) — else null. Any other registrar
-   * sitting in a ROP's unit owns the deal as the desk, not as that ROP. Every
-   * stage, «Дубликат (лид)» included: the portal's filter. Served by the
-   * (pipelineId, createdAtSource) index.
+   * The Регистрация deals created each day, by the ROP they were handed to
+   * (the client 2026-10-06: «ропларни номига нечта сделка ўтаяпти», a deal
+   * stays the ROP's after it moves on). In order:
+   *
+   * 1. the team today's «Ответственный» stands for (`bezkvalOwnerRopSql`);
+   * 2. a deal someone else opened, now with a seller whose PRIMARY unit is a
+   *    ROP's: that ROP — the ROP passed it on. A registrar's primary unit is
+   *    Регистрация, so the desk stays out; a deal the seller opened is theirs,
+   *    not handed over; an unknown opener (rows before 2026-10-06 the sync has
+   *    not re-read) is not counted;
+   * 3. the last owner change to a ROP the sync recorded (`deal_owner_change`,
+   *    from 2026-10-06) — the deal went on to the desk or back office;
+   *
+   * else null. Every stage, «Дубликат (лид)» included: the portal's filter.
+   * Served by the (pipelineId, createdAtSource) index.
    */
   static bezkvalDaysSql(): string {
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
@@ -122,19 +129,18 @@ export class RegistrationRepository {
       SELECT
         (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
         COALESCE(
-          (SELECT ${InsightsRepository.ropNameSql('h."name"')}
-             FROM "department" h
-            WHERE h."headId" = d."employeeId" AND h."isActive"
-              AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
-            ORDER BY (h."id" = e."departmentId") DESC, h."name"
-            LIMIT 1),
-          (SELECT ${InsightsRepository.ropNameSql('md."name"')}
-             FROM "department_member" m
-             JOIN "department" md ON md."id" = m."departmentId" AND md."isActive"
-            WHERE m."employeeId" = d."employeeId"
-              AND e."fullName" ~* '(^|[^[:alpha:]])rop([^[:alpha:]]|$)'
-              AND ${InsightsRepository.ropNameSql('md."name"')} IS NOT NULL
-            ORDER BY m."isPrimary" DESC, md."name"
+          ${RegistrationRepository.bezkvalOwnerRopSql('e')},
+          (SELECT ${InsightsRepository.ropNameSql('dep."name"')}
+             FROM "department" dep
+            WHERE dep."id" = e."departmentId" AND dep."isActive"
+              AND d."createdByEmployeeId" IS NOT NULL
+              AND d."createdByEmployeeId" <> d."employeeId"),
+          (SELECT x.rop
+             FROM "deal_owner_change" c
+             JOIN "employee" he ON he."id" = c."toEmployeeId"
+             CROSS JOIN LATERAL (SELECT ${RegistrationRepository.bezkvalOwnerRopSql('he')} AS rop) x
+            WHERE c."dealId" = d."id" AND x.rop IS NOT NULL
+            ORDER BY c."changedAt" DESC, c."createdAt" DESC
             LIMIT 1)
         ) AS rop,
         count(*)::bigint AS leads
@@ -143,6 +149,33 @@ export class RegistrationRepository {
       LEFT JOIN "employee" e ON e."id" = d."employeeId"
       WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
       GROUP BY 1, 2`
+  }
+
+  /**
+   * The ROP an owner (the `employee` row aliased `o`) stands for in «Безквал»:
+   * the team they head — of two, the one they sit in, as `leadRopSql` reads a
+   * head — then, for a registrar whose portal name carries «rop» («Davlat
+   * imomaliyev 104 rop», the client 2026-10-05), the ROP unit the portal lists
+   * them in (`department_member`; the primary first) — else null. Any other
+   * registrar sitting in a ROP's unit owns the deal as the desk, not as that ROP.
+   */
+  private static bezkvalOwnerRopSql(o: string): string {
+    return `COALESCE(
+            (SELECT ${InsightsRepository.ropNameSql('h."name"')}
+               FROM "department" h
+              WHERE h."headId" = ${o}."id" AND h."isActive"
+                AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
+              ORDER BY (h."id" = ${o}."departmentId") DESC, h."name"
+              LIMIT 1),
+            (SELECT ${InsightsRepository.ropNameSql('md."name"')}
+               FROM "department_member" m
+               JOIN "department" md ON md."id" = m."departmentId" AND md."isActive"
+              WHERE m."employeeId" = ${o}."id"
+                AND ${o}."fullName" ~* '(^|[^[:alpha:]])rop([^[:alpha:]]|$)'
+                AND ${InsightsRepository.ropNameSql('md."name"')} IS NOT NULL
+              ORDER BY m."isPrimary" DESC, md."name"
+              LIMIT 1)
+          )`
   }
 
   /** The handed-out leads of `from`…`to` (inclusive) per ROP team × seller. */

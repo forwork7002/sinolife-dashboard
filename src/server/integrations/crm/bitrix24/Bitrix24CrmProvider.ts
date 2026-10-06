@@ -264,7 +264,7 @@ export function dealUtm(row: Readonly<Record<string, unknown>>): Record<string, 
 
 const DEAL_SELECT = [
   'ID', 'TITLE', 'CATEGORY_ID', 'STAGE_ID', 'STAGE_SEMANTIC_ID',
-  'OPPORTUNITY', 'CURRENCY_ID', 'ASSIGNED_BY_ID', 'CONTACT_ID',
+  'OPPORTUNITY', 'CURRENCY_ID', 'ASSIGNED_BY_ID', 'CREATED_BY_ID', 'CONTACT_ID',
   'SOURCE_ID', 'DATE_CREATE', 'DATE_MODIFY', 'CLOSEDATE', 'CLOSED',
   'IS_RETURN_CUSTOMER',
   ...UF_FIELDS,
@@ -1779,6 +1779,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
       leadDistributedOn: calendarDate(d[UF.LEAD_DISTRIBUTED_ON]),
       aiQualifiedAt: toDate(d[UF.AI_QUALIFIED_AT]),
       leadRopExternalId: portalUserId(d[UF.LEAD_ROP]),
+      createdByExternalId: portalUserId(d.CREATED_BY_ID),
       repeatLead: repeatLeadKind(d[UF.REPEAT_LEAD], this.label(UF.REPEAT_LEAD, d[UF.REPEAT_LEAD])),
       isReturnCustomer: d.IS_RETURN_CUSTOMER === 'Y',
       createdAtSource: toDate(d.DATE_CREATE) ?? new Date(),

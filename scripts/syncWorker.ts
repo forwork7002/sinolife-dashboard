@@ -413,13 +413,17 @@ async function pruneSyncLog(db: PrismaClient): Promise<void> {
  * sheet is a calendar month, so everything modified since 1 September is
  * re-read — a superset of the lead-cohort window, so that request loses
  * nothing by being replaced.
+ *
+ * NOW (2026-10-06) for «Безквал»: `deal.createdByEmployeeId` (CREATED_BY_ID),
+ * which tells a deal handed to a ROP's seller from one the seller opened. The
+ * month grid reaches back into September, so the same window again.
  */
 /** The day contact relinking shipped; see the startup read of `lastSweepAt`. */
 const CONTACT_RELINK_SINCE = new Date('2026-09-25T00:00:00Z')
 
 const DEALS_BACKFILL: DealsBackfill | null = {
   since: new Date('2026-09-01T00:00:00+05:00'),
-  requestedAt: new Date('2026-09-29T00:00:00+05:00'),
+  requestedAt: new Date('2026-10-06T00:00:00+05:00'),
 }
 
 /**

@@ -233,6 +233,8 @@ export interface RawDeal extends ExternalRecord {
   readonly aiQualifiedAt?: Date
   /** «РОП (Первичка)» — the ROP's portal user id; resolved to an employee on write. */
   readonly leadRopExternalId?: string
+  /** CREATED_BY_ID — who opened the deal; resolved to an employee on write. */
+  readonly createdByExternalId?: string
   /** «Такрор лид»; undefined is a new lead. */
   readonly repeatLead?: 'BOUGHT' | 'PROCESSING' | 'OTHER'
   readonly isReturnCustomer?: boolean
