@@ -404,7 +404,7 @@ export function QueueBand({
         picker's Oy / Yil send a custom window, which `fullUnitWindow` passes
         through unchanged — so «Sana → Yil → 2026» printed «oy yakuni» over
         what was this year's total ×1.001 with «Oyning 100% qismi oʻtdi». The
-        tile now says what `ForecastBand` below it says, from the payload.
+        tile now says what `ForecastBand` above it says, from the payload.
       */}
       <StatTile
         label="FAKT 2 · davr yakuni prognozi"
@@ -425,6 +425,15 @@ export function QueueBand({
         unit="money"
         money="full"
         status={status}
+        /*
+          TOO EARLY, OR NOTHING TO DIVIDE — told apart by the money, as
+          `ForecastBand` tells them apart, never by the 2% floor, which lives
+          on the server. `forecastMoney` refuses a zero as well as a period
+          under the floor, and a delivered order can carry no money, so
+          `wonOrders > 0` alone does not promise a figure to project: with
+          FAKT 2 at 0 soʻm a fortnight in, «prognoz uchun erta» would blame
+          the calendar for an empty column.
+        */
         hint={
           totals && data
             ? totals.wonOrders === 0
@@ -433,7 +442,9 @@ export function QueueBand({
                 ? `Davrning ${formatPercent(data.forecast.elapsedPercent, 0)} qismi oʻtdi — ${horizon} gacha, shu surʼatda davom etsa`
                 : data.forecast.elapsedPercent >= 100
                   ? 'davr yakunlangan — bu allaqachon natija'
-                  : 'davrning juda oz qismi oʻtdi — prognoz uchun erta'
+                  : totals.won.amount === 0
+                    ? `hozir ${formatFullUzs(totals.won.amount)} — prognoz uchun hali asos yoʻq`
+                    : 'davrning juda oz qismi oʻtdi — prognoz uchun erta'
             : undefined
         }
       />

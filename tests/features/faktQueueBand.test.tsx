@@ -83,6 +83,8 @@ function board(over: {
   open: number
   openOrders: number
   projected?: number | null
+  /** FAKT 2's money — September's by default. */
+  won?: number
   /** How much of the period is gone, and where it ends — September's by default. */
   elapsedPercent?: number
   windowEnd?: string
@@ -95,7 +97,7 @@ function board(over: {
       orders: over.orders,
       cohortOrders: over.cohortOrders,
       ordered: money(1_103_710_001),
-      won: money(666_820_000),
+      won: money(over.won ?? 666_820_000),
       wonOrders: over.wonOrders,
       open: money(over.open),
       openOrders: over.openOrders,
@@ -271,5 +273,49 @@ describe('the FAKT 2 run-rate', () => {
 
     expect(screen.getByText('hali yetkazilgan buyurtma yoʻq — prognoz uchun erta')).toBeDefined()
     expect(screen.queryByText(/shu surʼatda davom etsa/)).toBeNull()
+  })
+
+  /** September's band with no projection on it, at a given point of the period. */
+  const unprojected = (elapsedPercent: number, won?: number) =>
+    board({
+      orders: 669,
+      cohortOrders: 811,
+      wonOrders: 411,
+      lostOrders: 156,
+      lostAfterConfirmOrders: 29,
+      lostAfterConfirm: 46_350_000,
+      open: 390_540_001,
+      openOrders: 233,
+      projected: null,
+      elapsedPercent,
+      won,
+    })
+
+  it('says «erta» when too little of the period has passed to divide by', () => {
+    // Under the server's 2% floor, with money already delivered.
+    render(<QueueBand data={unprojected(1)} status="ready" />)
+
+    expect(screen.getByText('davrning juda oz qismi oʻtdi — prognoz uchun erta')).toBeDefined()
+    expect(screen.queryByText(/davr yakunlangan/)).toBeNull()
+  })
+
+  it('says the period is over when it is, rather than forecasting a total', () => {
+    render(<QueueBand data={unprojected(100)} status="ready" />)
+
+    expect(screen.getByText('davr yakunlangan — bu allaqachon natija')).toBeDefined()
+    expect(screen.queryByText(/prognoz uchun erta/)).toBeNull()
+  })
+
+  it('blames the empty column, not the calendar, when delivered orders carry no money', () => {
+    /*
+      `forecastMoney` refuses a zero as well as a young period, and delivered
+      orders can sum to 0 soʻm. A fortnight in, «prognoz uchun erta» would say
+      the calendar is the reason; the reason is that there is nothing to
+      divide — the words `ForecastBand` prints for the same absence.
+    */
+    render(<QueueBand data={unprojected(46.7, 0)} status="ready" />)
+
+    expect(screen.getByText('hozir 0 — prognoz uchun hali asos yoʻq')).toBeDefined()
+    expect(screen.queryByText(/prognoz uchun erta/)).toBeNull()
   })
 })
