@@ -24,8 +24,8 @@ export type ViewStatus = 'loading' | 'error' | 'ready'
 
 /**
  * Which of the three a block draws for its query: a skeleton, the error card
- * or the figures. Every screen asks this one function, so the rule below is
- * stated once.
+ * or the figures — the rule below, stated once. (A few blocks that already
+ * had it right spell it inline as `isError && !data`; same answer.)
  *
  * THE ERROR CARD IS FOR HAVING NOTHING TO SHOW. TanStack Query 5 keeps the
  * last good `data` when a refetch fails and still reports `isError`, so a
