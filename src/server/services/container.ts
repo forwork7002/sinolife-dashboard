@@ -23,6 +23,7 @@ import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import { RegistrationRepository } from '@/server/repositories/registrationRepository'
 import { RnpRepository } from '@/server/repositories/rnpRepository'
 import { RoistatRepository } from '@/server/repositories/roistatRepository'
+import { SverkaRepository } from '@/server/repositories/sverkaRepository'
 import { InboundCallsRepository } from '@/server/repositories/inboundCallsRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { AlertsService } from '@/server/services/alertsService'
@@ -43,6 +44,7 @@ import { ReklamaService } from './reklamaService'
 import { RegistrationService } from './registrationService'
 import { RnpService } from './rnpService'
 import { RoistatService } from './roistatService'
+import { SverkaService } from './sverkaService'
 import { InboundCallsService } from './inboundCallsService'
 
 const dealRepository = new DealRepository(prisma)
@@ -141,3 +143,9 @@ export const sellerBoardService = new SellerBoardService(
   insightsRepository,
   referenceRepository,
 )
+
+/*
+  «Sverka» (2026-10-06) — the queue cohort (insightsRepository, so FAKT 1 /
+  FAKT 2 are Savdo dinamikasi's) against MoySklad's orders. See sverkaService.ts.
+*/
+export const sverkaService = new SverkaService(insightsRepository, new SverkaRepository(prisma))

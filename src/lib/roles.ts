@@ -43,6 +43,9 @@ const ALL_ROUTES = [
   // endpoints refuse any account that is not company-wide.
   '/customers',
   '/logistics',
+  // Bitrix24 against MoySklad, every team's orders. ADMIN and MANAGER only by
+  // default, and the endpoint refuses any account that is not company-wide.
+  '/sverka',
   '/analytics/sales',
   '/confirmation',
   '/kpi',

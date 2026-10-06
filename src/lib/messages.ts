@@ -41,6 +41,7 @@ export const t = {
     leads: 'Lidlar',
     target: 'Target tahlili',
     roistat: 'Roistat',
+    sverka: 'Sverka (MoySklad)',
     /** Not one of the nine: account administration, shown only to an admin. */
     users: 'Foydalanuvchilar',
   },
@@ -92,6 +93,10 @@ export const t = {
     roistat: {
       title: 'Roistat — skvoznaya analitika',
       lead: 'Meta Ads rasxodidan Bitrix24 dagi lid, kval, buyurtma va sotuvgacha — bir oynada. Kunlar Toshkent vaqti boʻyicha.',
+    },
+    sverka: {
+      title: 'Sverka — Bitrix24 va MoySklad',
+      lead: 'Har bir buyurtma ikki tizimda: summa, holat, mahsulot va sotuvchi. Davr — buyurtma Tasdiqlashga tushgan kun (FAKT 1 bilan bir xil), Toshkent vaqti.',
     },
     calls: {
       title: 'Qoʻngʻiroqlar',

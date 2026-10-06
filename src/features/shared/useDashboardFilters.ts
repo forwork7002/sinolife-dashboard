@@ -323,6 +323,8 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   '/target',
   // «Roistat»: `src/app/roistat/page.tsx` reads no searchParams either.
   '/roistat',
+  // «Sverka»: `src/app/sverka/page.tsx` reads no searchParams either.
+  '/sverka',
   // «RNP jadvali»: `src/app/rnp/page.tsx` reads none either; its `?month=` / `?rop=` are written the same way.
   '/rnp',
 ])

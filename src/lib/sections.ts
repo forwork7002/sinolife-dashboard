@@ -45,6 +45,8 @@ export const SECTIONS = [
   { id: 'margin', route: '/margin', label: 'Yalpi marja', group: 'Tahlil' },
   { id: 'confirmation', route: '/confirmation', label: 'Tasdiqlash navbati', group: 'Bajarish' },
   { id: 'logistics', route: '/logistics', label: 'Logistika natijasi', group: 'Bajarish' },
+  // «Sverka» (2026-10-06): Bitrix24 against MoySklad, deal by deal.
+  { id: 'sverka', route: '/sverka', label: 'Sverka (MoySklad)', group: 'Bajarish' },
   { id: 'kpi', route: '/kpi', label: 'KPI rejalari', group: 'Jamoa' },
   { id: 'rnp', route: '/rnp', label: 'RNP jadvali', group: 'Jamoa' },
   { id: 'structure', route: '/structure', label: 'Kadrlar tuzilmasi', group: 'Jamoa' },
@@ -156,6 +158,12 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
     team and seller side by side on purpose.
   */
   'roistat',
+  /*
+    «SVERKA» (2026-10-06): every team's orders against the warehouse's, deal
+    by deal, with customers' sums and sellers' names — and MoySklad's side
+    has no employee of ours to narrow by. `analytics:read:all`.
+  */
+  'sverka',
   /*
     «SOTUVCHILAR OYLIGI» IS COMPANY-WIDE BECAUSE OF WHAT IT STATES, not
     because of what it can aggregate.

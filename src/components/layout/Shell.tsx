@@ -127,6 +127,7 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     items: [
       { href: '/confirmation', label: t.nav.confirmation, icon: CheckIcon },
       { href: '/logistics', label: t.nav.logistics, icon: TruckIcon },
+      { href: '/sverka', label: t.nav.sverka, icon: CompareIcon },
     ],
   },
   {
@@ -1840,6 +1841,16 @@ function TruckIcon() {
       <path d="M13 11h4l3 3v2.5h-7z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
       <circle cx="6" cy="18" r="1.7" stroke="currentColor" strokeWidth="1.7" />
       <circle cx="17" cy="18" r="1.7" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  )
+}
+
+/** Two ledgers side by side, an arrow each way — «Sverka». */
+function CompareIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 8h13M14 4.5L17.5 8 14 11.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 16H7M10 12.5L6.5 16 10 19.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

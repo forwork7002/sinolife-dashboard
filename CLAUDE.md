@@ -460,6 +460,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Roistat | `/roistat` (section `roistat`, 2026-10-05) | `roistat/RoistatPage` — the client's own Roistat page (rustamov0277-cmd.github.io/roistat) rebuilt from Meta + Bitrix24 only: 12 tiles vs the previous window, 11 cuts (Кампании → Адсеты → Объявления drill, Таргетолог, Форма, Источник, Товар, Регион, РОП, Продавец, Регистратор; «Дни» is drawn on Savdo dinamikasi as «Kunlar boʻyicha», 2026-10-05 — same `RoistatTable`, `RoistatService.days`), funnel + spend/ROAS chart, сум/$ on the CBU rate. **No UTM on the portal, so the Meta cuts carry Meta figures only**, and spend sits beside leads only on day / targetolog (account owner = form owner) / product (`columnsOf`, `domain/roistat/roistatCuts.ts`); hiring campaigns excluded everywhere | `/roistat/overview` | Roistat → Roistat (+ Reklama `campaignDays` for spend) | **the LEAD's day**: a Регистрация lead on `createdAtSource`; each Первичный отдел / Тасдиклаш / Доставка deal tied to its ORIGIN LEAD (same contact, ≤ 30 days before, WON first) and counted on that lead's day, else on its own creation. Orders = reached CONFIRMATION/REVENUE, sold = REVENUE WON («Target tahlili»'s counters). Meta: `meta_ad_insight_daily` (ad grain, new 2026-10-05) for the three Meta cuts, `meta_campaign_daily` for the money elsewhere |
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
+| Sverka | `/sverka` (section `sverka`, 2026-10-06) | `sverka/SverkaPage` — four Bitrix24 ↔ MoySklad pair tiles (FAKT 1, FAKT 2, Yoʻlda, Qaytgan) + «Toʻliq mos», the difference list (chips by issue, a row opens both sides), products by code, ROP teams | `/sverka/overview` (`analytics:read:all`) | Sverka → Insights (`sverkaCohort`), Sverka | **the arrival in `C4:NEW`** (`queued_at`) for the Bitrix24 side — FAKT 1 / FAKT 2 are Savdo dinamikasi's to the soʻm; each deal's MoySklad orders whatever their date. Plus MoySklad orders whose `moment` is in the window and whose deal is not in the cohort |
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
 | Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` + `PayrollTeams` — three tabs, «Haftalik», «15 kunlik» (1–15 / 16–oxiri) and «Oylik» (2026-10-05); sellers in one card per ROP, every figure against the like period before | `/payroll/weekly`, `/payroll/sellers` | Payroll → Insights (`deliveredSellerRows`) | **a payroll period, on the DELIVERY day** (2026-10-05) — a Monday-to-Sunday week (`week`, its Monday) or a calendar month / one half of it (`month` + `half`), resolved on the server. No dashboard preset reaches it |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) — the sellers' seats and rows carry medals, the teams' carry none — and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
@@ -1034,6 +1035,32 @@ Per-screen traps worth knowing before you touch one:
   production for August 2026: 3 222 entered, 2 873 Тасдиқланди (89.2%), 331
   Тасдиқланмади, 17 Тасдиқланмай чиқди, 1 still queued. Per-ROP was offered
   and DECLINED («faqat kompaniya boʻyicha») — do not add the columns unasked.
+- **Sverka** — added 2026-10-06 («bitrix24 bilan moy skladni solishtiramiz …
+  mahsulot … fakt 2 va fakt 1»). MoySklad is a SECOND SOURCE read directly:
+  `importMoyskladOrders` (`src/server/integrations/moysklad`, GET only — the
+  token can write) fills `moysklad_order` / `moysklad_order_item` from the
+  worker every `SYNC_MOYSKLAD_EVERY` ticks (3), off without `MOYSKLAD_TOKEN`;
+  every 10th read also sweeps deleted orders (refuses on a short listing or
+  > max(50, 5 %) gone). By hand: `npm run moysklad:import [-- --sweep]`. The
+  first, whole-table read is ~100 pages, ~6 min (measured 2026-10-06: 9 777
+  orders, 20 671 lines). **The two systems meet on the DEAL ID** — the
+  client's integration writes «ID сделки в BX» (and `code` «bx…») on every
+  order — never on a name or sum. **MoySklad's dates are Moscow time with no
+  offset** (+03:00, checked against a deal's portal timestamps). **Products
+  meet on CODE**: Bitrix24 XML_ID (`product.sku`) = MoySklad `externalCode`;
+  a deal sells trade OFFERS («Sinolife collagen marine kakao», 676), which
+  carry no XML_ID, so the reference pass now stores `product.parentExternalId`
+  (catalog offers block only) and the comparison reads the parent's sku.
+  Tolerances were read off 357 real orders (01–05.10): a sum differs only by
+  ≥ 1 soʻm (MoySklad keeps a discounted line's kopeck), sellers compare
+  trimmed and case-folded (24 trailing spaces). An order with no MoySklad
+  order is MISSING only past the warehouse — «Подготовка товара» / «Заказ в
+  мой склад» are `pending`. That first read found, for the record: 6 orders
+  «В пути» in MoySklad whose deal sits in Первичный отдел · Тасдикланмаган,
+  1 sum difference (1071484: an extra Sedana line in MoySklad), 1 seller,
+  19 orders with no deal id, 11 deals with two orders. Company-wide.
+  Checked end to end on a throwaway DB (real MoySklad + those 357 deals'
+  real stages/sums), NOT against production.
 - **Mijoz qaytishi** — **REWORKED ON 2026-09-15**, on the client's instruction
   («kogorta jadvalini … kuchaytirish … oddiylashtirish kerak, mijoz qaytishi
   boʻlimini toʻliqligicha yaxshilash»). Three things changed and each fixed a

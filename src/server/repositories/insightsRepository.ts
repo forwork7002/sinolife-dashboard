@@ -1082,6 +1082,32 @@ export interface RnpTeamDayRow {
   readonly refusedMinor: bigint
 }
 
+/**
+ * One order of the confirmation-queue cohort, as «Sverka» sets it beside
+ * MoySklad. The same cohort and the same FAKT 1 / FAKT 2 rule every other
+ * screen reads — see `sverkaCohort`.
+ */
+export interface SverkaDealRow {
+  readonly dealId: string
+  /** The Bitrix24 deal id — what MoySklad's order carries. */
+  readonly externalId: string | null
+  readonly amountMinor: bigint
+  readonly queuedAt: Date | null
+  /** In FAKT 1: Тасдиқланди or Тасдиқланмай чиқди. */
+  readonly fakt1: boolean
+  /** In FAKT 2: the deal's CURRENT stage is a delivery. */
+  readonly delivered: boolean
+  readonly outcome: string
+  /** `deal_stage."logisticsRole"` of the current stage, null off the delivery map. */
+  readonly logisticsRole: string | null
+  /** The current stage's portal id («C6:WON»). */
+  readonly stageExternalId: string | null
+  readonly stageName: string
+  /** «Продавец» as the portal stamped it on the deal (UF_CRM_1778416910). */
+  readonly sellerSource: string | null
+  readonly rop: string | null
+}
+
 /** One Регистрация lead whose phone reached FAKT 1, as `leadFakt1Clients` reads it. */
 export interface LeadFakt1ClientRow {
   /** Portal SOURCE_ID of the lead, or null for a lead with no source. */
@@ -3194,6 +3220,69 @@ export class InsightsRepository {
       agedMinor: money(r.aged_amount),
       medianDays: r.median_days === null ? null : Number(r.median_days),
     }))
+  }
+
+  /**
+   * «Sverka»: every order of the queue cohort, one row per deal — FAKT 1 and
+   * FAKT 2 flagged by the very constants `ratingSql` groups by, so the totals
+   * «Sverka» prints are Savdo dinamikasi's to the soʻm.
+   */
+  async sverkaCohort(window: ScopedWindow): Promise<readonly SverkaDealRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        deal_id: string
+        external_id: string | null
+        amount: MoneyText
+        queued_at: Date | null
+        fakt1: boolean
+        delivered: boolean
+        outcome: string
+        role: string | null
+        stage_external_id: string | null
+        stage_name: string
+        seller_source: string | null
+        rop: string | null
+      }[]
+    >(
+      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.sverkaCohortSql()}`,
+      window.start,
+      window.end,
+      InsightsRepository.scopeValue(window),
+    )
+    return rows.map((r) => ({
+      dealId: r.deal_id,
+      externalId: r.external_id,
+      amountMinor: money(r.amount),
+      queuedAt: r.queued_at,
+      fakt1: r.fakt1,
+      delivered: r.delivered,
+      outcome: r.outcome,
+      logisticsRole: r.role,
+      stageExternalId: r.stage_external_id,
+      stageName: r.stage_name,
+      sellerSource: r.seller_source,
+      rop: r.rop,
+    }))
+  }
+
+  /** The tail `sverkaCohort` puts after the queue prelude. */
+  private static sverkaCohortSql(): string {
+    return `
+    SELECT c.deal_id,
+           d."externalId" AS external_id,
+           d."amountMinor"::text AS amount,
+           c.queued_at,
+           (${InsightsRepository.FAKT1_OUTCOMES}) AS fakt1,
+           COALESCE(${InsightsRepository.faktDeliveredSql('ds."logisticsRole"')}, false) AS delivered,
+           c.outcome,
+           ds."logisticsRole"::text AS role,
+           ds."externalId" AS stage_external_id,
+           ds."name" AS stage_name,
+           d."operatorNameSource" AS seller_source,
+           c.rop
+      FROM scoped c
+      JOIN "deal" d ON d."id" = c.deal_id
+      JOIN "deal_stage" ds ON ds."id" = d."stageId"`
   }
 
   async logisticsCohort(window: ScopedWindow): Promise<LogisticsCohort> {
