@@ -30,6 +30,15 @@ describe('leadCohortWindow', () => {
     })
   })
 
+  it('never ends after today when the START is in the future (2026-10-06 audit)', () => {
+    // A day typed past the picker's max: swapped in as the end, it drew empty future rows.
+    expect(leadCohortWindow({ from: '2026-10-20', today: '2026-10-06' })).toEqual({ from: '2026-10-06', to: '2026-10-06' })
+    expect(leadCohortWindow({ from: '2026-10-20', to: '2026-10-03', today: '2026-10-06' })).toEqual({
+      from: '2026-10-03',
+      to: '2026-10-06',
+    })
+  })
+
   it(`keeps the end and trims the start past ${LEAD_COHORT_MAX_DAYS} days`, () => {
     const w = leadCohortWindow({ from: '2025-01-01', to: '2026-09-24', today: '2026-09-24' })
     expect(w.to).toBe('2026-09-24')

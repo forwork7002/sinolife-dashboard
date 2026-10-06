@@ -50,6 +50,8 @@ export function leadCohortWindow(input: { from?: string; to?: string; today: str
   let to = input.to && input.to < input.today ? input.to : input.today
   let from = input.from ?? shiftDay(to, -(LEAD_COHORT_DEFAULT_DAYS - 1))
   if (from > to) [from, to] = [to, from]
+  // A future START swapped in is an end past today (2026-10-06 audit: 14 empty future rows).
+  if (to > input.today) to = input.today
   const earliest = shiftDay(to, -(LEAD_COHORT_MAX_DAYS - 1))
   if (from < earliest) from = earliest
   return { from, to }
