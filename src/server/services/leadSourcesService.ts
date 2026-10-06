@@ -906,6 +906,15 @@ const scanCache = processWide('scanCache', () => ttlCache<WindowScans>(120_000, 
   behind no reader, a few seconds longer cost nobody anything. A reader's
   cold miss still runs them all at once. The Meta reads are not memoised,
   so there is nothing of them to warm.
+
+  THE PRICE, ONCE PER DEPLOY (2026-10-06 review). A new server's first tick
+  builds every memo cold this way, after RNP's first build (38.7 s on
+  production) and with FAKT 1 waited out in full, so it can outlast
+  `/api/health`'s `WARMING_GRACE_S` (75 s from start): the platform then
+  hands the new server its readers while «Lidlar» is still building, and a
+  reader shares a build in flight as the warmer shares a reader's. Accepted:
+  the grace only bounds how long a deploy waits, and the pacing is what
+  leaves the pool to the readers on every tick after.
 */
 export const LEADS_WARM_EVERY_MS = 3 * 60_000
 const LEADS_WARM_PRESETS: readonly PeriodPreset[] = ['today', 'this_month']

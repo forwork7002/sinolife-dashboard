@@ -30,6 +30,9 @@ import { firstWarmPending } from '@/server/services/rnpWarmer'
   start, then every 30 s, and restarts after 3 failures in a row: «warming»
   can fail the 30 s and 60 s probes at most, and the 90 s probe is past the
   grace whatever the build is doing, so a deploy is delayed, never failed.
+  «Lidlar»'s first build starts only after RNP's (38.7 s on production) and
+  goes two scans at a time, so it may still be running when the grace ends:
+  readers then share it (`LeadSourcesService`, «THE PRICE, ONCE PER DEPLOY»).
 */
 const WARMING_GRACE_S = 75
 
