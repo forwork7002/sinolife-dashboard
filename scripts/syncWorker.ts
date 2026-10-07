@@ -688,10 +688,10 @@ async function runRoistatImport(): Promise<void> {
     child.on('close', (code, signal) => {
       done(() => {
         if (code === 0) {
-          const changed = /(\d+)\s+ta oʻlchov oʻzgardi/.exec(tail)
-          console.log(
-            `  ${stamp()} roistat: ${changed ? `${changed[1]} oʻlchov yangilandi` : 'oʻzgarish yoʻq'}`,
-          )
+          // Only the snapshot's rate is written since 2026-10-07 (see
+          // scripts/roistatSnapshot.ts), so the verdict is the rate it wrote.
+          const rate = /\(= ([\d.]+) soʻm\/\$\)/.exec(tail)
+          console.log(`  ${stamp()} roistat: kurs ${rate ? `${rate[1]} soʻm/$` : 'yozildi'}`)
         } else if (code === null) {
           /*
             Killed by a signal — and WHICH signal is the whole diagnosis.
