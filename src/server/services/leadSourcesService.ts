@@ -55,6 +55,7 @@ import {
 import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, type PeriodPreset, periodLengthInDays, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import { type BrandFilter, type TargetProduct, brandMatches } from '@/server/domain/types'
+import { processWide } from '@/server/processWide'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
 import type {
   LeadSourcesRepository,
@@ -822,13 +823,10 @@ export function leadSourcesOverview(all: {
   warmer's builds filled memos no route read, and «Lidlar» stayed cold for
   its readers all the same. The warmers' first-build flag in `rnpWarmer.ts`
   is held this way for the same reason; `Symbol.for` hands both copies the
-  one key, `sinolife.leads.<memo>`. Under `next dev` a reloaded module finds
+  one key, `sinolife.leads.<memo>`, through the shared `processWide`
+  (`src/server/processWide.ts`). Under `next dev` a reloaded module finds
   them too, so a TTL edited there needs a server restart.
 */
-function processWide<T>(key: string, make: () => T): T {
-  const g = globalThis as Record<symbol, unknown>
-  return (g[Symbol.for(key)] ??= make()) as T
-}
 
 /*
   The Регистрация scan alone: «Targetologlar · kunlik» needs nothing else,
