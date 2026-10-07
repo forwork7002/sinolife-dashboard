@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
-import { ErrorState, LoadingSkeleton } from '@/components/states/States'
+import { ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type MoneyDto, apiGet } from '@/lib/api'
@@ -59,7 +59,7 @@ export function GroupPlanCard({ day, onDay }: { day: string; onDay: (day: string
         </div>
       </header>
       <div className="px-5 pb-5">
-        {report.isError && !data ? (
+        {statusOf(report) === 'error' ? (
           <ErrorState message={report.error instanceof Error ? report.error.message : undefined} onRetry={() => void report.refetch()} />
         ) : !data ? (
           <LoadingSkeleton rows={8} />

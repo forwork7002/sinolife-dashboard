@@ -3,7 +3,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react'
 
-import { ErrorState, LoadingSkeleton } from '@/components/states/States'
+import { ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
@@ -141,7 +141,7 @@ export function LeadSplitCard({ day, onDay }: { day: string; onDay: (day: string
           )}
         </div>
       </div>
-      {overview.isError && !data ? (
+      {statusOf(overview) === 'error' ? (
         <SplitError overview={overview} />
       ) : !data ? (
         <LoadingSkeleton rows={2} />
@@ -201,7 +201,7 @@ export function LeadWeekCard({ day }: { day: string }) {
         />
       }
     >
-      {overview.isError && !data ? <SplitError overview={overview} /> : (grid ?? <LoadingSkeleton rows={6} />)}
+      {statusOf(overview) === 'error' ? <SplitError overview={overview} /> : (grid ?? <LoadingSkeleton rows={6} />)}
     </ChartCard>
   )
 }

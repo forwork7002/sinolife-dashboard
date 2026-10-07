@@ -247,7 +247,7 @@ export function KpiPage() {
         className="card-hero brackets reveal px-5 py-5 sm:px-6"
         aria-label={t.cards.kpiAchievement}
       >
-        {!data && query.isError ? (
+        {status === 'error' ? (
           <ErrorState
             message={query.error instanceof ApiClientError ? query.error.message : undefined}
             onRetry={() => void query.refetch()}

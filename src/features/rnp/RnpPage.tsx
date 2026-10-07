@@ -3,7 +3,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
-import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
+import { EmptyState, ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { useCohortRop } from '@/features/cohort/useCohortRop'
 import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
@@ -71,8 +71,8 @@ export function RnpPage() {
   })
 
   const data = overview.data?.data
-  // A failed BACKGROUND refetch keeps the sheet it has (and a half-typed cell): the error card is for no data at all.
-  const status: Status = overview.isPending ? 'loading' : overview.isError && !data ? 'error' : 'ready'
+  // A failed BACKGROUND refetch keeps the sheet it has (and a half-typed cell): the error card is for no data at all, or a 401/403.
+  const status: Status = statusOf(overview)
   // How wide each column kind must be so that no figure is cut. Data only
   // exists in the browser, so the canvas is there when this runs.
   const minWidths = useMemo(
