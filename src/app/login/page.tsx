@@ -167,7 +167,9 @@ function LoginForm() {
             className="flex h-11 w-11 items-center justify-center rounded-xl text-base font-bold"
             style={{
               background: `linear-gradient(135deg, var(--series-1), color-mix(in oklab, var(--series-1) 55%, var(--series-7)))`,
-              color: 'var(--ink-on-series)',
+              // White in both themes, like the rail's wordmark (--ink-on-brand):
+              // --ink-on-series turns near-black in dark for the series chips.
+              color: 'var(--ink-on-brand)',
               boxShadow: '0 4px 14px -4px color-mix(in oklab, var(--series-1) 55%, transparent)',
             }}
             aria-hidden="true"
