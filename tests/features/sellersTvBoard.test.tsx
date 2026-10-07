@@ -17,8 +17,9 @@ import { formatFullUzs, formatUzs } from '@/lib/format'
  * nothing errors:
  *
  * - The seat says WHICH FACT put the person there. Places are decided by
- *   FAKT 2 and fall back to FAKT 1 when nobody has delivered, and the seat
- *   prints whichever figure it is showing. Production 2026-09-04: «Bugun»
+ *   the fact the switch reads — FAKT 1 when the board opens (2026-10-07),
+ *   FAKT 2 on a press — and the seat prints whichever figure it is showing.
+ *   Production 2026-09-04: «Bugun»
  *   printed 12 900 000 of confirmed money in the slot «Shu oy» printed
  *   3 300 000 of delivered — and the month read as smaller than the day.
  * - The rows continue the podium, they do not repeat it: the first three
@@ -108,19 +109,26 @@ function board(over: {
   } as unknown as SellerBoardDto
 }
 
+/**
+ * A column handed the DELIVERED reading outright: most fixtures below were
+ * written on it (their ranks are the service's FAKT 2 ranks, the seats'
+ * distances are FAKT 2 figures). The OPENING state is FAKT 1 and is held by
+ * `Board` below, which wires the page's own choice.
+ */
 const PROPS = {
   status: 'ready' as const,
   onRetry: () => {},
-  fakt: 'auto' as const,
+  fakt: 'fakt2' as const,
   onFakt: () => {},
 }
 
 /**
- * The page's own wiring: ONE choice, pressed from either heading.
- * `SellersPage` holds this state — see the block there for why it is not two.
+ * The page's own wiring: ONE choice, pressed from either heading, and FAKT 1
+ * when it opens — as `SellersPage` opens; see the block there for why it is
+ * neither two choices nor an 'auto'.
  */
 function Board({ data }: { data: SellerBoardDto }) {
-  const [fakt, setFakt] = useState<'auto' | 'fakt1' | 'fakt2'>('auto')
+  const [fakt, setFakt] = useState<'fakt1' | 'fakt2'>('fakt1')
   const props = { status: 'ready' as const, onRetry: () => {}, fakt, onFakt: setFakt }
   return (
     <>
@@ -153,7 +161,7 @@ const THIN = board({
   ],
 })
 
-/* «Bugun»: nothing delivered, so the places fall back to confirmed money. */
+/* «Bugun»: nothing delivered — read on FAKT 1, the places are confirmed money. */
 const FALLBACK = board({
   orders: 79,
   wonOrders: 0,
@@ -184,8 +192,8 @@ const RIPE = board({
   teamlessSellers: 1,
 })
 
-/* «Bugun» on the teams side: four teams, nothing delivered — the seats fall
-   back to FAKT 1, in the FAKT 1 order the service sends them in. */
+/* «Bugun» on the teams side: four teams, nothing delivered — read on FAKT 1,
+   in the FAKT 1 order the service sends them in. */
 const TEAM_FALLBACK = board({
   orders: 120,
   wonOrders: 0,
@@ -205,8 +213,8 @@ describe('what a seat says it is ranking on', () => {
     expect(screen.queryByText('FAKT 1 · tasdiqlangan')).toBeNull()
   })
 
-  it('names FAKT 1 when nobody has delivered yet', () => {
-    render(<SellersColumn data={FALLBACK} {...PROPS} />)
+  it('names FAKT 1 when the places were decided by confirmed money', () => {
+    render(<SellersColumn data={FALLBACK} {...PROPS} fakt="fakt1" />)
 
     expect(screen.getAllByText('FAKT 1 · tasdiqlangan').length).toBe(2)
     expect(screen.queryByText('FAKT 2 · yetkazilgan')).toBeNull()
@@ -368,7 +376,7 @@ describe('the rows under the seats', () => {
         seller('Farida 106', 5, 0, 0),
       ],
     })
-    render(<SellersColumn data={MORNING} {...PROPS} />)
+    render(<SellersColumn data={MORNING} {...PROPS} fakt="fakt1" />)
 
     const rows = within(screen.getByRole('table')).getAllByRole('row').slice(1)
     const cells = (row: HTMLElement) => within(row).getAllByRole('cell')
@@ -379,15 +387,18 @@ describe('the rows under the seats', () => {
       expect.stringContaining('Farida 106'),
     ])
 
-    // Confirmed money, nothing delivered: FAKT 2 stays a real «0».
+    // Confirmed money, nothing delivered: FAKT 1 first — the fact being read
+    // — and FAKT 2 stays a real «0» beside it, in the dash's muted ink since
+    // 2026-10-07 rather than the secondary ink a figure gets.
     const paid = cells(rows[0]!)
-    expect(paid[2]!.textContent).toBe('0')
-    expect(paid[3]!.textContent).toBe(formatFullUzs(2_000_000))
+    expect(paid[2]!.textContent).toBe(formatFullUzs(2_000_000))
+    expect(paid[3]!.textContent).toBe('0')
+    expect(paid[3]!.querySelector('span')!.style.color).toBe('var(--ink-muted)')
 
     for (const row of rows.slice(1)) {
-      const [rank, , fakt2, fakt1] = cells(row)
+      const [rank, , fakt1, fakt2] = cells(row)
       expect(rank!.textContent).toBe('—')
-      for (const money of [fakt2!, fakt1!]) {
+      for (const money of [fakt1!, fakt2!]) {
         expect(money.textContent).toBe('—')
         const dash = money.querySelector('span')!
         expect(dash.getAttribute('aria-label')).toBe('Hali puli yoʻq')
@@ -420,9 +431,9 @@ describe('the teams column', () => {
   })
 
   /*
-    THE STATE THE BOARD OPENS IN. The window is «Bugun» and delivery lags
-    confirmation by days, so for most of a working day no team has a FAKT 2
-    and the seats fall back to FAKT 1. The service used to order the teams by
+    THE STATE THE BOARD OPENS IN — FAKT 1. The window is «Bugun» and delivery
+    lags confirmation by days, so for most of a working day no team has a
+    FAKT 2 at all. The service used to order the teams by
     FAKT 2 alone and break the tie on the ROP's NAME, which seated «Asliddin»
     on 2 mln over «Gulzora» on 40 mln under a caption claiming FAKT 1 — and
     every distance behind the leader came out negative («Liderga
@@ -431,7 +442,7 @@ describe('the teams column', () => {
     order the seats were given is not the order they claim.
   */
   it('seats the teams by FAKT 1 when none has delivered, with no negative gap', () => {
-    render(<TeamsColumn data={TEAM_FALLBACK} {...PROPS} />)
+    render(<TeamsColumn data={TEAM_FALLBACK} {...PROPS} fakt="fakt1" />)
 
     expect(screen.getAllByText('FAKT 1 · tasdiqlangan').length).toBe(3)
     expect(screen.queryByText('FAKT 2 · yetkazilgan')).toBeNull()
@@ -489,8 +500,9 @@ const TIED = board({
 /*
   «Bugun», the day's first delivery: it is a teamless operator's, so the teams
   — which drop every slice with no ROP — have none of it, while the sellers'
-  list does. Resolved per column, «auto» lit FAKT 2 on the left and FAKT 1 on
-  the right under one choice.
+  list does. Resolved per column, the old «auto» lit FAKT 2 on the left and
+  FAKT 1 on the right under one choice; the board opens on FAKT 1 now and only
+  a press moves it, so the two columns can only ever light one fact.
 */
 const TEAMLESS_FIRST = board({
   orders: 40,
@@ -524,41 +536,50 @@ describe('reading the same board on the other fact', () => {
     koʻrish mumkin boʻlsin». A phone shows one column at a time, so a control
     over only one of them is unreachable from the other.
   */
-  it('draws both buttons in both headings, lit on the fact the data decides', () => {
+  it('draws both buttons in both headings, lit on FAKT 1 when the board opens', () => {
     render(<Board data={CROSSED} />)
 
     for (const id of ['tv-sellers', 'tv-teams'] as const) {
       expect(column(id).getByRole('button', { name: 'FAKT 1' }).getAttribute('aria-pressed')).toBe(
-        'false',
+        'true',
       )
       expect(column(id).getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed')).toBe(
-        'true',
+        'false',
       )
     }
   })
 
-  it('resolves «auto» once for both columns — the teams cannot read another fact', () => {
+  /*
+    THE OPENING FACT DOES NOT DEPEND ON THE DATA. The old 'auto' opened on
+    FAKT 2 the moment anybody had delivered — here a teamless operator — and,
+    resolved per column, lit FAKT 2 on the left and FAKT 1 on the right. Both
+    columns open on FAKT 1 whatever the payload holds, and both move together.
+  */
+  it('opens on FAKT 1 in both columns whatever has been delivered', () => {
     render(<Board data={TEAMLESS_FIRST} />)
 
+    for (const id of ['tv-sellers', 'tv-teams'] as const) {
+      expect(column(id).getByRole('button', { name: 'FAKT 1' }).getAttribute('aria-pressed')).toBe(
+        'true',
+      )
+    }
+    // Read on FAKT 1 the teams have a podium — confirmed money exists.
+    expect(seatsOf('tv-teams')[0]).toBe('Sevinch')
+    expect(column('tv-teams').queryByText(/Podium hali boʻsh/)).toBeNull()
+
+    // One press, both columns: read on FAKT 2 no team has delivered yet, and
+    // an empty podium is the honest answer.
+    press('tv-sellers', 'FAKT 2')
     for (const id of ['tv-sellers', 'tv-teams'] as const) {
       expect(column(id).getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed')).toBe(
         'true',
       )
     }
-    // Read on FAKT 2, no team has delivered yet: an empty podium is the answer.
     expect(column('tv-teams').getByText(/Podium hali boʻsh/)).toBeDefined()
   })
 
-  it('re-seats the podium on confirmed money, and says so on every seat', () => {
+  it('opens seated on confirmed money, says so on every seat, and re-seats on a press', () => {
     render(<Board data={CROSSED} />)
-
-    expect(seatsOf('tv-sellers')).toEqual([
-      'Ashrafova 172 Marjona',
-      'Saparboyeva 110 Farida',
-      'Yusupova 139 Mahliyo',
-    ])
-
-    press('tv-sellers', 'FAKT 1')
 
     expect(seatsOf('tv-sellers')).toEqual([
       'Saparboyeva 110 Farida',
@@ -581,6 +602,15 @@ describe('reading the same board on the other fact', () => {
     expect(document.querySelector('#tv-sellers .tv-seat-card')?.textContent).toContain(
       `FAKT 2 ${formatFullUzs(90_000_000)}`,
     )
+
+    press('tv-sellers', 'FAKT 2')
+
+    expect(seatsOf('tv-sellers')).toEqual([
+      'Ashrafova 172 Marjona',
+      'Saparboyeva 110 Farida',
+      'Yusupova 139 Mahliyo',
+    ])
+    expect(column('tv-sellers').getAllByText(/yetkazilgan/).length).toBe(3)
   })
 
   /*
@@ -591,18 +621,18 @@ describe('reading the same board on the other fact', () => {
   it('moves the other column with it, pressed from either heading', () => {
     render(<Board data={CROSSED} />)
 
-    expect(seatsOf('tv-teams')[0]).toBe('Gulzora')
-
-    press('tv-sellers', 'FAKT 1')
     expect(seatsOf('tv-teams')[0]).toBe('Sevinch')
-    expect(column('tv-teams').getByRole('button', { name: 'FAKT 1' }).getAttribute('aria-pressed')).toBe(
+
+    press('tv-sellers', 'FAKT 2')
+    expect(seatsOf('tv-teams')[0]).toBe('Gulzora')
+    expect(column('tv-teams').getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed')).toBe(
       'true',
     )
 
-    press('tv-teams', 'FAKT 2')
-    expect(seatsOf('tv-sellers')[0]).toBe('Ashrafova 172 Marjona')
+    press('tv-teams', 'FAKT 1')
+    expect(seatsOf('tv-sellers')[0]).toBe('Saparboyeva 110 Farida')
     expect(
-      column('tv-sellers').getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed'),
+      column('tv-sellers').getByRole('button', { name: 'FAKT 1' }).getAttribute('aria-pressed'),
     ).toBe('true')
   })
 
@@ -613,14 +643,14 @@ describe('reading the same board on the other fact', () => {
   */
   it('reproduces the service ranking, shared ranks and skips included', () => {
     render(<Board data={TIED} />)
+    press('tv-sellers', 'FAKT 2')
 
     expect(ranksOf('tv-sellers')).toEqual(['1', '1', '3'])
     expect(column('tv-sellers').getByRole('table').querySelector('.tv-rank')?.textContent).toBe('4')
   })
 
-  it('keeps that rule when the two keys swap', () => {
+  it('keeps that rule on the opening fact, where the two keys are swapped', () => {
     render(<Board data={TIED} />)
-    press('tv-sellers', 'FAKT 1')
 
     // Charos alone on 90 mln confirmed, then the pair level on 30 mln — and
     // the rank behind a shared one still skips.

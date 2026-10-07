@@ -3592,7 +3592,7 @@ p {
  * are nowrap by necessity — a wrapped money figure is unreadable at a
  * distance — so a table that does not fit gets a horizontal scrollbar, and a
  * television has no pointer to move it: the right-hand columns would simply
- * be gone with nothing saying so. Rank, name, FAKT 2 and FAKT 1 are what the
+ * be gone with nothing saying so. Rank, name, FAKT 1 and FAKT 2 are what the
  * floor reads; the other two are for the desk, which has the width for them.
  */
 @media (min-width: 1280px) and (max-width: 1599px) {

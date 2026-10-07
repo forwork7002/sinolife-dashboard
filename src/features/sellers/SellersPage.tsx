@@ -68,9 +68,10 @@ import { t } from '@/lib/messages'
  * recognises from across a room — and the same ceremony chrome the board has
  * worn since the client asked for gold on top (see the PODIUM block in
  * globals.css: metal on rims, rings, washes and pedestals, never on a
- * value). Places are decided by the client's own rule, FAKT 2 first and
- * FAKT 1 when nobody has delivered, and every seat prints which of the two
- * put it there — the reasoning is on `PodiumBasis`.
+ * value). Places are decided by the fact the heading's switch reads —
+ * FAKT 1 when the board opens, FAKT 2 on a press (the client, 2026-10-07) —
+ * and every seat prints which of the two put it there; the reasoning is on
+ * `PodiumBasis`.
  *
  * THE LIST CONTINUES THE PODIUM, IT DOES NOT REPEAT IT: rows start at fourth
  * place, so the first three are on screen exactly once and the fold reaches
@@ -168,14 +169,21 @@ export function SellersPage() {
     the left and FAKT 2 on the right invites exactly the reconciliation
     `PodiumBasis` exists to prevent, one column deep instead of one slot deep.
 
-    'auto' is what the board did before the switch and is still what it opens
-    on — FAKT 2 the moment anybody has delivered, FAKT 1 while nobody has —
-    so a television nobody touches behaves as it always did. Local state, not
-    the URL, for the reason the phone's switch is: which fact somebody is
-    reading is not a question a pasted link needs to answer, and on this
-    dashboard a URL write is a server round trip (`SHALLOW_ROUTES`).
+    IT OPENS ON FAKT 1 — the client, 2026-10-07: «jadvalga kirganda FAKT 2
+    boʻlib turishi emas, FAKT 1 maʼlumot bilan turadi, keyin xohlasa FAKT 2 ga
+    oʻtkaziladi». Until then it opened on 'auto' — FAKT 2 the moment anybody
+    had delivered, FAKT 1 while nobody had — so «Shu oy» read as the delivered
+    order while the floor itself counts confirmed money first. Confirmed money
+    exists from the morning's first order and delivery lags it by days, so
+    FAKT 1 is also the fact that is never empty on a window somebody is
+    working in; whoever wants the delivered order is one press away. No third
+    'auto' state any more: it was the absence of a decision, and the decision
+    has been taken. Local state, not the URL, for the reason the phone's switch
+    is: which fact somebody is reading is not a question a pasted link needs
+    to answer, and on this dashboard a URL write is a server round trip
+    (`SHALLOW_ROUTES`).
   */
-  const [fakt, setFakt] = useState<FaktChoice>('auto')
+  const [fakt, setFakt] = useState<FaktChoice>('fakt1')
 
   return (
     <PageShell
@@ -283,39 +291,15 @@ export function SellersPage() {
  * carries nothing the seats cannot print.
  */
 /**
- * Which of the two facts the board is ranked and read on.
- *
- * 'auto' is not a third reading — it is the absence of a decision, and it
- * resolves to one of the other two on every render: FAKT 2 once anybody has
- * delivered, FAKT 1 until then. It has to stay reachable as the OPENING
- * state, or a board left on «Bugun» overnight opens pinned to a fact nobody
- * has any money in yet.
+ * Which of the two facts the board is ranked and read on — FAKT 1 on opening,
+ * see `SellersPage`. ONE value for both columns, handed down as it is. There
+ * is no 'auto' to resolve any more, and that is also what keeps the two
+ * headings on one fact: resolved per column, 'auto' once lit FAKT 2 on the
+ * left and FAKT 1 on the right under the one choice the page holds — the
+ * teams drop every slice with no ROP (`teamRows`), so a teamless operator's
+ * first delivery was FAKT 2 for the sellers and nothing for the teams.
  */
-export type FaktChoice = 'auto' | 'fakt1' | 'fakt2'
-
-/**
- * 'auto', resolved — ONCE FOR THE WHOLE PAYLOAD, never per column.
- *
- * FAKT 2 the moment anybody has delivered, FAKT 1 while nobody has. Delivery
- * takes days, so for most of a working day nobody has FAKT 2, and a podium
- * gated on it stood empty over a floor that had confirmed 148 mln soʻm
- * between 55 people.
- *
- * «ANYBODY» IS THE WHOLE BOARD, NOT THE COLUMN'S OWN ENTRIES. Each column
- * resolved from its own rows until 2026-10-06, and the two can disagree: the
- * teams drop every slice with no ROP (`teamRows`), so when the only delivered
- * money in the window was a teamless operator's, the sellers read FAKT 2 and
- * the teams FAKT 1 — the two headings lit different buttons under the ONE
- * choice the page holds. Both columns are handed the same payload, so asking
- * this of it is what keeps them on one fact.
- */
-function resolveFakt(fakt: FaktChoice, data: SellerBoardDto | undefined): 'fakt1' | 'fakt2' {
-  if (fakt !== 'auto') return fakt
-  const delivered =
-    (data?.rows ?? []).some((row) => row.won.amount > 0) ||
-    (data?.teams ?? []).some((team) => team.won.amount > 0)
-  return delivered ? 'fakt2' : 'fakt1'
-}
+export type FaktChoice = 'fakt1' | 'fakt2'
 
 export interface BoardEntry {
   readonly key: string
@@ -412,7 +396,7 @@ export function SellersColumn({
       id="tv-sellers"
       tone="sellers"
       parked={parked}
-      fakt={resolveFakt(fakt, data)}
+      fakt={fakt}
       onFakt={onFakt}
       glyph="trophy"
       title="Sotuvchilar"
@@ -446,7 +430,7 @@ export function TeamsColumn({
       id="tv-teams"
       tone="teams"
       parked={parked}
-      fakt={resolveFakt(fakt, data)}
+      fakt={fakt}
       onFakt={onFakt}
       glyph="shield"
       title="Komandalar"
@@ -518,23 +502,20 @@ function rankedBy(
  * FAKT 1 / FAKT 2 — the switch in each heading, and the only thing on this
  * board that answers a press.
  *
- * IT SHOWS THE RESOLVED FACT, NOT THE STORED CHOICE. The board opens on
- * 'auto', and an 'auto' that lit neither button would leave a reader unable
- * to tell which fact they are looking at from the control that names both —
- * with the seats' own caption two lines below saying it outright. So the
- * button that is lit is the one the board is actually ranked on, and pressing
- * it changes nothing but the fact that it is now pinned.
+ * THE LIT BUTTON IS THE FACT THE BOARD IS RANKED ON — the page's one choice,
+ * FAKT 1 when it opens — so a reader can tell which fact they are looking at
+ * from the control that names both, with the seats' own caption two lines
+ * below saying it outright.
  *
- * TWO BUTTONS AND NO WAY BACK TO 'auto'. A third state on a television is a
- * third thing to read from across a room, and the state it would return to is
- * only ever the opening one; a floor that pins FAKT 2 at nine in the morning
+ * TWO BUTTONS, TWO STATES. A third state on a television is a third thing to
+ * read from across a room; a floor that presses FAKT 2 at nine in the morning
  * sees «Podium hali boʻsh» and the other button, lit, one press away.
  */
 function FaktSwitch({
   fakt,
   onFakt,
 }: {
-  fakt: 'fakt1' | 'fakt2'
+  fakt: FaktChoice
   onFakt: (choice: FaktChoice) => void
 }) {
   return (
@@ -542,8 +523,8 @@ function FaktSwitch({
       `data-fakt` IS WHAT MOVES THE LIT PILL. The thumb is one element on the
       track (`.tv-fakt::before`) rather than a background each button paints
       for itself, so the press reads as a slide from one fact to the other.
-      The attribute carries the RESOLVED fact, the same one `aria-pressed`
-      below is answering — they cannot disagree.
+      The attribute carries the same fact `aria-pressed` below is answering —
+      they cannot disagree.
     */
     <div
       className="tv-fakt"
@@ -615,8 +596,8 @@ function BoardColumn({
    */
   tone: 'sellers' | 'teams'
   parked?: boolean
-  /** Already resolved, from the whole payload — see `resolveFakt`. */
-  fakt: 'fakt1' | 'fakt2'
+  /** The page's one choice — see `FaktChoice`. */
+  fakt: FaktChoice
   onFakt: (choice: FaktChoice) => void
   glyph: BoardIconName
   title: string
@@ -633,8 +614,6 @@ function BoardColumn({
   /*
     THE FACT FIRST, THEN THE ORDER — the heading's switch decides both, and
     it decides them in that sequence because the second follows the first.
-    'auto' arrives here already resolved, from the whole payload rather than
-    from this column's entries — see `resolveFakt`.
 
     THE TOP THREE OF WHOEVER HAS THE FACT BEING READ. It used to be the top
     three of whoever had ANY money, which on a window where two people had
@@ -677,7 +656,7 @@ function BoardColumn({
                 other. Both press the page's single choice; see the block in
                 `SellersPage`.
               */}
-              <FaktSwitch fakt={onDelivered ? 'fakt2' : 'fakt1'} onFakt={onFakt} />
+              <FaktSwitch fakt={fakt} onFakt={onFakt} />
             </div>
           )}
         </div>
@@ -1030,7 +1009,12 @@ function PodiumSeat({
             </p>
           )}
           <p>
-            {formatNumber(entry.wonOrders)} / {formatNumber(entry.orders)} buyurtma
+            {/* «delivered / taken» under a FAKT 2 reading; the orders taken
+                under FAKT 1 — «0 / 2 buyurtma» led a card about confirmed
+                money with a delivered-count zero (the client, 2026-10-07). */}
+            {onDelivered
+              ? `${formatNumber(entry.wonOrders)} / ${formatNumber(entry.orders)} buyurtma`
+              : `${formatNumber(entry.orders)} buyurtma`}
             {entry.conversionPercent !== null && (
               <>
                 <span className="mx-1">·</span>
@@ -1229,12 +1213,16 @@ function BoardList({
             {/* BOTH FACTS STAY ON EVERY ROW, whichever one is being read —
                 the switch moves the emphasis and the order, it never hides a
                 figure. The ranked column is the one marked `aria-sort`, so a
-                reader who cannot see the weight is told which it is. */}
-            <Th align="right" sorted={onDelivered}>
-              FAKT 2 · yetkaz.
-            </Th>
+                reader who cannot see the weight is told which it is.
+                FAKT 1 BEFORE FAKT 2 (2026-10-07, with the FAKT 1 opening): the
+                order the money moves — confirmed, then delivered — and the
+                first figure after a name is the fact the board opens ranked
+                on, not a column of the morning's zeros. */}
             <Th align="right" sorted={!onDelivered}>
               FAKT 1 · tasdiq.
+            </Th>
+            <Th align="right" sorted={onDelivered}>
+              FAKT 2 · yetkaz.
             </Th>
             {/* Dropped between 1280 and 1599 — `.tv-col-optional`. Under 1280
                 every column is kept and the list scrolls sideways instead. */}
@@ -1319,8 +1307,20 @@ function BoardList({
                 <td className="tabular text-right">
                   {ranked ? (
                     <span
+                      className={`tv-money ${onDelivered ? '' : 'font-semibold'}`}
+                      style={{ color: onDelivered ? asideInk(entry.ordered) : 'var(--ink-primary)' }}
+                    >
+                      {formatFullUzs(entry.ordered)}
+                    </span>
+                  ) : (
+                    <NoMoneyYet />
+                  )}
+                </td>
+                <td className="tabular text-right">
+                  {ranked ? (
+                    <span
                       className={`tv-money ${onDelivered ? 'font-semibold' : ''}`}
-                      style={{ color: onDelivered ? 'var(--ink-primary)' : 'var(--ink-secondary)' }}
+                      style={{ color: onDelivered ? 'var(--ink-primary)' : asideInk(entry.won) }}
                     >
                       {formatFullUzs(entry.won)}
                     </span>
@@ -1331,18 +1331,6 @@ function BoardList({
                     <span className="tv-small ml-1.5" style={{ color: 'var(--ink-muted)' }}>
                       {formatPercent(entry.sharePercent, 1)}
                     </span>
-                  )}
-                </td>
-                <td className="tabular text-right">
-                  {ranked ? (
-                    <span
-                      className={`tv-money ${onDelivered ? '' : 'font-semibold'}`}
-                      style={{ color: onDelivered ? 'var(--ink-secondary)' : 'var(--ink-primary)' }}
-                    >
-                      {formatFullUzs(entry.ordered)}
-                    </span>
-                  ) : (
-                    <NoMoneyYet />
                   )}
                 </td>
                 <td className="tv-col-optional tabular text-right">
@@ -1369,6 +1357,20 @@ function BoardList({
       </table>
     </div>
   )
+}
+
+/**
+ * The ink of the fact NOT being read, on a row that has money on the other.
+ *
+ * Secondary ink where there is a figure to read — the switch moves the
+ * emphasis, it never hides a figure — and the muted ink of the dash where
+ * the figure is a zero: on the FAKT 1 opening, FAKT 2 is a column of «0»
+ * down the whole morning, and forty of them in secondary ink stood as a
+ * grey column beside the money. Still a «0» and never a dash, because that
+ * zero is a measurement (see `NoMoneyYet`) — only its volume changes.
+ */
+function asideInk(figure: number): string {
+  return figure > 0 ? 'var(--ink-secondary)' : 'var(--ink-muted)'
 }
 
 /**

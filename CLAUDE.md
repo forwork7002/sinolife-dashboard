@@ -1650,9 +1650,18 @@ Per-screen traps worth knowing before you touch one:
   included. The choice lives on the page, not in the column, because a team's
   money is its sellers' money summed and two halves reading different facts is
   the reconciliation the seat's own FAKT caption exists to prevent, one column
-  deep. It
-  opens on 'auto' — the board's old behaviour, FAKT 2 once anybody has
-  delivered — so a television nobody touches is unchanged.
+  deep. **IT OPENS ON FAKT 1 — 2026-10-07**, the client: «jadvalga kirganda
+  FAKT 2 boʻlib turishi emas, FAKT 1 maʼlumot bilan turadi, keyin xohlasa
+  FAKT 2 ga oʻtkaziladi». The 'auto' opening state (FAKT 2 once anybody had
+  delivered, FAKT 1 until then) is gone with `resolveFakt`, so `FaktChoice`
+  is the two facts and nothing else and the two headings cannot light
+  different buttons. With it: the table prints **FAKT 1 before FAKT 2** (the
+  first figure after a name is the fact the board opens ranked on, not the
+  morning's column of zeros), the fact not being read prints its «0» in the
+  dash's muted ink (`asideInk` — still a «0», it is a measurement), and a seat
+  under a FAKT 1 reading says «N buyurtma» where «0 / N buyurtma» led with a
+  delivered-count zero. `sellersTvBoard.test.tsx` pins the opening on both
+  columns and the column order.
   **MEDALS, AND NO LEVELS — 2026-09-17** («uroven kerak emas, medallar
   qolsin»). Four redesigns of this board were rejected and the client asked
   for the pre-medal board (`912fc63`) back with medals on it; spec
