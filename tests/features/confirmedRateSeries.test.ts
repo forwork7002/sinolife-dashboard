@@ -106,7 +106,7 @@ describe('confirmedRateSeries', () => {
     expect(series.pooledRate).toBe(90)
     expect(series.low).toBeNull()
     expect(series.high).toBeNull()
-    expect(describeRateSpread(series)).toBeNull()
+    expect(describeRateSpread(series, 'day')).toBeNull()
   })
 
   it('is empty, with no rate at all, over no points', () => {
@@ -123,7 +123,7 @@ describe('describeRateSpread', () => {
       point('2026-09-04T00:00:00Z', { CONFIRMED: 3 }),
     ])
     expect(series.low).not.toBeNull()
-    expect(describeRateSpread(series)).toBeNull()
+    expect(describeRateSpread(series, 'day')).toBeNull()
   })
 
   it('states the worst and best bucket with the orders behind each, so a 0% of three orders is readable as noise', () => {
@@ -132,11 +132,34 @@ describe('describeRateSpread', () => {
       point('2026-09-07T00:00:00Z', { CONFIRMED: 2, REJECTED: 1 }),
     ])
 
-    const text = describeRateSpread(series)!
+    const text = describeRateSpread(series, 'day')!
     expect(text).toContain('66.7%')
     expect(text).toContain('7-sen')
     expect(text).toContain('3 ta')
     expect(text).toContain('96.0%')
     expect(text).toContain('1-sen')
+  })
+
+  it('names a week as the week it opens and a month as its month, never as one day', () => {
+    /*
+      Past two months a point is a week, past a year a month, each dated by
+      its first day — so «(5-yan, …)» named one day for seven, or for thirty.
+    */
+    const weeks = confirmedRateSeries([
+      point('2026-09-07T00:00:00Z', { CONFIRMED: 96, REJECTED: 4 }),
+      point('2026-09-14T00:00:00Z', { CONFIRMED: 2, REJECTED: 1 }),
+    ])
+    const weekly = describeRateSpread(weeks, 'week')!
+    expect(weekly).toContain('(14-sen haftasi, 3 ta buyurtma)')
+    expect(weekly).toContain('(7-sen haftasi, 100 ta buyurtma)')
+
+    const months = confirmedRateSeries([
+      point('2026-08-01T00:00:00Z', { CONFIRMED: 96, REJECTED: 4 }),
+      point('2026-09-01T00:00:00Z', { CONFIRMED: 2, REJECTED: 1 }),
+    ])
+    const monthly = describeRateSpread(months, 'month')!
+    expect(monthly).toContain('(2026-sen, 3 ta buyurtma)')
+    expect(monthly).toContain('(2026-avg, 100 ta buyurtma)')
+    expect(monthly).not.toContain('1-sen')
   })
 })

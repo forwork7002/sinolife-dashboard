@@ -8,7 +8,13 @@ import { DataTable, type Column } from '@/components/ui/DataTable'
 import { GaugeTile, RankBadge, StatTile } from '@/components/ui/Stat'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type SellerBoardDto, type SellerTeamRowDto, apiGet } from '@/lib/api'
-import { NO_VALUE, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
+import {
+  NO_VALUE,
+  formatDateShort,
+  formatFullUzs,
+  formatNumber,
+  formatPercent,
+} from '@/lib/format'
 import { FaktBasisNote, FaktFigure, QUEUE_BASIS } from '@/features/shared/faktVocabulary'
 import { SourceFaktTable } from '@/features/sales/SourceFaktTable'
 
@@ -309,6 +315,15 @@ export function QueueBand({
   const undecided =
     outsideFakt1 !== null && rejected !== null ? Math.max(0, outsideFakt1 - rejected) : null
 
+  /*
+    The last day INSIDE the projection, as `ForecastBand` prints it:
+    `windowEnd` is half-open, so one millisecond back is the date a reader
+    recognises — 30-sen, never 1-okt.
+  */
+  const horizon = data
+    ? formatDateShort(new Date(Date.parse(data.forecast.windowEnd) - 1).toISOString())
+    : null
+
   return (
     <div className="stagger grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
       <StatTile
@@ -374,18 +389,26 @@ export function QueueBand({
         }
       />
       {/*
-        THE RUN-RATE, AND IT IS OF THE MONTH RATHER THAN OF THE WINDOW.
+        THE RUN-RATE, AND IT IS OF THE PERIOD'S CALENDAR UNIT RATHER THAN OF
+        THE WINDOW.
 
         `forecastOf` measured its elapsed fraction against the report window
         until 2026-09-09, and a to-date preset is by construction almost
         entirely elapsed — «Shu oy» on the 9th read 94.4% and projected FAKT 2
         forward by six percent. It now measures against `fullUnitWindow`, the
         same call the revenue forecast has always used, so the two forecasts
-        on this page finally answer the same question about the same month.
+        on this page finally answer the same question about the same period.
         Null on a finished period, where a total is not a forecast.
+
+        «DAVR», NOT «OY», AND THE HORIZON IS NAMED (2026-10-06). The unit is
+        the month only on «Shu oy»: «Bugun» projects to tonight, and the
+        picker's Oy / Yil send a custom window, which `fullUnitWindow` passes
+        through unchanged — so «Sana → Yil → 2026» printed «oy yakuni» over
+        what was this year's total ×1.001 with «Oyning 100% qismi oʻtdi». The
+        tile now says what `ForecastBand` above it says, from the payload.
       */}
       <StatTile
-        label="FAKT 2 · oy yakuni prognozi"
+        label="FAKT 2 · davr yakuni prognozi"
         /*
           NOTHING TO PROJECT FROM UNTIL SOMETHING HAS LANDED.
 
@@ -403,13 +426,26 @@ export function QueueBand({
         unit="money"
         money="full"
         status={status}
+        /*
+          TOO EARLY, OR NOTHING TO DIVIDE — told apart by the money, as
+          `ForecastBand` tells them apart, never by the 2% floor, which lives
+          on the server. `forecastMoney` refuses a zero as well as a period
+          under the floor, and a delivered order can carry no money, so
+          `wonOrders > 0` alone does not promise a figure to project: with
+          FAKT 2 at 0 soʻm a fortnight in, «prognoz uchun erta» would blame
+          the calendar for an empty column.
+        */
         hint={
           totals && data
             ? totals.wonOrders === 0
               ? 'hali yetkazilgan buyurtma yoʻq — prognoz uchun erta'
               : data.forecast.fakt2
-                ? `Oyning ${formatPercent(data.forecast.elapsedPercent, 0)} qismi oʻtdi — shu surʼatda davom etsa`
-                : 'davr yakunlangan — bu allaqachon natija'
+                ? `Davrning ${formatPercent(data.forecast.elapsedPercent, 0)} qismi oʻtdi — ${horizon} gacha, shu surʼatda davom etsa`
+                : data.forecast.elapsedPercent >= 100
+                  ? 'davr yakunlangan — bu allaqachon natija'
+                  : totals.won.amount === 0
+                    ? `hozir ${formatFullUzs(totals.won.amount)} — prognoz uchun hali asos yoʻq`
+                    : 'davrning juda oz qismi oʻtdi — prognoz uchun erta'
             : undefined
         }
       />

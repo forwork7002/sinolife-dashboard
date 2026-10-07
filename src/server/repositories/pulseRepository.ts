@@ -1,28 +1,19 @@
 /**
- * Aggregation for the pulse (velocity/forecast/cycle/win-rate) and flow
- * (stage conversion/aging) endpoints.
+ * The Доставка kanban's query — all that is left here of the pulse and flow
+ * aggregates. Their endpoints, and the «Savdo pulsi» / «Bosqichlar qamrovi»
+ * blocks they fed, were deleted with their screens on 2026-09-10 (see
+ * `PulseService`); the file keeps its name because the delivery board's SQL
+ * lives in it.
  *
- * SQL for the same reason `InsightsRepository` is SQL: these questions touch
- * whole tables — every closed deal for a cycle percentile, every stage
- * transition for a dwell baseline — and the composite indexes
- * (`[countsAsRevenue, status, closedAt]`, `[dealId, enteredAt]`,
- * `[stageId, enteredAt]`) were built to answer them in the database.
- *
- * The three rules from `insightsRepository.ts` apply verbatim:
+ * Two rules from `insightsRepository.ts` apply verbatim:
  *   1. `countsAsRevenue` named explicitly wherever money is touched;
- *   2. BigInt money crosses the driver as text;
- *   3. instants are compared as instants — the period boundaries arrive
- *      already resolved in Asia/Tashkent, and cycle/dwell figures are
- *      INTERVALS, which no timezone can shift. Nothing here truncates to a
- *      calendar date, so no AT TIME ZONE dance is needed.
+ *   2. BigInt money crosses the driver as text.
  *
- * ONE RULE OF ITS OWN: unlike the older insights queries, these accept the
- * dashboard's people/source filters and the caller's authorisation scope.
- * Pulse feeds the overview hero band, which sits under the global filter row —
- * a hero number that ignores the filters beside it would be the "control that
- * appears to do nothing" bug in new clothes. Product/stage/text filters are
- * NOT applied (they would need joins these aggregates cannot honestly carry)
- * and the service documents that.
+ * It accepts the dashboard's people/source filters, the brand switch and the
+ * caller's authorisation scope (`PulseDealFilters` says which and why), and
+ * no reporting window at all: a kanban column is where orders stand now.
+ * Product/stage/text filters are NOT applied — the board has no honest join
+ * for them — and the service documents that.
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'

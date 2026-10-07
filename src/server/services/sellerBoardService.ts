@@ -299,8 +299,9 @@ export interface SellerBoardForecastDto extends SellerForecastDto {
    * whose tiles and confirmation-rate line reduce over every point they are
    * given — a forecast bucket has no queue states, so it would have dragged
    * that rate towards zero with nothing on screen saying a projection had been
-   * counted as a measurement. Empty for a finished period, and empty below the
-   * projection floor.
+   * counted as a measurement. Empty for a finished period, below the
+   * projection floor, and when neither fact has anything to project from; a
+   * fact with no projection of its own rides along as null.
    */
   readonly buckets: readonly FaktForecastPointDto[]
 }
@@ -316,8 +317,13 @@ export interface SellerBoardForecastDto extends SellerForecastDto {
 export interface FaktForecastPointDto {
   /** Bucket start as an ISO instant, exactly as `FaktTrendPointDto.date`. */
   readonly date: string
-  readonly fakt1: number
-  readonly fakt2: number
+  /**
+   * Null when that fact has no projection — nothing has landed in it yet —
+   * while the other one does. Never a zero: a dashed line at zero to the end
+   * of the month is the chart saying the month ends at nothing.
+   */
+  readonly fakt1: number | null
+  readonly fakt2: number | null
 }
 
 export interface SellerBoardDto {
@@ -1494,12 +1500,22 @@ function forecastOf(
       its own points — the two arrays are concatenated onto one axis by the
       chart, and a bucket serialised the other way would plot a hundredfold
       out with no error anywhere.
+
+      A FACT WITH NO PROJECTION CONTINUES AS NULL, NEVER AS ZERO. `spread`
+      hands back no buckets for it, and `?? 0n` here used to turn that into a
+      dashed line at zero to the end of the month — on «Shu oy» mornings, with
+      FAKT 1 projected and nothing delivered yet, the chart drew FAKT 2 ending
+      the month at nothing. With neither fact projected there is no
+      continuation at all.
     */
-    buckets: future.map((bucket, index) => ({
-      date: bucket.start.toISOString(),
-      fakt1: Number(fakt1Buckets[index] ?? 0n) / 100,
-      fakt2: Number(fakt2Buckets[index] ?? 0n) / 100,
-    })),
+    buckets:
+      company.fakt1 === null && company.fakt2 === null
+        ? []
+        : future.map((bucket, index) => ({
+            date: bucket.start.toISOString(),
+            fakt1: company.fakt1 === null ? null : Number(fakt1Buckets[index] ?? 0n) / 100,
+            fakt2: company.fakt2 === null ? null : Number(fakt2Buckets[index] ?? 0n) / 100,
+          })),
   }
 }
 
@@ -1515,6 +1531,14 @@ function forecastOf(
  */
 function forecastMoney(minor: bigint, elapsed: number, currency: string): MoneyDto | null {
   if (!(elapsed < 1)) return null
+  /*
+    NOTHING TO PROJECT FROM — the third absence above, which this function
+    did not test until 2026-10-06. `projectRevenueMinor` projects 0 as 0, so
+    «Bugun» at 15:00 with nothing delivered printed «0 soʻm» under every
+    FAKT 2 projection — the company's tiles, every team, every seller, every
+    source — while the queue band on the same page said «prognoz uchun erta».
+  */
+  if (minor === 0n) return null
   const projected = projectRevenueMinor(minor, elapsed)
   return projected === null ? null : toMoneyDto(money(projected, currency))
 }

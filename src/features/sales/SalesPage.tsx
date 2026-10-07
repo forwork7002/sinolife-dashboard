@@ -15,6 +15,7 @@ import {
 import { ConfirmationOutcomeSection } from '@/features/sales/ConfirmationOutcomeSection'
 import { DeliveryBoardSection } from '@/features/sales/DeliveryBoardSection'
 import { ForecastSection } from '@/features/sales/ForecastSection'
+import { trendGranularity } from '@/features/sales/trendGranularity'
 import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -155,24 +156,13 @@ export function SalesPage() {
   /**
    * What one point on the chart actually is.
    *
-   * READ OFF THE DATA, not off the preset. The server widens the bucket as the
-   * window grows — daily up to about two months, then weekly, then monthly —
-   * and the payload carries no granularity field, so the honest way to caption
-   * the chart is to measure the gap between the points it is drawing. Nothing
-   * to measure under two points, and then the caption drops the claim rather
-   * than guessing.
+   * READ OFF THE DATA, not off the preset — and off the WIDEST gap, not the
+   * first, which is clipped to the window's start. See `trendGranularity`.
+   * Nothing to measure under two points, and then the caption drops the claim
+   * rather than guessing.
    */
-  const bucketLabel = (() => {
-    if (faktPoints.length < 2) return null
-
-    const days =
-      (new Date(faktPoints[1]!.date).getTime() - new Date(faktPoints[0]!.date).getTime()) /
-      86_400_000
-
-    if (days <= 2) return t.chart.buckets.day
-    if (days <= 10) return t.chart.buckets.week
-    return t.chart.buckets.month
-  })()
+  const granularity = trendGranularity(faktPoints)
+  const bucketLabel = granularity === null ? null : t.chart.buckets[granularity]
 
   return (
     <PageShell

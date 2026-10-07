@@ -53,7 +53,6 @@ import {
 import type { Period } from '@/server/domain/period/period'
 import { type DealProductBrand, PRODUCT_BRAND_PATTERNS } from '@/server/domain/products/productBrand'
 import {
-  CONFIRMATION_OUTCOMES,
   type ConfirmationOrderSortValue,
   type ConfirmationOutcomeValue,
   type ConfirmationQueueMode,
@@ -564,9 +563,6 @@ export interface ConfirmationOrderRow {
   readonly dailyNo: number
   /** Id сделки — the Bitrix24 deal id, the key both systems look an order up by. */
   readonly bitrixId: string | null
-  /** `bx…` code parsed from the title, where the title carries one. */
-  readonly orderCode: string | null
-  readonly title: string
   readonly customerName: string | null
   /** Every number on the contact, in the portal's order. May be empty. */
   readonly customerPhones: readonly string[]
@@ -579,13 +575,9 @@ export interface ConfirmationOrderRow {
   readonly sourceName: string | null
   readonly amountMinor: bigint
   readonly currency: string
-  /** The stage the deal sits in NOW, which is what the outcome was read from. */
-  readonly stageName: string
   readonly outcome: ConfirmationOutcomeValue
-  /** Дата создания — when the order was placed. What the window selects on. */
+  /** Дата создания — when the order was placed. Shown in САНА's tooltip. */
   readonly createdAt: Date
-  /** The order's last confirmation move, which is where its status comes from. */
-  readonly movedAt: Date
   /**
    * When the order entered the queue this state belongs to.
    *
@@ -593,10 +585,6 @@ export interface ConfirmationOrderRow {
    * bot counts and so does this.
    */
   readonly queuedAt: Date | null
-  /** When it left the queue. Null while it is still in one. */
-  readonly decidedAt: Date | null
-  /** Queue time in hours, one decimal. Null while it is still waiting. */
-  readonly hoursToDecide: number | null
   /**
    * How many times this order has reached Тасдиклаш — over its WHOLE life,
    * not over the reporting window.
@@ -702,6 +690,20 @@ export interface ConfirmationRopRow {
   readonly unconfirmedShipped: number
   /** The same five populations in money. Summed for the tiles, not printed here. */
   readonly money: ConfirmationOutcomeMoneyMinor
+}
+
+/**
+ * One order still waiting in Тасдиклаш — the header bell's unit.
+ *
+ * The two facts that decide whether it counts for a reader and whether it is
+ * overdue, and nothing else: the bell counts these per reader and never prints
+ * one.
+ */
+export interface QueueBacklogRow {
+  /** The ОПЕРАТОР — `classified.operator_id`, the person every scope cuts on. */
+  readonly operatorId: string
+  /** The arrival in C4:NEW the wait is measured from. */
+  readonly queuedAt: Date | null
 }
 
 /**
@@ -3664,9 +3666,12 @@ export class InsightsRepository {
    *               the header and the rows behind it are the same set.
    *
    * ONE DEFINITION, TWO COHORTS. Everything below the cohort — the latest
-   * signal, the UNCONFIRMED_SHIPPED refinement, the ROP name, the Tashkent
-   * daily number — is shared, so the two readings can never drift apart in
-   * how they classify an order. Only which orders enter differs.
+   * signal, the UNCONFIRMED_SHIPPED refinement, the ROP name — is shared, so
+   * the two readings can never drift apart in how they classify an order.
+   * Only which orders enter differs. The Tashkent daily number is the same
+   * SQL too, but a number counts whoever ENTERED: over the backlog's waiting
+   * orders alone it is not the floor's №, so `confirmationQueue` sends none in
+   * that mode.
    */
   /**
    * The SQL fragment that narrows this whole board to one caller's people.
@@ -3674,9 +3679,15 @@ export class InsightsRepository {
    * Written once and placed in `classified`, the CTE where the operator is
    * resolved, because every reading of this board — the row list, its
    * pagination count, the five tiles, the ROP panel, the ROP filter's own
-   * options, the header bell, the rejection control chart and both of the
-   * sellers board's queue queries — is built on top of it. Narrowing anywhere
-   * else would be narrowing one of them.
+   * options, the rejection control chart and both of the sellers board's
+   * queue queries — is built on top of it. Narrowing anywhere else would be
+   * narrowing one of them.
+   *
+   * THE ONE EXCEPTION IS THE HEADER BELL, and it cuts on the same column.
+   * `queueBacklogRows` binds null here and `alertsService.countFor` narrows
+   * its rows per reader, on `operator_id`, with the same empty-list rule —
+   * because the scope lands after the all-time build, and one shared build
+   * beats one per ROP.
    *
    * NULL IS THE WHOLE COMPANY. An empty array is not: `= ANY('{}')` is false
    * for every row, which is the correct answer for a scope that admits nobody
@@ -4142,6 +4153,12 @@ export class InsightsRepository {
       reason the operator column exists is that this portal parks reassigned
       work in exactly those units.
 
+      ALL OF THIS HOLDS IN WINDOW MODE. The backlog cohort holds only the
+      orders still waiting — a decided order never enters it — so there the
+      same row_number() counts leftovers: the third of three still waiting
+      reads 003 where the floor and the window board read 010. The service
+      sends no number in that mode rather than that one.
+
       It costs nothing for the readings that do not show a number. They select
       from scoped, which never mentions numbered, and Postgres does not
       evaluate a CTE nothing references — so the tiles, the ROP panel, the ROP
@@ -4156,7 +4173,8 @@ export class InsightsRepository {
   }
 
   /**
-   * What the header's bell counts: still waiting, and waiting too long.
+   * What the header's bell counts: every order still waiting, whenever it
+   * arrived — one row each, for the WHOLE company.
    *
    * Built on the SAME cohort the board is, so the bell and the screen it
    * links to can never disagree — a header that says three and a page that
@@ -4165,36 +4183,40 @@ export class InsightsRepository {
    * opened the board on its own window, and the header read 7 over a page
    * that read 2 for a fortnight.
    *
-   * NOT TODAY'S WINDOW. `alertsService` passes an all-time span in backlog
-   * mode, and what keeps that affordable to fetch from every page every
-   * minute is the join to open deals inside `queueSql` — not a narrow date
-   * bound, which backlog mode by definition does not have.
+   * NOT TODAY'S WINDOW. `alertsService` passes an all-time span, and what
+   * keeps that affordable is the live-orders-only filter inside `queueSql`'s
+   * backlog cohort — not a narrow date bound, which backlog mode by definition
+   * does not have.
    *
-   * `overdue` is measured from the order's own arrival in the queue, not from
-   * the start of the day: an order that arrived ten minutes ago has not been
-   * waiting since midnight.
+   * ROWS, NOT A COUNT, AND NOBODY'S IN PARTICULAR (2026-10-06). This was
+   * `queuePressure`, which counted pending and overdue in SQL under the
+   * caller's scope — and the scope is applied only in `scoped`, AFTER `moves`
+   * has read every signal-stage history row since the epoch and `agg` has
+   * grouped them per deal. Every scope therefore paid the identical all-time
+   * build (1.7 s idle, 23.4 s under load on 2026-10-05), and the bell's memo,
+   * keyed per scope as it had to be, rebuilt it once per ROP with a tab open:
+   * about fourteen builds every three minutes on one vCPU, for one answer.
+   * The waiting orders are 74–265 rows, so they are read ONCE for everybody
+   * and each reader's two numbers are counted from them in `alertsService`,
+   * which mirrors `scopeMatch` on the same `operator_id`.
    *
-   * The `queued_at IS NOT NULL` guard below is now implied by the cohort — an
-   * order with no arrival is not on the board at all — and it is kept because
-   * the comparison beneath it is what the count means, and a reader should
-   * not have to prove the null case away before trusting the number.
+   * THE ONE CALLER THAT SAYS «EVERYBODY», AND THE TYPE MAKES IT SAY SO. Every
+   * other confirmation reading takes a `ScopedWindow`, whose required
+   * `restrictToEmployeeIds` is what forces a caller to say whose rows it
+   * wants. This one narrows that field to `null`: a bare `Period` does not
+   * type-check, and neither does a reader's narrowed scope — the one argument
+   * that would turn the memoised answer into the first reader's rows.
    */
-  async queuePressure(
-    period: ScopedWindow,
-    overdueAfterMinutes = 120,
-    mode: ConfirmationQueueMode = 'window',
-  ): Promise<{ pending: number; overdue: number }> {
-    const rows = await this.prisma.$queryRawUnsafe<{ pending: bigint; overdue: bigint }[]>(
-      `${InsightsRepository.queueSql(mode, '$4')}
-       SELECT
-         count(*) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::bigint AS pending,
-         count(*) FILTER (
-           WHERE c.outcome = 'CONFIRM_NEW'
-             AND c.queued_at IS NOT NULL
-             AND c.queued_at < $3
-         )::bigint AS overdue
+  async queueBacklogRows(
+    period: ScopedWindow & { readonly restrictToEmployeeIds: null },
+  ): Promise<QueueBacklogRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { operator_id: string; queued_at: Date | null }[]
+    >(
+      `${InsightsRepository.queueSql('backlog', '$3')}
+       SELECT c.operator_id, c.queued_at
        /*
-         classified, NOT numbered — this reading never shows the day's number.
+         scoped, NOT numbered — this reading never shows the day's number.
 
          numbered adds a row_number() partitioned by ROP and Tashkent day,
          which is a Sort plus a WindowAgg over the whole cohort. Postgres does
@@ -4204,50 +4226,23 @@ export class InsightsRepository {
          number; the tiles, the ROP panel, the ROP options, the header bell and
          the rejection chart do not.
        */
-       FROM scoped c`,
-      period.start,
-      period.end,
-      new Date(Date.now() - overdueAfterMinutes * 60_000),
-      InsightsRepository.scopeValue(period),
-    )
-
-    return { pending: int(rows[0]?.pending), overdue: int(rows[0]?.overdue) }
-  }
-
-  /** How the window's queue split across the five states. */
-  async confirmationOutcomes(
-    period: ScopedWindow,
-    filter: { rops?: readonly string[]; q?: string } = {},
-    mode: ConfirmationQueueMode = 'window',
-  ): Promise<ConfirmationOutcomeTotals> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      { outcome: ConfirmationOutcomeValue; orders: bigint }[]
-    >(
-      `${InsightsRepository.queueSql(mode, '$5')}
-       SELECT c.outcome, count(*)::bigint AS orders
          FROM scoped c
-         JOIN "deal" d ON d."id" = c.deal_id
-         LEFT JOIN "customer" cust ON cust."id" = d."customerId"
-        WHERE ${InsightsRepository.ropMatch('$3')}
-          ${InsightsRepository.SEARCH_SQL('$4')}
-        GROUP BY c.outcome`,
+        WHERE c.outcome = 'CONFIRM_NEW'`,
       period.start,
       period.end,
-      filter.rops && filter.rops.length > 0 ? [...filter.rops] : null,
-      filter.q ?? null,
+      /*
+        NULL, SAID BY THE SIGNATURE: the whole company. This answer is
+        memoised once for every reader and narrowed per reader afterwards, so
+        a scope here would be the first reader's scope served to everyone
+        after them.
+      */
       InsightsRepository.scopeValue(period),
     )
 
-    // Every state is present with a zero rather than absent. A state missing
-    // from the payload would render as an em dash — "not measured" — when the
-    // truth is "measured, and none".
-    const totals = Object.fromEntries(
-      CONFIRMATION_OUTCOMES.map((outcome) => [outcome, 0]),
-    ) as Record<ConfirmationOutcomeValue, number>
-
-    for (const row of rows) totals[row.outcome] = int(row.orders)
-
-    return totals
+    return rows.map((r) => ({
+      operatorId: r.operator_id,
+      queuedAt: r.queued_at === null ? null : new Date(r.queued_at),
+    }))
   }
 
   /**
@@ -4465,11 +4460,12 @@ export class InsightsRepository {
 
       WHAT IT HAS TO WORK OVER. The three queries that use this predicate join
       different things — the tiles and the ROP panel join only `deal` and
-      `customer`, the list also joins employee, stage and source. So the
-      predicate may only depend on what ALL THREE have: the `numbered` CTE
-      aliased `c`, `d` and `cust`. Everything else is reached by a correlated
-      EXISTS rather than an outer join, which keeps one definition of "search"
-      instead of three that can drift apart.
+      `customer`, the list also joins employee and source. So the
+      predicate may only depend on what ALL THREE have: the cohort aliased
+      `c` (`scoped` or `visible`, both carrying `operator_id`), `d` and
+      `cust`. Everything else is reached by a correlated EXISTS rather than an
+      outer join, which keeps one definition of "search" instead of three that
+      can drift apart.
 
       TWO KINDS OF MATCH. Text columns match on a plain substring. Phone and
       amount cannot: the phone is displayed masked and formatted (+99894***0037)
@@ -4494,9 +4490,22 @@ export class InsightsRepository {
             OR d."deliveryAddress" ILIKE '%' || ${param} || '%'
             OR c.rop ILIKE '%' || ${param} || '%'
             OR cust."name" ILIKE '%' || ${param} || '%'
+            /*
+              THE ОПЕРАТОР THE ROW PRINTS, NOT THE DEAL'S ASSIGNEE.
+
+              This matched d."employeeId" from 2026-08-29, and the column moved
+              to the operator on 2026-09-04 without it. The assignee drifts to
+              back office while an order is processed (556 July orders sat on
+              the head of Операцион), so searching a seller's name dropped
+              every reassigned order of theirs from the rows, the tiles and the
+              ROP panel, and searching the back-office head found orders each
+              labelled with somebody else. c.operator_id is the person the
+              classified CTE resolved for the ОПЕРАТОР column and the scope
+              alike, carried by both doors every caller selects from.
+            */
             OR EXISTS (
               SELECT 1 FROM "employee" emp
-               WHERE emp."id" = d."employeeId" AND emp."fullName" ILIKE '%' || ${param} || '%'
+               WHERE emp."id" = c.operator_id AND emp."fullName" ILIKE '%' || ${param} || '%'
             )
             OR EXISTS (
               SELECT 1 FROM "sales_source" ss
@@ -5825,7 +5834,7 @@ export class InsightsRepository {
    *
    * The page is cut BEFORE it is dressed: filter, sort and LIMIT run over the
    * bare cohort, and only the fifty survivors are joined to their customer,
-   * operator, stage, source and line items. Both readings come back as JSON
+   * operator, source and line items. Both readings come back as JSON
    * so a single row can carry two differently-shaped lists; timestamps arrive
    * as ISO text without a zone and are read back as the UTC they are.
    */
@@ -5856,8 +5865,6 @@ export class InsightsRepository {
       rop: string | null
       daily_no: number
       bitrix_id: string | null
-      order_code: string | null
-      title: string
       customer_name: string | null
       customer_phones: string | null
       employee_name: string
@@ -5867,12 +5874,9 @@ export class InsightsRepository {
       source_name: string | null
       amount_minor: MoneyText
       currency: string
-      stage_name: string
       outcome: ConfirmationOutcomeValue
       created_at: string
-      moved_at: string
       queued_at: string | null
-      decided_at: string | null
       queue_entries: number
       queue_returns: number
       previous_queued_at: string | null
@@ -5936,8 +5940,6 @@ export class InsightsRepository {
            p.rop,
            p.daily_no,
            d."externalId" AS bitrix_id,
-           d."orderCode" AS order_code,
-           d."title" AS title,
            cust."name" AS customer_name,
            -- Joined to text and split in TS: a text[] round-trips differently
            -- depending on the driver, a delimiter does not.
@@ -5955,9 +5957,8 @@ export class InsightsRepository {
            src."name" AS source_name,
            d."amountMinor"::text AS amount_minor,
            d."currency" AS currency,
-           st."name" AS stage_name,
            p.outcome,
-           p.created_at, p.moved_at, p.queued_at, p.decided_at,
+           p.created_at, p.queued_at,
            rep.entries AS queue_entries,
            rep.returns AS queue_returns,
            rep.previous_at AS previous_queued_at,
@@ -5965,7 +5966,6 @@ export class InsightsRepository {
          FROM page p
          JOIN "deal" d ON d."id" = p.deal_id
          JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
-         JOIN "deal_stage" st ON st."id" = d."stageId"
          LEFT JOIN "customer" cust ON cust."id" = d."customerId"
          LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
          -- LATERAL, not a join: four line items would otherwise become four
@@ -6039,14 +6039,11 @@ export class InsightsRepository {
       totalItems: int(row?.total_items ?? 0n),
       rows: (row?.page ?? []).map((r) => {
         const queuedAt = utcText(r.queued_at)
-        const decidedAt = utcText(r.decided_at)
         return {
           dealId: r.deal_id,
           rop: r.rop,
           dailyNo: r.daily_no,
           bitrixId: r.bitrix_id,
-          orderCode: r.order_code,
-          title: r.title,
           customerName: r.customer_name,
           customerPhones:
             r.customer_phones === null || r.customer_phones === ''
@@ -6059,22 +6056,13 @@ export class InsightsRepository {
           sourceName: r.source_name,
           amountMinor: money(r.amount_minor),
           currency: r.currency,
-          stageName: r.stage_name,
           outcome: r.outcome,
           createdAt: utcText(r.created_at)!,
-          movedAt: utcText(r.moved_at)!,
           queuedAt,
-          decidedAt,
           queueEntries: r.queue_entries,
           queueReturns: r.queue_returns,
           previousQueuedAt: utcText(r.previous_queued_at),
           queueHistory: visits(r.visits),
-          // Both ends or nothing: an order refused without ever being queued
-          // has no waiting time, and zero would read as "decided instantly".
-          hoursToDecide:
-            decidedAt === null || queuedAt === null
-              ? null
-              : Math.round(((decidedAt.getTime() - queuedAt.getTime()) / 3_600_000) * 10) / 10,
         }
       }),
       byRop: (row?.by_rop ?? []).map((r) => ({
@@ -6121,8 +6109,6 @@ export class InsightsRepository {
         rop: string | null
         daily_no: number
         bitrix_id: string | null
-        order_code: string | null
-        title: string
         customer_name: string | null
         customer_phones: string | null
         employee_name: string
@@ -6132,12 +6118,9 @@ export class InsightsRepository {
         source_name: string | null
         amount_minor: MoneyText
         currency: string
-        stage_name: string
         outcome: ConfirmationOutcomeValue
         created_at: Date
-        moved_at: Date
         queued_at: Date | null
-        decided_at: Date | null
         queue_entries: number
         queue_returns: number
         previous_queued_at: Date | null
@@ -6151,7 +6134,7 @@ export class InsightsRepository {
 
          The filter, the sort and the LIMIT run over the bare cohort — deal id,
          ROP, outcome, four timestamps — and only the fifty rows that survive
-         are joined to their customer, operator, stage, source and line items.
+         are joined to their customer, operator, source and line items.
          It used to be the other way round: every row in the window was fully
          dressed, including a LATERAL over deal_item per row, and then all but
          fifty thrown away. For a month that was three thousand decorated rows
@@ -6189,8 +6172,6 @@ export class InsightsRepository {
          c.rop AS rop,
          c.daily_no AS daily_no,
          d."externalId" AS bitrix_id,
-         d."orderCode" AS order_code,
-         d."title" AS title,
          cust."name" AS customer_name,
          -- Joined to text and split in TS: a text[] round-trips differently
          -- depending on the driver, a delimiter does not.
@@ -6208,12 +6189,9 @@ export class InsightsRepository {
          src."name" AS source_name,
          d."amountMinor"::text AS amount_minor,
          d."currency" AS currency,
-         st."name" AS stage_name,
          c.outcome AS outcome,
          c.created_at AS created_at,
-         c.moved_at AS moved_at,
          c.queued_at AS queued_at,
-         c.decided_at AS decided_at,
          rep.entries AS queue_entries,
          rep.returns AS queue_returns,
          rep.previous_at AS previous_queued_at,
@@ -6222,7 +6200,6 @@ export class InsightsRepository {
        FROM page c
        JOIN "deal" d ON d."id" = c.deal_id
        JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
-       JOIN "deal_stage" st ON st."id" = d."stageId"
        LEFT JOIN "customer" cust ON cust."id" = d."customerId"
        LEFT JOIN "sales_source" src ON src."id" = d."sourceId"
        -- LATERAL, not a join: four line items would otherwise become four rows
@@ -6253,15 +6230,12 @@ export class InsightsRepository {
       totalItems: rows.length === 0 ? 0 : int(rows[0]!.total_items),
       rows: rows.map((r) => {
         const queuedAt = r.queued_at === null ? null : new Date(r.queued_at)
-        const decidedAt = r.decided_at === null ? null : new Date(r.decided_at)
 
         return {
           dealId: r.deal_id,
           rop: r.rop,
           dailyNo: int(r.daily_no),
           bitrixId: r.bitrix_id,
-          orderCode: r.order_code,
-          title: r.title,
           customerName: r.customer_name,
           customerPhones:
             r.customer_phones === null || r.customer_phones === ''
@@ -6276,22 +6250,13 @@ export class InsightsRepository {
           sourceName: r.source_name,
           amountMinor: money(r.amount_minor),
           currency: r.currency,
-          stageName: r.stage_name,
           outcome: r.outcome,
           createdAt: new Date(r.created_at),
-          movedAt: new Date(r.moved_at),
           queuedAt,
-          decidedAt,
           queueEntries: int(r.queue_entries),
           queueReturns: int(r.queue_returns),
           previousQueuedAt: r.previous_queued_at === null ? null : new Date(r.previous_queued_at),
           queueHistory: visits(r.visits),
-          // Both ends or nothing: an order refused without ever being queued
-          // has no waiting time, and zero would read as "decided instantly".
-          hoursToDecide:
-            decidedAt === null || queuedAt === null
-              ? null
-              : Math.round(((decidedAt.getTime() - queuedAt.getTime()) / 3_600_000) * 10) / 10,
         }
       }),
     }

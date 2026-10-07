@@ -1,5 +1,6 @@
+import type { TrendGranularity } from '@/features/sales/trendGranularity'
 import type { ConfirmationOutcome, FaktTrendPointDto } from '@/lib/api'
-import { formatDateShort, formatNumber, formatPercent } from '@/lib/format'
+import { formatDateShort, formatMonth, formatNumber, formatPercent } from '@/lib/format'
 
 /**
  * The five states of the confirmation queue, as Savdo dinamikasi prints them.
@@ -105,13 +106,28 @@ export function confirmedRateSeries(points: readonly FaktTrendPointDto[]): Confi
  * The count is the half that stops a misreading: 0% of three orders on a
  * Sunday is not the floor's worst day, and a reader who is shown only the
  * percentage has no way to know that.
+ *
+ * THE BUCKET IS NAMED AS WHAT IT IS (2026-10-06). A point is a day only up to
+ * two months; past that it is a week or a month dated by its first day, and
+ * «Eng past: 80% (5-yan, …)» over weekly points named one day for seven. A
+ * week reads «5-yan haftasi», a month «2026-yan». REQUIRED, like the chart's
+ * own `granularity`: a forgotten argument would print days again, silently.
  */
-export function describeRateSpread(series: ConfirmedRateSeries): string | null {
+export function describeRateSpread(
+  series: ConfirmedRateSeries,
+  granularity: TrendGranularity | null,
+): string | null {
   const { low, high } = series
   if (!low || !high || low.rate === null || high.rate === null) return null
   // Every bucket at one rate is no spread: the line already says it, and a
   // caption naming the same day twice as both worst and best reads as a bug.
   if (low.rate === high.rate) return null
-  const at = (p: RatePoint) => `${formatDateShort(p.date)}, ${formatNumber(p.cohortOrders)} ta buyurtma`
+  const bucket = (iso: string) =>
+    granularity === 'week'
+      ? `${formatDateShort(iso)} haftasi`
+      : granularity === 'month'
+        ? formatMonth(iso)
+        : formatDateShort(iso)
+  const at = (p: RatePoint) => `${bucket(p.date)}, ${formatNumber(p.cohortOrders)} ta buyurtma`
   return `Eng past: ${formatPercent(low.rate)} (${at(low)}) · eng yuqori: ${formatPercent(high.rate)} (${at(high)})`
 }

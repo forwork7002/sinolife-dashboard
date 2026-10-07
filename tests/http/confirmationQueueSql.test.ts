@@ -872,3 +872,27 @@ describe('the queue names the team the deal was sold under', () => {
     expect(rop).toMatch(/COALESCE\(\s*CASE\s+WHEN d\."operatorTeamSource"/)
   })
 })
+
+/**
+ * THE SEARCH BOX FINDS THE PERSON THE ROW PRINTS.
+ *
+ * ОПЕРАТОР is `COALESCE(operatorEmployeeId, employeeId)` — the seller the
+ * portal snapshotted — and the box's placeholder promises «operator». The name
+ * branch matched the deal's ASSIGNEE until 2026-10-06, and this portal moves the
+ * assignee to back office while an order is processed: searching a seller's
+ * name dropped every reassigned order of theirs from the rows, the tiles and the
+ * ROP panel, and the back-office head's name found orders each labelled with
+ * somebody else. Nothing errored; the board simply answered a different
+ * question from the one its column was showing.
+ */
+describe('the search box', () => {
+  const search = bare(
+    (InsightsRepository as unknown as { SEARCH_SQL: (param: string) => string }).SEARCH_SQL('$4'),
+  )
+
+  it('matches a name against the operator the ОПЕРАТОР column prints', () => {
+    expect(search).toContain('emp."id" = c.operator_id')
+    // The assignee is not reachable from the box at all any more.
+    expect(search).not.toContain('d."employeeId"')
+  })
+})

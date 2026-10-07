@@ -83,6 +83,11 @@ function board(over: {
   open: number
   openOrders: number
   projected?: number | null
+  /** FAKT 2's money — September's by default. */
+  won?: number
+  /** How much of the period is gone, and where it ends — September's by default. */
+  elapsedPercent?: number
+  windowEnd?: string
 }): SellerBoardDto {
   return {
     rows: [],
@@ -92,7 +97,7 @@ function board(over: {
       orders: over.orders,
       cohortOrders: over.cohortOrders,
       ordered: money(1_103_710_001),
-      won: money(666_820_000),
+      won: money(over.won ?? 666_820_000),
       wonOrders: over.wonOrders,
       open: money(over.open),
       openOrders: over.openOrders,
@@ -105,8 +110,9 @@ function board(over: {
       teamlessSellers: 0,
     },
     forecast: {
-      elapsedPercent: 27.9,
-      windowEnd: '2026-10-01T00:00:00.000Z',
+      elapsedPercent: over.elapsedPercent ?? 27.9,
+      // 1 October in Tashkent — the first instant NOT projected.
+      windowEnd: over.windowEnd ?? '2026-09-30T19:00:00.000Z',
       /* FAKT 1 rides beside FAKT 2 since 2026-09-16 — the band still reads
          only the second, and `ForecastSection` is where both are printed. */
       fakt1: over.projected === undefined ? money(3_100_000_000) : null,
@@ -195,11 +201,48 @@ describe('«confirmed, then cancelled»', () => {
 })
 
 describe('the FAKT 2 run-rate', () => {
-  it('projects the month once something has landed', () => {
+  it('projects the period once something has landed, and names where it ends', () => {
     render(<QueueBand data={LIVE} status="ready" />)
 
     expect(figure(formatFullUzs(2_389_000_000))).toBe(1)
-    expect(screen.getByText('Oyning 28% qismi oʻtdi — shu surʼatda davom etsa')).toBeDefined()
+    expect(
+      screen.getByText('Davrning 28% qismi oʻtdi — 30-sen gacha, shu surʼatda davom etsa'),
+    ).toBeDefined()
+  })
+
+  it('never calls a window that is not a month the month end', () => {
+    /*
+      «Sana → Yil → 2026» on 6 October sends a CUSTOM window ending tonight,
+      which `fullUnitWindow` passes through unchanged: 99.9% elapsed, and a
+      projection to tonight. The tile printed «FAKT 2 · oy yakuni prognozi»
+      with «Oyning 100% qismi oʻtdi» over it. «Bugun» did the same with the
+      day's pace.
+    */
+    render(
+      <QueueBand
+        data={board({
+          orders: 669,
+          cohortOrders: 811,
+          wonOrders: 411,
+          lostOrders: 156,
+          lostAfterConfirmOrders: 29,
+          lostAfterConfirm: 46_350_000,
+          open: 390_540_001,
+          openOrders: 233,
+          elapsedPercent: 99.9,
+          // 7 October 00:00 in Tashkent: the window ends tonight.
+          windowEnd: '2026-10-06T19:00:00.000Z',
+        })}
+        status="ready"
+      />,
+    )
+
+    expect(screen.queryByText(/oy yakuni/)).toBeNull()
+    expect(screen.queryByText(/Oyning/)).toBeNull()
+    expect(screen.getByText('FAKT 2 · davr yakuni prognozi')).toBeDefined()
+    expect(
+      screen.getByText('Davrning 100% qismi oʻtdi — 6-okt gacha, shu surʼatda davom etsa'),
+    ).toBeDefined()
   })
 
   it('refuses to project from a cohort nothing has been delivered out of', () => {
@@ -229,6 +272,50 @@ describe('the FAKT 2 run-rate', () => {
 
     expect(screen.getByText('hali yetkazilgan buyurtma yoʻq — prognoz uchun erta')).toBeDefined()
     expect(screen.queryByText(/shu surʼatda davom etsa/)).toBeNull()
+  })
+
+  /** September's band with no projection on it, at a given point of the period. */
+  const unprojected = (elapsedPercent: number, won?: number) =>
+    board({
+      orders: 669,
+      cohortOrders: 811,
+      wonOrders: 411,
+      lostOrders: 156,
+      lostAfterConfirmOrders: 29,
+      lostAfterConfirm: 46_350_000,
+      open: 390_540_001,
+      openOrders: 233,
+      projected: null,
+      elapsedPercent,
+      won,
+    })
+
+  it('says «erta» when too little of the period has passed to divide by', () => {
+    // Under the server's 2% floor, with money already delivered.
+    render(<QueueBand data={unprojected(1)} status="ready" />)
+
+    expect(screen.getByText('davrning juda oz qismi oʻtdi — prognoz uchun erta')).toBeDefined()
+    expect(screen.queryByText(/davr yakunlangan/)).toBeNull()
+  })
+
+  it('says the period is over when it is, rather than forecasting a total', () => {
+    render(<QueueBand data={unprojected(100)} status="ready" />)
+
+    expect(screen.getByText('davr yakunlangan — bu allaqachon natija')).toBeDefined()
+    expect(screen.queryByText(/prognoz uchun erta/)).toBeNull()
+  })
+
+  it('blames the empty column, not the calendar, when delivered orders carry no money', () => {
+    /*
+      `forecastMoney` refuses a zero as well as a young period, and delivered
+      orders can sum to 0 soʻm. A fortnight in, «prognoz uchun erta» would say
+      the calendar is the reason; the reason is that there is nothing to
+      divide — the words `ForecastBand` prints for the same absence.
+    */
+    render(<QueueBand data={unprojected(46.7, 0)} status="ready" />)
+
+    expect(screen.getByText('hozir 0 — prognoz uchun hali asos yoʻq')).toBeDefined()
+    expect(screen.queryByText(/prognoz uchun erta/)).toBeNull()
   })
 })
 
