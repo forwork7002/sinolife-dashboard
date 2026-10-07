@@ -3,7 +3,7 @@ import { env } from '@/server/config/env'
 import { CALL_DATA_FLOOR, callWindowStart } from '@/lib/callQuality'
 import type { Period } from '@/server/domain/period/period'
 
-import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, sourceDescriptionSql } from './leadFormSql'
+import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 
 /**
  * Регистрация deals created on one day, from one source, sitting in one stage
@@ -110,13 +110,20 @@ export class LeadSourcesRepository {
         second pass over the window (as RNP's \`registrationDaysSql\`).
       */
       WITH reg AS MATERIALIZED (
-        SELECT d."createdAtSource" AS created, d."title" AS title, ${sourceDescriptionSql('d')} AS sd,
+        SELECT d."id" AS id, d."createdAtSource" AS created, d."title" AS title, ${sourceDescriptionSql('d')} AS sd,
+               ${replayActSql(sourceDescriptionSql('d'))} AS act,
                d."sourceId", d."stageId", d."status", d."aiQualifiedAt", NULLIF(btrim(d."productLine"), '') AS product_line
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
         WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       ),
-      ${formAliasOverSql('(SELECT r.sd, r.title FROM reg r) fd')}
+      ${formAliasOverSql('(SELECT r.sd, r.title FROM reg r) fd')},
+      /*
+        A late «Qayta zayavka» copy — a form filled days before the portal's
+        robot opened its deal — is no lead of the day it was opened (05.10:
+        1 071 of them). The same rule as «RNP jadvali» (\`replayedCteSql\`).
+      */
+      ${replayedCteSql('(SELECT r.id, r.created, r.act FROM reg r) q0', '$1')}
       SELECT
         /*
           ::text, never a bare ::date — node-postgres builds a DATE at LOCAL
@@ -142,6 +149,7 @@ export class LeadSourcesRepository {
       LEFT JOIN "deal_stage" st ON st."id" = r."stageId"
       LEFT JOIN "sales_source" s ON s."id" = r."sourceId"
       LEFT JOIN form_alias fa ON fa.sd = r.sd
+      WHERE NOT EXISTS (SELECT 1 FROM replayed rp WHERE rp.id = r.id)
       GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
       `,
       period.start,

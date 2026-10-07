@@ -50,6 +50,33 @@ export function replayActSql(sd: string): string {
 }
 
 /**
+ * The `replayed` CTE (without `WITH`): the ids of the late «Qayta zayavka»
+ * copies among `rows` — a relation aliased `q0` with the Регистрация deals'
+ * `id`, `created` and `act` (`replayActSql`). Live, the robot opens deals in
+ * act order, so a deal whose act is below one opened before it is a late
+ * copy. The running maximum starts from the day before `from` (the window's
+ * first instant, naive UTC), so a window that opens inside such a burst does
+ * not take its first copy for live. One home for «RNP jadvali» and «Lidlar».
+ */
+export function replayedCteSql(rows: string, from: string): string {
+  return `replayed AS (
+        SELECT q.id
+        FROM (
+          SELECT q0.id, q0.act,
+                 max(q0.act) OVER (ORDER BY q0.created, q0.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS before
+          FROM ${rows}
+          WHERE q0.act IS NOT NULL
+        ) q
+        WHERE q.act < GREATEST(q.before, (
+          SELECT max(${replayActSql(sourceDescriptionSql('pd'))})
+          FROM "deal" pd
+          JOIN "pipeline" pp ON pp."id" = pd."pipelineId" AND pp."role" = 'LEAD'
+          WHERE pd."createdAtSource" >= ${from} - interval '1 day' AND pd."createdAtSource" < ${from}
+        ))
+      )`
+}
+
+/**
  * The `form_alias` CTE (without `WITH`) over `rows` — a relation aliased
  * `fd` with an `sd` and a `title` column, Регистрация deals only: each
  * unambiguous short name of a form.

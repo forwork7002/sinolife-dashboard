@@ -34,7 +34,7 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
-import { dealFormTitleSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, sourceDescriptionSql } from './leadFormSql'
+import { dealFormTitleSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
 
 /** Deals handed to one ROP on one day. `rop` null: not handed to a ROP team. */
@@ -290,21 +290,12 @@ export class RnpRepository {
     */
     /*
       A LATE «QAYTA ZAYAVKA» IS NOT A LEAD OF THE DAY IT WAS OPENED
-      (`replayActSql`): 05.10.2026 18:00–20:00 the portal's robot opened 1 071
-      Регистрация deals for form fills of earlier days, and «Жами лид сони»
-      read 2 309 where the day had ~1 150. Live, the robot opens deals in act
-      order, so a deal whose act is below one opened before it is a late copy.
-      The running maximum starts from the day before the window, so a window
-      that opens inside such a burst does not take its first copy for live.
-      It is left out of the leads and the duplicates alike; its kval still
-      counts on the day it closed — the registrar did work it.
+      (`replayActSql`, `replayedCteSql`): 05.10.2026 18:00–20:00 the portal's
+      robot opened 1 071 Регистрация deals for form fills of earlier days, and
+      «Жами лид сони» read 2 309 where the day had ~1 150. It is left out of
+      the leads and the duplicates alike; its kval still counts on the day it
+      closed — the registrar did work it.
     */
-    const priorAct = `(
-          SELECT max(${replayActSql(sourceDescriptionSql('pd'))})
-          FROM "deal" pd
-          JOIN "pipeline" pp ON pp."id" = pd."pipelineId" AND pp."role" = 'LEAD'
-          WHERE pd."createdAtSource" >= ${lo} - interval '1 day' AND pd."createdAtSource" < ${lo}
-        )`
     return `
       WITH reg AS MATERIALIZED (
         SELECT d."id" AS id, d."createdAtSource" AS created, p."role"::text AS role, st."name" AS stage,
@@ -318,16 +309,7 @@ export class RnpRepository {
         WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
       ),
       ${formAliasOverSql(`(SELECT r.sd, r.title FROM reg r WHERE r.role = 'LEAD') fd`)},
-      replayed AS (
-        SELECT q.id
-        FROM (
-          SELECT r.id, r.act,
-                 max(r.act) OVER (ORDER BY r.created, r.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS before
-          FROM reg r
-          WHERE r.role = 'LEAD' AND r.act IS NOT NULL
-        ) q
-        WHERE q.act < GREATEST(q.before, ${priorAct})
-      ),
+      ${replayedCteSql(`(SELECT r.id, r.created, r.act FROM reg r WHERE r.role = 'LEAD') q0`, lo)},
       arms AS (
         SELECT ${day('r.created')} AS day,
                r.source_id,

@@ -91,8 +91,9 @@ describe('RnpRepository statements', () => {
     // 05.10.2026 18:00–20:00: 1 071 deals for form acts filled days earlier, measured on the portal.
     const sql = bare(RnpRepository.registrationDaysSql())
     expect(sql).toContain(`substring(d."metadata"->'utm'->>'SOURCE_DESCRIPTION' from '^Qayta zayavka \\(forma akt #([0-9]+)\\)')::bigint AS act`)
-    expect(sql).toMatch(/max\(r\.act\) OVER \(ORDER BY r\.created, r\.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING\)/)
-    expect(sql).toMatch(/WHERE r\.role = 'LEAD' AND r\.act IS NOT NULL/)
+    expect(sql).toMatch(/max\(q0\.act\) OVER \(ORDER BY q0\.created, q0\.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING\)/)
+    expect(sql).toContain(`(SELECT r.id, r.created, r.act FROM reg r WHERE r.role = 'LEAD') q0`)
+    expect(sql).toContain('WHERE q0.act IS NOT NULL')
     expect(sql).toMatch(/WHERE q\.act < GREATEST\(q\.before, \(/)
     expect(sql).toContain(`count(*) FILTER (WHERE r.role = 'LEAD' AND rp.id IS NULL AND NOT COALESCE(r.stage, '')`)
     expect(sql).toContain(`count(*) FILTER (WHERE r.role = 'LEAD' AND rp.id IS NULL AND COALESCE(r.stage, '')`)
