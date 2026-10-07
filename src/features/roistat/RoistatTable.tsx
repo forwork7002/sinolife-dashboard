@@ -4,6 +4,7 @@ import { type ReactNode, useId, useMemo, useState } from 'react'
 
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { ArrowDownGlyph, ArrowUpGlyph } from '@/components/ui/Icons'
+import { Select } from '@/components/ui/Select'
 import { RankBadge, StatusChip } from '@/components/ui/Stat'
 import { NO_VALUE, formatCents, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
@@ -435,28 +436,18 @@ function MobileSort({
       <label htmlFor={id} className="text-xs" style={muted}>
         Saralash
       </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="focusable min-h-[44px] min-w-0 flex-1 rounded-lg border px-2 text-[13px]"
-        style={{
-          background: 'var(--surface-raised)',
-          borderColor: 'var(--border-strong)',
-          color: 'var(--ink-primary)',
-        }}
-      >
+      <Select id={id} value={value} onChange={(e) => onChange(e.target.value)} height="touch" className="min-w-0 flex-1">
         {options.map((o) => (
           <option key={o.key} value={o.key}>
             {o.label}
           </option>
         ))}
-      </select>
+      </Select>
       <button
         type="button"
         onClick={onFlip}
         aria-label={order === 'desc' ? 'Kamayish tartibida — oʻsishga oʻtkazish' : 'Oʻsish tartibida — kamayishga oʻtkazish'}
-        className="focusable inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border"
+        className="focusable inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-panel-sm)] border"
         style={{ borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
       >
         {order === 'desc' ? <ArrowDownGlyph size={14} /> : <ArrowUpGlyph size={14} />}
