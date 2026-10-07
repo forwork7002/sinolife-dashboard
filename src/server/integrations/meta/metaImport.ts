@@ -23,9 +23,10 @@
  * the screens need — objective, the campaign / ad set / ad names,
  * conversations, reach — comes back on the Insights row itself.
  *
- * WHICH DAYS. An empty table reads from `META_HISTORY_FROM`; after that the
- * last `META_REFRESH_DAYS` days are re-read every run, because Meta keeps
- * revising a day's spend and leads for several days after it ends.
+ * WHICH DAYS. An account with no rows yet reads from `META_HISTORY_FROM`;
+ * after that its last `META_REFRESH_DAYS` days are re-read every run, because
+ * Meta keeps revising a day's spend and leads for several days after it ends.
+ * Per account, never one date for the table (see `importMetaSpend`).
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
@@ -180,7 +181,7 @@ export function grainStarts(
   }
 }
 
-/** First day to (re)read: the history start on an empty table, else a week back. */
+/** First day to (re)read: the history start with no rows yet, else a week back from the latest. */
 function sinceOf(latest: Date | null): string {
   const since = latest
     ? new Date(latest.getTime() - META_REFRESH_DAYS * 86_400_000).toISOString().slice(0, 10)
@@ -201,6 +202,7 @@ export interface MetaImportResult {
    * account's account and campaign rows were still written.
    */
   readonly failed: readonly string[]
+  /** The run's refresh window for the worker's log — see `importMetaSpend`. */
   readonly since: string
   readonly until: string
 }
@@ -210,14 +212,25 @@ export async function importMetaSpend(
   token: string,
   today: string,
 ): Promise<MetaImportResult> {
-  const [latest, adSpans, campaignSpans, adInsightSpans] = await Promise.all([
-    prisma.metaAdDaily.aggregate({ _max: { date: true } }),
-    prisma.metaAdDaily.groupBy({ by: ['accountId'], _min: { date: true } }),
+  const [adSpans, campaignSpans, adInsightSpans] = await Promise.all([
+    prisma.metaAdDaily.groupBy({ by: ['accountId'], _min: { date: true }, _max: { date: true } }),
     prisma.metaCampaignDaily.groupBy({ by: ['accountId'], _min: { date: true }, _max: { date: true } }),
     prisma.metaAdInsightDaily.groupBy({ by: ['accountId'], _min: { date: true }, _max: { date: true } }),
   ])
-  const from = sinceOf(latest._max.date)
   const adMin = new Map(adSpans.map((a) => [a.accountId, a._min.date]))
+  /*
+    THE ACCOUNT GRAIN STARTS PER ACCOUNT TOO (2026-10-06). It read from the
+    TABLE's latest day less a week, so an account the token gained after the
+    table had filled — Zextra Kamron 2 and 3 and Umar 3 joined after 19.09 —
+    or one Meta refused for more than a week while the others moved that day
+    on, never had its earlier days asked for: `meta_campaign_daily` held them
+    from July (`grainStarts`), `meta_ad_daily` — what /target reads — only
+    from the week before it appeared. An account with no rows reads from the
+    history start, any other its own last week. One that has never spent is
+    asked from July every hour: one paged account-level call.
+  */
+  const adMax = new Map(adSpans.map((a) => [a.accountId, a._max.date]))
+  const fromOf = (accountId: string) => sinceOf(adMax.get(accountId) ?? null)
   const spans = (grain: typeof campaignSpans) =>
     new Map(grain.map((c) => [c.accountId, { min: c._min.date, max: c._max.date }]))
   const campaignFromOf = grainStarts(adMin, spans(campaignSpans))
@@ -230,9 +243,21 @@ export async function importMetaSpend(
   let campaignRows = 0
   let adRows = 0
   let unread = 0
+  /*
+    The run's window in the worker's log: the earliest day an account WITH
+    rows was read from. One read from the history start because it has none —
+    new to the token, or never spent and so asked from July every hour —
+    pinned the line at «2026-07-01 – today» for good; it sets the window only
+    when no account has rows yet, on the first run.
+  */
+  let since: string | null = null
+  let earliest = today
   for (const account of accounts) {
     let spentNow = false
     try {
+      const from = fromOf(account.account_id)
+      if (from < earliest) earliest = from
+      if (adMax.get(account.account_id) && (since === null || from < since)) since = from
       const campaignFrom = campaignFromOf(account.account_id)
       const imported = await importAccount(prisma, token, account, { from, campaignFrom, today })
       rows += imported.rows
@@ -273,7 +298,7 @@ export async function importMetaSpend(
   if (unread === accounts.length && accounts.length > 0) {
     throw new Error(`hech bir akkaunt oʻqilmadi — ${failed[0]}`)
   }
-  return { accounts: accounts.length, rows, campaignRows, adRows, failed, since: from, until: today }
+  return { accounts: accounts.length, rows, campaignRows, adRows, failed, since: since ?? earliest, until: today }
 }
 
 /**

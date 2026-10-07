@@ -1022,11 +1022,13 @@ export class LeadSourcesService {
   /**
    * The `forms` block alone — «Targetologlar · kunlik». It reads only the
    * Регистрация deals and the Meta campaigns, so the other scans are not run:
-   * the block is the overview's to the lead (same rows, same fold).
+   * the block is the overview's to the lead (same rows, same fold, the same
+   * brand narrowing — `ofBrand`).
    */
   async targetologForms(
     period: Period,
     timeZone: string,
+    brand: BrandFilter = 'all',
   ): Promise<Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'>> {
     const window = periodWindow(period, timeZone)
     const [registration, campaigns, importedAt] = await Promise.all([
@@ -1044,6 +1046,7 @@ export class LeadSourcesService {
       aiQualified: [],
       sarafan: { leads: 0, qualified: 0 },
       importedAt,
+      brand,
     })
     return { forms, importedAt: imported }
   }

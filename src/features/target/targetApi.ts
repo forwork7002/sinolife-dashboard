@@ -127,9 +127,11 @@ export interface MetaBlockDto {
   readonly targetologs: readonly MetaTargetologDto[]
   readonly owners: readonly MetaOwnerDto[]
   readonly products: readonly (MetaProductTotalsDto & { readonly product: MetaProduct })[]
+  /** Every account, «Boshqa» included — the «Лид база» Jami row. */
   readonly total: MetaProductTotalsDto
+  /** The hero: the Collagen / Zextra columns drawn under it, summed — only those that spent. */
+  readonly productsTotal: MetaProductTotalsDto
   readonly usdRate: number | null
-  readonly usdRateDate: string | null
 }
 
 export interface TargetLeadSaleDto {

@@ -43,6 +43,7 @@ import type {
   ReklamaRepository,
 } from '@/server/repositories/reklamaRepository'
 
+import { leadBrand } from './rnpService'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -85,7 +86,9 @@ export interface DmPageDto {
 }
 
 export interface DmBlockDto {
+  /** «Итог»: every page's counts, but the price and «Murojat → kval» of the DM-money pages only (`dmTotalCells`). */
   readonly total: DmCellsDto
+  /** «Итог» a day at a time, on the same rule. */
   readonly days: readonly DmDayDto[]
   readonly pages: readonly DmPageDto[]
   /** DM money on accounts nobody has mapped to a product — no page to put it on. */
@@ -285,6 +288,23 @@ function addDm(into: DmAcc, from: DmAcc): void {
   into.spend += from.spend
 }
 
+/**
+ * The block's «Итог» — the window's or a day's. Its counts are every page's,
+ * but its price of a kval and «Murojat → kval» are over the pages that CARRY
+ * the DM money only (`priced`, `carriesDmSpend`): a page with no DM spend
+ * (sinolife_otziv, collagen.marine, the Telegram pages) would add its kval to
+ * the denominator and make every DM lead look cheaper than it was. The
+ * sheet's «Итог» «Цена за квал» is sinolifeuz's, and the «DM kval narxi» tile
+ * prints this figure, so the tile, the «Jami» row and the day grid agree.
+ */
+function dmTotalCells(all: DmAcc, priced: DmAcc): DmCellsDto {
+  return {
+    ...dmCells(all),
+    costPerQualifiedUsd: perUnit(priced.spend, priced.qualified),
+    conversationToQualifiedPercent: percent(priced.qualified, priced.conversations),
+  }
+}
+
 // --- quality ----------------------------------------------------------------
 
 type QualityAcc = Record<LeadBucket, number>
@@ -341,12 +361,17 @@ const SIDE_NAMES: Readonly<Record<SideColumn, string>> = { hr: 'HR', kosmetika: 
  * move from one month to the next.
  *
  * `brand` (the brand switch, `BRAND_FILTERS`) narrows all three ledgers
- * before anything is summed: the pages and their leads to that brand's pages
- * (`TARGET_SOURCE_PRODUCT` — every lead here is a target page's, so this is
- * `leadBrand`'s answer too), the Meta rows to that brand's AD BUDGET
- * (`adBudgetProduct`, as every other screen reads a brand's money). What no
- * budget claims — hiring campaigns, HR Eldor, Kosmetika, an unmapped account —
- * is «Brendsiz», so Collagen + Zextra + Brendsiz is «Hammasi» to the cent.
+ * before anything is summed: a lead by `leadBrand`, as «Lidlar», RNP and
+ * Roistat file it — its «Проект» first (2026-10-06), so a sinolifeuz lead
+ * whose project is Zextra is Zextra's and a «Kosmetika» one «Brendsiz»; else
+ * its page (`TARGET_SOURCE_PRODUCT`, every lead here being a target page's).
+ * The pages are that brand's, then any other page still holding one of its
+ * leads — dropping that page would drop the lead from every total — and only
+ * a page of the slice's own brand carries its DM money. The Meta rows go to
+ * that brand's AD BUDGET (`adBudgetProduct`, as every other screen reads a
+ * brand's money). What no budget claims — hiring campaigns, HR Eldor,
+ * Kosmetika, an unmapped account — is «Brendsiz», so Collagen + Zextra +
+ * Brendsiz is «Hammasi» to the cent and to the lead.
  */
 export function reklamaOverview(input: {
   window: { from: string; to: string }
@@ -358,11 +383,21 @@ export function reklamaOverview(input: {
 }): ReklamaOverviewDto {
   const brand = input.brand ?? 'all'
   if (brand !== 'all') {
+    const leadRows = input.leadRows.filter((row) => brandMatches(brand, leadBrand(row.sourceId, null, row.productLine)))
+    const pagesWithLeads = new Set(leadRows.map((row) => row.sourceId))
     input = {
       ...input,
       brand: 'all',
-      pages: input.pages.filter((page) => brandMatches(brand, page.product)),
-      leadRows: input.leadRows.filter((row) => brandMatches(brand, TARGET_SOURCE_PRODUCT[row.sourceId])),
+      pages: input.pages
+        .filter((page) => brandMatches(brand, page.product) || pagesWithLeads.has(page.key))
+        /*
+          The slice's own pages first, in the sheet's order: its DM page, which
+          carries its money, opens the DM sheet. Collagen's pages sort first
+          overall, so on «Zextra» sinolifeuz — kept for a few Zextra-«Проект»
+          leads, no money — took that place from zextrauzb.
+        */
+        .sort((a, b) => Number(brandMatches(brand, b.product)) - Number(brandMatches(brand, a.product))),
+      leadRows,
       campaignRows: input.campaignRows.filter((row) => brandMatches(brand, adBudgetProduct(row))),
     }
   }
@@ -458,24 +493,30 @@ export function reklamaOverview(input: {
     }
   }
 
-  // --- DM block
+  // --- DM block: every page into the total, the DM-money pages into its price too (`dmTotalCells`).
   const dmTotalDays = days.map(() => dmZero())
   const dmTotal = dmZero()
+  const dmPricedDays = days.map(() => dmZero())
+  const dmPriced = dmZero()
   const dmPages: DmPageDto[] = input.pages.map((page) => {
+    // Another brand's DM page, shown for this slice's leads, carries none of the slice's money.
+    const carriesDmSpend = dmPageOf.get(page.product) === page.key && brandMatches(brand, page.product)
     const byDay = dm.get(page.key)
     const total = dmZero()
     const pageDays = days.map((date, i) => {
       const cell = byDay?.get(date) ?? dmZero()
       addDm(total, cell)
       addDm(dmTotalDays[i]!, cell)
+      if (carriesDmSpend) addDm(dmPricedDays[i]!, cell)
       return { date, ...dmCells(cell) }
     })
     addDm(dmTotal, total)
+    if (carriesDmSpend) addDm(dmPriced, total)
     return {
       key: page.key,
       name: page.name,
       product: page.product,
-      carriesDmSpend: dmPageOf.get(page.product) === page.key,
+      carriesDmSpend,
       total: dmCells(total),
       days: pageDays,
     }
@@ -594,8 +635,8 @@ export function reklamaOverview(input: {
       otherUsd: usd(split.other),
     },
     dm: {
-      total: dmCells(dmTotal),
-      days: days.map((date, i) => ({ date, ...dmCells(dmTotalDays[i]!) })),
+      total: dmTotalCells(dmTotal, dmPriced),
+      days: days.map((date, i) => ({ date, ...dmTotalCells(dmTotalDays[i]!, dmPricedDays[i]!) })),
       pages: dmPages,
       unattributed: { spendUsd: usd(unattributed.spend), conversations: unattributed.conversations },
     },

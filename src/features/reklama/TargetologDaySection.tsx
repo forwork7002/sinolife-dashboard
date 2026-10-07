@@ -94,6 +94,16 @@ const SUM_TINT = 'color-mix(in oklab, var(--status-good) 10%, transparent)'
 
 const columnTint = (c: Column) => (c === 'Meta лид' ? LEAD_TINT : c === 'Jami $' ? SUM_TINT : undefined)
 
+/*
+  Under the brand switch a card holds that slice's money only («Lidlar»'s
+  `ofBrand`: Meta money by its ad budget). Hiring is no brand's budget, so on
+  Collagen and Zextra «HR $» is empty on every card and «Jami $» is not all
+  the accounts spent; on «Brendsiz» a targetolog with hiring money and no
+  brandless form or lead has no card at all. «HR · Kosmetika» holds all of it.
+*/
+const BRAND_NOTE =
+  ' Brend tanlanganda Jami $ — faqat shu tanlovning puli. Vakansiya puli hech bir brendniki emas: Collagen va Zextra da HR $ boʻsh, «Brendsiz» da — faqat kartasi bor targetologniki; hammasi «HR · Kosmetika» jadvalida.'
+
 export function TargetologDaySection({ params, brand }: { params: Params; brand: DashboardBrand }) {
   const query = useQuery({
     queryKey: ['reklama-targetologs', params],
@@ -103,19 +113,25 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
 
   const owners = query.data?.data.forms.owners ?? []
   const products = (['Collagen', 'Zextra', 'Boshqa'] as const).filter((p) => owners.some((o) => o.product === p))
-  // The page's brand switch wins over this picker, which then steps aside — two switches would contradict.
-  // «Brendsiz» is the forms no brand claims («Boshqa»). The product picked may have no targetolog this
-  // period: fall back to the first that has one.
-  const product: MetaProduct =
-    brand === 'none' ? 'Boshqa' : brand !== 'all' ? brand : products.includes(picked) ? picked : (products[0] ?? picked)
+  /*
+    The page's brand switch wins over this picker, which then steps aside — two switches would
+    contradict. Under one brand the server has already narrowed the answer by «Lidlar»'s rules
+    (`ofBrand`: a lead by its «Проект», page or form; money by its ad budget), so every card it
+    returns is shown: a card's own product can differ — a form naming no targetolog is «Boshqa» by
+    name and Collagen by its leads. With both brands the picker chooses; the product picked may
+    have no targetolog this period: fall back to the first that has one.
+  */
+  const product: MetaProduct = products.includes(picked) ? picked : (products[0] ?? picked)
   // The biggest spender first, as the sheet opens on Eldor.
-  const shown = owners.filter((o) => o.product === product).sort((a, b) => b.spendUsd - a.spendUsd)
+  const shown = owners
+    .filter((o) => brand !== 'all' || o.product === product)
+    .sort((a, b) => b.spendUsd - a.spendUsd)
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Targetologlar · kunlik"
-        hint="Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan."
+        hint={`Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan.${brand === 'all' ? '' : BRAND_NOTE}`}
       />
       {brand === 'all' && products.length > 1 && (
         <SlicePicker<MetaProduct>

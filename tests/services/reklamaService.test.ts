@@ -28,12 +28,20 @@ const PAGES = [
 
 const WINDOW = { from: '2026-08-01', to: '2026-08-02' }
 
-const lead = (day: string, sourceId: string, stage: string, status: string, leads: number): LeadStageDayRow => ({
+const lead = (
+  day: string,
+  sourceId: string,
+  stage: string,
+  status: string,
+  leads: number,
+  productLine: string | null = null,
+): LeadStageDayRow => ({
   day,
   sourceId,
   source: PAGES.find((p) => p.key === sourceId)!.name,
   stage,
   status,
+  productLine,
   leads,
 })
 
@@ -145,9 +153,55 @@ describe('reklamaOverview', () => {
     expect(out.dm.pages.find((p) => p.key === 'UC_A8LE21')!.total.costPerQualifiedUsd).toBeNull()
 
     expect(out.dm.total).toMatchObject({ leads: 117, qualified: 42, spendUsd: 142.7, conversations: 742 })
+    // sinolife_otziv carries no DM money: its 5 kval are counted above but do not cheapen the price.
+    expect(out.dm.total.costPerQualifiedUsd).toBeCloseTo(142.7 / 37, 9)
     // Every day is listed, the quiet one as zeros.
     expect(out.dm.days.map((d) => d.date)).toEqual(['2026-08-01', '2026-08-02'])
     expect(out.dm.days[1]).toMatchObject({ leads: 0, spendUsd: 0 })
+  })
+
+  it('prices «Итог» over the pages that carry the DM money, as the tile does — every page still counted', () => {
+    const out = build(
+      [
+        lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 50),
+        lead('2026-08-01', 'UC_1X1J24', 'Недозвон', 'LOST', 50),
+        lead('2026-08-01', 'UC_0FMQ5Q', 'Сделка успешна', 'WON', 30),
+        lead('2026-08-02', 'UC_A8LE21', 'Сделка успешна', 'WON', 20),
+        lead('2026-08-02', 'UC_0FMQ5Q', 'Сделка успешна', 'WON', 10),
+      ],
+      [
+        campaign({ spendMicroUsd: 200_000_000n, conversations: 400 }),
+        campaign({
+          date: '2026-08-02',
+          accountId: '440073592484616',
+          accountName: 'Zextra Umar',
+          spendMicroUsd: 60_000_000n,
+          conversations: 100,
+        }),
+      ],
+    )
+    // sinolife_otziv's 40 kval are counted, and never divide the DM money.
+    expect(out.dm.total).toMatchObject({ leads: 160, qualified: 110, spendUsd: 260, conversations: 500 })
+    expect(out.dm.total.qualifiedPercent).toBeCloseTo((110 / 160) * 100, 9)
+    expect(out.dm.total.costPerQualifiedUsd).toBeCloseTo(260 / 70, 9)
+    expect(out.dm.total.conversationToQualifiedPercent).toBeCloseTo((70 / 500) * 100, 9)
+
+    // The «DM kval narxi» tile's formula over the pages flagged `carriesDmSpend`.
+    const carrying = out.dm.pages.filter((p) => p.carriesDmSpend)
+    expect(carrying.map((p) => p.key)).toEqual(['UC_1X1J24', 'UC_A8LE21'])
+    const tile =
+      carrying.reduce((n, p) => n + p.total.spendUsd, 0) / carrying.reduce((n, p) => n + p.total.qualified, 0)
+    expect(out.dm.total.costPerQualifiedUsd).toBeCloseTo(tile, 9)
+
+    // Each day of the grid on the same rule.
+    expect(out.dm.days[0]).toMatchObject({ qualified: 80, spendUsd: 200 })
+    expect(out.dm.days[0]!.costPerQualifiedUsd).toBeCloseTo(200 / 50, 9)
+    expect(out.dm.days[0]!.conversationToQualifiedPercent).toBeCloseTo((50 / 400) * 100, 9)
+    expect(out.dm.days[1]).toMatchObject({ qualified: 30, spendUsd: 60 })
+    expect(out.dm.days[1]!.costPerQualifiedUsd).toBeCloseTo(60 / 20, 9)
+
+    // A page's own price is unchanged: its money over its own kval.
+    expect(out.dm.pages.find((p) => p.key === 'UC_1X1J24')!.total.costPerQualifiedUsd).toBeCloseTo(200 / 50, 9)
   })
 
   it('keeps hiring and lead-form money off the DM sheet, and counts them in the split', () => {
@@ -375,6 +429,98 @@ describe('reklamaOverview — the Collagen / Zextra switch', () => {
     }
     expect(c.quality.total.leads + z.quality.total.leads + n.quality.total.leads).toBe(all.quality.total.leads)
   })
+
+  it('files a lead by its «Проект» first, as «Lidlar», RNP and Roistat do (2026-10-06)', () => {
+    const withProject = [
+      ...leads,
+      // On Collagen's DM page, but the registrar named the project: Zextra's lead, and a brandless one.
+      lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 7, 'Zextra'),
+      lead('2026-08-02', 'UC_1X1J24', 'Недозвон', 'LOST', 4, 'Kosmetika'),
+      // A project naming the page's own brand changes nothing.
+      lead('2026-08-02', 'UC_A8LE21', 'Сделка успешна', 'WON', 2, 'Zextra'),
+    ]
+    const build = (brand?: 'all' | 'Collagen' | 'Zextra' | 'none') =>
+      reklamaOverview({ window: WINDOW, pages: PAGES, leadRows: withProject, campaignRows: campaigns, importedAt: null, brand })
+    const [all, c, z, n] = [build(), build('Collagen'), build('Zextra'), build('none')]
+
+    expect(c.quality.total).toMatchObject({ leads: 35, success: 30 })
+    expect(z.quality.total).toMatchObject({ leads: 21, success: 21 })
+    expect(n.quality.total).toMatchObject({ leads: 4, noAnswer: 4 })
+    // The three slices partition «Hammasi», lead by lead and kval by kval.
+    for (const k of ['leads', 'success', 'noAnswer'] as const) {
+      expect(c.quality.total[k] + z.quality.total[k] + n.quality.total[k]).toBe(all.quality.total[k])
+    }
+    expect(c.dm.total.qualified + z.dm.total.qualified + n.dm.total.qualified).toBe(all.dm.total.qualified)
+
+    // sinolifeuz stays on the Zextra slice for its Zextra lead — without it the lead would leave every total —
+    // but Collagen's DM money is not in that slice, so the page carries none of it and prices nothing.
+    const uzOnZ = z.dm.pages.find((p) => p.key === 'UC_1X1J24')!
+    // …and it follows the slice's own pages: zextrauzb, which carries the slice's DM money, opens the sheet.
+    expect(z.dm.pages.map((p) => p.key)).toEqual(['UC_A8LE21', 'UC_1X1J24'])
+    expect(z.quality.pages.map((p) => p.key)).toEqual(['UC_A8LE21', 'UC_1X1J24'])
+    expect(uzOnZ.carriesDmSpend).toBe(false)
+    expect(uzOnZ.total).toMatchObject({ leads: 7, qualified: 7, spendUsd: 0 })
+    expect(z.dm.pages.find((p) => p.key === 'UC_A8LE21')!.carriesDmSpend).toBe(true)
+    // «Brendsiz» shows the page holding its Kosmetika lead, and no page carries DM money there.
+    expect(n.dm.pages.map((p) => p.key)).toEqual(['UC_1X1J24'])
+    expect(n.dm.pages.every((p) => !p.carriesDmSpend)).toBe(true)
+    // Collagen keeps its own pages, the Zextra- and Kosmetika-project leads gone from sinolifeuz.
+    expect(c.dm.pages.map((p) => p.key)).toEqual(['UC_1X1J24', 'UC_0FMQ5Q'])
+    expect(c.dm.pages[0]!.total).toMatchObject({ leads: 30, qualified: 30, spendUsd: 40, conversations: 100 })
+    expect(c.dm.total.costPerQualifiedUsd).toBeCloseTo(40 / 30, 9)
+  })
+})
+
+describe('LeadSourcesService.targetologForms — «Targetologlar · kunlik» under the brand switch', () => {
+  // A form naming no targetolog: «Boshqa» by its name, Collagen by `leadBrand` (no brand word, no owner).
+  const UNNAMED_FORM = 'Заполнение CRM-формы "Sinolife filtr forma 3"'
+  const UMAR_FORM = 'Заполнение CRM-формы "Sinolife (UMAR) 777"'
+  const registration = [
+    { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UNNAMED_FORM, productLine: null, stage: 'Сделка успешна', status: 'WON', aiQualified: false, leads: 9 },
+    { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UMAR_FORM, productLine: null, stage: 'Сделка успешна', status: 'WON', aiQualified: false, leads: 5 },
+    // Umar's Collagen form, but the lead's «Проект» is Kosmetika: brandless.
+    { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UMAR_FORM, productLine: 'Kosmetika', stage: 'Недозвон', status: 'LOST', aiQualified: false, leads: 2 },
+  ]
+  const campaigns = [
+    campaign({ accountId: '1312865112943517', accountName: 'Umar 63', objective: 'OUTCOME_LEADS', spendMicroUsd: 20_000_000n, leads: 8 }),
+    campaign({ accountId: '517245084208402', accountName: 'Kosmetika Eldor', objective: 'OUTCOME_LEADS', spendMicroUsd: 3_000_000n, leads: 1 }),
+  ]
+  const PERIOD: Period = {
+    start: new Date('2026-07-31T19:00:00Z'),
+    end: new Date('2026-08-01T19:00:00Z'),
+    timeZone: 'Asia/Tashkent',
+    preset: 'custom',
+  }
+  const forms = async (brand?: 'all' | 'Collagen' | 'Zextra' | 'none') => {
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const service = new LeadSourcesService(
+      { registrationDays: async () => registration } as never,
+      { campaignDays: async () => campaigns, campaignsImportedAt: async () => null } as never,
+      {} as never,
+    )
+    return (await service.targetologForms(PERIOD, 'Asia/Tashkent', brand)).forms
+  }
+
+  it('files an unnamed form\'s leads under Collagen, not «Brendsiz» — as «Lidlar» does', async () => {
+    const [all, c, z, n] = [await forms(), await forms('Collagen'), await forms('Zextra'), await forms('none')]
+
+    const unnamed = (f: typeof all) => f.owners.find((o) => o.key === 'form|Sinolife filtr forma 3')
+    expect(unnamed(c)).toMatchObject({ product: 'Boshqa', outcome: { leads: 9, success: 9 } })
+    expect(unnamed(n)).toBeUndefined()
+    expect(unnamed(z)).toBeUndefined()
+
+    // Umar's card keeps his Collagen money and leads on Collagen; his Kosmetika-project lead is «Brendsiz».
+    expect(c.owners.find((o) => o.key === 'Collagen|Umar')).toMatchObject({ spendUsd: 20, outcome: { leads: 5 } })
+    expect(n.owners.find((o) => o.key === 'Collagen|Umar')).toMatchObject({ spendUsd: 0, outcome: { leads: 2 } })
+    // Kosmetika Eldor's money is no brand's ad budget.
+    expect(n.owners.find((o) => o.key === 'Boshqa|Элдор')).toMatchObject({ spendUsd: 3 })
+    expect(c.owners.find((o) => o.key === 'Boshqa|Элдор')).toBeUndefined()
+
+    // The slices add up to «Hammasi».
+    expect(c.outcome.leads + z.outcome.leads + n.outcome.leads).toBe(all.outcome.leads)
+    expect(c.spendUsd + z.spendUsd + n.spendUsd).toBeCloseTo(all.spendUsd, 6)
+    expect(await forms('all')).toEqual(all)
+  })
 })
 
 describe('ReklamaRepository.leadStageDays — the statement it sends', () => {
@@ -390,13 +536,15 @@ describe('ReklamaRepository.leadStageDays — the statement it sends', () => {
     const prisma = {
       $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
         calls.push({ sql, params })
-        return [{ day: '2026-08-01', source_id: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Отказ', status: 'LOST', leads: 3n }]
+        return [
+          { day: '2026-08-01', source_id: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Отказ', status: 'LOST', product_line: 'Zextra', leads: 3n },
+        ]
       },
     } as unknown as PrismaClient
     const rows = await new ReklamaRepository(prisma).leadStageDays(PERIOD, ['UC_1X1J24'])
 
     expect(rows).toEqual([
-      { day: '2026-08-01', sourceId: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Отказ', status: 'LOST', leads: 3 },
+      { day: '2026-08-01', sourceId: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Отказ', status: 'LOST', productLine: 'Zextra', leads: 3 },
     ])
     const { sql, params } = calls[0]!
     const bare = sql.replace(/\/\*[\s\S]*?\*\//g, '')
@@ -405,5 +553,8 @@ describe('ReklamaRepository.leadStageDays — the statement it sends', () => {
     expect([...named].sort()).toEqual(params.map((_, i) => i + 1))
     expect(sql).toContain(`p."role" = 'LEAD'`)
     expect(params[3]).toEqual(['UC_1X1J24'])
+    // «Проект» is read and grouped by, so the brand switch can file the lead by it (`leadBrand`).
+    expect(bare).toContain(`NULLIF(btrim(d."productLine"), '') AS product_line`)
+    expect(bare).toMatch(/GROUP BY 1, 2, 3, 4, 5, 6\b/)
   })
 })

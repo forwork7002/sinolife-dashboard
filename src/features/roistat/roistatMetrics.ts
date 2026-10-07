@@ -2,9 +2,9 @@
  * «Roistat» — every ratio on the screen, derived from raw counters.
  *
  * The server sends additive counters only (see `roistatApi.ts`), and this file
- * is the ONE place they become ratios — the tiles, the table, its ИТОГО row and
- * the chart all read `deriveMetrics`. A total's ratio is therefore the ratio of
- * its sums, never an average of the rows' ratios.
+ * is the ONE place they become ratios — the tiles, the table, its ИТОГО row (the
+ * server's `total`) and the chart all read `deriveMetrics`. A total's ratio is
+ * therefore the ratio of its sums, never an average of the rows' ratios.
  *
  * The definitions are the reference dashboard's `met()`, kept term for term:
  * quality and QL % over Регистрация leads, buyout by MONEY (sold ÷ ordered
@@ -134,38 +134,6 @@ export function fromUzs(
   if (currency === 'uzs') return valueUzs
   const rate = usableRate(uzsPerUsd)
   return rate === null ? null : valueUzs / rate
-}
-
-const COUNTER_KEYS = [
-  'spendUsd',
-  'impressions',
-  'reach',
-  'clicks',
-  'metaLeads',
-  'leads',
-  'clean',
-  'kval',
-  'orders',
-  'orderedUzs',
-  'sold',
-  'soldUzs',
-  'newCustomers',
-  'dealDaysSum',
-  'dealCount',
-] as const satisfies readonly (keyof RoistatCountersDto)[]
-
-export const ZERO_COUNTERS: RoistatCountersDto = Object.freeze(
-  Object.fromEntries(COUNTER_KEYS.map((k) => [k, 0])) as Record<
-    (typeof COUNTER_KEYS)[number],
-    number
-  >,
-)
-
-/** Field-by-field sum. Extra fields on the inputs (a row's key and label) are ignored. */
-export function sumCounters(rows: readonly RoistatCountersDto[]): RoistatCountersDto {
-  const out: Record<(typeof COUNTER_KEYS)[number], number> = { ...ZERO_COUNTERS }
-  for (const row of rows) for (const k of COUNTER_KEYS) out[k] += row[k]
-  return out
 }
 
 /**

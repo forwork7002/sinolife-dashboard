@@ -29,7 +29,7 @@ import {
   type TargetLeadRow,
   type TargetRepository,
 } from '@/server/repositories/targetRepository'
-import type { TargetProductFilter, TargetScope } from '@/server/domain/types'
+import { TARGET_PRODUCTS, type TargetProductFilter, type TargetScope } from '@/server/domain/types'
 
 import type { MarketingRepository } from '@/server/repositories/marketingRepository'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
@@ -203,10 +203,17 @@ export interface MetaBlockDto {
   readonly targetologs: readonly MetaTargetologDto[]
   readonly owners: readonly MetaOwnerDto[]
   readonly products: readonly MetaProductDto[]
+  /** Every account, «Boshqa» included — the «Лид база» Jami row: no dollar dropped. */
   readonly total: MetaProductTotalsDto
-  /** UZS per USD used for ROAS — the ad ledger's rate, with its date. */
+  /**
+   * The product columns drawn under the hero «Reklamaga ketgan pul — Collagen
+   * va Zextra», summed: its «1 lead» their spend over their own pages' leads,
+   * never HR's or Kosmetika's money over them. A product with no Meta row in
+   * the window has no column, so its pages are left out too; with none, zero.
+   */
+  readonly productsTotal: MetaProductTotalsDto
+  /** UZS per USD used for ROAS — the ad ledger's rate. */
   readonly usdRate: number | null
-  readonly usdRateDate: string | null
 }
 
 export interface TargetLeadSaleDto {
@@ -352,7 +359,6 @@ export function metaBlock(input: {
   sources: readonly TargetGroupRow[]
   productOfSource: ReadonlyMap<string, MetaProduct | undefined>
   usdRate: number | null
-  usdRateDate: string | null
 }): MetaBlockDto {
   interface Acc {
     column: MetaColumnDto
@@ -406,12 +412,13 @@ export function metaBlock(input: {
       return { date, total: usd(total), cells: columns.map((c) => usd(cells.get(c.key) ?? 0n)) }
     })
 
-  const productTotals = (product: MetaProduct | null): MetaProductTotalsDto => {
-    const accs = ordered.filter((a) => product === null || a.column.product === product)
+  /** The owners and pages of `products`; null is every owner, «Boshqa» included. */
+  const productTotals = (products: readonly MetaProduct[] | null): MetaProductTotalsDto => {
+    const accs = ordered.filter((a) => products === null || products.includes(a.column.product))
     const spend = accs.reduce((n, a) => n + a.spend, 0n)
     const sources = input.sources.filter((s) => {
       const p = input.productOfSource.get(s.key)
-      return p !== undefined && (product === null || p === product)
+      return p !== undefined && (products === null || products.includes(p))
     })
     const sum = (pick: (s: TargetGroupRow) => number) => sources.reduce((n, s) => n + pick(s), 0)
     const bitrixLeads = sum((s) => s.leads)
@@ -466,8 +473,15 @@ export function metaBlock(input: {
   }
 
   const products = PRODUCT_ORDER.filter((p) => ordered.some((a) => a.column.product === p)).map(
-    (product) => ({ product, ...productTotals(product) }),
+    (product) => ({ product, ...productTotals([product]) }),
   )
+  /*
+    The hero sums the product columns actually drawn under it. Read off both
+    products' pages, a window before Zextra's first dollar («Bugun» in the
+    early hours) headed «Reklamaga ketgan pul — Collagen» with Collagen's
+    money over Collagen's and Zextra's leads, orders and tushum.
+  */
+  const drawn = TARGET_PRODUCTS.filter((p) => products.some((d) => d.product === p))
 
   return {
     importedAt: input.importedAt?.toISOString() ?? null,
@@ -493,8 +507,8 @@ export function metaBlock(input: {
     })),
     products,
     total: productTotals(null),
+    productsTotal: productTotals(drawn),
     usdRate: input.usdRate,
-    usdRateDate: input.usdRateDate,
   }
 }
 
@@ -631,7 +645,6 @@ export class TargetService {
         productOfSource,
         // Micro-soʻm per dollar, as the ledger stores it.
         usdRate: snapshot ? Number(snapshot.usdRateMicro) / 1_000_000 : null,
-        usdRateDate: snapshot?.rateDate ?? null,
       }),
     }
   }

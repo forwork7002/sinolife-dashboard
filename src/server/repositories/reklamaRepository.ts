@@ -25,6 +25,8 @@ export interface LeadStageDayRow {
   readonly stage: string
   /** DealStatus: OPEN, WON or LOST. */
   readonly status: string
+  /** «Проект» (`productLine`) — named, it decides the brand before the page (`leadBrand`). */
+  readonly productLine: string | null
   readonly leads: number
 }
 
@@ -55,6 +57,7 @@ export class ReklamaRepository {
    *
    * Only the pages named: a lead with no source is not a page an ad points
    * at. База, Первичный отдел and the rest are not leads and are not read.
+   * Grouped by «Проект» too, so the brand switch can file a lead by it.
    */
   async leadStageDays(period: Period, sourceIds: readonly string[]): Promise<LeadStageDayRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
@@ -64,6 +67,7 @@ export class ReklamaRepository {
         source: string
         stage: string
         status: string
+        product_line: string | null
         leads: bigint
       }[]
     >(
@@ -78,6 +82,7 @@ export class ReklamaRepository {
         s."name" AS source,
         st."name" AS stage,
         d."status"::text AS status,
+        NULLIF(btrim(d."productLine"), '') AS product_line,
         count(*)::bigint AS leads
       FROM "deal" d
       JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
@@ -85,7 +90,7 @@ export class ReklamaRepository {
       JOIN "sales_source" s ON s."id" = d."sourceId"
       WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
         AND s."externalId" = ANY($4::text[])
-      GROUP BY 1, 2, 3, 4, 5
+      GROUP BY 1, 2, 3, 4, 5, 6
       `,
       period.start,
       period.end,
@@ -98,6 +103,7 @@ export class ReklamaRepository {
       source: r.source,
       stage: r.stage,
       status: r.status,
+      productLine: r.product_line,
       leads: Number(r.leads),
     }))
   }

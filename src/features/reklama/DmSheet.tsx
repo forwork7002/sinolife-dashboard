@@ -24,7 +24,7 @@ const COLUMN_HINT: Record<(typeof COLUMNS)[number], string> = {
   'Кол квал': 'Ulardan «Сделка успешна» boʻlgani',
   'Квал %': 'Кол квал ÷ Кол лид',
   Реклама: 'Meta DM kampaniyalari sarfi, vakansiyasiz',
-  'Цена за квал': 'Реклама ÷ Кол квал',
+  'Цена за квал': 'Реклама ÷ Кол квал; «Итог»da kval faqat DM puli yoziladigan sahifalardan olinadi',
 }
 
 /** The sheet's orange divider, in a token that reads in both themes. */
