@@ -1,5 +1,6 @@
 'use client'
 
+import { ErrorState } from '@/components/states/States'
 import { formatPercent } from '@/lib/format'
 
 /**
@@ -61,11 +62,17 @@ export function CategoryBarList({
   mode,
   status,
   emptyBody,
+  errorMessage,
+  onRetry,
 }: {
   rows: readonly CategoryBarRow[]
   mode: 'magnitude' | 'rate' | 'share'
   status: 'loading' | 'error' | 'ready'
   emptyBody?: string
+  /** What failed, for the error card. */
+  errorMessage?: string
+  /** Asks again; the error card offers it as «Qayta urinish». */
+  onRetry?: () => void
 }) {
   if (status === 'loading') {
     return (
@@ -75,13 +82,9 @@ export function CategoryBarList({
     )
   }
 
-  if (status === 'error') {
-    return (
-      <p className="py-6 text-center text-sm" style={{ color: 'var(--status-critical)' }}>
-        Olinmadi
-      </p>
-    )
-  }
+  // The house error card, with its retry where the caller has one — not a
+  // bare red «Olinmadi» the reader could do nothing about.
+  if (status === 'error') return <ErrorState message={errorMessage} onRetry={onRetry} />
 
   if (rows.length === 0) {
     return (
