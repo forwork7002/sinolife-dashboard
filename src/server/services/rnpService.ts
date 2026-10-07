@@ -24,7 +24,7 @@
  */
 
 import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
-import { type RnpOverviewDto, buildRnpSheet } from '@/server/domain/rnp/rnpSheet'
+import { type RnpOverviewDto, TEAM_ALIASES, buildRnpSheet } from '@/server/domain/rnp/rnpSheet'
 import { type Period, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
 import { ZEXTRA_ONLY_TARGETOLOGS, formNameOf, formOwner } from '@/server/domain/leads/leadSources'
@@ -325,6 +325,17 @@ export class RnpService {
 
   saveManualHeadcount: RnpRepository['saveManualHeadcount'] = async (cells, by) => {
     await this.repository.saveManualHeadcount(cells, by)
+  }
+
+  /**
+   * The teams whose «Ходим сони» a ROP may type: the ones they head (the
+   * client 2026-10-07: «ROPlar oʻz xodimini oʻzi kiritsin, faqat oʻzinikini»),
+   * under the sheet's canonical names. Empty for a login with no employee.
+   */
+  async headcountTeamsOf(employeeId: string | null): Promise<ReadonlySet<string>> {
+    if (!employeeId) return new Set()
+    const heads = await this.repository.teamsHeadedBy(employeeId)
+    return new Set(heads.map((rop) => TEAM_ALIASES[rop] ?? rop))
   }
 
   /**

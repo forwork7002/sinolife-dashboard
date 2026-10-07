@@ -444,3 +444,19 @@ describe('RnpService — the Collagen funnel reads Meta views and clicks (2026-1
     expect(rows.find((r) => r.key === 'fn:collagen:clicks')!.fact).toBe(70)
   })
 })
+
+describe('RnpService.headcountTeamsOf — a ROP types their own team (2026-10-07)', () => {
+  it('names the teams the person heads, an old department name folded into today\'s', async () => {
+    const asked: string[] = []
+    const repository = { teamsHeadedBy: async (id: string) => (asked.push(id), ['Malika', 'Lola']) }
+    const service = new RnpService({} as never, repository as never, {} as never, { forDays: async () => [] })
+    expect([...(await service.headcountTeamsOf('e1'))].sort()).toEqual(['Charos', 'Lola'])
+    expect(asked).toEqual(['e1'])
+  })
+
+  it('is empty for a login with no employee, without asking the database', async () => {
+    const repository = { teamsHeadedBy: async () => { throw new Error('asked') } }
+    const service = new RnpService({} as never, repository as never, {} as never, { forDays: async () => [] })
+    expect((await service.headcountTeamsOf(null)).size).toBe(0)
+  })
+})

@@ -30,12 +30,17 @@ const querySchema = z.object({
 
 /** «RNP jadvali» — the client's «РНП» sheet for one month. See rnpService.ts. */
 export const GET = getHandler(ACCESS, querySchema, async (ctx) => {
-  const data = await rnpService.overview({
-    month: ctx.query.month,
-    timeZone: ctx.timeZone,
-    now: ctx.now,
-    // Not on a widened read: the write is judged on the stored scope and refused.
-    canEditPlans: can(ctx.principal, 'kpi:manage') && !ctx.principal.widened,
-  })
-  return { data }
+  const canEditPlans = can(ctx.principal, 'kpi:manage') && !ctx.principal.widened
+  const [data, ownTeams] = await Promise.all([
+    rnpService.overview({
+      month: ctx.query.month,
+      timeZone: ctx.timeZone,
+      now: ctx.now,
+      // Not on a widened read: the write is judged on the stored scope and refused.
+      canEditPlans,
+    }),
+    // A ROP types their own team's «Ходим сони» (POST /rnp/headcount judges it the same way).
+    canEditPlans ? Promise.resolve(new Set<string>()) : rnpService.headcountTeamsOf(ctx.principal.employeeId),
+  ])
+  return { data: { ...data, headcountTeams: [...ownTeams] } }
 })

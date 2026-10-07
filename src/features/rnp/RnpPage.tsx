@@ -101,6 +101,11 @@ export function RnpPage() {
   }, [data, branded])
   const chosen = teams.find((t) => t.rop === rop) ?? null
   const lines = useMemo(() => ropLines(branded, chosen?.rop ?? null, chosen?.label ?? ''), [branded, chosen])
+  // A ROP types their own team's «Ходим сони»; one object per payload, so the rows' memos hold.
+  const editHeadcount = useMemo(
+    () => (data?.headcountTeams?.length ? { month: data.month, teams: data.headcountTeams } : null),
+    [data],
+  )
 
   return (
     <PageShell
@@ -193,6 +198,7 @@ export function RnpPage() {
               today={data.today}
               // The P&L's typed cost lines are the one thing on the sheet an editor types in place.
               editCostsFor={data.canEditPlans ? data.month : null}
+              editHeadcount={editHeadcount}
             />
           </Card>
         )}

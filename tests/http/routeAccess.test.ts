@@ -153,6 +153,8 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     'insights/structure': 'nothing on it to narrow: who reports to whom, and no figures',
     'insights/structure/roster': 'same as the tree above',
     kpi: 'spreads scope; plans and roster both narrowed',
+    'rnp/headcount':
+      'a WRITE judged per cell on headship — a ROP types only the teams they head (see WRITES_BY_HEADSHIP below)',
     'meta/alerts': 'the bell counts the caller\'s own backlog',
     'meta/filters': 'the roster it offers is filtered to the scope',
     search: 'every group is section-gated and the rows are scope-narrowed',
@@ -226,9 +228,24 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
   */
   const COMPANY_WIDE = ['analytics/sellers']
 
+  /*
+    WRITES JUDGED ON WHO THE CALLER HEADS, NOT ON A SCOPE (2026-10-07, the
+    client: «ROPlar oʻz xodimini oʻzi kiritsin, faqat oʻzinikini»). «Ходим сони»
+    reads nothing back; a non-editor may post only the teams their linked
+    employee heads, so the route must be seen asking for exactly that.
+  */
+  const WRITES_BY_HEADSHIP = ['rnp/headcount']
+
+  it.each(WRITES_BY_HEADSHIP.map((id) => [id] as const))('%s refuses a team the caller does not head', (id) => {
+    const route = routes.find((r) => name(r.relative) === id)
+    expect(route).toBeDefined()
+    expect(route!.source).toMatch(/headcountTeamsOf\(ctx\.principal\.employeeId\)/)
+    expect(route!.source).toMatch(/!own\.has\(c\.rop\)/)
+  })
+
   it.each(
     Object.keys(NARROWS)
-      .filter((id) => !['users', 'users/[id]', ...NOTHING_TO_NARROW, ...COMPANY_WIDE].includes(id))
+      .filter((id) => !['users', 'users/[id]', ...NOTHING_TO_NARROW, ...COMPANY_WIDE, ...WRITES_BY_HEADSHIP].includes(id))
       .map((id) => [id] as const),
   )('%s actually reads the scope it is allowed to be asked for', (id) => {
     /*

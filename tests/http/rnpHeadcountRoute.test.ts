@@ -32,10 +32,12 @@ describe('POST /rnp/headcount — the body', () => {
 })
 
 describe('POST /rnp/headcount — the gate', () => {
-  it('asks for kpi:manage inside the rnp gate, and refuses a day after today', async () => {
+  it('lets a company-wide editor type any team, a ROP only the teams they head, and refuses a day after today', async () => {
     const source = await import('node:fs').then((fs) => fs.readFileSync('src/app/api/v1/rnp/headcount/route.ts', 'utf8'))
-    expect(source).toContain("{ permission: 'analytics:read:all', section: 'rnp' }")
-    expect(source).toContain("can(ctx.principal, 'kpi:manage')")
+    expect(source).toContain("{ permission: 'analytics:read:own', section: 'rnp' }")
+    expect(source).toContain("can(ctx.principal, 'kpi:manage') && ctx.principal.dataScope === 'ALL'")
+    expect(source).toContain('rnpService.headcountTeamsOf(ctx.principal.employeeId)')
+    expect(source).toContain('!own.has(c.rop)')
     expect(source).toContain('c.day > today')
     // A team the month's sheet does not draw (or an alias) is refused.
     expect(source).toContain('rnpService.headcountTeams(')

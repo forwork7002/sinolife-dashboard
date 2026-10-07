@@ -456,6 +456,18 @@ export class RnpRepository {
         AND h."enteredAt" < ${hi}`
   }
 
+  /** The ROP teams `employeeId` heads — the «Ходим сони» rows that person may type. */
+  async teamsHeadedBy(employeeId: string): Promise<string[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ rop: string }[]>(
+      `SELECT DISTINCT t.rop
+         FROM "department" dep
+         CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"')} AS rop) t
+        WHERE dep."headId" = $1 AND dep."isActive" AND t.rop IS NOT NULL`,
+      employeeId,
+    )
+    return rows.map((r) => r.rop)
+  }
+
   /** Every active ROP department, with its head. */
   async teams(): Promise<RnpTeam[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string; head: string | null }[]>(`

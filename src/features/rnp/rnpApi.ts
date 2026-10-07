@@ -170,6 +170,8 @@ export interface RnpOverviewDto {
   }
   /** May type the hand-typed cells (P&L costs, «Ходим сони») — `kpi:manage`. */
   readonly canEditPlans: boolean
+  /** The teams whose «Ходим сони» this viewer types though not an editor — the ROP's own. */
+  readonly headcountTeams?: readonly string[]
 }
 
 /**

@@ -671,9 +671,10 @@ describe('RnpPage — the sheet', () => {
   })
 
   describe('typed «Ходим сони» (2026-10-01)', () => {
-    const withHeads = (days: (number | null)[] = [6, null, null]): RnpOverviewDto => ({
+    const withHeads = (days: (number | null)[] = [6, null, null], canEditPlans = true, headcountTeams?: string[]): RnpOverviewDto => ({
       ...FIXTURE,
-      canEditPlans: true,
+      canEditPlans,
+      headcountTeams,
       blocks: [
         ...FIXTURE.blocks,
         ...['Lola', 'Aziz'].map((rop) => ({
@@ -707,6 +708,26 @@ describe('RnpPage — the sheet', () => {
       await waitFor(() => expect(posted).toHaveLength(1))
       expect(postedTo).toEqual(['/api/v1/rnp/headcount'])
       expect(posted[0]).toEqual({ month: '2026-09', cells: [{ day: '2026-09-02', rop: 'Lola', value: 8 }] })
+    })
+
+    it('opens a ROP only their own team’s row (2026-10-07)', async () => {
+      fixture = withHeads([6, null, null], false, ['Lola'])
+      await draw()
+      expect(field('02.09')).toBeTruthy()
+      expect(screen.queryAllByRole('textbox', { name: /^Aziz · Ходим сони/ })).toHaveLength(0)
+      fireEvent.focus(field('02.09'))
+      fireEvent.change(field('02.09'), { target: { value: '7' } })
+      await act(async () => {
+        fireEvent.keyDown(field('02.09'), { key: 'Enter' })
+      })
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect(posted[0]).toEqual({ month: '2026-09', cells: [{ day: '2026-09-02', rop: 'Lola', value: 7 }] })
+    })
+
+    it('opens nothing to a viewer who heads no team', async () => {
+      fixture = withHeads([6, null, null], false, [])
+      await draw()
+      expect(screen.queryAllByRole('textbox')).toHaveLength(0)
     })
 
     it('refuses a fraction or a thousand-plus in place, and sends nothing', async () => {

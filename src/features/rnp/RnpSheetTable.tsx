@@ -94,6 +94,7 @@ export function RnpSheetTable({
   days,
   today,
   editCostsFor = null,
+  editHeadcount = null,
 }: {
   lines: readonly RnpLine[]
   /** The payload's lines before the brand and ROP cuts — a line's place in them is its key (`lineKey`). Default: `lines`. */
@@ -103,6 +104,8 @@ export function RnpSheetTable({
   today: string
   /** The month typed P&L costs are saved under; null (the default) = read-only. */
   editCostsFor?: string | null
+  /** A ROP's own teams' «Ходим сони», typed under `month`; null (the default) = none. */
+  editHeadcount?: { readonly month: string; readonly teams: readonly string[] } | null
 }) {
   // Built once per payload: every value line looks its figures up here.
   const rows = useMemo(() => rowsByKey(blocks), [blocks])
@@ -156,7 +159,14 @@ export function RnpSheetTable({
                 today={today}
                 span={span}
                 // Only a row with a typed cell gets the month, so every other line's memo is untouched by it.
-                editMonth={row?.manual || row?.planInput ? editCostsFor : null}
+                editMonth={
+                  row?.manual || row?.planInput
+                    ? (editCostsFor ??
+                      (row.manual?.kind === 'headcount' && editHeadcount?.teams.includes(row.manual.rop)
+                        ? editHeadcount.month
+                        : null))
+                    : null
+                }
               />
             )
           })}
