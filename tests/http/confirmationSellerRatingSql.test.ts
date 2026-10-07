@@ -46,16 +46,9 @@ const ratingFilterSql = (
   }
 ).ratingFilterSql
 
-const ratingDaysSql = (
-  InsightsRepository as unknown as { ratingDaysSql: () => string }
-).ratingDaysSql
-
 const SQL = ratingSql('')
 const bare = (sql: string) => sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
 const BARE_SQL = bare(SQL)
-
-const DAYS_SQL = ratingDaysSql()
-const BARE_DAYS_SQL = bare(DAYS_SQL)
 
 describe('confirmation seller rating SQL', () => {
   it('runs over scoped, not visible — the cheap door out of the prelude', () => {
@@ -284,68 +277,6 @@ describe('confirmation seller rating filters', () => {
       outside their team gets the empty intersection, not that colleague.
     */
     expect(clause).not.toContain(' OR ')
-  })
-})
-
-/**
- * THE CHART UNDER A ROW MEASURES WHAT THE ROW MEASURES.
- *
- * `?employeeId=` on `/analytics/sellers` serves one seller's two facts across
- * days — FAKT 1 and FAKT 2 — so every predicate here has to be the board's.
- * (The drill-down chart that drew it left the sellers screen on 2026-09-07,
- * when the page became the floor's television board; the series is still
- * served, and this pin still holds it to the board's definitions.) It was not:
- * the series graded FAKT 2 on `d."status" = 'WON'` while the row graded on the
- * DELIVERED logistics role, and it named the operator with a bare
- * `d."employeeId"` while the row was minted by COALESCE over the snapshot.
- * Production, «Oʻtgan oy» 2026-09-04: 18 of the top 19 sellers agreed and one
- * did not — 1 000 000 soʻm of Sirojov 115 Davlatbek's FAKT 1 sat on another
- * row, so his chart could not see it. On the local fixtures — OPEN deals
- * inside a delivered stage — the whole FAKT 2 series read flat zero.
- */
-describe('confirmation seller rating day series SQL', () => {
-  it('grades FAKT 2 on the delivery role, exactly as the board does', () => {
-    expect(BARE_DAYS_SQL).toContain(`FILTER (WHERE ds."logisticsRole" = 'DELIVERED')`)
-    expect(BARE_SQL).toContain(`FILTER (WHERE ds."logisticsRole" = 'DELIVERED')`)
-  })
-
-  it('never falls back to a bare WON status for FAKT 2', () => {
-    // Nine stages across nine pipelines carry WON and only three of them mean
-    // a courier arrived — «База · Успешно» and the «Регистрация» stamp are the
-    // two that hold real deals. See DELIVERY_STAGE_ROLES in mapping.ts.
-    expect(BARE_DAYS_SQL).not.toContain(`d."status" = 'WON'`)
-  })
-
-  it('joins the stage the role is read from', () => {
-    expect(BARE_DAYS_SQL).toContain(`LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"`)
-  })
-
-  it('names the operator the board named, not the row-holder', () => {
-    expect(BARE_DAYS_SQL).toContain(
-      `WHERE COALESCE(d."operatorEmployeeId", d."employeeId") = $3`,
-    )
-    expect(BARE_DAYS_SQL).not.toContain(`WHERE d."employeeId" = $3`)
-  })
-
-  it('keeps the day whose only money was delivered without a confirmation', () => {
-    // FAKT 2 is not a subset of FAKT 1 — an order shipped Тасдиқланмай чиқди
-    // delivers real money — so the gate is confirmed-OR-delivered, and both
-    // halves must speak the same dialect as the SELECT above them.
-    expect(BARE_DAYS_SQL).toContain('HAVING count(*) FILTER')
-    expect(BARE_DAYS_SQL).toContain(
-      `OR count(*) FILTER (WHERE ds."logisticsRole" = 'DELIVERED') > 0`,
-    )
-  })
-
-  it('reads the same cohort, dated by the queue arrival', () => {
-    expect(BARE_DAYS_SQL).toContain('FROM scoped c')
-    expect(BARE_DAYS_SQL).not.toContain('FROM classified')
-    expect(BARE_DAYS_SQL).toContain('c.queued_at')
-    expect(BARE_DAYS_SQL).not.toContain('createdAtSource')
-  })
-
-  it('balances its parentheses', () => {
-    expect((DAYS_SQL.match(/\(/g) ?? []).length).toBe((DAYS_SQL.match(/\)/g) ?? []).length)
   })
 })
 

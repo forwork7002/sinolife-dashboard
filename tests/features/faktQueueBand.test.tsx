@@ -100,7 +100,6 @@ function board(over: {
       lostAfterConfirmOrders: over.lostAfterConfirmOrders,
       lostAfterConfirm: money(over.lostAfterConfirm),
       conversionPercent: 72.4,
-      wonDelta: { kind: 'unchanged' },
       bonusPayable: money(0),
       sellersInBonus: 0,
       teamlessSellers: 0,
@@ -230,5 +229,31 @@ describe('the FAKT 2 run-rate', () => {
 
     expect(screen.getByText('hali yetkazilgan buyurtma yoʻq — prognoz uchun erta')).toBeDefined()
     expect(screen.queryByText(/shu surʼatda davom etsa/)).toBeNull()
+  })
+})
+
+describe('the bonus fund', () => {
+  it('names the sellers on a rung when the fund is stated', () => {
+    render(<QueueBand data={LIVE} status="ready" />)
+
+    expect(screen.getByText('0 ta sotuvchi darajani oldi')).toBeDefined()
+  })
+
+  it('says why there is no fund under a brand or source slice, rather than printing a bare dash', () => {
+    /*
+      The ladder pays on a seller's WHOLE FAKT 2 and is not linear, so a brand
+      slice or a source filter carries no fund (`bonusPayable` null) — and an
+      em dash with no word beside it reads as «nothing is being paid».
+    */
+    const sliced = {
+      ...LIVE,
+      totals: { ...LIVE.totals, bonusPayable: null, sellersInBonus: null },
+    } as SellerBoardDto
+    render(<QueueBand data={sliced} status="ready" />)
+
+    const tile = screen.getByText('Bonus jamgʻarmasi').closest('.card')!
+    expect(tile.querySelector('.figure')?.textContent).toBe('—')
+    expect(tile.textContent).toContain('brend va manba boʻyicha ajratilmaydi — bonus jami FAKT 2 dan')
+    expect(screen.queryByText(/darajani oldi/)).toBeNull()
   })
 })

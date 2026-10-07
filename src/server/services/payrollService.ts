@@ -156,15 +156,51 @@ export interface PayrollDto {
 }
 
 /**
- * Sixty seconds, the same as every other memo here and the sync worker's tick.
+ * Two minutes, the same as every other live memo here and the sync worker's tick.
  *
  * Keyed on the whole question — scheme, window and currency. There is no scope in
  * the key because there is no scope in the answer: the endpoint asks for
  * `analytics:read:all`, so a narrowed account is refused rather than served a
  * narrowed payroll. If this screen is ever opened to a ROP, the scope goes in
  * this key in the same commit or the memo goes.
+ *
+ * PLAIN, NOT STALE-WHILE-REVALIDATE (2026-10-06). The rows under it
+ * (`rowsCache`) already hand out an expired answer while they refresh behind
+ * the reader. A second stale layer here rebuilt its DTO behind the reader
+ * FROM those stale rows, so every poll was served rows one poll older than
+ * either layer alone — 240 s behind at the screen's 120 s poll, and up to
+ * 2 × (ttl + stale) at worst, past the bound `ttlCache` promises. Expired,
+ * this memo makes its reader wait for `build()`, which is arithmetic over
+ * memoised rows: only a window nothing has read yet costs a scan.
  */
-const payrollCache = ttlCache<PayrollDto>(120_000, LIVE_CACHE)
+const payrollCache = ttlCache<PayrollDto>(120_000)
+
+/**
+ * ONE WINDOW'S DELIVERED ROWS, memoised on the window alone — 2026-10-06.
+ *
+ * The memo above is keyed on the comparison window too, and while a period
+ * runs that window's end moves with the clock (`comparablePayrollPeriod`), so
+ * a poll of the running week or month regularly meets a key it has never seen
+ * and rebuilds. Until this memo, that rebuild ran BOTH `deliveredSellerRows`
+ * scans in front of the reader — the current period's included, although its
+ * window had not moved. Memoised here on start|end with stale-while-revalidate,
+ * the current period's rows are served on every poll and refreshed behind
+ * the reader; only the comparison's scan is ever waited for. The window is the
+ * whole question: the rows are the same delivered FAKT 2 whichever table pays
+ * them and in whatever currency, so neither is in the key. This is the ONE
+ * stale-while-revalidate layer on the screen — see `payrollCache` for why the
+ * DTO over it is not another.
+ */
+const rowsCache = ttlCache<ConfirmationSellerRatingRow[]>(120_000, LIVE_CACHE)
+
+/**
+ * Test seam: both memos are module state, shared by every case in a worker —
+ * the hazard `resetSellerBoardCache` describes.
+ */
+export function resetPayrollCache(): void {
+  payrollCache.clear()
+  rowsCache.clear()
+}
 
 export class PayrollService {
   constructor(private readonly insights: InsightsRepository) {}
@@ -202,7 +238,8 @@ export class PayrollService {
       The window's start alone does not name the period — a month, its first
       half and the week that opens on the 1st can share it — so the scheme and
       the end are in the key as well. The comparison window moves with the
-      clock while the period runs (to the minute), so its end is in it too.
+      clock while the period runs (in ten-minute steps), so its end is in it
+      too.
     */
     const key = [
       scheme,
@@ -225,8 +262,10 @@ export class PayrollService {
     and pay is a person's: two slices would split one FAKT 2 across the
     tiers and rank one seller twice. See `mergeSellerTeamSlices`.
   */
-  private async rows(period: Period): Promise<ConfirmationSellerRatingRow[]> {
-    return mergeSellerTeamSlices(await this.insights.deliveredSellerRows(period))
+  private rows(period: Period): Promise<ConfirmationSellerRatingRow[]> {
+    return rowsCache.get(`${period.start.toISOString()}|${period.end.toISOString()}`, async () =>
+      mergeSellerTeamSlices(await this.insights.deliveredSellerRows(period)),
+    )
   }
 
   private async build(

@@ -69,7 +69,6 @@ function seller(employeeId: string, rank: number, won: number, ordered: number) 
     won: money(won),
     sharePercent: null,
     conversionPercent: null,
-    bonus: { earned: money(0), toNext: null, toNextPercent: null, eligible: false },
   }
 }
 

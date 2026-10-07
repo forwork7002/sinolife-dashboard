@@ -5,7 +5,6 @@ import type {
   ConfirmationSourceRatingRow,
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
-import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
 import { SellerBoardService, resetSellerSourcesCache } from '@/server/services/sellerBoardService'
@@ -60,7 +59,6 @@ function sourcesOver(rows: readonly ConfirmationSourceRatingRow[], preset = 'thi
   return new SellerBoardService(
     {} as SellerBoardRepository,
     insights,
-    {} as ReferenceRepository,
   ).sources(ctx)
 }
 

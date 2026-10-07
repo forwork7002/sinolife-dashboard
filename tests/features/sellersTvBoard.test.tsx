@@ -70,7 +70,6 @@ function seller(fullName: string, rank: number, won: number, ordered: number, ro
     won: money(won),
     sharePercent: null,
     conversionPercent: null,
-    bonus: { earned: money(0), toNext: null, toNextPercent: null, eligible: false },
   }
 }
 
@@ -487,6 +486,27 @@ const TIED = board({
   ],
 })
 
+/*
+  «Bugun», the day's first delivery: it is a teamless operator's, so the teams
+  — which drop every slice with no ROP — have none of it, while the sellers'
+  list does. Resolved per column, «auto» lit FAKT 2 on the left and FAKT 1 on
+  the right under one choice.
+*/
+const TEAMLESS_FIRST = board({
+  orders: 40,
+  wonOrders: 1,
+  won: 2_000_000,
+  rows: [
+    seller('Aziza 121 Toshmatova', 1, 2_000_000, 3_000_000, null),
+    seller('Saparboyeva 110 Farida', 2, 0, 12_900_000, 'Sevinch'),
+  ],
+  teams: [
+    team('Sevinch', 1, 9, 0, 12_900_000),
+    team('Gulzora', 2, 12, 0, 9_000_000),
+  ],
+  teamlessSellers: 1,
+})
+
 /** The seat names of one column, in DOM order — which is 1, 2, 3. */
 const seatsOf = (id: 'tv-sellers' | 'tv-teams') =>
   [...document.querySelectorAll(`#${id} .tv-seat-name`)].map((n) => n.textContent)
@@ -515,6 +535,18 @@ describe('reading the same board on the other fact', () => {
         'true',
       )
     }
+  })
+
+  it('resolves «auto» once for both columns — the teams cannot read another fact', () => {
+    render(<Board data={TEAMLESS_FIRST} />)
+
+    for (const id of ['tv-sellers', 'tv-teams'] as const) {
+      expect(column(id).getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed')).toBe(
+        'true',
+      )
+    }
+    // Read on FAKT 2, no team has delivered yet: an empty podium is the answer.
+    expect(column('tv-teams').getByText(/Podium hali boʻsh/)).toBeDefined()
   })
 
   it('re-seats the podium on confirmed money, and says so on every seat', () => {

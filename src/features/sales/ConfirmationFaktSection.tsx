@@ -6,7 +6,6 @@ import { useQuery } from '@tanstack/react-query'
 import { ErrorState, statusOf } from '@/components/states/States'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { GaugeTile, RankBadge, StatTile } from '@/components/ui/Stat'
-import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type SellerBoardDto, type SellerTeamRowDto, apiGet } from '@/lib/api'
 import { NO_VALUE, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
@@ -106,10 +105,15 @@ export function useFaktBoard() {
  * asks where the cohort stands NOW and the cohort is dated by its arrival in
  * C4:NEW; nothing lands for about two days, and the window opens on «Bugun».
  * Measured 2026-09-04 by arrival day: 04-sen 79 confirmed / 0 delivered,
- * 03-sen 94 / 0, 02-sen 80 / 20, 31-avg 99 / 73. The sub-line names the road;
- * the trend goes with it, because zero against zero explains nothing. Keyed
- * on `wonOrders`, not on the money: an order delivered for nothing is still a
- * delivery.
+ * 03-sen 94 / 0, 02-sen 80 / 20, 31-avg 99 / 73. The sub-line names the road.
+ * Keyed on `wonOrders`, not on the money: an order delivered for nothing is
+ * still a delivery.
+ *
+ * AND THE SAME LAG IS WHY FAKT 2 CARRIES NO TREND (2026-10-06). The arrow set
+ * this cohort against the window before it, and FAKT 2 is where each order
+ * stands NOW — so the comparison, always the older cohort, had had longer to
+ * be delivered, and a floor working at an unchanged pace read a fall on every
+ * running window. The board stopped reading the comparison; see `buildBoard`.
  *
  * Exported for `tests/features/confirmationFakt.test.tsx`, which pins those
  * three readings — young window, empty window, delivered window. They were
@@ -172,9 +176,6 @@ export function FaktHeadline({
                 ? `hali yetkazilmagan — ${formatFullUzs(totals.open.amount)} soʻm yoʻlda`
                 : 'bu davrda yetkazilgan buyurtma yoʻq'
             : undefined
-        }
-        context={
-          totals && totals.wonOrders > 0 ? <TrendIndicator delta={totals.wonDelta} /> : undefined
         }
       />
     </>
@@ -413,15 +414,22 @@ export function QueueBand({
         }
       />
       {/* The one figure on this band that is a POLICY rather than a
-          measurement, so it names its own source in the hint. */}
+          measurement, so it names its own source in the hint. Null under a
+          brand slice or a source filter — the ladder reads a seller's whole
+          FAKT 2 and cannot be cut deal by deal — and the hint says so rather
+          than leave a dash unexplained. */}
       <StatTile
         label="Bonus jamgʻarmasi"
-        value={totals ? totals.bonusPayable.amount : null}
+        value={totals?.bonusPayable?.amount ?? null}
         unit="money"
         money="full"
         status={status}
         hint={
-          totals ? `${formatNumber(totals.sellersInBonus)} ta sotuvchi darajani oldi` : undefined
+          totals
+            ? totals.sellersInBonus === null
+              ? 'brend va manba boʻyicha ajratilmaydi — bonus jami FAKT 2 dan'
+              : `${formatNumber(totals.sellersInBonus)} ta sotuvchi darajani oldi`
+            : undefined
         }
       />
     </div>

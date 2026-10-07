@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   comparablePayrollPeriod,
@@ -6,7 +6,7 @@ import {
   payrollWeekPeriod,
 } from '@/server/domain/period/period'
 import type { ConfirmationSellerRatingRow, InsightsRepository } from '@/server/repositories/insightsRepository'
-import { PayrollService } from '@/server/services/payrollService'
+import { PayrollService, resetPayrollCache } from '@/server/services/payrollService'
 
 /**
  * PAY IS A PERSON'S, NOT A TEAM'S — 2026-09-26.
@@ -17,6 +17,10 @@ import { PayrollService } from '@/server/services/payrollService'
  * across the tiers: 30 + 20 mln is two sellers under the 45 mln fiksa tier,
  * where the person actually delivered 50 and earns 4 000 000 + 500 000.
  */
+
+// Both payroll memos are module state; a case that reads another's entry
+// asserts against the wrong fixtures with no error anywhere.
+beforeEach(resetPayrollCache)
 
 const mln = (n: number) => BigInt(Math.round(n * 1_000_000)) * 100n
 const EMPTY = { CONFIRM_NEW: 0, NO_ANSWER: 0, CONFIRMED: 0, REJECTED: 0, UNCONFIRMED_SHIPPED: 0 }
@@ -243,5 +247,99 @@ describe('payroll growth and ROP cards', () => {
     const dto = await new PayrollService(insights).weekly(week, empty, 'UZS', now)
     expect(calls).toBe(1)
     expect(dto.previous.sellers).toBe(0)
+  })
+})
+
+/**
+ * THE RUNNING PERIOD IS READ ONCE ACROSS POLLS — 2026-10-06.
+ *
+ * The payroll memo is keyed on the comparison window as well, and while a
+ * period runs that window moves with the clock, so a poll regularly meets a key
+ * nothing has built. The rebuild used to scan the CURRENT window again too,
+ * although its start and end had not moved; its rows have their own memo now.
+ */
+describe('the payroll memo across polls', () => {
+  it('reads the running week once while the comparison window moves on', async () => {
+    const TZ = 'Asia/Tashkent'
+    const asked: string[] = []
+    const insights = {
+      deliveredSellerRows: async (window: { start: Date; end: Date }) => {
+        asked.push(`${window.start.toISOString()}|${window.end.toISOString()}`)
+        return [slice('a', 'Lola', 20, 10)]
+      },
+    } as unknown as InsightsRepository
+    const service = new PayrollService(insights)
+    // A week no other case asks for: the memos are module state.
+    const week = payrollWeekPeriod('2026-11-02', TZ)
+    const weekBefore = payrollWeekPeriod('2026-10-26', TZ)
+    const poll = (instant: string) => {
+      const now = new Date(instant)
+      return service.weekly(week, comparablePayrollPeriod(week, weekBefore, now), 'UZS', now)
+    }
+
+    // Twelve minutes apart on the REQUEST clock, so the comparison's
+    // ten-minute step — and with it the payroll key — has moved on. The memos
+    // run on the real clock, so this proves one current-window read serves
+    // two payroll keys, not that the rows outlive twelve real minutes.
+    const first = await poll('2026-11-04T06:00:00Z')
+    const later = await poll('2026-11-04T06:12:00Z')
+
+    const current = `${week.start.toISOString()}|${week.end.toISOString()}`
+    expect(asked.filter((key) => key === current)).toHaveLength(1)
+    // Two comparison windows, each read once.
+    expect(asked.filter((key) => key !== current)).toHaveLength(2)
+    expect(later.totals.fakt2.amount).toBe(first.totals.fakt2.amount)
+  })
+})
+
+/**
+ * HOW OLD A POLL'S PAYROLL CAN BE — 2026-10-06.
+ *
+ * The rows memo hands out an expired answer while it refreshes behind the
+ * reader. The payroll memo over it used to do the same, and its rebuild behind
+ * the reader read those stale rows — so the screen trailed the database by one
+ * poll more than either layer alone, 240 s at the 120 s poll. Only the rows are
+ * stale-while-revalidate now: a poll carries what the poll before it refreshed.
+ */
+describe('the payroll a poll is served', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('carries the rows the previous poll refreshed, not the ones before them', async () => {
+    const TZ = 'Asia/Tashkent'
+    let reads = 0
+    const insights = {
+      deliveredSellerRows: async () => {
+        // Every read finds one more million delivered than the read before it.
+        reads += 1
+        return [slice('a', 'Lola', reads, 10)]
+      },
+    } as unknown as InsightsRepository
+    const service = new PayrollService(insights)
+    const week = payrollWeekPeriod('2026-10-12', TZ)
+    // Asked before the week begins, the comparison window is empty and never
+    // read, so every read above is the current week's.
+    const nothing = comparablePayrollPeriod(week, payrollWeekPeriod('2026-10-05', TZ), new Date('2026-10-10T06:00:00Z'))
+    const now = new Date('2026-10-13T06:00:00Z')
+    const poll = async () => (await service.weekly(week, nothing, 'UZS', now)).totals.fakt2.amount
+
+    expect(await poll()).toBe(1_000_000)
+
+    // The next poll: the rows have expired, are served as they were, and are
+    // read again behind this reader.
+    vi.advanceTimersByTime(120_000)
+    expect(await poll()).toBe(1_000_000)
+    await vi.runAllTimersAsync()
+    expect(reads).toBe(2)
+
+    // The one after it carries that second read. With the payroll memo stale
+    // as well, it was served the first read a third time.
+    vi.advanceTimersByTime(120_000)
+    expect(await poll()).toBe(2_000_000)
   })
 })

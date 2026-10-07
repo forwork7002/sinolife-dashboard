@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
 import type { ConfirmationMonthlyRecordRow, InsightsRepository } from '@/server/repositories/insightsRepository'
-import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
 import { SellerBoardService, resetSellerRecordsCache } from '@/server/services/sellerBoardService'
@@ -44,8 +43,7 @@ function serviceOver(rows: readonly ConfirmationMonthlyRecordRow[]) {
   const insights = {
     confirmationSellerRecords: async () => [...rows],
   } as unknown as InsightsRepository
-  const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
-  const service = new SellerBoardService({} as SellerBoardRepository, insights, reference)
+  const service = new SellerBoardService({} as SellerBoardRepository, insights)
 
   // Built by hand rather than through `AnalyticsService.context`, whose module
   // reads `env` at import and would make this a test of the environment.
@@ -121,7 +119,6 @@ describe('which figure the wall calls the record', () => {
     const service = new SellerBoardService(
       {} as SellerBoardRepository,
       insights,
-      { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository,
     )
     const period = resolvePeriod('today', { timeZone: TZ, now: justPastMidnight })
     const ctx = {
@@ -163,5 +160,43 @@ describe('what the wall says about the span it covers', () => {
     const narrowed = await records(['e1', 'e2'])
 
     expect(narrowed.months).toEqual(wide.months)
+  })
+})
+
+describe('the wall’s memo', () => {
+  it('is shared by two requests whose clocks differ by milliseconds', async () => {
+    /*
+      Every request brings its own `ctx.now`, and the wall's window ENDS at
+      it. With the end in the key the memo never hit: the widest cohort on
+      the landing page was rebuilt on every request, the televisions' ten-
+      minute poll included. One `ctx` asked twice could not catch that — two
+      clocks 37 ms apart, as two real requests arrive, do.
+    */
+    let calls = 0
+    const insights = {
+      confirmationSellerRecords: async () => {
+        calls += 1
+        return [row({ month: '2026-09-01', confirmedMinor: mln(44) })]
+      },
+    } as unknown as InsightsRepository
+    const service = new SellerBoardService(
+      {} as SellerBoardRepository,
+      insights,
+    )
+    const at = (now: Date) => {
+      const period = resolvePeriod('today', { timeZone: TZ, now })
+      return {
+        period,
+        comparison: previousEquivalent(period),
+        currency: 'UZS',
+        filters: { restrictToEmployeeIds: null },
+        now,
+      } as unknown as AnalyticsContext
+    }
+
+    await service.records(at(new Date('2026-09-08T09:00:00.000+05:00')))
+    await service.records(at(new Date('2026-09-08T09:00:00.037+05:00')))
+
+    expect(calls).toBe(1)
   })
 })

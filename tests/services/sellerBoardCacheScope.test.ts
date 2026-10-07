@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
 import type { ConfirmationSellerRatingRow, InsightsRepository } from '@/server/repositories/insightsRepository'
-import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
 import { SellerBoardService, resetSellerBoardCache } from '@/server/services/sellerBoardService'
@@ -69,13 +68,15 @@ function rating(employeeId: string, rop: string, minor: bigint): ConfirmationSel
 }
 
 /**
- * ONE BOARD IS TWO COHORT CONSTRUCTIONS — the window and the comparison it is
- * measured against — so a build shows up here as two calls, not one. The
- * constant is named rather than folded into each expectation: if the service
- * ever stops fetching the comparison, these counts must fail loudly instead of
- * quietly meaning half of what they say.
+ * ONE BOARD IS ONE COHORT CONSTRUCTION — the window. It was two until
+ * 2026-10-06, the window and the comparison the FAKT 2 trend was measured
+ * against; that trend compared cohorts of different ages and went, and the
+ * comparison read with it (see `buildBoard`). The constant is named rather
+ * than folded into each expectation: if a second read per build ever comes
+ * back, these counts must fail loudly instead of quietly meaning twice what
+ * they say.
  */
-const CALLS_PER_BUILD = 2
+const CALLS_PER_BUILD = 1
 
 /**
  * A service whose repository answers a DIFFERENT board on every build, and
@@ -94,12 +95,12 @@ function tracked() {
     // period before it is passed. See `sellerBoardService.sellerRows`.
     confirmationSellerRating: async (period: { restrictToEmployeeIds?: readonly string[] | null }) => {
       scopes.push(period?.restrictToEmployeeIds)
-      if (scopes.length % CALLS_PER_BUILD === 1) builds += 1
+      // The first call of each build starts a new one.
+      if ((scopes.length - 1) % CALLS_PER_BUILD === 0) builds += 1
       return [rating(`seller-${builds}`, `rop-${builds}`, BigInt(builds) * 100n)]
     },
   } as unknown as InsightsRepository
-  const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
-  const service = new SellerBoardService({} as SellerBoardRepository, insights, reference)
+  const service = new SellerBoardService({} as SellerBoardRepository, insights)
 
   // Built by hand rather than through `AnalyticsService.context`, whose module
   // reads `env` at import and would make this a test of the environment.
@@ -154,7 +155,7 @@ describe('the sellers board, company-wide by decision', () => {
     const [a, b, c] = await Promise.all([board(null), board(null), board(null)])
 
     // The case the memo exists for: the floor opens this screen together, and
-    // each build is two full cohort constructions on a one-vCPU database.
+    // each build is a full cohort construction on a one-vCPU database.
     expect(buildCount()).toBe(1)
     expect(a.rows[0]!.employeeId).toBe('seller-1')
     expect(b.rows[0]!.employeeId).toBe('seller-1')
@@ -173,7 +174,6 @@ describe('the sellers board, company-wide by decision', () => {
       board filtered to one team must not be served to somebody who asked for
       all of them.
     */
-    const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
     let calls = 0
     const counting = {
       confirmationSellerRating: async () => {
@@ -181,7 +181,7 @@ describe('the sellers board, company-wide by decision', () => {
         return [rating(`s${calls}`, 'Alfa', BigInt(calls) * 100n)]
       },
     } as unknown as InsightsRepository
-    const counted = new SellerBoardService({} as SellerBoardRepository, counting, reference)
+    const counted = new SellerBoardService({} as SellerBoardRepository, counting)
 
     const ctxWith = (employeeIds?: readonly string[]) => {
       const period = resolvePeriod('today', { timeZone: TZ, now: NOW })

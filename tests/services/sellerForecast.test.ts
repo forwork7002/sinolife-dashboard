@@ -5,7 +5,6 @@ import type {
   ConfirmationSellerRatingRow,
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
-import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
 import { SellerBoardService, resetSellerBoardCache } from '@/server/services/sellerBoardService'
@@ -101,8 +100,7 @@ function serviceOver(rows: readonly ConfirmationSellerRatingRow[]) {
     // bucket, which is all the granularity cases need from it.
     confirmationFaktDays: async () => [],
   } as unknown as InsightsRepository
-  const reference = { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository
-  return new SellerBoardService({} as SellerBoardRepository, insights, reference)
+  return new SellerBoardService({} as SellerBoardRepository, insights)
 }
 
 function boardOver(

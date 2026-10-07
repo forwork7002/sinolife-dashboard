@@ -877,7 +877,7 @@ function payrollColumns(scheme: Scheme, compared: boolean): Column<PayrollLine>[
         Nobody in the comparison window reads «yangi», never «+∞%».
       */
       render: (line) =>
-        // An empty comparison window (a period's first minute) compares nothing.
+        // An empty comparison window (a period's first ten minutes) compares nothing.
         !compared ? (
           <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
         ) : line.row.previous ? (

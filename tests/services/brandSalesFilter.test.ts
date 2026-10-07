@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import type { PrismaClient } from '@/generated/prisma/client'
 import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
 import { brandTeams, teamBrand } from '@/server/domain/rnp/rnpSheet'
-import type { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import type { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import type { AnalyticsContext } from '@/server/services/analyticsService'
 
@@ -107,7 +106,6 @@ describe('the confirmation-queue readers', () => {
     const service = new SellerBoardService(
       {} as SellerBoardRepository,
       insights,
-      { findKpisForPeriod: async () => [] } as unknown as ReferenceRepository,
     )
     await service.faktTrend(context({ brand: 'Collagen' }))
     await service.faktTrend(context({}))
@@ -138,27 +136,6 @@ describe('the Доставка board', () => {
     seen.length = 0
     await service.deliveryBoard(context({}))
     expect(seen[0]!.sql).not.toContain('::text[]')
-  })
-})
-
-describe('the seller\'s day chart', () => {
-  it('narrows by the brand like the board row it opens from', async () => {
-    const calls: { sql: string; params: unknown[] }[] = []
-    const prisma = {
-      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
-        calls.push({ sql, params })
-        return []
-      },
-    } as unknown as PrismaClient
-    const repo = new InsightsRepository(prisma)
-    const period = { ...resolvePeriod('this_month', { timeZone: TZ, now: NOW }), restrictToEmployeeIds: null }
-    await repo.confirmationSellerRatingDays(period, 'e1')
-    await repo.confirmationSellerRatingDays(period, 'e1', { slice: 'none', collagenTeams: ['Sevinch'], zextraTeams: ['Asliddin'] })
-    expect(calls[0]!.sql).not.toContain('$5')
-    expect(calls[0]!.params).toHaveLength(4)
-    expect(calls[1]!.sql).toContain('WHEN (c.rop) = ANY($5::text[])')
-    expect(calls[1]!.sql).toContain(') IS NULL')
-    expect(calls[1]!.params.slice(4)).toEqual([['Sevinch'], ['Asliddin']])
   })
 })
 

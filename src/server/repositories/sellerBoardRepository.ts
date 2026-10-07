@@ -121,15 +121,6 @@ export interface SellerBoardRow {
   readonly byOutcomeMinor: ConfirmationOutcomeMinor | null
 }
 
-/** One day of one seller's intake, for the per-seller detail. */
-export interface SellerDayRow {
-  readonly employeeId: string
-  readonly date: string
-  readonly orders: number
-  readonly orderedMinor: bigint
-  readonly wonMinor: bigint
-}
-
 export class SellerBoardRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -209,52 +200,6 @@ export class SellerBoardRepository {
       openOrders: int(r.open_orders),
       openMinor: money(r.open_amount),
       lostOrders: int(r.lost_orders),
-    }))
-  }
-
-  /**
-   * The daily series behind one seller's row.
-   *
-   * Only the days that carry orders — a seller's month is not a time axis
-   * that must be complete, it is a list of the days they worked, and padding
-   * it with zeros would draw a sparse worker as a mostly-flat line.
-   */
-  async sellerDays(
-    period: Period,
-    employeeId: string,
-    filters: SellerBoardFilters,
-  ): Promise<SellerDayRow[]> {
-    const tz = 'Asia/Tashkent'
-    const params: unknown[] = [period.start, period.end, employeeId]
-    const filterClause = this.filterSql(filters, params, 'd')
-
-    const rows = await this.prisma.$queryRawUnsafe<
-      { date: string; orders: bigint; ordered: MoneyText; won: MoneyText }[]
-    >(
-      `
-      SELECT
-        (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE '${tz}')::date::text AS date,
-        count(*) FILTER (WHERE d."status" <> 'LOST')::bigint           AS orders,
-        sum(d."amountMinor") FILTER (WHERE d."status" <> 'LOST')::text AS ordered,
-        sum(d."amountMinor") FILTER (WHERE d."status" = 'WON')::text   AS won
-      FROM "deal" d
-      WHERE d."countsAsRevenue"
-        AND d."createdAtSource" >= $1 AND d."createdAtSource" < $2
-        AND d."employeeId" = $3
-        ${filterClause}
-      GROUP BY 1
-      HAVING count(*) FILTER (WHERE d."status" <> 'LOST') > 0
-      ORDER BY 1
-      `,
-      ...params,
-    )
-
-    return rows.map((r) => ({
-      employeeId,
-      date: r.date,
-      orders: int(r.orders),
-      orderedMinor: money(r.ordered),
-      wonMinor: money(r.won),
     }))
   }
 

@@ -557,16 +557,19 @@ export function previousPayrollMonday(mondayIso: string): string {
  * deliberately not clipped to now (see `payrollPeriod`), and five days set
  * against a whole month would print every seller as a collapse.
  *
- * The elapsed time is FLOORED TO THE MINUTE, so the window — and the memo key
- * built from it — holds still for a minute rather than changing on every
- * request. The cut never runs past the previous period's own end (a 16-day
- * second half of March against February's 13), and a period that has not
- * started yet is compared with nothing: an empty window at the previous start.
+ * The elapsed time is FLOORED TO TEN MINUTES, so the window — and the memo key
+ * built from it — holds still across the screen's 120 s polls. Floored to the
+ * minute (until 2026-10-06) it moved between every two polls, so every poll of
+ * a running period met a key nothing had built and paid the delivered-rows
+ * scans in front of the reader; ten minutes in a comparison of days is noise.
+ * The cut never runs past the previous period's own end (a 16-day second half
+ * of March against February's 13), and a period that has not started yet is
+ * compared with nothing: an empty window at the previous start.
  */
 export function comparablePayrollPeriod(current: Period, previous: Period, now: Date): Period {
   assertValidDate(now, 'now')
-  const minute = 60_000
-  const elapsed = Math.floor((now.getTime() - current.start.getTime()) / minute) * minute
+  const step = 10 * 60_000
+  const elapsed = Math.floor((now.getTime() - current.start.getTime()) / step) * step
   const open = now.getTime() < current.end.getTime()
   const end = !open
     ? previous.end.getTime()

@@ -22,3 +22,23 @@ describe('sellers marshrutining include parametri', () => {
     expect(source).toContain(`ctx.query.include === 'sources'`)
   })
 })
+
+/**
+ * THE META BLOCK NAMES THE WINDOW AND NO COMPARISON — 2026-10-06.
+ *
+ * Nothing on this route reads `ctx.comparison` since the board's FAKT 2 trend
+ * went, so `periodMeta`'s comparison window — and the «Taqqoslash davri
+ * qisqartirildi» chip `PageShell` prints off its truncation flag — would tell
+ * the television and Savdo dinamikasi about a comparison neither of them shows.
+ */
+describe('the sellers route’s meta', () => {
+  it('sends the period alone, on every include', async () => {
+    const source = await import('node:fs').then((fs) =>
+      fs.readFileSync('src/app/api/v1/analytics/sellers/route.ts', 'utf8'),
+    )
+    expect(source).not.toContain('periodMeta(')
+    expect(source).toContain('const meta = { period: toPeriodDto(period) }')
+    // The board and its four includes each hand that one block back.
+    expect(source.match(/^\s+meta,$/gm)).toHaveLength(5)
+  })
+})
