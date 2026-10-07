@@ -175,8 +175,9 @@ function RecordEntry({ record }: { record: SellerRecordDto }) {
         {formatNumber(record.orders)} ta ·{' '}
         {/*
           WHICH FIGURE THIS IS, ALWAYS SAID. The wall switches between FAKT 2
-          and FAKT 1 by the podium's rule — FAKT 2 decides, FAKT 1 only where
-          nobody has delivered yet — so a month can print a bigger number
+          and FAKT 1 by the records' own rule — FAKT 2 decides a month, FAKT 1
+          only where nobody has delivered yet (the rule the board itself opened
+          on until 2026-10-07) — so a month can print a bigger number
           purely because none of it is on the road. Unlabelled, that change of
           measure reads as a record being broken.
         */}

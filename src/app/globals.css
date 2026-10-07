@@ -3261,8 +3261,8 @@ p {
  * columns that do not fit. Both boards carry this control at 1920 and at 390,
  * because the fact is a question about the numbers and not about the layout.
  *
- * The lit button is the fact the board is ACTUALLY ranked on, which under the
- * opening 'auto' is decided by the data — see `FaktSwitch`. It is `--tv-tone`,
+ * The lit button is the fact the board is ACTUALLY ranked on — FAKT 1 when it
+ * opens, since 2026-10-07; see `FaktSwitch`. It is `--tv-tone`,
  * so each column lights its own hue and the control belongs to the board it
  * sits on; chrome, never a value.
  *
