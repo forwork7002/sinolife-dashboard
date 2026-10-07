@@ -107,7 +107,10 @@ export function ConfirmationOutcomeSection({
             )}
           </div>
 
-          <RateFigure totals={totals} status={status} />
+          {/* One error card per panel: on a failure the partition's card
+              carries it, and the rate column stays out rather than printing a
+              second «Olinmadi» beside it. */}
+          {status !== 'error' && <RateFigure totals={totals} status={status} />}
         </div>
 
         {/*

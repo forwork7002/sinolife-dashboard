@@ -2,10 +2,11 @@
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import dynamic from 'next/dynamic'
-import { type ReactNode, useCallback, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 
 import { type CategoryBarRow, CategoryBarList } from '@/components/charts/CategoryBarList'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
+import { Callout } from '@/components/ui/Callout'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { StatTile } from '@/components/ui/Stat'
@@ -144,29 +145,29 @@ export function RoistatPage() {
         ) : (
           <>
             {settling && (
-              <Note tone="warning">
+              <Callout>
                 ⏳ <b>Oxirgi 7 kun hali toʻliq emas</b> — sotuvlar keyinroq yopiladi, bu kunlardagi
                 past ROAS normal.
-              </Note>
+              </Callout>
             )}
             {adGrainShort && (
-              <Note tone="warning">
+              <Callout>
                 Meta eʼlon darajasidagi maʼlumot hali toʻliq yuklanmagan: kampaniyalar jadvalida{' '}
                 <b>{formatUsdPlain(data.total.spendUsd)}</b>, rasxod kartasida{' '}
                 <b>{formatUsdPlain(data.campaignSpendUsd)}</b>. Import har soatda toʻldiradi.
-              </Note>
+              </Callout>
             )}
             {status === 'ready' && rate === null && (
-              <Note tone="warning">
+              <Callout>
                 CBU kursi olinmadi — soʻm va dollar orasidagi hisoblar (ROAS, soʻmdagi rasxod)
                 hozircha chiqmaydi.
-              </Note>
+              </Callout>
             )}
 
             <KpiTiles data={data} status={status} currency={currency} />
 
             <Card className="p-0">
-              <header className="flex flex-col gap-3 px-4 pt-4 pb-3 sm:px-5">
+              <header className="flex flex-col gap-3 px-5 pt-4 pb-3">
                 <DimTabs
                   value={view.dim}
                   onChange={(dim) => setView({ dim, parent: null })}
@@ -181,7 +182,7 @@ export function RoistatPage() {
                   <Breadcrumb view={view} data={data} onGo={setView} />
                 </div>
               </header>
-              <div className="px-3 pb-3 sm:px-4">
+              <div className="px-5 pb-5">
                 <RoistatTable
                   key={`${data?.dim ?? view.dim}:${data?.parent?.key ?? ''}`}
                   data={data}
@@ -240,23 +241,6 @@ export function RoistatPage() {
 /** Nothing anywhere in the window: no spend, no lead, no order. */
 function isEmptyWindow(k: RoistatCountersDto): boolean {
   return k.spendUsd === 0 && k.leads === 0 && k.orders === 0 && k.sold === 0 && k.impressions === 0
-}
-
-function Note({ tone, children }: { tone: 'warning'; children: ReactNode }) {
-  const colour = tone === 'warning' ? 'var(--status-warning)' : 'var(--ink-secondary)'
-  return (
-    <p
-      role="note"
-      className="rounded-lg px-3 py-2 text-xs"
-      style={{
-        background: `color-mix(in oklab, ${colour} 12%, transparent)`,
-        borderLeft: `3px solid ${colour}`,
-        color: 'var(--ink-primary)',
-      }}
-    >
-      {children}
-    </p>
-  )
 }
 
 /** «Kurs: 11 773 soʻm (03.10.2026)» — the rate every conversion on the page used. */

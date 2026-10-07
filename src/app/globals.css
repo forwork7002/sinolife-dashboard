@@ -1433,6 +1433,20 @@ body::after {
 }
 
 /**
+ * A card that is a button — Tasdiqlash's six state tiles, which filter the
+ * board. The glass wash is laid OVER the pane on hover. A Tailwind
+ * `hover:bg-…` on the element did nothing: `.card` is unlayered and its own
+ * `background` beats every layered utility, so the six filters showed no
+ * hover at all.
+ */
+.card-button:hover {
+  background:
+    linear-gradient(var(--glass-hover), var(--glass-hover)),
+    linear-gradient(180deg, var(--glass-card-top), transparent 42%),
+    var(--glass-card);
+}
+
+/**
  * The lead instrument — at most ONE per screen.
  *
  * A hero band is a card that outranks its neighbours three ways: the larger

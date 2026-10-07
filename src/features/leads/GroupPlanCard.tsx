@@ -86,7 +86,7 @@ function PlanTable({ data }: { data: GroupPlanDto }) {
           <tr style={{ background: 'var(--surface-sunken)' }}>
             <th
               className={`eyebrow ${pin} min-w-[200px] border-b px-3 py-2.5 font-[550] whitespace-nowrap`}
-              style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)' }}
+              style={{ background: 'var(--surface-sunken)', borderColor: 'var(--border)' }}
             >
               Mutahasis
             </th>
@@ -119,7 +119,7 @@ function Group({ group }: { group: GroupPlanGroupDto }) {
           style={{ borderColor: 'var(--border)', background: 'color-mix(in oklab, var(--accent) 12%, var(--surface-raised))' }}
         >
           <span className="sticky left-3 inline-flex items-center gap-2">
-            <span className="text-xs font-semibold tracking-[0.06em] uppercase" style={{ color: 'var(--ink-primary)' }}>
+            <span className="text-[13px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
               {group.rop ? `${group.rop} guruhi` : 'Jamoasiz'}
             </span>
             <span className="text-xs font-normal" style={muted}>
@@ -158,7 +158,7 @@ function TotalRow({ label, cells, strong = false }: { label: string; cells: Grou
     <tr className="font-semibold" style={{ background }}>
       <th
         scope="row"
-        className={`${pin} border-b px-3 py-2.5 whitespace-nowrap ${strong ? 'text-[13px] tracking-[0.04em] uppercase' : ''}`}
+        className={`${pin} border-b px-3 py-2.5 whitespace-nowrap ${strong ? 'text-[13px]' : ''}`}
         style={{ borderColor: 'var(--border-strong)', background, color: 'var(--ink-primary)' }}
       >
         {label}

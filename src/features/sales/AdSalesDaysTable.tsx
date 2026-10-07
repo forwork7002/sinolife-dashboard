@@ -3,6 +3,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
+import { Callout } from '@/components/ui/Callout'
+import { ChartCard } from '@/components/ui/Card'
 import type { RoistatDaysDto } from '@/features/roistat/roistatApi'
 import { RoistatTable, dayLabel } from '@/features/roistat/RoistatTable'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -54,42 +56,33 @@ export function AdSalesDaysTable() {
 
   return (
     <div
-      className="space-y-2"
       style={{ opacity: query.isPlaceholderData ? 0.6 : 1, transition: 'opacity 150ms var(--ease-out)' }}
       aria-busy={query.isPlaceholderData || undefined}
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-          Kunlar boʻyicha · Дни
-        </h3>
-        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          Roistat «Дни» · sotuv lid kelgan kunga yoziladi (FAKT 1 emas) · Расход — Meta, ishga olishsiz
-          {data?.rate && ` · kurs ${formatFullUzs(Math.round(data.rate.uzsPerUsd))} soʻm (${dayLabel(data.rate.date)})`}
-          {activeCount > 0 && ' · filtrlar bu jadvalga taʼsir qilmaydi, butun kompaniya'}
-        </p>
-      </div>
-      {data && data.rate === null && (
-        <p
-          role="note"
-          className="rounded-lg px-3 py-2 text-xs"
-          style={{
-            background: 'color-mix(in oklab, var(--status-warning) 12%, transparent)',
-            borderLeft: '3px solid var(--status-warning)',
-            color: 'var(--ink-primary)',
-          }}
-        >
-          CBU kursi olinmadi — soʻmdagi Расход, CPL, CPQL, CPO va ROAS hozircha chiqmaydi.
-        </p>
-      )}
-      <RoistatTable
-        data={data}
-        status={status}
-        currency="uzs"
-        errorMessage={query.error instanceof Error ? query.error.message : undefined}
-        onRetry={() => void query.refetch()}
-        emptyTitle="Bu davrda kun yoʻq"
-        emptyBody="Tanlangan davrda na Meta rasxodi, na Bitrix24 lidi topildi."
-      />
+      {/* In a card like every other table in the product (see SellersForecastTable). */}
+      <ChartCard
+        title="Kunlar boʻyicha · Дни"
+        hint={
+          'Roistat «Дни» · sotuv lid kelgan kunga yoziladi (FAKT 1 emas) · Расход — Meta, ishga olishsiz' +
+          (data?.rate ? ` · kurs ${formatFullUzs(Math.round(data.rate.uzsPerUsd))} soʻm (${dayLabel(data.rate.date)})` : '') +
+          (activeCount > 0 ? ' · filtrlar bu jadvalga taʼsir qilmaydi, butun kompaniya' : '')
+        }
+      >
+        {data && data.rate === null && (
+          <Callout className="mb-3">
+            CBU kursi olinmadi — soʻmdagi Расход, CPL, CPQL, CPO va ROAS hozircha chiqmaydi.
+          </Callout>
+        )}
+        <RoistatTable
+          data={data}
+          status={status}
+          currency="uzs"
+          errorMessage={query.error instanceof Error ? query.error.message : undefined}
+          onRetry={() => void query.refetch()}
+          emptyTitle="Bu davrda kun yoʻq"
+          emptyBody="Tanlangan davrda na Meta rasxodi, na Bitrix24 lidi topildi."
+        />
+      </ChartCard>
     </div>
   )
 }

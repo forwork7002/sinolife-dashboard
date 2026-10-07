@@ -7,6 +7,7 @@ import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
+import { ChevronGlyph } from '@/components/ui/Icons'
 import { StatusChip } from '@/components/ui/Stat'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet, apiWrite } from '@/lib/api'
@@ -68,7 +69,7 @@ export function DayPicker({ day, onChange }: { day: string; onChange: (day: stri
   return (
     <div className="flex items-center gap-1.5">
       <Button size="sm" variant="ghost" aria-label="Oldingi kun" onClick={() => goTo(shiftDay(day, -1))}>
-        ‹
+        <ChevronGlyph direction="left" />
       </Button>
       <label className="flex items-center gap-2 text-xs" style={muted}>
         Kun
@@ -80,12 +81,12 @@ export function DayPicker({ day, onChange }: { day: string; onChange: (day: stri
           onChange={(e) => {
             if (e.target.value) goTo(e.target.value)
           }}
-          className="focusable rounded-[var(--radius-panel-sm)] border px-2 py-1 text-xs"
+          className="focusable h-7 rounded-[var(--radius-panel-sm)] border px-2 text-xs"
           style={{ backgroundColor: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
         />
       </label>
       <Button size="sm" variant="ghost" aria-label="Keyingi kun" onClick={() => goTo(shiftDay(day, 1))}>
-        ›
+        <ChevronGlyph direction="right" />
       </Button>
       {day !== today() && (
         <Button size="sm" variant="ghost" onClick={() => goTo(today())}>

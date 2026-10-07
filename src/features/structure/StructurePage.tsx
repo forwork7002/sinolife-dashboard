@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
 import { ChartSkeleton, EmptyState, ErrorState, statusOf } from '@/components/states/States'
-import { ChartCard } from '@/components/ui/Card'
+import { Card, ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { PageShell } from '@/features/shared/PageShell'
 import {
@@ -156,20 +156,26 @@ export function StructurePage() {
       fill={chart}
     >
       {query.isPending && <ChartSkeleton height={chart ? 480 : 280} />}
+      {/* In a card, as every other screen draws its states — on the bare
+          page the message floated with nothing to say what it stood for. */}
       {status === 'error' && (
-        <ErrorState
-          message={(query.error as Error).message}
-          onRetry={() => void query.refetch()}
-        />
+        <Card className="p-5">
+          <ErrorState
+            message={(query.error as Error).message}
+            onRetry={() => void query.refetch()}
+          />
+        </Card>
       )}
       {/* `ready` only: a failed request rendered the error AND "the
           structure is empty" one under the other, which are contradictory
           claims — the second one is a guess about data nobody received. */}
       {status === 'ready' && roots.length === 0 && (
-        <EmptyState
-          title="Tuzilma boʻsh"
-          body="Bitrix24 kompaniya strukturasi import qilinmagan."
-        />
+        <Card className="p-5">
+          <EmptyState
+            title="Tuzilma boʻsh"
+            body="Bitrix24 kompaniya strukturasi import qilinmagan."
+          />
+        </Card>
       )}
 
       {roots.length > 0 &&

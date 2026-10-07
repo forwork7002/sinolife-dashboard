@@ -5,6 +5,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useS
 
 import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
+import { Select } from '@/components/ui/Select'
 import { useCohortRop } from '@/features/cohort/useCohortRop'
 import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
@@ -134,12 +135,12 @@ export function RnpPage() {
           </label>
           <label className="flex items-center gap-2 text-xs" style={muted}>
             ROP
-            <select
+            <Select
               value={chosen?.rop ?? ''}
               onChange={(e) => setRop(e.target.value === '' ? null : e.target.value)}
               disabled={teams.length === 0}
-              className="focusable h-11 max-w-[14rem] rounded-[var(--radius-panel-sm)] border px-2 text-xs sm:h-8"
-              style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
+              height="touch"
+              className="max-w-[14rem]"
             >
               <option value="">Barchasi</option>
               {teams.map((t) => (
@@ -147,7 +148,7 @@ export function RnpPage() {
                   {t.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           {data && (
             <SheetFacts

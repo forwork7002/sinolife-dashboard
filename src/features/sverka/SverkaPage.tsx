@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/Button'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { SearchInput } from '@/components/ui/Controls'
 import { type Column, DataTable } from '@/components/ui/DataTable'
+import { CheckCircleGlyph, CrossCircleGlyph, MultiplyGlyph } from '@/components/ui/Icons'
 import { StatusChip } from '@/components/ui/Stat'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { bitrixDealUrl } from '@/features/target/targetApi'
@@ -449,7 +451,9 @@ function PairTile({
   return (
     <Card className="flex flex-col gap-2 p-4">
       <div>
-        <h3 className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--ink-secondary)' }}>
+        {/* StatTile's label voice — 12.5px sentence case; the uppercase
+            micro-label is retired everywhere but table headers. */}
+        <h3 className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
           {label}
         </h3>
         <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
@@ -471,7 +475,10 @@ function PairTile({
                 : 'var(--status-critical)',
         }}
       >
-        <span>{uncompared ? 'Solishtirilmadi' : equal ? '✓ mos' : waiting ? 'Omborga tayyorlanmoqda' : 'Farq'}</span>
+        <span className="inline-flex items-center gap-1">
+          {equal && <CheckCircleGlyph />}
+          {uncompared ? 'Solishtirilmadi' : equal ? 'mos' : waiting ? 'Omborga tayyorlanmoqda' : 'Farq'}
+        </span>
         {!equal && !uncompared && (
           <span className="text-right">
             {signed(diffOrders)} ta · {signedUzs(diffAmount)}
@@ -537,21 +544,28 @@ function MatchTile({
   // Orders still being packed have no MoySklad order yet, and orders older than MoySklad never will — neither clean nor wrong.
   const compared = fakt1 - pending - beforeFloor
   const share = compared > 0 ? (clean / compared) * 100 : null
-  const tone =
+  /*
+    The grade is a WORD as well as a colour (StatusChip: glyph + word), so it
+    survives a colourblind reader and print; the figure stays in primary ink.
+  */
+  const grade =
     share === null
-      ? 'var(--ink-primary)'
+      ? null
       : share >= 98
-        ? 'var(--status-good)'
+        ? ({ tone: 'good', word: 'mos' } as const)
         : share >= 90
-          ? 'var(--status-warning)'
-          : 'var(--status-critical)'
+          ? ({ tone: 'warning', word: 'kichik farq' } as const)
+          : ({ tone: 'critical', word: 'katta farq' } as const)
   return (
     <Card className="flex flex-col gap-1.5 p-4">
-      <h3 className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--ink-secondary)' }}>
+      <h3 className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
         Toʻliq mos
       </h3>
-      <p className="text-2xl font-semibold tabular-nums" style={{ color: tone }}>
-        {formatPercent(share)}
+      <p className="flex flex-wrap items-center gap-2">
+        <span className="figure text-[26px] leading-none font-semibold sm:text-[30px]" style={{ color: 'var(--ink-primary)' }}>
+          {formatPercent(share)}
+        </span>
+        {grade && <StatusChip tone={grade.tone}>{grade.word}</StatusChip>}
       </p>
       <p className="text-xs" style={{ color: 'var(--ink-secondary)' }}>
         MoySkladʼga oʻtgan boʻlishi kerak boʻlgan {formatNumber(compared)} ta FAKT 1 buyurtmadan {formatNumber(clean)} tasi ikki tizimda bir xil
@@ -588,16 +602,15 @@ function IssueChip({
       : tone === 'warning'
         ? 'var(--status-warning)'
         : 'var(--ink-secondary)'
-  return (
+  const chip = (
     <button
       type="button"
       onClick={onClick}
-      title={title}
       aria-pressed={active}
       disabled={count === 0 && !active}
-      className="inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-40"
+      className="focusable inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-40"
       style={{
-        borderColor: active ? color : 'var(--grid)',
+        borderColor: active ? color : 'var(--border)',
         background: active ? `color-mix(in oklab, ${color} 14%, transparent)` : 'transparent',
         color: active ? color : 'var(--ink-secondary)',
       }}
@@ -613,6 +626,9 @@ function IssueChip({
       )}
     </button>
   )
+  // The definition rides the Tooltip — hover, focus and tap — not a native
+  // `title` a phone never shows.
+  return title ? <Tooltip content={title}>{chip}</Tooltip> : chip
 }
 
 const signed = (n: number) => (n > 0 ? `+${formatNumber(n)}` : formatNumber(n))
@@ -868,7 +884,12 @@ const TEAM_COLUMNS: readonly Column<SverkaTeamDto>[] = [
 ]
 
 function DiffCell({ value, format }: { value: number; format: (n: number) => string }) {
-  if (Math.abs(value) < 1) return <span style={{ color: 'var(--status-good)' }}>✓</span>
+  if (Math.abs(value) < 1)
+    return (
+      <span className="inline-flex" style={{ color: 'var(--status-good)' }} aria-label="farq yoʻq">
+        <CheckCircleGlyph />
+      </span>
+    )
   return <span style={{ color: 'var(--status-critical)' }}>{format(value)}</span>
 }
 
@@ -973,17 +994,9 @@ function LineDetail({ line, onClose }: { line: SverkaLineDto; onClose: () => voi
               )}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="min-h-8 rounded-md px-2 text-xs"
-            style={{
-              color: 'var(--ink-secondary)',
-              border: '1px solid var(--grid)',
-            }}
-          >
+          <Button variant="secondary" size="md" onClick={onClose} icon={<MultiplyGlyph size={12} />}>
             Yopish
-          </button>
+          </Button>
         </div>
 
         <div className="overflow-x-auto">
@@ -1019,7 +1032,7 @@ function LineDetail({ line, onClose }: { line: SverkaLineDto; onClose: () => voi
 
         {(bx?.items.length ?? 0) + (ms?.items.length ?? 0) > 0 && (
           <div className="mt-4">
-            <h3 className="mb-1.5 text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--ink-secondary)' }}>
+            <h3 className="mb-1.5 text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Mahsulotlar — yonma-yon
             </h3>
             <ProductCompare bitrix={bx?.items ?? []} moysklad={ms?.items ?? []} />
@@ -1028,7 +1041,7 @@ function LineDetail({ line, onClose }: { line: SverkaLineDto; onClose: () => voi
 
         {line.otherOrders.length > 0 && (
           <div className="mt-4">
-            <h3 className="mb-1.5 text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--ink-secondary)' }}>
+            <h3 className="mb-1.5 text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
               Shu bitimga MoySkladʼdagi boshqa buyurtmalar
             </h3>
             <ul className="flex flex-col gap-1 text-xs">
@@ -1063,11 +1076,18 @@ interface FieldRow {
 }
 
 function Verdict({ verdict, note }: { verdict: Verdict; note?: string }) {
-  if (verdict === 'same') return <span style={{ color: 'var(--status-good)' }}>✓ mos</span>
+  if (verdict === 'same')
+    return (
+      <span className="inline-flex items-center gap-1" style={{ color: 'var(--status-good)' }}>
+        <CheckCircleGlyph />
+        mos
+      </span>
+    )
   if (verdict === 'diff') {
     return (
-      <span style={{ color: 'var(--status-critical)' }}>
-        ✗ farq{note ? ` · ${note}` : ''}
+      <span className="inline-flex items-center gap-1" style={{ color: 'var(--status-critical)' }}>
+        <CrossCircleGlyph />
+        farq{note ? ` · ${note}` : ''}
       </span>
     )
   }

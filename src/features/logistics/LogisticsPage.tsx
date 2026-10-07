@@ -246,18 +246,22 @@ export function LogisticsPage() {
         title="Buyurtmalar holati · davr yigʻmasi"
         hint="Тасдиклаш navbatiga tushgan buyurtmalar Доставка voronkasida hozir qayerda. ЗАКАЗ = FAKT 1, Успешно = FAKT 2."
       >
-        <StatusCompositionBar
-          segments={buckets.map((bucket) => ({
-            key: bucket.key,
-            label: bucket.label,
-            colour: bucketColour(bucket.key),
-            amount: bucket.amount.amount,
-            orders: bucket.orders,
-            sharePercent: bucket.sharePercent,
-          }))}
-          total={summary?.ordered.amount ?? 0}
-          status={viewStatus}
-        />
+        {/* On a failure the table below carries the one error card this
+            panel needs; a second one above it would say the same thing twice. */}
+        {viewStatus !== 'error' && (
+          <StatusCompositionBar
+            segments={buckets.map((bucket) => ({
+              key: bucket.key,
+              label: bucket.label,
+              colour: bucketColour(bucket.key),
+              amount: bucket.amount.amount,
+              orders: bucket.orders,
+              sharePercent: bucket.sharePercent,
+            }))}
+            total={summary?.ordered.amount ?? 0}
+            status={viewStatus}
+          />
+        )}
 
         <div className="mt-4">
           <DataTable<LogisticsBucketDto>
@@ -402,6 +406,8 @@ export function LogisticsPage() {
               rows={(data?.posts ?? []).map(volumeRow)}
               mode="magnitude"
               status={viewStatus}
+              errorMessage={errorMessage}
+              onRetry={retry}
               emptyBody="Bu davrda hech qaysi pochtaga buyurtma yoʻnaltirilmagan."
             />
           </section>
@@ -414,6 +420,8 @@ export function LogisticsPage() {
               rows={(data?.posts ?? []).map(rateRow)}
               mode="rate"
               status={viewStatus}
+              errorMessage={errorMessage}
+              onRetry={retry}
               emptyBody="Yetkazish foizini hisoblash uchun maʼlumot yetarli emas."
             />
             <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
@@ -555,6 +563,8 @@ export function LogisticsPage() {
               rows={(data?.waits ?? []).map(waitRow)}
               mode="rate"
               status={viewStatus}
+              errorMessage={errorMessage}
+              onRetry={retry}
               emptyBody="Yakunlangan joʻnatma yetarli emas."
             />
             <p className="mt-3 text-[11px]" style={{ color: "var(--ink-muted)" }}>

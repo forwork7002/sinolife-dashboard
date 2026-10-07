@@ -2,7 +2,9 @@
 
 import { type MouseEvent, useId, useMemo, useState } from 'react'
 
+import { Button } from '@/components/ui/Button'
 import { SegmentedControl } from '@/components/ui/Controls'
+import { ChevronGlyph } from '@/components/ui/Icons'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
@@ -401,14 +403,13 @@ export function RopCards<Line>({
     <div className="flex flex-col gap-3">
       {!needle && (
         <div className="flex justify-end">
-          <button
-            type="button"
-            className="rounded-md px-2 py-1 text-[11px] font-semibold"
-            style={{ color: 'var(--ink-secondary)' }}
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setClosed(allOpen ? new Set(cards.map((card) => card.name)) : new Set())}
           >
             {allOpen ? 'Hammasini yigʻish' : 'Hammasini ochish'}
-          </button>
+          </Button>
         </div>
       )}
       {cards.map(({ team, name, rows }, index) => {
@@ -417,22 +418,21 @@ export function RopCards<Line>({
         return (
           <section
             key={name}
-            className="overflow-hidden rounded-xl border"
-            style={{ borderColor: 'var(--grid)', background: 'var(--surface-raised)' }}
+            // The house panel radius and border, not a 12px corner on --grid.
+            className="overflow-hidden rounded-[var(--radius-panel-sm)] border"
+            style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
           >
+            {/* An INSET ring: the panel clips its table to its corners, and
+                `.focusable`'s outer ring would be clipped with it on three sides. */}
             <button
               type="button"
-              className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-left"
+              className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-left outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--accent)]"
               aria-expanded={open}
               aria-controls={bodyId}
               onClick={() => toggle(name)}
             >
-              <span
-                aria-hidden
-                className="inline-block text-[11px] transition-transform"
-                style={{ color: 'var(--ink-muted)', transform: open ? 'rotate(90deg)' : 'none' }}
-              >
-                ▶
+              <span style={{ color: 'var(--ink-muted)' }}>
+                <ChevronGlyph direction={open ? 'down' : 'right'} />
               </span>
               <span className="min-w-0 flex-1 basis-[180px]">
                 <span className="block truncate text-[14px] font-semibold" style={{ color: 'var(--ink-primary)' }}>

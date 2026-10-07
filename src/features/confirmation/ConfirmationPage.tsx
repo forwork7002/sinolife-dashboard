@@ -220,15 +220,26 @@ const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
     //
     // Дата создания rides along in the tooltip. It is still worth reaching —
     // it is the field an operator sees first in Bitrix — but it decides
-    // nothing on this board any more.
+    // nothing on this board any more. The Tooltip primitive, not a native
+    // title, so a tap reaches it too; no tab stop of its own, because
+    // twenty-five more on the densest table in the product would cost a
+    // keyboard reader far more than this secondary date is worth.
+    //
+    // On the DATE alone, not the whole cell: the 🔁 under it carries a tip of
+    // its own, and one pointer must not open two.
     render: (row) => (
-      <div
-        className="whitespace-nowrap"
-        title={`Яратилган: ${tashkentDate(row.createdAt)} ${tashkentTime(row.createdAt)}`}
-      >
-        <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-          {tashkentDate(row.queuedAt ?? row.createdAt)}
-        </span>
+      <div className="whitespace-nowrap">
+        <Tooltip
+          content={
+            <span className="tabular">
+              Яратилган: {tashkentDate(row.createdAt)} {tashkentTime(row.createdAt)}
+            </span>
+          }
+        >
+          <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
+            {tashkentDate(row.queuedAt ?? row.createdAt)}
+          </span>
+        </Tooltip>
         <span
           className="tabular flex items-center gap-1 text-[11px]"
           style={{ color: 'var(--ink-muted)' }}
@@ -951,10 +962,9 @@ export function ConfirmationPage() {
           left to click that gets back to the client's own board.
         */}
         {backlog && (
-          <div
-            className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
-          >
+          // A card like its neighbours — the house glass, radius and lit edge,
+          // not a 12px-cornered opaque patch between glass panes.
+          <div className="card flex shrink-0 flex-wrap items-center justify-between gap-3 px-3.5 py-2.5">
             <p
               className="flex items-start gap-2 text-[13px] leading-snug"
               style={{ color: 'var(--ink-secondary)' }}
@@ -1048,7 +1058,7 @@ export function ConfirmationPage() {
         >
           <OutcomeTile
             Glyph={backlog ? ClockGlyph : undefined}
-            label={backlog ? 'ҲОЗИР КУТИЛМОҚДА' : 'ЖАМИ'}
+            label={backlog ? 'Ҳозир кутилмоқда' : 'Жами'}
             status={tileStatus}
             count={totals?.orders ?? null}
             amount={totals?.amount ?? null}
@@ -2050,7 +2060,7 @@ export function OutcomeTile({
       type="button"
       onClick={onSelect}
       aria-pressed={active}
-      className="focusable card flex h-full flex-col px-3.5 py-2 text-left transition-colors hover:bg-[var(--grid)]"
+      className="focusable card card-button flex h-full flex-col px-3.5 py-2 text-left transition-colors"
       style={active ? { borderColor: color, boxShadow: `inset 0 0 0 1px ${color}` } : undefined}
     >
       {/*
@@ -2089,10 +2099,9 @@ export function OutcomeTile({
             <Glyph size={12} />
           </span>
         )}
-        <span
-          className="truncate text-[10.5px] font-medium tracking-wide uppercase"
-          style={{ color: 'var(--ink-muted)' }}
-        >
+        {/* Sentence case, the stat-tile label voice: the uppercase-tracked
+            micro-label is retired outside table headers. */}
+        <span className="truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
           {label}
         </span>
       </div>

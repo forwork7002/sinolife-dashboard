@@ -327,8 +327,25 @@ chip whose hover lays the wash over it and whose press sinks it into the well;
 an input is a well. A bordered control keeps `--border-strong` — its boundary
 is how it reads as a control — while `--glass-edge` is for surfaces. The
 period presets lost the solid-ink active block SegmentedControl retired.
-`BrandSwitch`, SegmentedControl's twin with a colour dot, wears the same well
-and chip — the two share a filter row on every main screen.
+`BrandSwitch` **is** SegmentedControl — an option may carry a `swatch`, the
+identity colour of what it selects, drawn as a small square before the word.
+It was a copy of the control that differed only by that dot, and the two share
+a filter row on every main screen.
+
+**`Select`** (`components/ui/Select.tsx`) is the one native picker: the
+controls' radius, 32px (`height="touch"`: 44px under a thumb, 32px from `sm`),
+`--border-strong`, `.focusable`. Its ground is the OPAQUE `--surface-raised`,
+not the glass well an input wears — some platforms paint the open option list
+on the select's own background, and over a translucent one the page would show
+through the list. Native on purpose: type-to-find and the phone's wheel come
+free with a list of a dozen names.
+
+**`Callout`** (`components/ui/Callout.tsx`, `tone="warning"`) is the one
+sentence that qualifies the figures beside it — «CBU kursi olinmadi», Margin's
+coverage banner. There were four recipes; the one kept is a full-strength rule
+down the leading edge on the card's glass, never an amber wash: 8% amber in a
+dark surface measured a muddy 1.12:1 that neither warned nor stayed quiet. The
+words carry the warning (`role="note"`); the rule is decoration.
 
 **A chip's lit top and shadow are a class, never an inline `boxShadow`** —
 `shadow-[var(--glass-highlight),var(--shadow-card)]` on a chosen segment,
@@ -471,13 +488,17 @@ renders the same treatment on a `next/link`.
 
 ### Drawn glyphs
 
-`Icons.tsx` replaces the text glyphs `↑↓●▲■○` with drawn 12px marks: 24-unit
+`Icons.tsx` replaces the text glyphs `↑↓●▲■○‹›▶✓✗` with drawn 12px marks: 24-unit
 grid, stroke 1.7 held literal by `vector-effect: non-scaling-stroke`,
 `currentColor`, `aria-hidden`. Text glyphs came from the UI font at the whim
 of the platform; a drawn mark weighs the same everywhere. Every glyph is
 decoration beside a word or an accessible name — the glyph+word rule stands,
 colour is never the only channel, and the glyph is never the only channel
-either.
+either. `ChevronGlyph` is one chevron turned four ways (`direction`) — a step
+button's ‹ ›, a disclosure's ▶ / ▼ — so the two share one weight; a `›`
+between breadcrumb crumbs is punctuation, not an icon, and stays text. A state
+in a table cell is a `StatusChip` (drawn glyph + word), never a `●` in a
+status colour.
 
 ---
 

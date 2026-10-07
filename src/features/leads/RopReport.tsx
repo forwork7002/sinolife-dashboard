@@ -98,7 +98,7 @@ function ReportTable({ data, colors }: { data: RopReportDto; colors: ReadonlyMap
         <table className="w-full min-w-[1120px] border-separate border-spacing-0 text-sm">
           <thead>
             <tr style={{ background: 'var(--surface-sunken)' }}>
-              <th className={`eyebrow ${pin} min-w-[200px] border-b px-3 py-2.5 font-[550] whitespace-nowrap`} style={{ background: 'var(--surface-raised)', borderColor: 'var(--border)' }}>
+              <th className={`eyebrow ${pin} min-w-[200px] border-b px-3 py-2.5 font-[550] whitespace-nowrap`} style={{ background: 'var(--surface-sunken)', borderColor: 'var(--border)' }}>
                 Sotuvchi
               </th>
               {COLUMNS.map((c) => (
@@ -132,7 +132,7 @@ function Group({ group, color }: { group: RopReportGroupDto; color: string }) {
         >
           <span className="sticky left-3 inline-flex items-center gap-2">
             <span className="h-3 w-1 rounded-full" style={{ background: color }} aria-hidden />
-            <span className="text-xs font-semibold tracking-[0.06em] uppercase" style={{ color: 'var(--ink-primary)' }}>
+            <span className="text-[13px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
               {group.rop ? `${group.rop} guruhi` : 'Jamoasiz'}
             </span>
             <span className="text-xs font-normal" style={muted}>
@@ -181,7 +181,7 @@ function TotalRow({ label, cells, tint, strong = false }: { label: string; cells
     <tr className="font-semibold" style={{ background }}>
       <th
         scope="row"
-        className={`${pin} border-b px-3 py-2.5 whitespace-nowrap ${strong ? 'text-[13px] tracking-[0.04em] uppercase' : ''}`}
+        className={`${pin} border-b px-3 py-2.5 whitespace-nowrap ${strong ? 'text-[13px]' : ''}`}
         style={{ borderColor: 'var(--border-strong)', background, color: 'var(--ink-primary)' }}
       >
         {label}
@@ -259,8 +259,10 @@ function Conversion({ value }: { value: number | null }) {
   if (value === null) return <span style={muted}>—</span>
   return (
     <span className="inline-flex items-center justify-end gap-2">
-      <span className="hidden h-1.5 w-12 overflow-hidden rounded-full sm:inline-block" style={{ background: 'var(--grid)' }} aria-hidden>
-        <span className="block h-full rounded-full" style={{ width: `${Math.min(100, value)}%`, background: 'var(--accent)' }} />
+      {/* The sequential magnitude hue, never the page accent — on Lidlar that
+          is series-7, which is also a ROP team's colour. */}
+      <span className="hidden h-1.5 w-12 overflow-hidden rounded-full sm:inline-block" style={{ background: 'var(--track)' }} aria-hidden>
+        <span className="block h-full rounded-full" style={{ width: `${Math.min(100, value)}%`, background: 'var(--seq-450)' }} />
       </span>
       <span className="w-11">{formatPercent(value, 0)}</span>
     </span>

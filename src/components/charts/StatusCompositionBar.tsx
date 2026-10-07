@@ -1,5 +1,6 @@
 'use client'
 
+import { ErrorState } from '@/components/states/States'
 import { formatFullUzs, formatPercent } from '@/lib/format'
 
 /**
@@ -35,11 +36,17 @@ export function StatusCompositionBar({
   segments,
   status,
   total,
+  errorMessage,
+  onRetry,
 }: {
   segments: readonly CompositionSegment[]
   status: 'loading' | 'error' | 'ready'
   /** The server's own total. The bar never re-sums the segments to get it. */
   total: number
+  /** What failed, for the error card. */
+  errorMessage?: string
+  /** Asks again; the error card offers it as «Qayta urinish». */
+  onRetry?: () => void
 }) {
   if (status === 'loading') {
     return (
@@ -49,13 +56,9 @@ export function StatusCompositionBar({
     )
   }
 
-  if (status === 'error') {
-    return (
-      <p className="py-6 text-center text-sm" style={{ color: 'var(--status-critical)' }}>
-        Olinmadi
-      </p>
-    )
-  }
+  // The house error card, with its retry where the caller has one — not a
+  // bare red «Olinmadi» the reader could do nothing about.
+  if (status === 'error') return <ErrorState message={errorMessage} onRetry={onRetry} />
 
   /*
     A window with no orders draws no bar and says so. An empty grey rail would

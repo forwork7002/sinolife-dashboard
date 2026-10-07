@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 
+import { Tooltip } from '@/components/ui/Tooltip'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 
 import type { MetaBlockDto, MetaProduct, MetaProductTotalsDto } from './targetApi'
@@ -69,12 +70,14 @@ export function ProductCompare({
                 ? `Reklamaga ketgan pul — ${PRODUCT_LABEL[products[0].product]}`
                 : 'Reklamaga ketgan pul'}
           </p>
-          <p
-            className="figure-hero mt-1"
-            style={{ color: 'var(--ink-primary)' }}
-            title={usd(total.spendUsd, true)}
-          >
-            {usd(total.spendUsd)}
+          {/* The exact dollars ride the Tooltip — hover, focus and tap — not a
+              native title a phone never shows. */}
+          <p className="figure-hero mt-1" style={{ color: 'var(--ink-primary)' }}>
+            <Tooltip content={<span className="tabular">{usd(total.spendUsd, true)}</span>}>
+              <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">
+                {usd(total.spendUsd)}
+              </span>
+            </Tooltip>
           </p>
           {/* No column, nothing bought: «0 ta Bitrix24 lead» would contradict the Bitrix24 tiles below. */}
           {products.length > 0 && (
@@ -198,35 +201,53 @@ function ShareBars({ products }: { products: readonly MetaProductTotalsWithName[
               {row.label}
             </span>
             {sum > 0 ? (
-              <div
-                className="flex h-6 w-full overflow-hidden rounded-md"
-                style={{ background: 'var(--track)' }}
+              /*
+                ONE TOOLTIP PER ROW, both products' figures: below sm a segment
+                prints only its share, and the figure lived in a native title a
+                phone cannot open.
+              */
+              <Tooltip
+                className="w-full"
+                content={
+                  <span className="tabular flex flex-col">
+                    {products.map((p) => (
+                      <span key={p.product}>
+                        {PRODUCT_LABEL[p.product]}: {row.format(p)} ({formatPercent((row.value(p) / sum) * 100)})
+                      </span>
+                    ))}
+                  </span>
+                }
               >
-                {products.map((p) => {
-                  const share = (row.value(p) / sum) * 100
-                  return (
-                    <div
-                      key={p.product}
-                      className="flex min-w-0 items-center px-1.5 text-[11px] sm:px-2 font-medium whitespace-nowrap tabular-nums"
-                      style={{
-                        width: `${share}%`,
-                        background: `color-mix(in oklab, ${PRODUCT_TONE[p.product]} 22%, transparent)`,
-                        borderLeft: `3px solid ${PRODUCT_TONE[p.product]}`,
-                        color: 'var(--ink-primary)',
-                      }}
-                      title={`${PRODUCT_LABEL[p.product]}: ${row.format(p)} (${formatPercent(share)})`}
-                    >
-                      {share >= 12 && (
-                        <>
-                          {formatPercent(share, 0)}
-                          {/* The figure needs room a phone does not have; the share alone fits. */}
-                          <span className="hidden sm:inline">&nbsp;· {row.format(p)}</span>
-                        </>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
+                <div
+                  tabIndex={0}
+                  className="focusable flex h-6 w-full overflow-hidden rounded-md"
+                  style={{ background: 'var(--track)' }}
+                >
+                  {products.map((p) => {
+                    const share = (row.value(p) / sum) * 100
+                    return (
+                      <div
+                        key={p.product}
+                        className="flex min-w-0 items-center px-1.5 text-[11px] sm:px-2 font-medium whitespace-nowrap tabular-nums"
+                        style={{
+                          width: `${share}%`,
+                          background: `color-mix(in oklab, ${PRODUCT_TONE[p.product]} 22%, transparent)`,
+                          borderLeft: `3px solid ${PRODUCT_TONE[p.product]}`,
+                          color: 'var(--ink-primary)',
+                        }}
+                      >
+                        {share >= 12 && (
+                          <>
+                            {formatPercent(share, 0)}
+                            {/* The figure needs room a phone does not have; the share alone fits. */}
+                            <span className="hidden sm:inline">&nbsp;· {row.format(p)}</span>
+                          </>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </Tooltip>
             ) : (
               <span className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
                 {NO_VALUE}
@@ -319,12 +340,12 @@ function ProductColumn({
         <p className="text-[15px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
           {PRODUCT_LABEL[product.product]}
         </p>
-        <p
-          className="display tabular text-[22px] font-semibold"
-          style={{ color: 'var(--ink-primary)' }}
-          title={usd(product.spendUsd, true)}
-        >
-          {usd(product.spendUsd)}
+        <p className="display tabular text-[22px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
+          <Tooltip content={<span className="tabular">{usd(product.spendUsd, true)}</span>}>
+            <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">
+              {usd(product.spendUsd)}
+            </span>
+          </Tooltip>
         </p>
       </div>
 
@@ -368,9 +389,11 @@ function ProductColumn({
             })}
             {row(
               'Tushum (yetkazildi)',
-              <span title={formatUzs(product.deliveredMoney.amount)}>
-                {formatCompactUzs(product.deliveredMoney.amount)} soʻm
-              </span>,
+              <Tooltip content={<span className="tabular">{formatUzs(product.deliveredMoney.amount)}</span>}>
+                <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">
+                  {formatCompactUzs(product.deliveredMoney.amount)} soʻm
+                </span>
+              </Tooltip>,
             )}
             {row(
               'ROAS',

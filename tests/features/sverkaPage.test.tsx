@@ -144,9 +144,9 @@ describe('SverkaBody — the difference list', () => {
     fireEvent.click(screen.getByRole('rowheader', { name: '1071484' }))
     const panel = screen.getByText('Bitim 1071484 — ikki tizimda').closest('div')!.parentElement!.parentElement!
     const region = within(panel).getByRole('rowheader', { name: 'Region' }).closest('tr')!
-    expect(region.textContent).toContain('✗ farq')
+    expect(within(region).getByText(/^farq/)).toBeTruthy()
     const seller = within(panel).getByRole('rowheader', { name: 'Sotuvchi' }).closest('tr')!
-    expect(seller.textContent).toContain('✓ mos')
+    expect(within(seller).getByText('mos')).toBeTruthy()
     expect(within(panel).getByText('Mahsulotlar — yonma-yon')).toBeTruthy()
     expect(within(panel).getByText('bx1071484-old')).toBeTruthy()
   })
@@ -177,7 +177,7 @@ describe('SverkaBody — a window reaching back past MoySklad', () => {
     flaggedCount: 0,
   }
 
-  const tile = (label: string) => screen.getByRole('heading', { name: label }).closest('.card')!
+  const tile = (label: string) => screen.getByRole('heading', { name: label }).closest<HTMLElement>('.card')!
 
   it('says from when MoySklad holds orders and how much of the window was left out', () => {
     render(<SverkaBody data={year} status="ready" />)
@@ -193,10 +193,10 @@ describe('SverkaBody — a window reaching back past MoySklad', () => {
     render(<SverkaBody data={year} status="ready" />)
     const fakt1 = tile('FAKT 1 — buyurtmalar')
     expect(fakt1.textContent).toContain('4,800,000')
-    expect(fakt1.textContent).toContain('✓ mos')
+    expect(within(fakt1).getByText('mos')).toBeTruthy()
     expect(fakt1.textContent).toContain('Bitrix24 dagi 2 tasi (3,200,000 soʻm) MoySklad boshlanishidan oldin tushgan')
     expect(tile('FAKT 2 — yetkazilgan').textContent).toContain('Solishtirilmadi')
-    expect(tile('FAKT 2 — yetkazilgan').textContent).not.toContain('✓ mos')
+    expect(within(tile('FAKT 2 — yetkazilgan')).queryByText('mos')).toBeNull()
   })
 
   it('takes the older orders out of «Toʻliq mos», as it does the ones still packing', () => {

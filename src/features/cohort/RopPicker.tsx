@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/Select'
 import { type CohortRopDto } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
 
@@ -52,13 +53,7 @@ export function RopPicker({
       <span className="font-medium" style={{ color: 'var(--ink-muted)' }}>
         Jamoa
       </span>
-      <select
-        className="h-7 rounded-md border px-2 text-[11px]"
-        style={{
-          borderColor: 'var(--border)',
-          background: 'var(--surface)',
-          color: 'var(--ink-primary)',
-        }}
+      <Select
         value={value ?? ''}
         onFocus={onOpen}
         onPointerDown={onOpen}
@@ -76,7 +71,7 @@ export function RopPicker({
             `?rop=` link must be able to get back to the company view without
             waiting for a list they are not going to use. */}
         {loading && <option disabled>yuklanmoqda…</option>}
-      </select>
+      </Select>
     </label>
   )
 }

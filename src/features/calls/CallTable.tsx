@@ -145,9 +145,11 @@ function columns(
               className="block h-1.5 w-full overflow-hidden rounded-full"
               style={{ background: 'var(--track)' }}
             >
+              {/* The sequential magnitude hue, never the page accent: a bar
+                  that encodes a value may not wear page identity. */}
               <span
                 className="block h-full rounded-full"
-                style={{ width: `${width}%`, background: 'var(--accent)' }}
+                style={{ width: `${width}%`, background: 'var(--seq-450)' }}
               />
             </span>
           </span>

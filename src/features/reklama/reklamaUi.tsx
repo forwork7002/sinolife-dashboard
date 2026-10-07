@@ -79,43 +79,6 @@ export function SlicePicker<T extends string>({
   )
 }
 
-/** A dollar tile — the StatTile units are soʻm and counts. */
-export function UsdTile({
-  label,
-  value,
-  hint,
-  status,
-}: {
-  label: string
-  value: number | null
-  hint?: string
-  status: Status
-}) {
-  return (
-    <Card className="flex flex-col gap-1 p-4">
-      <p className="text-xs" style={muted}>
-        {label}
-      </p>
-      {status === 'loading' ? (
-        <div className="skeleton h-7 w-28 rounded" />
-      ) : (
-        <p
-          className="display tabular text-[22px] leading-tight font-semibold"
-          style={{ color: 'var(--ink-primary)' }}
-          title={value === null ? undefined : usd(value, true)}
-        >
-          {status === 'error' ? '—' : usd(value)}
-        </p>
-      )}
-      {hint && (
-        <p className="text-[11px]" style={muted}>
-          {hint}
-        </p>
-      )}
-    </Card>
-  )
-}
-
 /** A card with a heading, a line under it, and a slot beside the heading. */
 export function TableCard({
   title,

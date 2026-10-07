@@ -1,7 +1,7 @@
 import type { ReactNode, SVGProps } from 'react'
 
 /**
- * Micro-glyphs: the drawn replacements for ↑ ↓ ● ▲ ■ ○ × ⌘.
+ * Micro-glyphs: the drawn replacements for ↑ ↓ ● ▲ ■ ○ × ⌘ ‹ › ▶.
  *
  * Text glyphs came free but were never ours: their weight, size and baseline
  * shifted with the font, and ▲ rendered as an emoji on some platforms. These
@@ -82,6 +82,22 @@ function ChevronDownGlyph(props: GlyphProps) {
       <path d="M5.5 9l6.5 6.5L18.5 9" {...stroke} />
     </Glyph>
   )
+}
+
+/**
+ * Chevron — the drawn ‹ › ▶ ▼. One drawing turned four ways rather than four
+ * characters, so a step button and a disclosure toggle share one weight: the
+ * text glyphs came from the UI font at three different sizes, and ▶ rendered
+ * as an emoji on some platforms. `right` steps forward or marks a closed
+ * disclosure, `down` an open one.
+ */
+export function ChevronGlyph({
+  direction,
+  className = '',
+  ...props
+}: GlyphProps & { readonly direction: 'left' | 'right' | 'up' | 'down' }) {
+  const turn = { down: '', up: 'rotate-180', left: 'rotate-90', right: '-rotate-90' }[direction]
+  return <ChevronDownGlyph {...props} className={`${turn} ${className}`} />
 }
 
 /**

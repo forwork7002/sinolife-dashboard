@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { statusOf } from '@/components/states/States'
+import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { RankBadge } from '@/components/ui/Stat'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -47,22 +48,21 @@ export function SourceFaktTable() {
 
   return (
     <div
-      className="space-y-2"
       style={{
         opacity: query.isPlaceholderData ? 0.6 : 1,
         transition: 'opacity 150ms var(--ease-out)',
       }}
       aria-busy={query.isPlaceholderData || undefined}
     >
-      <h3 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-        Manbalar boʻyicha · FAKT 1 / FAKT 2
-      </h3>
-      <SourceTable
-        rows={query.data?.data ?? []}
-        status={status}
-        errorMessage={(query.error as Error | null)?.message}
-        onRetry={() => void query.refetch()}
-      />
+      {/* In a card like every other table in the product (see SellersForecastTable). */}
+      <ChartCard title="Manbalar boʻyicha · FAKT 1 / FAKT 2">
+        <SourceTable
+          rows={query.data?.data ?? []}
+          status={status}
+          errorMessage={(query.error as Error | null)?.message}
+          onRetry={() => void query.refetch()}
+        />
+      </ChartCard>
     </div>
   )
 }

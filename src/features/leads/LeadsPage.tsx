@@ -95,22 +95,36 @@ export function LeadsPage() {
       meta={tab === 'sources' ? overview.data?.meta : undefined}
       stale={tab === 'sources' && overview.isPlaceholderData}
       period={tab === 'sources'}
+      /*
+        THE TABS SIT BESIDE THE TITLE, not in the filter row — as Struktura's
+        view switch does. In the row they came after the period control, which
+        only «Lid manbalari» has, so pressing «Lid kogortasi» slid the tabs
+        ~300px left under the pointer (a line up on a phone) and pressing back
+        slid them home. Here nothing before them depends on the tab.
+      */
+      actions={
+        // Four tabs are wider than a 375px phone: they scroll sideways in
+        // their own box (padded so the focus ring is not clipped) rather than
+        // running off the page.
+        <div className="-m-1 max-w-[calc(100%+0.5rem)] min-w-0 overflow-x-auto p-1">
+          <div className="inline-flex">
+            <SegmentedControl<Tab>
+              ariaLabel="Qaysi jadvallar"
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: 'sources', label: 'Lid manbalari' },
+                { value: 'cohort', label: 'Lid kogortasi' },
+                { value: 'rop', label: 'ROP otchet' },
+                { value: 'groups', label: 'Guruhlar' },
+              ]}
+            />
+          </div>
+        </div>
+      }
       toolbar={
-        <>
-          <SegmentedControl<Tab>
-            ariaLabel="Qaysi jadvallar"
-            value={tab}
-            onChange={setTab}
-            options={[
-              { value: 'sources', label: 'Lid manbalari' },
-              { value: 'cohort', label: 'Lid kogortasi' },
-              { value: 'rop', label: 'ROP otchet' },
-              { value: 'groups', label: 'Guruhlar' },
-            ]}
-          />
-          {/* Every tab follows it: leads by source and form, the team tables by team (see the services). */}
-          <DashboardBrandSwitch />
-        </>
+        // Every tab follows it: leads by source and form, the team tables by team (see the services).
+        <DashboardBrandSwitch />
       }
     >
       <div className="flex min-w-0 flex-col gap-6">

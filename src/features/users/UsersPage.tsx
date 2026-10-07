@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import { statusOf } from '@/components/states/States'
+import { Callout } from '@/components/ui/Callout'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { DataTable, InitialChip, type Column } from '@/components/ui/DataTable'
@@ -229,7 +230,7 @@ export function UsersPage() {
       */
       fill
     >
-      <Card className="card-hero brackets flex h-full min-h-[420px] flex-col px-4 py-4">
+      <Card className="card-hero brackets flex h-full min-h-[420px] flex-col px-5 py-5 sm:px-6">
         <div className="flex min-h-0 flex-1 flex-col">
           <DataTable
             columns={columns}
@@ -926,18 +927,12 @@ function UserDialog({
             administrator is looking at the ticks when they make the mistake.
           */}
           {scopeIsNarrowed && blockedByScope.length > 0 && (
-            <p
-              className="mt-3 rounded-lg px-3 py-2 text-[11.5px]"
-              style={{
-                background: 'color-mix(in oklab, var(--status-warning) 12%, transparent)',
-                color: 'var(--status-warning)',
-              }}
-            >
+            <Callout className="mt-3">
               Hech narsa belgilanmagan, shuning uchun rol boʻyicha boʻlimlar koʻrinadi — ulardan
               bular «{DATA_SCOPE_LABELS[dataScope]}» doirasida ochilmaydi:{' '}
               {blockedByScope.map((spec) => spec.label).join(', ')}. Kerakli boʻlimlarni belgilang —
               bular belgilansa butun kompaniya boʻyicha ochiladi.
-            </p>
+            </Callout>
           )}
         </section>
 

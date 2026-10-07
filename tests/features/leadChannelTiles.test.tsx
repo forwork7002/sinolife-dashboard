@@ -59,11 +59,17 @@ const data = {
   },
 } as unknown as LeadSourcesOverviewDto
 
+/** What a line's InfoTip says, opened as a pointer would open it. */
+async function tipOf(line: HTMLElement): Promise<string> {
+  fireEvent.mouseEnter(within(line).getByRole('button', { name: 'Izoh' }).parentElement!)
+  return (await screen.findByRole('tooltip')).textContent ?? ''
+}
+
 /** The tile whose label reads exactly `label`. */
 const tile = (label: string) => screen.getByText(label, { selector: 'p' }).closest('.card') as HTMLElement
 
 describe('ChannelTiles', () => {
-  it('prints the client\'s six channels with their kval and rate', () => {
+  it('prints the client\'s six channels with their kval and rate', async () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     expect(screen.getByRole('heading', { name: 'Boshqa kanallar lidlari' })).toBeTruthy()
@@ -73,7 +79,7 @@ describe('ChannelTiles', () => {
     expect(within(tile('Телеграм')).getByText('27')).toBeTruthy()
     expect(within(tile('Телеграм')).getByText('13 kval · 48.1%')).toBeTruthy()
     expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
-    expect(within(tile('Сммщик ии')).getByText('«ИИ квал сана» shu davrda · faqat Регистрация').getAttribute('title')).toContain('14.09.2026')
+    expect(await tipOf(within(tile('Сммщик ии')).getByText('«ИИ квал сана» shu davrda · faqat Регистрация'))).toContain('14.09.2026')
     expect(within(tile('Веб сайт')).getByText('1')).toBeTruthy()
   })
 
@@ -88,11 +94,11 @@ describe('ChannelTiles', () => {
     expect(within(tile('Входящий')).getByText('473')).toBeTruthy()
   })
 
-  it('says under «Сммщик ии», quietly, the AI kval already past Регистрация — a dubl summed nowhere (2026-10-03)', () => {
+  it('says under «Сммщик ии», quietly, the AI kval already past Регистрация — a dubl summed nowhere (2026-10-03)', async () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const line = within(tile('Сммщик ии')).getByText('+17 dubl · Первичный / Доставка · sanalmagan')
-    expect(line.getAttribute('title')).toMatch(/«Jami»ga kirmaydi/)
+    expect(await tipOf(line)).toMatch(/«Jami»ga kirmaydi/)
     expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
     expect(within(screen.getByTestId('lead-channel-total')).getByText('3,224')).toBeTruthy()
   })
@@ -122,14 +128,14 @@ describe('ChannelTiles', () => {
     expect(total.parentElement!.children).toHaveLength(7)
   })
 
-  it('says, quietly, what takes «Jami» to «Жами лидлар» (2026-10-02)', () => {
+  it('says, quietly, what takes «Jami» to «Жами лидлар» (2026-10-02)', async () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const total = screen.getByTestId('lead-channel-total')
     // 3 224 + 2 410 + 120 − 40 = 5 714, the headline.
     expect(within(total).getByText('+2,490 → 5,714 «Жами лидлар»')).toBeTruthy()
     const parts = within(total).getByText('Исход +2,410 · Boshqa +120 · ИИ farqi −40')
-    expect(parts.getAttribute('title')).toMatch(/«ИИ квал сана»/)
+    expect(await tipOf(parts)).toMatch(/«ИИ квал сана»/)
   })
 
   it('names only the parts that add something', () => {
@@ -142,7 +148,7 @@ describe('ChannelTiles', () => {
 
     const total = screen.getByTestId('lead-channel-total')
     expect(within(total).getByText('+120 → 3,344 «Жами лидлар»')).toBeTruthy()
-    expect(within(total).getByText('Boshqa +120').getAttribute('title')).toBeNull()
+    expect(within(within(total).getByText('Boshqa +120')).queryByRole('button', { name: 'Izoh' })).toBeNull()
   })
 
   it('says «= Жами лидлар» when nothing is apart', () => {

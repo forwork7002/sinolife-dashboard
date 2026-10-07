@@ -2,6 +2,7 @@
 
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { Pagination, SearchInput } from '@/components/ui/Controls'
+import { Select } from '@/components/ui/Select'
 import { NO_VALUE, formatDateTime, formatUzs } from '@/lib/format'
 
 import { type TargetLeadDto, type TargetLeadSaleDto, bitrixDealUrl } from './targetApi'
@@ -142,13 +143,8 @@ function Picker({
       <span className="font-medium" style={{ color: 'var(--ink-muted)' }}>
         {label}
       </span>
-      <select
-        className="h-8 max-w-[200px] rounded-md border px-2 text-[12px]"
-        style={{
-          borderColor: 'var(--border)',
-          background: 'var(--surface)',
-          color: 'var(--ink-primary)',
-        }}
+      <Select
+        className="max-w-[200px]"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-label={`${label} boʻyicha filtr`}
@@ -160,7 +156,7 @@ function Picker({
             {option}
           </option>
         ))}
-      </select>
+      </Select>
     </label>
   )
 }
