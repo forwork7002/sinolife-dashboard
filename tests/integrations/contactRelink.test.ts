@@ -49,11 +49,6 @@ describe('listDealContacts', () => {
     const { provider } = portal([{ ID: '10' }, { ID: '11' }])
     await expect(provider.listDealContacts()).rejects.toThrow(/CONTACT_ID/)
   })
-
-  it('still answers the sweep its ids', async () => {
-    const { provider } = portal([{ ID: '10', CONTACT_ID: '1' }, { ID: '11', CONTACT_ID: null }])
-    expect(await provider.listDealIds()).toEqual(new Set(['10', '11']))
-  })
 })
 
 describe('relinkLimit', () => {

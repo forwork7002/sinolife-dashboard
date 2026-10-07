@@ -169,6 +169,71 @@ export function historyLeftAtSql(scoped: boolean): string {
 }
 
 /**
+ * The most one deletion sweep may remove: 500 rows, or 1% of the table if that
+ * is more.
+ *
+ * A day's real deletions are test and duplicate orders — a handful. Thousands
+ * «gone» at once is far likelier to be the webhook losing sight of a pipeline:
+ * Bitrix24 applies a role change silently, so the walk comes back complete and
+ * error-free with one pipeline's 184 000 deals missing, and the delete would
+ * cascade to their stage history, line items and owner changes, which the
+ * incremental sync never reads again. `goneLimit` in recentDeletions.ts defers
+ * to «the daily sweep, which has its own guards»; this is them. Past it the
+ * sweep deletes NOTHING and throws `SweepRefusedError`.
+ */
+export function sweepLimit(stored: number): number {
+  return Math.max(500, Math.ceil(stored * 0.01))
+}
+
+/**
+ * A deletion sweep `sweepLimit` refused. Nothing was deleted.
+ *
+ * It carries the figures because the worker records them and somebody has to
+ * decide from them: a pipeline that dropped out of the webhook's sight, or a
+ * portal that really lost that many records.
+ */
+export class SweepRefusedError extends Error {
+  constructor(
+    readonly table: string,
+    readonly seen: number,
+    readonly stored: number,
+    readonly gone: number,
+    readonly limit: number,
+  ) {
+    super(
+      `${table}: portal ${seen} ta qaytardi, bazada ${stored} ta, ${gone} tasi portalda yoʻq — ` +
+        `bu juda koʻp (chegara ${limit}), hech narsa oʻchirilmadi`,
+    )
+    this.name = 'SweepRefusedError'
+  }
+}
+
+/**
+ * The most units one DEPARTMENTS pass may retire: half the active ones, never
+ * fewer than two.
+ *
+ * The client removes a ROP unit or two at a time. Most of the tree «gone» from
+ * one answer is a misread, and retiring on it would take the org chart's cards
+ * and RNP's teams away at once.
+ */
+export function retireLimit(active: number): number {
+  return Math.max(2, Math.floor(active / 2))
+}
+
+/**
+ * The most one line-item reconciliation may delete: 25 lines, or 5% of the
+ * lines stored for the deals it read if that is more.
+ *
+ * A real edit takes a line or two off an order. Most of a run's lines «gone»
+ * at once is far likelier to be the portal answering product rows empty than
+ * a morning of edits — so a pass like that deletes nothing and says so, as
+ * `goneLimit` and `relinkLimit` do.
+ */
+export function surplusLineLimit(stored: number): number {
+  return Math.max(25, Math.ceil(stored * 0.05))
+}
+
+/**
  * Above this many deals, close the whole table in one pass instead.
  *
  * A FULL run touches every deal there is, and handing a hundred thousand ids
@@ -225,12 +290,19 @@ export function createSyncHandlers(
   const ids = (batch: readonly { externalId: string }[]) => batch.map((r) => r.externalId)
 
   /**
-   * Floor badge to employee, read once and kept for the run.
+   * Floor badge to employee, read once and kept until the roster changes.
    *
    * The roster is ~290 rows and every DEALS batch needs the same map, so
-   * fetching it per batch would be 175 identical queries on a full pass. It is
-   * deliberately NOT cached across runs: a resync after a hiring change must
-   * see the new people.
+   * fetching it per batch would be 175 identical queries on a full pass. It
+   * must NOT outlive a hiring change: the EMPLOYEES pass drops it, so the next
+   * deals batch reads the roster it just wrote.
+   *
+   * It used to say «not cached across runs» and was in fact cached for the
+   * PROCESS — the worker builds these handlers once and nothing reset it. A
+   * seller imported by the three-hourly reference pass then had every order
+   * written with `operatorEmployeeId` NULL until the next deploy, and the
+   * readers' COALESCE credited those orders to whoever owned the deal: the
+   * sellers board, the queue, payroll and the ROP's TEAM rows.
    */
   let operatorIndex: Map<number, string> | null = null
   const floorNumberIndex = async (): Promise<Map<number, string>> => {
@@ -254,10 +326,22 @@ export function createSyncHandlers(
   // Organisation
   // -------------------------------------------------------------------------
 
+  /**
+   * Every unit the portal returned in this DEPARTMENTS run, for `finalize`.
+   *
+   * Taken from the fetched pages, not from what was written: a unit the
+   * portal still lists is alive even if its own upsert failed.
+   */
+  const departmentsSeen = new Set<string>()
+
   const departments: EntitySyncHandler<RawDepartment> = {
     entity: 'DEPARTMENTS',
     externalIdOf: (record) => record.externalId,
-    fetch: (provider: CrmProvider, options: FetchOptions) => provider.fetchDepartments(options),
+    async fetch(provider: CrmProvider, options: FetchOptions) {
+      const page = await provider.fetchDepartments(options)
+      for (const record of page.items) departmentsSeen.add(record.externalId)
+      return page
+    },
     async persist(batch) {
       const existing = new Set(
         (
@@ -301,9 +385,24 @@ export function createSyncHandlers(
        * returns the tree in no guaranteed order — a child can arrive before
        * its parent. Linking after every row is written is the only way the
        * reference resolves for all of them.
+       *
+       * A UNIT THE PORTAL PUTS AT THE TOP LOSES ITS PARENT here, as a head the
+       * portal stops naming loses it above; it used to stay drawn under the
+       * old one. Only when the batch names a parent for some unit: one that
+       * names none (the engine's one-record retry, or an answer missing the
+       * field) proves nothing about the tree.
        */
+      const namesParents = batch.some((record) => record.parentExternalId)
       for (const record of batch) {
-        if (!record.parentExternalId) continue
+        if (!record.parentExternalId) {
+          if (namesParents) {
+            await prisma.department.updateMany({
+              where: { externalSource: source, externalId: record.externalId, parentId: { not: null } },
+              data: { parentId: null },
+            })
+          }
+          continue
+        }
         const parentId = await resolver.optional('department', record.parentExternalId)
         const selfId = await resolver.optional('department', record.externalId)
         if (!parentId || !selfId || parentId === selfId) continue
@@ -312,6 +411,50 @@ export function createSyncHandlers(
       }
 
       return { ...classify(batch, existing), skipped: 0 }
+    },
+
+    /**
+     * Retire the units the portal no longer returns — deactivated, never
+     * deleted.
+     *
+     * The pass only ever upserted what came back and nothing set `isActive`
+     * false, so a unit deleted in Bitrix24 (the client does remove ROP units —
+     * Husniddin(ROP)) kept its card on /structure, its place in RNP's ROP list
+     * and the «Boʻlim» filter, and its head: every `isActive` filter in the
+     * repositories was a no-op. Kept as a row because employees, members and
+     * deals reference it and history must still resolve; its head is cleared
+     * so nobody's TEAM scope anchors on a unit that is gone. A unit the portal
+     * returns again is active again — the upsert above writes `isActive`.
+     *
+     * `department.get` answers with the whole tree on every pass, so a unit it
+     * leaves out is a deleted one — unless it left out everything (the
+     * provider's «scope yoʻq» path) or most of the tree at once, which is a
+     * misread rather than a reorganisation: past `retireLimit` nothing changes
+     * and the run says why.
+     */
+    async finalize() {
+      const seen = [...departmentsSeen]
+      departmentsSeen.clear()
+      if (seen.length === 0) return
+
+      const gone = await prisma.department.findMany({
+        where: { externalSource: source, isActive: true, externalId: { notIn: seen } },
+        select: { id: true },
+      })
+      if (gone.length === 0) return
+
+      const active = await prisma.department.count({ where: { externalSource: source, isActive: true } })
+      const limit = retireLimit(active)
+      if (gone.length > limit) {
+        throw new Error(
+          `${active} ta faol boʻlimdan ${gone.length} tasini portal qaytarmadi — ` +
+            `bu juda koʻp (chegara ${limit}), hech biri nofaol qilinmadi`,
+        )
+      }
+      await prisma.department.updateMany({
+        where: { id: { in: gone.map((d) => d.id) } },
+        data: { isActive: false, headId: null },
+      })
     },
   }
 
@@ -351,6 +494,8 @@ export function createSyncHandlers(
       }
 
       resolver.invalidate('employee')
+      // A hire, a rename or a reused badge is in the roster now; see `operatorIndex`.
+      operatorIndex = null
 
       /*
         MEMBERSHIP IS MANY-TO-MANY, AND ONLY THE ORG CHART READS IT.
@@ -793,6 +938,18 @@ export function createSyncHandlers(
     ...lifecycleColumns(),
   ]
 
+  /**
+   * Deals a deals batch saw lose ALL their money, for the next line-item read.
+   *
+   * The provider reads line items only for deals that carry money, so an order
+   * whose every product was removed — its amount falls to zero with them —
+   * was never read again and kept the lines it no longer has. The deals pass
+   * is the one place that sees both amounts, so it names them; DEAL_ITEMS
+   * hands them to the provider (`dealExternalIds`) and its reconciliation
+   * drops what the portal no longer lists.
+   */
+  const emptiedDeals = new Set<string>()
+
   const deals: EntitySyncHandler<RawDeal> = {
     entity: 'DEALS',
     externalIdOf: (record) => record.externalId,
@@ -908,11 +1065,11 @@ export function createSyncHandlers(
         Apart, a failed insert sent the engine to its record-by-record retry,
         which read the NEW owner as "before" and lost the change for good.
       */
-      const existing = await prisma.$transaction(
+      const stored = await prisma.$transaction(
         async (tx) => {
           const before = await tx.deal.findMany({
             where: { externalSource: source, externalId: { in: ids(batch) } },
-            select: { id: true, externalId: true, employeeId: true },
+            select: { id: true, externalId: true, employeeId: true, amountMinor: true },
           })
           await bulkUpsert({
             prisma: tx,
@@ -924,10 +1081,17 @@ export function createSyncHandlers(
           const inRegistration = written.filter((r) => leadPipelines.has(link(pipelineMap, r.pipelineExternalId) ?? ''))
           const changes = ownerChangesOf(before, inRegistration, employeeMap)
           if (changes.length > 0) await tx.dealOwnerChange.createMany({ data: changes })
-          return new Set(before.map((r) => r.externalId!))
+          return before
         },
         { maxWait: 10_000, timeout: 60_000 },
       )
+      const existing = new Set(stored.map((r) => r.externalId!))
+
+      // An order that lost all its money lost its lines with it — see `emptiedDeals`.
+      const paidBefore = new Set(stored.filter((r) => (r.amountMinor ?? 0n) > 0n).map((r) => r.externalId))
+      for (const record of written) {
+        if (record.amountMinor === 0n && paidBefore.has(record.externalId)) emptiedDeals.add(record.externalId)
+      }
 
       await rememberWritten(
         resolver,
@@ -955,10 +1119,31 @@ export function createSyncHandlers(
     ...lifecycleColumns(),
   ]
 
+  /**
+   * The line keys each deal came back with in this run, for `finalize`.
+   *
+   * Only the deals the provider says it read IN FULL (`dealsRead`), a deal with
+   * no lines left included. In-process like `touchedDeals` below, and cleared
+   * by `finalize`: a run that fails before it leaves them for the next run,
+   * whose newer read of a deal replaces the older one.
+   */
+  const linesRead = new Map<string, Set<string>>()
+
   const dealItems: EntitySyncHandler<RawDealItem> = {
     entity: 'DEAL_ITEMS',
     externalIdOf: (record) => record.externalId,
-    fetch: (provider, options) => provider.fetchDealItems(options),
+    async fetch(provider, options) {
+      const emptied = options.cursor === undefined ? [...emptiedDeals] : []
+      if (options.cursor === undefined) emptiedDeals.clear()
+      // Cleared before the read on purpose: the Bitrix24 provider keeps what a
+      // failed read did not settle (`itemDealsOwed`), these deals included.
+      const page = await provider.fetchDealItems(
+        emptied.length > 0 ? { ...options, dealExternalIds: emptied } : options,
+      )
+      for (const dealId of page.dealsRead ?? []) linesRead.set(dealId, new Set())
+      for (const item of page.items) linesRead.get(item.dealExternalId)?.add(item.externalId)
+      return page
+    },
     async persist(batch) {
       const existing = new Set(
         (
@@ -1061,6 +1246,73 @@ export function createSyncHandlers(
       })
 
       return { created, updated, skipped }
+    },
+
+    /**
+     * Drop the lines the portal no longer lists — per deal, never per batch.
+     *
+     * A line's key is its POSITION (`${dealId}-${index}`: the portal gives
+     * product rows no id of their own), and the upsert only ever wrote what
+     * came back. So an order that went from [Collagen, Zextra] to [Zextra]
+     * kept a second Zextra at position 1 for good: its lines summed past its
+     * amount, margin counted that revenue and its cost twice, and the brand
+     * rule, Sverka and the queue's Продукт column read a product the order no
+     * longer had.
+     *
+     * Here, not in `persist`: the engine retries a failed batch one record at
+     * a time, and a delete scoped to the batch would then take every line's
+     * siblings with it. Only deals the provider read in full are touched, and
+     * past `surplusLineLimit` nothing is deleted — the run says PARTIAL and the
+     * reason.
+     */
+    async finalize() {
+      const read = [...linesRead]
+      linesRead.clear()
+      if (read.length === 0) return
+
+      const dealIds = read.map(([dealId]) => dealId)
+      const kept = read.flatMap(([, keys]) => [...keys])
+      // ONE population for the count and the delete, so the guard measures
+      // exactly what would go.
+      const scope = `FROM "deal_item" AS t
+          JOIN "deal" AS d ON d."id" = t."dealId"
+         WHERE d."externalSource" = $1::"ExternalSource"
+           AND d."externalId" = ANY($2::text[])
+           AND t."externalSource" = $1::"ExternalSource"
+           AND t."externalId" IS NOT NULL`
+      const surplus = `AND NOT EXISTS (
+            SELECT 1 FROM unnest($3::text[]) AS k("externalId") WHERE k."externalId" = t."externalId"
+          )`
+
+      await prisma.$transaction(
+        async (tx) => {
+          const [counted] = await tx.$queryRawUnsafe<{ stored: bigint; surplus: bigint }[]>(
+            `SELECT (SELECT count(*) ${scope})::bigint AS stored,
+                    (SELECT count(*) ${scope} ${surplus})::bigint AS surplus`,
+            source,
+            dealIds,
+            kept,
+          )
+          const stored = Number(counted?.stored ?? 0)
+          const extra = Number(counted?.surplus ?? 0)
+          if (extra === 0) return
+
+          const limit = surplusLineLimit(stored)
+          if (extra > limit) {
+            throw new Error(
+              `${dealIds.length} ta bitimning ${stored} ta qatoridan ${extra} tasini portal endi koʻrsatmaydi — ` +
+                `bu juda koʻp (chegara ${limit}), hech narsa oʻchirilmadi`,
+            )
+          }
+          await tx.$executeRawUnsafe(
+            `DELETE FROM "deal_item" WHERE "id" IN (SELECT t."id" ${scope} ${surplus})`,
+            source,
+            dealIds,
+            kept,
+          )
+        },
+        { maxWait: 10_000, timeout: 120_000 },
+      )
     },
   }
 
@@ -1360,7 +1612,7 @@ export function createSyncHandlers(
    * Postgres cannot plan.
    */
   const sweepByAntiJoin =
-    (table: string, extraCondition = '') =>
+    (table: string, extraCondition = '', limit?: (stored: number) => number) =>
     async (seen: ReadonlySet<string>): Promise<number> => {
       // An empty read means the source returned nothing at all. Deleting the
       // entire table on that basis would be catastrophic and is almost
@@ -1406,14 +1658,32 @@ export function createSyncHandlers(
             )
           }
 
-          const deleted = await tx.$executeRawUnsafe(
-            `DELETE FROM "${table}" AS t
+          const stored = `FROM "${table}" AS t
              WHERE t."externalSource" = $1::"ExternalSource"
-               AND t."externalId" IS NOT NULL
+               AND t."externalId" IS NOT NULL`
+          const gone = `${stored}
                AND NOT EXISTS (SELECT 1 FROM "sync_live_ids" l WHERE l."externalId" = t."externalId")
-               ${extraCondition}`,
-            source,
-          )
+               ${extraCondition}`
+
+          /*
+            COUNTED BEFORE ANYTHING IS DELETED, against the very population the
+            DELETE below removes — see `sweepLimit`. A sweep within the limit
+            deletes exactly what it did before the guard existed.
+          */
+          if (limit) {
+            const [counted] = await tx.$queryRawUnsafe<{ stored: bigint; gone: bigint }[]>(
+              `SELECT (SELECT count(*) ${stored} ${extraCondition})::bigint AS stored,
+                      (SELECT count(*) ${gone})::bigint AS gone`,
+              source,
+            )
+            const total = Number(counted?.stored ?? 0)
+            const missing = Number(counted?.gone ?? 0)
+            if (missing > limit(total)) {
+              throw new SweepRefusedError(table, live.length, total, missing, limit(total))
+            }
+          }
+
+          const deleted = await tx.$executeRawUnsafe(`DELETE ${gone}`, source)
 
           await tx.$executeRawUnsafe(`DROP TABLE IF EXISTS "sync_live_ids"`)
           return deleted
@@ -1429,7 +1699,9 @@ export function createSyncHandlers(
       'customer',
       'AND NOT EXISTS (SELECT 1 FROM "deal" d WHERE d."customerId" = t."id")',
     ),
-    DEALS: sweepByAntiJoin('deal'),
+    // Guarded: the daily sweep feeds this from a walk a permission change can
+    // shorten without an error. See `sweepLimit`.
+    DEALS: sweepByAntiJoin('deal', '', sweepLimit),
     DEAL_ITEMS: sweepByAntiJoin('deal_item'),
     PAYMENTS: sweepByAntiJoin('payment'),
   }

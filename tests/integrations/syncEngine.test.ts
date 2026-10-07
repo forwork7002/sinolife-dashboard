@@ -10,6 +10,7 @@ import {
   isCleanRun,
   nextWatermark,
 } from '@/server/integrations/crm/sync/SyncEngine'
+import { isPassDue, isResolvePassDue, planTick } from '@/server/integrations/crm/sync/schedule'
 
 // ---------------------------------------------------------------------------
 // In-memory fakes — the engine's seams make a database unnecessary here.
@@ -336,6 +337,27 @@ describe('failure isolation', () => {
     expect((await engine.runEntity('EMPLOYEES', 'FULL')).status).toBe('PARTIAL')
   })
 
+  /*
+    A FINALIZE THAT REFUSES SAYS WHY. The line-item reconciliation and the
+    department retire refuse by throwing from it; the run was PARTIAL with no
+    message, which on DEAL_ITEMS read exactly like a run that skipped a line.
+  */
+  it('keeps the reason a finalize gave on the run it degraded', async () => {
+    const { engine, store } = engineWith([
+      makeHandler('EMPLOYEES', rows(3), new FakeTable(), {
+        async finalize() {
+          throw new Error('bu juda koʻp (chegara 2), hech biri nofaol qilinmadi')
+        },
+      }),
+    ])
+
+    const result = await engine.runEntity('EMPLOYEES', 'INCREMENTAL')
+
+    const expected = { status: 'PARTIAL', errorMessage: 'bu juda koʻp (chegara 2), hech biri nofaol qilinmadi' }
+    expect(result).toMatchObject(expected)
+    expect(store.runs[0]).toMatchObject(expected)
+  })
+
   it('records a fetch failure as FAILED without throwing', async () => {
     const table = new FakeTable()
     const handler = makeHandler('EMPLOYEES', rows(3), table, {
@@ -596,10 +618,11 @@ describe('watermark after a run that skipped records', () => {
     // Stage history waits on a deal that lands in the very next tick.
     expect(nextWatermark('STAGE_HISTORY', NOW, 1).getTime()).toBe(NOW.getTime() - 35 * 60_000)
     /*
-      Deals wait on reference data instead, which reloads every thirty TICKS —
-      and a tick has no ceiling, so the window has to allow for slow ones. It
-      is affordable because it almost never fires: over five hours of
-      production DEALS skipped on none of its 293 runs.
+      Deals wait on reference data instead, which a skip brings forward within
+      twenty minutes (`RESOLVE_GAP_MS`) — and a tick has no ceiling, so the
+      window has to allow for slow ones. It is affordable because it almost
+      never fires: over five hours of production DEALS skipped on none of its
+      293 runs.
     */
     expect(nextWatermark('DEALS', NOW, 1).getTime()).toBe(NOW.getTime() - 95 * 60_000)
   })
@@ -617,7 +640,8 @@ describe('watermark after a run that skipped records', () => {
     // skipping, so a skip rewind buys it nothing. But it does rewind now, on
     // every run, for an unrelated reason: see the settle-lookback block at the
     // end of this file. Asserting it stays put here would pin the bug.
-    for (const entity of ['EMPLOYEES', 'CUSTOMERS', 'DEAL_ITEMS'] as const) {
+    // CUSTOMERS left the list on 2026-10-06 for the same reason.
+    for (const entity of ['EMPLOYEES', 'DEAL_ITEMS'] as const) {
       expect(nextWatermark(entity, NOW, 5)).toEqual(NOW)
     }
   })
@@ -690,12 +714,46 @@ describe('watermark for a record that settles after it is first read', () => {
   })
 
   it('leaves an entity with no settle lookback alone on a clean run', () => {
-    expect(nextWatermark('CUSTOMERS', NOW, 0)).toEqual(NOW)
+    expect(nextWatermark('EMPLOYEES', NOW, 0)).toEqual(NOW)
   })
 
-  it('overlaps DEALS and STAGE_HISTORY by three minutes on every run', () => {
+  it('overlaps DEALS, STAGE_HISTORY and CUSTOMERS by three minutes on every run', () => {
     expect(nextWatermark('DEALS', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60_000)
     expect(nextWatermark('STAGE_HISTORY', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60_000)
+    expect(nextWatermark('CUSTOMERS', NOW, 0).getTime()).toBe(NOW.getTime() - 3 * 60_000)
+  })
+
+  /*
+    CUSTOMERS reads `>=DATE_MODIFY` in whole seconds from its own start. A
+    contact stamped a second BEFORE that start and committed after the read
+    was excluded by every later run, and nothing ever imported it — its order
+    kept no customer, no name or phone on the queue.
+  */
+  it('re-reads a contact stamped before the run start that appeared after the read', async () => {
+    const table = new FakeTable()
+    const contact: Row = { externalId: 'c-form', value: 'contact', updatedAtSource: new Date(NOW.getTime() - 1_000) }
+    let visible = false
+
+    const handler = makeHandler('CUSTOMERS', [], table, {
+      // Bitrix24's filter for contacts: whole seconds, at or after.
+      async fetch(_provider: CrmProvider, options: FetchOptions): Promise<Page<Row>> {
+        const since = options.updatedSince
+          ? Math.floor(options.updatedSince.getTime() / 1000) * 1000
+          : -Infinity
+        return { items: [contact].filter((r) => visible && r.updatedAtSource!.getTime() >= since) }
+      },
+    })
+    const store = new FakeStore()
+    await store.setCursor('DEMO', 'CUSTOMERS', new Date(NOW.getTime() - 2 * 60_000))
+    const { engine } = engineWith([handler], store, { CUSTOMERS: true })
+
+    await engine.runEntity('CUSTOMERS', 'INCREMENTAL')
+    expect(table.rows.has('c-form')).toBe(false)
+
+    visible = true
+    await engine.runEntity('CUSTOMERS', 'INCREMENTAL')
+
+    expect(table.rows.has('c-form')).toBe(true)
   })
 
   /*
@@ -752,6 +810,80 @@ describe('watermark for a record that settles after it is first read', () => {
     expect(nextWatermark('CALLS', later, 0).getTime()).toBeGreaterThan(
       nextWatermark('CALLS', NOW, 0).getTime(),
     )
+  })
+})
+
+/**
+ * A SKIP THAT WAITS ON REFERENCE DATA, ACROSS THE THREE-HOURLY PASS.
+ *
+ * A seller hired after the reference pass: their order, straight into C4:NEW,
+ * is skipped by DEALS (unknown employee) and its arrival by STAGE_HISTORY
+ * (deal not written). The windows rewind 95 and 35 minutes; the reference pass
+ * is three hours away. The worker's loop is reproduced here only as far as the
+ * decisions it makes around each tick — `planTick` before, `isResolvePassDue`
+ * after.
+ */
+describe('a skip that waits on reference data', () => {
+  const TICK = 2 * 60_000
+
+  async function simulate(forcePass: boolean) {
+    let clock = NOW
+    let employeeKnown = false
+    const deals = new FakeTable()
+    const history = new FakeTable()
+
+    const dealHandler = makeHandler('DEALS', [{ externalId: 'd-1', value: 'deal', updatedAtSource: NOW }], deals, {
+      async persist(batch: readonly Row[]) {
+        const writable = employeeKnown ? batch : []
+        return { ...deals.upsert(writable), skipped: batch.length - writable.length }
+      },
+    })
+    const historyHandler = makeHandler('STAGE_HISTORY', [{ externalId: 'h-1', value: 'C4:NEW', updatedAtSource: NOW }], history, {
+      async persist(batch: readonly Row[]) {
+        const writable = batch.filter(() => deals.rows.has('d-1'))
+        return { ...history.upsert(writable), skipped: batch.length - writable.length }
+      },
+    })
+
+    const store = new FakeStore()
+    // An ordinary running worker: both cursors one tick behind the order.
+    await store.setCursor('DEMO', 'DEALS', new Date(NOW.getTime() - TICK))
+    await store.setCursor('DEMO', 'STAGE_HISTORY', new Date(NOW.getTime() - TICK))
+    const engine = new SyncEngine({
+      provider: fakeProvider({ DEALS: true, STAGE_HISTORY: true }),
+      store,
+      handlers: [dealHandler, historyHandler],
+      now: () => clock,
+    })
+
+    // The scheduled pass ran ten minutes before the order and next runs in three hours.
+    let lastReference = new Date(NOW.getTime() - 10 * 60_000)
+    let lastResolve: Date | null = null
+    let owed = false
+    for (let tick = 0; tick < 90; tick++) {
+      clock = new Date(NOW.getTime() + tick * TICK)
+      // The worker's own decision (`planTick`), on a portal that answers throughout.
+      const plan = planTick({
+        referenceDue: isPassDue(lastReference, clock, 3 * 60 * 60_000),
+        resolveOwed: owed,
+        calm: 0,
+      })
+      owed = plan.resolveOwed
+      if (plan.reference) lastReference = clock
+      if (plan.resolve) lastResolve = clock
+      if (plan.reference || plan.resolve) employeeKnown = true
+      const [dealRun] = await engine.runAll(['DEALS', 'STAGE_HISTORY'], 'INCREMENTAL')
+      if (forcePass && isResolvePassDue(dealRun!.recordsSkipped, [lastReference, lastResolve], clock)) owed = true
+    }
+    return { deal: deals.rows.has('d-1'), arrival: history.rows.has('h-1') }
+  }
+
+  it('loses the order and its arrival when only the scheduled pass can resolve them', async () => {
+    expect(await simulate(false)).toEqual({ deal: false, arrival: false })
+  })
+
+  it('writes both once a skip brings the pass forward, inside both windows', async () => {
+    expect(await simulate(true)).toEqual({ deal: true, arrival: true })
   })
 })
 

@@ -56,15 +56,19 @@ import type { CrmProvider, FetchOptions, Page } from '@/server/integrations/crm/
  * one to four orders a day over the four days before it.
  *
  * DEALS HAS THE SAME SHAPE against a different reference: it drops a deal whose
- * employee or stage it cannot resolve, and reference data reloads only every 30
- * TICKS. A tick is at least the interval and has no ceiling — a slow one runs
- * long and the next starts immediately — so "thirty ticks" is not thirty
- * minutes and a lookback sized to the clock has to allow for that. Ninety-five
- * minutes covers thirty ticks averaging three, and it costs nothing to be
- * generous here: over five hours of production, DEALS skipped on none of its
- * 293 runs, so this is insurance that almost never fires. STAGE_HISTORY, which
- * fires on about one run in ten, keeps the tighter window its race actually
- * needs — the deal it is waiting for lands in the very next tick.
+ * employee or stage it cannot resolve. These windows were sized when reference
+ * data reloaded every 30 TICKS; since 2026-09-16 it reloads every three hours,
+ * past both of them, so a skip that waited for the scheduled pass was a skip
+ * for good — the deal until somebody touched it again, its C4:NEW arrival
+ * forever. A DEALS run that skips now has the worker re-read what a deal waits
+ * on (`RESOLVE` in schedule.ts) on the next tick, at most once per
+ * `RESOLVE_GAP_MS` (twenty minutes). Ninety-five minutes covers that wait with
+ * room for slow ticks — a tick is at least the interval and has no ceiling —
+ * and it costs nothing to be generous: over five hours of production, DEALS
+ * skipped on none of its 293 runs. STAGE_HISTORY, which fires on about one run
+ * in ten, keeps the tighter window its own race needs: the deal it waits for
+ * lands in the very next tick, and a stage the client just added comes with
+ * the same forced pass, twenty minutes and a tick inside its thirty-five.
  *
  * DEAL_ITEMS is absent on purpose: it reads the in-process state the DEALS pass
  * just left behind rather than a watermark, so it cannot lose this race. CALLS
@@ -114,23 +118,30 @@ export const SKIP_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
  * `durationSec`, `connected` and `failedCode` on conflict (only `createdAt` is
  * insert-only in `CALL_COLUMNS`), so the second read corrects the row.
  *
- * DEALS AND STAGE_HISTORY OVERLAP BY THREE MINUTES, FOR THE WATERMARK'S OWN
- * SECOND. Bitrix24 filters `>DATE_MODIFY` / `>CREATED_TIME` in WHOLE SECONDS,
- * STRICTLY GREATER, and `isoLocal` drops the milliseconds. A row stamped in
- * the same second the run started, but not yet visible when the run read, is
+ * DEALS, STAGE_HISTORY AND CUSTOMERS OVERLAP BY THREE MINUTES, FOR A ROW
+ * THAT BECOMES VISIBLE AFTER THE READ. Bitrix24 filters in WHOLE SECONDS —
+ * `>CREATED_TIME` for stage history, strictly greater, and `>=DATE_MODIFY` for
+ * deals and contacts — and `isoLocal` drops the milliseconds, while the cursor
+ * is this run's own start. A row stamped just before that start but committed
+ * after the read (or stamped behind a worker clock that runs ahead) is
  * therefore excluded by every later run — no skip, no failure, nothing
- * logged. Production, 2026-10-01: deal 1050732 was created straight into
+ * logged; the strictly-greater filter only widens it to the start's own
+ * second. Production, 2026-10-01: deal 1050732 was created straight into
  * C4:NEW at 06:15:07 UTC; the STAGE_HISTORY run that started at 06:15:07.054
  * read 8 rows, skipped none, and stored 06:15:07 as the cursor. The arrival
  * was never read again, so the order was missing from Тасдиқлаш навбати and
  * from FAKT 1 while the client's board showed it as Тасдиқланди. One row in
  * 3 339 C4:NEW arrivals from 1 September to 1 October, which is why nothing
- * else caught it.
+ * else caught it. CUSTOMERS joined on 2026-10-06: a contact lost that way was
+ * never imported (the relink only re-points deals to customers already
+ * stored), and its order kept no customer — no name or phone on the queue, no
+ * buyer for «Mijoz qaytishi» or «Факт1 мижоз».
  * Three minutes is more than one tick, and every write is an idempotent
  * upsert, so the re-read costs a page and changes nothing that was right.
  */
 const SETTLE_LOOKBACK_MS: Partial<Record<SyncEntityValue, number>> = {
   CALLS: 3 * 60 * 60_000,
+  CUSTOMERS: 3 * 60_000,
   DEALS: 3 * 60_000,
   STAGE_HISTORY: 3 * 60_000,
 }
@@ -199,15 +210,24 @@ export interface EntitySyncHandler<T = unknown> {
   deleteMissing?(seenExternalIds: ReadonlySet<string>): Promise<number>
 
   /**
-   * Derive whatever can only be computed once every page has landed.
+   * Whatever can only be done once every page has landed.
    *
    * Optional, and called only when the run read everything without a fatal
-   * error — a derivation over half the rows would be worse than none.
+   * error — a derivation over half the rows would be worse than none, and a
+   * deletion decided on half a read would remove what still exists.
    *
    * Stage history is the reason this exists: the portal reports when a deal
    * ENTERED a stage and never when it left, so the duration of each stay is
    * the gap to the next entry. That is a window function over the finished
    * table, not something a page-at-a-time writer can know.
+   *
+   * SINCE 2026-10-06 IT ALSO REMOVES, on INCREMENTAL runs too, what only a
+   * complete answer can vouch for: DEAL_ITEMS drops the stored lines the
+   * portal no longer lists for the deals it read in full, and DEPARTMENTS
+   * retires the units `department.get` no longer returns. Each counts first
+   * and refuses past its own limit (`surplusLineLimit`, `retireLimit`) by
+   * throwing — and a throw from here leaves the run PARTIAL, its message in
+   * `errorMessage`.
    */
   finalize?(): Promise<void>
 }
@@ -402,18 +422,21 @@ export class SyncEngine {
      * produce confidently wrong durations, which is worse than none at all.
      *
      * A failure here degrades the run to PARTIAL rather than FAILED. The rows
-     * are written and correct; one computed column is stale, and the log says
-     * which — so the next run fixes it without re-reading the portal.
+     * are written and correct; what finalize did not do — a computed column,
+     * a deletion its guard refused — waits for a later run, and the run's
+     * `errorMessage` says why. Without it a refusal read in `sync_log` as an
+     * ordinary PARTIAL — on DEAL_ITEMS, the same as a run that skipped a line.
      */
-    let derivationFailed = false
+    let derivation: string | undefined
     if (!fatal && handler.finalize) {
       try {
         await handler.finalize()
       } catch (error) {
-        derivationFailed = true
+        derivation = error instanceof Error ? error.message : String(error)
         this.log.warn({ entity, error: String(error) }, 'finalize failed')
       }
     }
+    const derivationFailed = derivation !== undefined
 
     const status: SyncStatusValue = fatal
       ? 'FAILED'
@@ -477,7 +500,7 @@ export class SyncEngine {
       recordsUpdated: updated,
       recordsSkipped: skipped,
       recordsFailed: failed,
-      errorMessage: fatal,
+      errorMessage: fatal ?? derivation,
     })
 
     return {
@@ -490,7 +513,7 @@ export class SyncEngine {
       recordsSkipped: skipped,
       recordsFailed: failed,
       recordsDeleted: deleted,
-      errorMessage: fatal,
+      errorMessage: fatal ?? derivation,
       skippedUnsupported: false,
     }
   }

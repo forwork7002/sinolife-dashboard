@@ -59,6 +59,25 @@ export interface FetchOptions {
   readonly pageSize?: number
 }
 
+export interface DealItemsOptions extends FetchOptions {
+  /**
+   * Deals to read line items for beyond the ones the provider picks itself —
+   * the sync names the deals it saw lose all their money, whose lines are gone
+   * on the portal and still stored here. A provider may ignore it.
+   */
+  readonly dealExternalIds?: readonly string[]
+}
+
+export interface DealItemsPage extends Page<RawDealItem> {
+  /**
+   * Every deal whose lines this page carries IN FULL — a deal with no lines
+   * left included. The sync drops the stored lines of these deals that the
+   * page no longer lists; a provider that cannot vouch for completeness leaves
+   * it out, and then nothing is dropped.
+   */
+  readonly dealsRead?: readonly string[]
+}
+
 // ---------------------------------------------------------------------------
 // Normalised records
 // ---------------------------------------------------------------------------
@@ -360,7 +379,7 @@ export interface CrmProvider {
   fetchSources(options?: FetchOptions): Promise<Page<RawSalesSource>>
   fetchCustomers(options?: FetchOptions): Promise<Page<RawCustomer>>
   fetchDeals(options?: FetchOptions): Promise<Page<RawDeal>>
-  fetchDealItems(options?: FetchOptions): Promise<Page<RawDealItem>>
+  fetchDealItems(options?: DealItemsOptions): Promise<DealItemsPage>
   fetchPayments(options?: FetchOptions): Promise<Page<RawPayment>>
   fetchStageHistory(options?: FetchOptions): Promise<Page<RawStageHistory>>
   fetchCalls(options?: FetchOptions): Promise<Page<RawCall>>

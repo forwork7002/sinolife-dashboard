@@ -209,4 +209,24 @@ describe('structure SQL', () => {
     expect(SQL).toMatch(/WITH RECURSIVE\s/)
     expect(bare.indexOf('WITH RECURSIVE')).toBeLessThan(bare.indexOf('walk AS ('))
   })
+  /**
+   * A UNIT DELETED IN BITRIX24 IS NOT DRAWN.
+   *
+   * The sync retires a unit `department.get` no longer returns (2026-10-06):
+   * `isActive` false, head cleared, the row kept for history. The chart mirrors
+   * the portal's, so the walk, the child count and the cards all read active
+   * units only — and a unit left under a retired parent becomes a root rather
+   * than vanishing with it, since the tree is built from the roots down.
+   */
+  it('draws and counts active units only, and roots a unit whose parent is gone', () => {
+    const walk = bare.slice(bare.indexOf('walk AS ('), bare.indexOf('members AS ('))
+    expect(walk).toMatch(/FROM "department" d\s+WHERE d\."isActive"/)
+    expect(walk).toMatch(/JOIN "department" c ON c\."parentId" = w\.node AND c\."isActive"/)
+
+    const kids = bare.slice(bare.indexOf('kids AS ('), bare.indexOf('people AS ('))
+    expect(kids).toContain('c."isActive"')
+
+    expect(bare).toMatch(/LEFT JOIN subtree t[\s\S]*WHERE dep\."isActive"\s+ORDER BY/)
+    expect(bare).toContain('CASE WHEN par."isActive" THEN dep."parentId" END AS parent_id')
+  })
 })

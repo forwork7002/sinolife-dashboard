@@ -53,7 +53,7 @@ import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
 import { PrismaClient } from '../src/generated/prisma/client'
 import type { SyncEntityValue } from '../src/server/domain/types'
 import { Bitrix24CrmProvider } from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
-import { createSyncHandlers } from '../src/server/integrations/crm/sync/handlers'
+import { createSyncHandlers, SweepRefusedError } from '../src/server/integrations/crm/sync/handlers'
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
@@ -67,7 +67,14 @@ import {
   type DealsBackfill,
   isBackfillDue,
   isPassDue,
+  isResolvePassDue,
+  planTick,
+  REFERENCE_MARKER,
+  RESOLVE,
+  runOneOff,
+  SWEEP_REFUSED_MARK,
   SWEEP_RETRY_MS,
+  sweepLogRow,
 } from '../src/server/integrations/crm/sync/schedule'
 import {
   classifyRefusal,
@@ -165,8 +172,9 @@ const MOYSKLAD_MAX_PAGES = 15
  * SIX-HOURLY SINCE 2026-09-15, AND THIS IS THE SINGLE BIGGEST THING WE STOPPED
  * SPENDING ON THE PORTAL.
  *
- * Measured: `listDealIds` walks all 464 396 deals at 2 500 a round trip = 180
- * requests, which at the 2 rps limiter is ninety seconds of continuous traffic.
+ * Measured: `listDealContacts` walks all 464 396 deals at 2 500 a round trip =
+ * 180 requests, which at the 2 rps limiter is ninety seconds of continuous
+ * traffic.
  * Hourly, that was 4 320 requests a day — 32% of the worker's ENTIRE volume —
  * carrying 9 000 `crm.deal.list` invocations an hour against that method's
  * ten-minute operating basket, to detect an event this comment itself calls
@@ -737,6 +745,8 @@ async function main() {
     rateLimitRps: Number(process.env.BITRIX24_RATE_LIMIT_RPS ?? 2),
     requestTimeoutMs: Number(process.env.BITRIX24_REQUEST_TIMEOUT_MS ?? 30_000),
     callHistoryMonths: Number(process.env.BITRIX24_CALL_MONTHS ?? 1),
+    // A deal the line-item read gave up on. Progress stays silent here.
+    onWarning: (message) => console.warn(`  ${stamp()} ! ${message.trim()}`),
   })
 
   /*
@@ -877,10 +887,14 @@ async function main() {
     bounded to twice their period so they stay short walks of the
     `[status, finishedAt DESC]` index on a log of 120 000 rows.
 
-    A reference pass is dated by its FIRST entity, whatever became of the rest:
-    that is the moment the pass was attempted, which is what the tick counter
-    measured too. Dating it by a later entity that failed would re-run the whole
-    pass on every tick for as long as that one entity kept failing.
+    A reference pass is dated by its `REFERENCE_MARKER` row (PRODUCTS),
+    whatever became of the entities before it: seconds after the moment the
+    pass was attempted, which is what the tick counter measured too. It was the
+    FIRST entity until that one opened the forced `RESOLVE` pass as well
+    (2026-10-06) — dated by a row the forced pass also writes, a skip would put
+    the full pass off for three hours. A marker that keeps FAILING re-runs the
+    pass after each restart, as a failing first entity always did; never on
+    every tick, because the loop stamps the attempt itself.
 
     The sweep writes its own `DEALS` / `FULL` row (below), because until now it
     left no trace in the database at all.
@@ -900,7 +914,7 @@ async function main() {
         ? prisma.syncLog.findFirst({
             where: {
               status: { in: ['SUCCESS', 'PARTIAL'] },
-              entity: REFERENCE[0],
+              entity: REFERENCE_MARKER,
               finishedAt: { gt: new Date(now - 2 * REFERENCE_MS) },
             },
             orderBy: { finishedAt: 'desc' },
@@ -910,7 +924,10 @@ async function main() {
       SWEEP_MS > 0
         ? prisma.syncLog.findFirst({
             where: {
-              status: 'SUCCESS',
+              // A sweep the guard refused waits a day too — but only the
+              // sweep's own row: a manual `bitrix:resync -- DEALS` writes
+              // DEALS / FULL / PARTIAL whenever it skips a deal.
+              OR: [{ status: 'SUCCESS' }, { status: 'PARTIAL', errorMessage: { startsWith: SWEEP_REFUSED_MARK } }],
               entity: 'DEALS',
               mode: 'FULL',
               finishedAt: { gt: new Date(now - 2 * SWEEP_MS) },
@@ -1034,6 +1051,9 @@ async function main() {
   let calm = 0
   /** A reference pass that fell inside the calm and still has to run. */
   let referenceOwed = false
+  /** Skipped deals asked for `RESOLVE` on the next tick, and when it last ran. */
+  let resolveOwed = false
+  let lastResolveAt: Date | null = null
 
   while (!stopping) {
     const started = Date.now()
@@ -1096,12 +1116,17 @@ async function main() {
       )
     }
 
-    const referenceDue: boolean = isPassDue(lastReferenceAt, new Date(), REFERENCE_MS) || referenceOwed
-    referenceOwed = referenceDue && calm > 0
-    const withReference = referenceDue && calm === 0
-    const entities = withReference ? [...REFERENCE, ...HOT] : HOT
+    const plan = planTick({
+      referenceDue: isPassDue(lastReferenceAt, new Date(), REFERENCE_MS) || referenceOwed,
+      resolveOwed,
+      calm,
+    })
+    referenceOwed = plan.referenceOwed
+    resolveOwed = plan.resolveOwed
+    const entities = plan.reference ? [...REFERENCE, ...HOT] : plan.resolve ? [...RESOLVE, ...HOT] : HOT
     // Stamped when the pass is ATTEMPTED — see the startup read for why.
-    if (withReference) lastReferenceAt = new Date()
+    if (plan.reference) lastReferenceAt = new Date()
+    if (plan.resolve) lastResolveAt = new Date()
 
     // Zeroed per tick, so the line below reports THIS tick's cost rather than
     // the process total. The baskets are kept — they belong to the portal's
@@ -1112,6 +1137,16 @@ async function main() {
       const results = await engine.runAll(entities, 'INCREMENTAL')
       const changed = results.reduce((sum, r) => sum + r.recordsCreated + r.recordsUpdated, 0)
       const failed = results.filter((r) => r.status === 'FAILED')
+
+      // A deal skipped for an employee or stage we do not hold yet — see `RESOLVE`.
+      const dealsSkipped = results.find((r) => r.entity === 'DEALS')?.recordsSkipped ?? 0
+      if (isResolvePassDue(dealsSkipped, [lastReferenceAt, lastResolveAt], new Date())) {
+        resolveOwed = true
+        console.log(
+          `  ${stamp()} ${dealsSkipped} bitim yozilmadi (xodimi yoki bosqichi hali yoʻq) —` +
+            ' keyingi tsiklda xodimlar, bosqichlar va manbalar qayta oʻqiladi',
+        )
+      }
 
       /*
         THE SUBSTRING MATCH IS GONE, AND WITH IT ITS BLIND SPOT.
@@ -1259,7 +1294,8 @@ async function main() {
       it walks. That was 432 000 deals rewritten to answer a question the ID
       column alone answers: thirty to sixty minutes of write traffic on a
       1-vCPU database, with this loop blocked for all of it and no incremental
-      tick running. `listDealIds` walks the same pipelines selecting only ID —
+      tick running. `listDealContacts` walks the same pipelines selecting only ID
+      (and CONTACT_ID, for the relink below) —
       a couple of minutes, zero writes — and `deleteMissing` is called
       directly, so the DEALS watermark is never touched by a sweep.
 
@@ -1271,8 +1307,10 @@ async function main() {
       the sweep never does.
 
       Guarded, because `sweepByAntiJoin` refuses to delete anything when the
-      source returns nothing at all, and `listDealIds` throws rather than
-      returning a short read — a failed read must never empty the table.
+      source returns nothing at all, and `listDealContacts` throws rather than
+      returning a short read — a failed read must never empty the table. And
+      a read that is complete but too SHORT — a pipeline the webhook stopped
+      seeing — is refused by `sweepLimit` (2026-10-06); see the catch below.
     */
     /*
       ON THE WALL CLOCK SINCE 2026-09-17 (`schedule.ts`): the tick counter
@@ -1287,8 +1325,11 @@ async function main() {
       (lastSweepFailedAt === null || sweepNow.getTime() - lastSweepFailedAt.getTime() >= SWEEP_RETRY_MS)
     if (sweepDue && tick > 0 && calm === 0 && !provider.gate.isOpen() && !stopping && dealsHandler) {
       const sweepStarted = Date.now()
+      // The walk, for the relink below: after a sweep that deleted or was
+      // refused, never after one that failed.
+      let contacts: Map<string, string | null> | null = null
       try {
-        const contacts = await provider.listDealContacts()
+        contacts = await provider.listDealContacts()
         const live = new Set(contacts.keys())
         const deleted = (await dealsHandler.deleteMissing?.(live)) ?? 0
         lastSweepAt = new Date()
@@ -1296,20 +1337,14 @@ async function main() {
         /*
           THE SWEEP'S OWN RECORD — the next process reads it back at startup.
           `recordsRead` is the portal's deal count and `recordsUpdated` the
-          rows deleted here. A write failure costs one early sweep after the
-          next restart, so it is reported and not fatal.
+          rows deleted here (`sweepLogRow`). A write failure costs one early
+          sweep after the next restart, so it is reported and not fatal.
         */
         await prisma.syncLog
           .create({
             data: {
               provider: 'BITRIX24',
-              entity: 'DEALS',
-              mode: 'FULL',
-              status: 'SUCCESS',
-              startedAt: new Date(sweepStarted),
-              finishedAt: lastSweepAt,
-              recordsRead: live.size,
-              recordsUpdated: deleted,
+              ...sweepLogRow({ refused: false, seen: live.size, deleted }, new Date(sweepStarted), lastSweepAt),
             },
           })
           .catch((error: unknown) => console.warn(`  ${stamp()} ! tozalash yozuvi saqlanmadi:`, error))
@@ -1321,12 +1356,61 @@ async function main() {
           `  ${stamp()} tozalash: portalda ${live.size} bitim, ${deleted} ta oʻchirildi` +
             `  (${((Date.now() - sweepStarted) / 1000).toFixed(1)}s)`,
         )
+      } catch (error) {
+        if (error instanceof SweepRefusedError) {
+          /*
+            REFUSED IS NOT FAILED, AND IT IS NOT TRIED AGAIN IN AN HOUR.
 
-        /*
-          MERGED CONTACTS, FROM THE SAME READ — see `contactRelink.ts`. Its own
-          try: the deletions above are done and recorded, and a relink that
-          refuses must not make the sweep look failed and run again in an hour.
-        */
+            `sweepLimit` found more deals missing from the walk than a day of
+            deletions ever is, and deleted nothing. What causes that — a
+            pipeline hidden from the webhook user, most likely — does not lift
+            in an hour, and an hourly retry would walk ~9 300 invocations into
+            it every hour: the volume both portal blocks were earned with. So it
+            stands as the day's sweep — recorded PARTIAL under
+            `SWEEP_REFUSED_MARK` with the would-be deletions as skipped (read
+            back at startup like a success), said loudly here, tried again
+            tomorrow. The relink below runs all the same.
+          */
+          lastSweepAt = new Date()
+          lastSweepFailedAt = null
+          await prisma.syncLog
+            .create({
+              data: {
+                provider: 'BITRIX24',
+                ...sweepLogRow(
+                  { refused: true, seen: error.seen, gone: error.gone, reason: error.message },
+                  new Date(sweepStarted),
+                  lastSweepAt,
+                ),
+              },
+            })
+            .catch((logError: unknown) => console.warn(`  ${stamp()} ! tozalash yozuvi saqlanmadi:`, logError))
+          console.error(
+            `  ${stamp()} ✗ tozalash rad etildi — ${error.message}. Webhook foydalanuvchisi` +
+              ' hamma voronkalarni koʻra olishini tekshiring; ertaga yana uriniladi.',
+          )
+        } else {
+          // Never fatal: a failed sweep leaves stale rows, which is the state we
+          // were already in. Losing the tick loop over it would be worse.
+          contacts = null
+          lastSweepFailedAt = new Date()
+          console.warn(`  ${stamp()} tozalash muvaffaqiyatsiz: ${(error as Error).message}`)
+        }
+      }
+
+      /*
+        MERGED CONTACTS, FROM THE SAME READ — see `contactRelink.ts`. Its own
+        try: the sweep above is settled and recorded, and a relink that
+        refuses must not make the sweep look failed and run again in an hour.
+
+        AFTER A REFUSED SWEEP TOO (2026-10-06). The relink re-points only
+        deals the walk returned — and the walk is complete, or
+        `listDealContacts` would have thrown — under its own `relinkLimit`.
+        Waiting with the refusal stopped merge relinking, which «Mijoz
+        qaytishi» counts on, for as long as the refusal stood: a pipeline
+        hidden from the webhook stands for days.
+      */
+      if (contacts) {
         try {
           const relinkStarted = new Date()
           const r = await relinkDealContacts(prisma, 'BITRIX24', contacts)
@@ -1353,11 +1437,6 @@ async function main() {
         } catch (error) {
           console.warn(`  ${stamp()} kontakt bogʻlanishi muvaffaqiyatsiz: ${(error as Error).message}`)
         }
-      } catch (error) {
-        // Never fatal: a failed sweep leaves stale rows, which is the state we
-        // were already in. Losing the tick loop over it would be worse.
-        lastSweepFailedAt = new Date()
-        console.warn(`  ${stamp()} tozalash muvaffaqiyatsiz: ${(error as Error).message}`)
       }
     }
 
@@ -1466,8 +1545,12 @@ async function main() {
         `  ${stamp()} backfill: ${DEALS_BACKFILL.since.toISOString().slice(0, 10)} dan beri` +
           ' oʻzgargan bitimlar qayta oʻqilmoqda',
       )
-      const r = await engine.runEntity('DEALS', 'BACKFILL', { updatedSince: DEALS_BACKFILL.since })
-      if (r.status === 'SUCCESS' || r.status === 'PARTIAL') {
+      // Never throws — see `runOneOff`: a database blip here used to exit the worker.
+      const outcome = await runOneOff(() =>
+        engine.runEntity('DEALS', 'BACKFILL', { updatedSince: DEALS_BACKFILL.since }),
+      )
+      if (outcome.settled) {
+        const r = outcome.result
         backfillSettled = true
         console.log(
           `  ${stamp()} backfill tugadi: ${r.recordsRead} bitim oʻqildi, ${r.recordsUpdated} yangilandi` +
@@ -1476,7 +1559,7 @@ async function main() {
         )
       } else {
         backfillFailedAt = new Date()
-        console.warn(`  ${stamp()} backfill muvaffaqiyatsiz: ${r.errorMessage ?? r.status} — bir soatdan keyin`)
+        console.warn(`  ${stamp()} backfill muvaffaqiyatsiz: ${outcome.reason} — bir soatdan keyin`)
       }
     }
 
@@ -1516,12 +1599,17 @@ async function main() {
       lastOneOffAt = oneOffNow
       const started = Date.now()
       console.log(`  ${stamp()} bir martalik qayta oʻqish: ${oneOff.label}`)
-      const r = await engine.runEntity(
-        oneOff.entity,
-        oneOff.mode,
-        oneOff.mode === 'BACKFILL' ? { updatedSince: oneOff.request.since } : {},
+      // Never throws — see `runOneOff`. `lastOneOffAt` is already set, so a
+      // failure still holds the hour's spacing.
+      const outcome = await runOneOff(() =>
+        engine.runEntity(
+          oneOff.entity,
+          oneOff.mode,
+          oneOff.mode === 'BACKFILL' ? { updatedSince: oneOff.request.since } : {},
+        ),
       )
-      if (r.status === 'SUCCESS' || r.status === 'PARTIAL') {
+      if (outcome.settled) {
+        const r = outcome.result
         oneOffSettled.set(oneOff.label, true)
         console.log(
           `  ${stamp()} ${oneOff.label} tugadi: ${r.recordsRead} oʻqildi, ${r.recordsUpdated} yangilandi` +
@@ -1530,9 +1618,7 @@ async function main() {
         )
       } else {
         oneOffFailedAt.set(oneOff.label, new Date())
-        console.warn(
-          `  ${stamp()} ${oneOff.label} muvaffaqiyatsiz: ${r.errorMessage ?? r.status} — bir soatdan keyin`,
-        )
+        console.warn(`  ${stamp()} ${oneOff.label} muvaffaqiyatsiz: ${outcome.reason} — bir soatdan keyin`)
       }
     }
 

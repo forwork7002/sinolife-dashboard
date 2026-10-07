@@ -22,6 +22,8 @@
 
 import {
   type CrmProvider,
+  type DealItemsOptions,
+  type DealItemsPage,
   type FetchOptions,
   type Page,
   type ProviderCapabilities,
@@ -122,6 +124,13 @@ export interface Bitrix24ProviderOptions {
    */
   readonly callHistoryMonths?: number
   readonly onProgress?: (message: string) => void
+  /**
+   * What a run survived but somebody should hear of — a deal the line-item
+   * read gave up on. Its own channel because the worker passes no
+   * `onProgress` (progress is noise there); it defaults to `onProgress`,
+   * which is where the one-shot scripts print.
+   */
+  readonly onWarning?: (message: string) => void
 }
 
 interface Bitrix24Response<T> {
@@ -162,36 +171,37 @@ export class Bitrix24Error extends Error {
   }
 }
 
-/**
- * A REFUSAL THAT WILL NOT CLEAR ON ITS OWN, and that is the whole distinction.
- *
- * `OVERLOAD_LIMIT` lifts on the portal's clock, so waiting is the right act.
- * A revoked or replaced webhook never lifts: every retry until somebody
- * installs a new one is a call that CANNOT succeed, and on 2026-09-15 that was
- * twelve entities asked again every three minutes — against a portal that had
- * blocked this same integration for four hours the day before, for volume.
- *
- * So the caller backs off exactly as it does for a throttle. Nothing here
- * decides HOW long; it decides only that no amount of asking is the answer.
- *
- * ONE VOCABULARY, NOT TWO. This kept its own list of the portal's codes until
- * `refusal.ts` arrived with the same list plus the three other kinds of refusal
- * and the `null` case that must never trip anything. Two lists of the same
- * codes in one repository is the drift CLAUDE.md keeps warning about, so this
- * is now a named reading of the shared classifier — the name is worth keeping,
- * the second copy of the vocabulary is not. It takes a MESSAGE because that is
- * what survives into `sync_log` and is all a later reader has; `classifyRefusal`
- * also reads the error's own `code` field when handed a live error.
- */
-export function isCredentialFailure(message: string | null | undefined): boolean {
-  if (!message) return false
-  return classifyRefusal(message) === 'CREDENTIAL'
-}
-
 /** Rows a single list call returns. Fixed by the portal, not configurable. */
 const LIST_PAGE = 50
 /** Commands per batch request. The portal's hard limit. */
 const BATCH_SIZE = 50
+
+/** The method a line-item read spends — metered, held and named as itself, never as `batch`. */
+const PRODUCT_ROWS = 'crm.deal.productrows.get'
+
+/**
+ * Reads in a row one deal's product rows may go unanswered — an error about
+ * that deal, or no answer at all — before the line-item read gives it up. A
+ * deal deleted mid-tick costs two more asks; a blip gets two more chances.
+ */
+const ITEM_READ_ATTEMPTS = 3
+
+/**
+ * How long an enumeration item a fresh `crm.deal.fields` did not know stays
+ * written off (`deadLabels`) before a deal naming it may ask again.
+ */
+const DEAD_LABEL_MS = 60 * 60_000
+
+/** One row of `crm.deal.productrows.get`, as far as this file reads it. */
+interface ProductRow {
+  readonly PRODUCT_ID: string
+  readonly PRODUCT_NAME?: string
+  readonly ORIGINAL_PRODUCT_NAME?: string
+  readonly QUANTITY: string
+  readonly PRICE: string
+  readonly DISCOUNT_SUM?: string
+  readonly DISCOUNT_RATE?: string
+}
 
 /**
  * Commands a walk opens with, and how fast it widens.
@@ -216,8 +226,8 @@ const BATCH_SIZE = 50
  * for four times as much; a chain that runs dry ends the walk and resets. A
  * quiet tick costs 2 invocations instead of 50. A full import pays three extra
  * round trips at the start of a 186-request walk and is otherwise unchanged —
- * measured against `listDealIds`: 2 + 8 + 32 + 50 + 50 … reaches 464 000 deals
- * in 188 requests against the old 186.
+ * measured against the sweep's walk (`listDealContacts`): 2 + 8 + 32 + 50 +
+ * 50 … reaches 464 000 deals in 188 requests against the old 186.
  *
  * The floor is 2 rather than 1 so a tick with 51–100 changed rows still
  * finishes in one round trip, which is the ordinary busy minute on this portal.
@@ -368,6 +378,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private readonly historyStages: readonly string[]
   private readonly callHistoryMonths: number
   private readonly progress: (m: string) => void
+  private readonly warn: (m: string) => void
 
   /** Deals in a REVENUE pipeline — the only ones whose line items are read. */
   /**
@@ -386,6 +397,28 @@ export class Bitrix24CrmProvider implements CrmProvider {
    */
   private itemDealIds: string[] = []
 
+  /**
+   * Deals whose product rows a read still owes, each with how many reads in a
+   * row went unanswered for it; the next read asks for them first.
+   *
+   * DEAL_ITEMS has no watermark: it reads the deals the same tick's DEALS pass
+   * found carrying money, and the next tick's DEALS pass starts that list
+   * afresh. So a refused read lost those deals' lines until the deal was
+   * modified again — the three-minute DEALS overlap was the only retry. While
+   * the method is held the read is refused locally, which costs the portal
+   * nothing. In memory, like `itemDealIds`: a restart forgets it.
+   *
+   * BOUNDED PER DEAL — `ITEM_READ_ATTEMPTS`. A deal the portal answers with an
+   * error, or not at all, that many reads in a row is given up and said so
+   * (`onWarning`), and keeps the lines it has until a DEALS pass names it
+   * again. Unbounded, one command the portal never answered failed every read
+   * after it — new orders left without lines, and the worker's failure backoff
+   * held at its floor — until the next restart. A deal owed only because a
+   * refusal took the read down around it keeps its count: that was not about
+   * the deal.
+   */
+  private itemDealsOwed = new Map<string, number>()
+
   // Running totals, for progress output only. The walk is stateless — every
   // page is addressed by the id it starts after — so these carry no meaning
   // the sync depends on.
@@ -394,8 +427,22 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private historyRead = 0
   private callsRead = 0
 
-  /** Resolved once from `crm.deal.fields`: field name → item id → label. */
+  /**
+   * From `crm.deal.fields`: field name → item id → label. Read once, and again
+   * when a deal names an item it does not hold — see `toRawDeals`.
+   */
   private enumLabels: Map<string, Map<string, string>> | undefined
+  /** `field:id` pairs the page being mapped named and `enumLabels` lacked. */
+  private readonly labelMisses = new Set<string>()
+  /**
+   * Pairs a fresh `crm.deal.fields` did not know either — deleted items, most
+   * likely — not re-read for until `DEAD_LABEL_MS` after the first was
+   * written off. For good, one stale or partial answer pinned a real item, and
+   * its column was written NULL for the life of the process.
+   */
+  private readonly deadLabels = new Set<string>()
+  /** When `deadLabels` began filling; it is emptied `DEAD_LABEL_MS` later. */
+  private deadLabelsSince = 0
   private grantedScopes: Set<string> | undefined
 
   constructor(options: Bitrix24ProviderOptions) {
@@ -415,6 +462,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
     this.historyStages = options.historyStages ?? [...CONFIRMATION_REFUSAL_STAGES]
     this.callHistoryMonths = options.callHistoryMonths ?? 1
     this.progress = options.onProgress ?? (() => {})
+    this.warn = options.onWarning ?? this.progress
   }
 
   // -------------------------------------------------------------------------
@@ -485,7 +533,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
         blocks — 2 rps was true for every second of both of them. This is the
         only thing in the process that remembers how much we have asked for,
         and the only thing a regression cannot quietly walk past. A refusal
-        here is safe wherever it lands: `listDealIds` throws rather than
+        here is safe wherever it lands: `listDealContacts` throws rather than
         returning a short read, the sweep will not delete on an empty source,
         and no watermark advances except after a clean run.
       */
@@ -904,6 +952,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * Product rows are per-deal, and 16 500 sequential calls at 2/second is over
    * two hours. Batched it is a few minutes — the difference between usable
    * product analytics and none.
+   *
+   * It merges `result.result` and IGNORES `result_error`, so a caller has to
+   * check that every command it sent came back — `fetchStages` does. Product
+   * rows moved to their own reader, `productRows`, which must also tell a
+   * refusal from an answer.
    */
   private async batch<T>(commands: Record<string, string>, label = 'batch'): Promise<Record<string, T>> {
     const entries = Object.entries(commands)
@@ -996,7 +1049,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
    *
    * The custom fields arrive as numeric item ids ("98"), not text. Resolving
    * them from the portal rather than a hardcoded table means an operator who
-   * adds a region next month gets the right name without a redeploy.
+   * adds a region next month gets the right name without a redeploy — which
+   * held only for a worker STARTED after the item was added: the memo lived
+   * for the process, and every deal naming a new targetolog, registrar, region
+   * or «Проект» was written NULL until the next deploy. `toRawDeals` re-reads
+   * it when a row names an item it lacks.
    */
   private async loadEnumLabels(): Promise<Map<string, Map<string, string>>> {
     if (this.enumLabels) return this.enumLabels
@@ -1016,9 +1073,56 @@ export class Bitrix24CrmProvider implements CrmProvider {
     return map
   }
 
+  /**
+   * Read the labels again, keeping the ones we have if the portal refuses.
+   *
+   * A refusal is told to the gate by `call()` as always; the deals in hand are
+   * then written with the labels this process already knew, as before.
+   */
+  private async reloadEnumLabels(): Promise<boolean> {
+    const previous = this.enumLabels
+    this.enumLabels = undefined
+    try {
+      await this.loadEnumLabels()
+      return true
+    } catch {
+      this.enumLabels = previous
+      return false
+    }
+  }
+
+  /**
+   * Rows as RawDeals — with the labels re-read ONCE when a row names an
+   * enumeration item the memo does not hold, and the rows mapped again.
+   *
+   * Only a NEW miss asks: a pair a fresh read did not know either is a deleted
+   * item that old deals still carry, and asking for it every page would be a
+   * `crm.deal.fields` per tick for nothing — so it is written off, for an hour
+   * (`deadLabels`): at most one more read an hour while such deals keep
+   * coming. An idle tick names nothing, so it costs nothing —
+   * `portalBudget.test.ts`'s pinned hour is unchanged.
+   */
+  private async toRawDeals(rows: readonly Record<string, string>[]): Promise<RawDeal[]> {
+    if (this.deadLabels.size > 0 && Date.now() - this.deadLabelsSince >= DEAD_LABEL_MS) this.deadLabels.clear()
+    this.labelMisses.clear()
+    let deals = rows.map((d) => this.toRawDeal(d))
+
+    if ([...this.labelMisses].some((miss) => !this.deadLabels.has(miss)) && (await this.reloadEnumLabels())) {
+      this.labelMisses.clear()
+      deals = rows.map((d) => this.toRawDeal(d))
+      if (this.deadLabels.size === 0) this.deadLabelsSince = Date.now()
+      for (const miss of this.labelMisses) this.deadLabels.add(miss)
+    }
+
+    this.labelMisses.clear()
+    return deals
+  }
+
   private label(field: string, value: unknown): string | undefined {
     if (value === null || value === undefined || value === '') return undefined
-    return this.enumLabels?.get(field)?.get(String(value)) ?? undefined
+    const found = this.enumLabels?.get(field)?.get(String(value))
+    if (found === undefined) this.labelMisses.add(`${field}:${String(value)}`)
+    return found
   }
 
   /**
@@ -1039,7 +1143,12 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }
     if (value === null || value === undefined || value === '') return undefined
     const items = this.enumLabels?.get(field)
-    if (items && items.size > 0) return items.get(String(value)) ?? nonEmpty(value)
+    if (items && items.size > 0) {
+      const found = items.get(String(value))
+      // An enumeration naming an item we do not hold is a new item, not text.
+      if (found === undefined) this.labelMisses.add(`${field}:${String(value)}`)
+      return found ?? nonEmpty(value)
+    }
     return nonEmpty(value)
   }
 
@@ -1490,24 +1599,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
   // -------------------------------------------------------------------------
 
   /**
-   * Deals, 2 500 per page.
-   *
-   * The cursor is the row offset. `pageSize` from the sync engine is ignored on
-   * purpose: the page size here is dictated by the portal's batch limit, and
-   * honouring a smaller request would multiply the number of round trips by an
-   * order of magnitude for no benefit.
-   */
-  /**
-   * Every deal id the portal currently holds, for the deletion sweep.
+   * Every deal id the portal holds, with the contact it points at NOW — the
+   * daily deletion sweep's walk.
    *
    * WHY THIS EXISTS SEPARATELY FROM `fetchDeals`
-   * The sweep needs one thing — the set of ids that still exist — and used to
-   * get it by running a FULL `fetchDeals` pass, which reads twenty-three
-   * fields for 432 000 deals and re-upserts every one of them. On a 1-vCPU
-   * database that is thirty to sixty minutes of pure write traffic to learn
-   * something the ID column alone answers, and the worker's tick loop was
-   * blocked for all of it. Selecting only ID makes the same walk cost a
-   * couple of minutes and not a single write.
+   * The sweep needs the set of ids that still exist, and used to get it by
+   * running a FULL `fetchDeals` pass, which reads twenty-three fields for
+   * 432 000 deals and re-upserts every one of them. On a 1-vCPU database that
+   * is thirty to sixty minutes of pure write traffic to learn something the ID
+   * column alone answers, and the worker's tick loop was blocked for all of it.
+   * Selecting only ID (and CONTACT_ID) makes the same walk cost a couple of
+   * minutes and not a single write.
    *
    * The filter is built from `this.pipelines` exactly as `fetchDeals` does.
    * A filter that diverged would mark deals in the excluded pipelines as
@@ -1516,25 +1618,15 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * Throws rather than returning a partial set. A half-read walk handed to the
    * sweep would look like "these deals are gone" — the caller must be able to
    * tell a short read from a small portal.
-   */
-  async listDealIds(): Promise<Set<string>> {
-    return new Set((await this.listDealContacts()).keys())
-  }
-
-  /**
-   * Every deal id the portal holds, with the contact it points at NOW.
    *
-   * THE SAME WALK AS `listDealIds`, ONE MORE COLUMN. The daily sweep already
-   * pays for this walk; carrying `CONTACT_ID` on it costs a few bytes a row and
-   * not a single extra invocation.
-   *
-   * WHY THE SWEEP NEEDS IT. Merging duplicate contacts in Bitrix24 moves the
-   * loser's deals onto the survivor WITHOUT touching the deals' DATE_MODIFY —
-   * measured 2026-09-25: deal 35736, created and last modified 2025-07-12, now
-   * points at contact 579290, created 2026-08-05. The incremental pass asks
-   * only for `>=DATE_MODIFY`, so it never sees a merge, and one buyer stays
-   * two «customers» here forever — which is exactly what «Mijoz qaytishi»
-   * counts. See `relinkDealContacts`.
+   * WHY IT CARRIES THE CONTACT. Merging duplicate contacts in Bitrix24 moves
+   * the loser's deals onto the survivor WITHOUT touching the deals'
+   * DATE_MODIFY — measured 2026-09-25: deal 35736, created and last modified
+   * 2025-07-12, now points at contact 579290, created 2026-08-05. The
+   * incremental pass asks only for `>=DATE_MODIFY`, so it never sees a merge,
+   * and one buyer stays two «customers» here forever — which is exactly what
+   * «Mijoz qaytishi» counts. See `relinkDealContacts`. The column costs a few
+   * bytes a row and not a single extra invocation.
    *
    * Throws when the walk came back without the column at all: an ignored
    * `select` would read as «every deal lost its contact».
@@ -1578,17 +1670,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
   /**
    * Which of THESE deal ids the portal still holds — the recent-deletion check.
    *
-   * WHY NOT `listDealIds`. That walk answers for all 464 000 deals and costs
-   * ~9 300 invocations, which is why it runs once a day — and why a test order
-   * posted to the Тасдиклаш queue and deleted a minute later sat on the board
-   * until the next night. The queue's recent orders are a few hundred to a few
-   * thousand ids we already know, so we ask about exactly those: one
+   * WHY NOT `listDealContacts`. That walk answers for all 464 000 deals and
+   * costs ~9 300 invocations, which is why it runs once a day — and why a test
+   * order posted to the Тасдиклаш queue and deleted a minute later sat on the
+   * board until the next night. The queue's recent orders are a few hundred to
+   * a few thousand ids we already know, so we ask about exactly those: one
    * `crm.deal.list` per 50 ids, filtered by ID, selecting only ID. 300 ids is
    * six invocations in one round trip.
    *
-   * The filter carries `CATEGORY_ID` exactly as `listDealIds` does, so the two
-   * sweeps agree on what «gone» means: a deal moved into a pipeline we do not
-   * import is gone to both.
+   * The filter carries `CATEGORY_ID` exactly as `listDealContacts` does, so the
+   * two sweeps agree on what «gone» means: a deal moved into a pipeline we do
+   * not import is gone to both.
    *
    * THROWS RATHER THAN GUESSING, because the caller deletes whatever is not
    * returned. A refused command, a missing answer, or a row outside the ids
@@ -1613,12 +1705,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
   async fetchDealsByIds(ids: readonly string[]): Promise<RawDeal[]> {
     await this.loadEnumLabels()
     const rows = await this.dealsById<Record<string, string>>(ids, DEAL_SELECT, 'qayta oʻqish')
-    return rows.map((d) => this.toRawDeal(d))
+    return this.toRawDeals(rows)
   }
 
   /**
    * The rows of THESE deal ids, one `crm.deal.list` per 50 ids, filtered by ID
-   * and by the imported pipelines, so «gone» means the same as in `listDealIds`.
+   * and by the imported pipelines, so «gone» means the same as in
+   * `listDealContacts`.
    *
    * THROWS RATHER THAN GUESSING: `existingDealIds`' caller deletes whatever is
    * not returned. A refused command, a missing answer, or a row outside the
@@ -1715,13 +1808,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
       afterId,
     )
 
-    const deals: RawDeal[] = []
-
     for (const d of rows) {
       // Money, not pipeline: see `itemDealIds`.
       if (toMinorUnits(d.OPPORTUNITY) > 0n) this.itemDealIds.push(String(d.ID))
-      deals.push(this.toRawDeal(d))
     }
+    const deals = await this.toRawDeals(rows)
 
     this.dealsRead += rows.length
     this.progress(`  deals: ${this.dealsRead}`)
@@ -1906,33 +1997,27 @@ export class Bitrix24CrmProvider implements CrmProvider {
    *
    * `crm.deal.productrows.get` takes one deal at a time. Reading line items for
    * all 415 591 deals would take days and tell us nothing: the lead and triage
-   * funnels carry no products. The 16 500 deals that produce money do.
+   * funnels carry no products. The 16 500 deals that produce money do — plus
+   * any deal the sync names in `dealExternalIds` (one that just lost its money,
+   * and so its lines).
+   *
+   * `dealsRead` is every deal the portal answered with its rows, a deal with
+   * no rows left included: an answer is the deal's whole list, so the sync may
+   * drop the stored lines it no longer lists. A deal answered with an error is
+   * not in it and keeps its lines (`productRows`).
    */
-  async fetchDealItems(_o?: FetchOptions): Promise<Page<RawDealItem>> {
-    if (this.itemDealIds.length === 0) return this.page([])
+  async fetchDealItems(options: DealItemsOptions = {}): Promise<DealItemsPage> {
+    const wanted = [
+      ...new Set([...this.itemDealsOwed.keys(), ...this.itemDealIds, ...(options.dealExternalIds ?? [])]),
+    ]
+    if (wanted.length === 0) return this.page([])
 
-    const commands: Record<string, string> = {}
-    for (const id of this.itemDealIds) {
-      commands[`d${id}`] = `crm.deal.productrows.get?id=${id}`
-    }
-
-    const results = await this.batch<
-      {
-        PRODUCT_ID: string
-        PRODUCT_NAME?: string
-        ORIGINAL_PRODUCT_NAME?: string
-        QUANTITY: string
-        PRICE: string
-        DISCOUNT_SUM?: string
-        DISCOUNT_RATE?: string
-      }[]
-    >(commands, 'product rows')
+    const answered = await this.productRows(wanted)
 
     const items: RawDealItem[] = []
 
-    for (const [key, rows] of Object.entries(results)) {
-      const dealId = key.slice(1)
-      for (const [index, row] of (rows ?? []).entries()) {
+    for (const [dealId, rows] of answered) {
+      for (const [index, row] of rows.entries()) {
         if (!row?.PRODUCT_ID) continue
         const unit = toMinorUnits(row.PRICE)
         /*
@@ -1983,7 +2068,122 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }
 
     this.progress(`  deal items: ${items.length}`)
-    return this.page(items)
+    return { items, dealsRead: [...answered.keys()] }
+  }
+
+  /**
+   * The product rows of THESE deals — those the portal answered with rows, or
+   * a failed read.
+   *
+   * `halt: 0` makes the portal answer HTTP 200 and bury a refused command in
+   * `result_error`, and this read used to merge `result.result` alone. A spent
+   * basket or a command that never ran left those deals with no lines at all,
+   * DEAL_ITEMS finished SUCCESS, and — having no watermark — nothing asked again
+   * until somebody modified the deal. Now:
+   *
+   * - a REFUSAL (a spent basket, an overloaded or locked-out portal) is told to
+   *   the gate under `crm.deal.productrows.get`, the method that was spent and
+   *   never `batch`, and fails the read;
+   * - a command the portal left UNANSWERED fails it too, unless that deal is
+   *   on its last attempt;
+   * - an error about ONE deal (deleted since the DEALS pass read it, most
+   *   likely) does not: the read keeps every deal it was answered for and
+   *   leaves that one out, so the sync neither writes nor drops its lines.
+   *   Failing the read over it threw away a one-shot read of thousands of
+   *   deals — an import, a `bitrix:resync` — for one test order deleted while
+   *   it ran.
+   *
+   * Whatever a read did not settle stays in `itemDealsOwed`: a deal it went
+   * unanswered for, up to `ITEM_READ_ATTEMPTS`, and after a failed read the
+   * deals it was answered for as well, since a thrown read writes nothing.
+   */
+  private async productRows(dealIds: readonly string[]): Promise<Map<string, ProductRow[]>> {
+    const answered = new Map<string, ProductRow[]>()
+    /** Deals asked about and not answered with rows, and what came back instead. */
+    const missed = new Map<string, string>()
+    let failure: Bitrix24Error | null = null
+    const missesOf = (id: string) => this.itemDealsOwed.get(id) ?? 0
+
+    /*
+      Settled however the read ended. A missed deal counts the miss and is
+      given up on its last; one answered by a read that then fails is owed
+      again from zero; one a refusal stopped the read before asking about
+      keeps its count.
+    */
+    const settle = (written: boolean) => {
+      const owed = new Map<string, number>()
+      for (const id of dealIds) {
+        const reason = missed.get(id)
+        if (reason !== undefined) {
+          const misses = missesOf(id) + 1
+          if (misses < ITEM_READ_ATTEMPTS) owed.set(id, misses)
+          else {
+            this.warn(
+              `  bitim ${id}: mahsulot qatorlari ${misses} marta ketma-ket oʻqilmadi (${reason}) —` +
+                ' endi soʻralmaydi, bitim oʻzgarganda qayta oʻqiladi',
+            )
+          }
+        } else if (!written) {
+          owed.set(id, answered.has(id) ? 0 : missesOf(id))
+        }
+      }
+      this.itemDealsOwed = owed
+    }
+
+    try {
+      for (let i = 0; i < dealIds.length && failure === null; i += BATCH_SIZE) {
+        const chunk = dealIds.slice(i, i + BATCH_SIZE)
+        const cmd = Object.fromEntries(chunk.map((id) => [`d${id}`, `${PRODUCT_ROWS}?id=${id}`]))
+        const payload = await this.call<{ result?: Record<string, unknown>; result_error?: unknown }>(
+          'batch',
+          { halt: 0, cmd },
+          { meterAs: PRODUCT_ROWS, invocations: chunk.length },
+        )
+
+        const errors = (payload.result?.result_error ?? {}) as Record<string, { error?: string } | undefined>
+        const results = (payload.result?.result ?? {}) as Record<string, unknown>
+
+        for (const id of chunk) {
+          const error = errors[`d${id}`]
+          const rows = results[`d${id}`]
+          if (!error && Array.isArray(rows)) {
+            answered.set(id, rows as ProductRow[])
+            continue
+          }
+
+          const problem = new Bitrix24Error(
+            error
+              ? `Bitrix24 ${PRODUCT_ROWS} rad etdi (bitim ${id}): ${JSON.stringify(error).slice(0, 200)}`
+              : `Bitrix24 ${PRODUCT_ROWS} javobsiz qoldi (bitim ${id})`,
+            undefined,
+            false,
+            typeof error?.error === 'string' && error.error.length > 0 ? error.error : undefined,
+            PRODUCT_ROWS,
+          )
+          const kind = error ? classifyRefusal(problem) : null
+          if (kind === 'THROTTLE' || kind === 'CREDENTIAL' || kind === 'METHOD') {
+            // Not about this deal: the method, or the portal, said no.
+            this.gate.trip(problem, new Date())
+            failure ??= problem
+            continue
+          }
+
+          missed.set(id, error ? JSON.stringify(error).slice(0, 120) : 'javob yoʻq')
+          // Silence fails the read so the deal is asked again — unless it will
+          // not be. An error about the one deal never fails it.
+          if (!error && missesOf(id) + 1 < ITEM_READ_ATTEMPTS) failure ??= problem
+        }
+      }
+    } catch (error) {
+      // Refused before the portal answered — the gate, the budget, a socket.
+      // Nothing is known about the deals not yet asked, so they stay owed.
+      settle(false)
+      throw error
+    }
+
+    settle(failure === null)
+    if (failure) throw failure
+    return answered
   }
 
   /** Not available on this portal — verified. See mapping.ts. */

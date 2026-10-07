@@ -85,6 +85,36 @@ describe('classifyRefusal', () => {
   it('retries a socket failure rather than blocking on it', () => {
     expect(classifyRefusal(new Error('fetch failed'))).toBe('TRANSIENT')
   })
+
+  /*
+    FROM A LOGGED MESSAGE, WHICH IS ALL `sync_log` KEEPS. At 06:10 UTC on
+    2026-09-15 the portal began answering `401 INVALID_CREDENTIALS` — the
+    webhook was gone and only a person could put a new one in — and for the
+    next hour the worker asked twelve entities for data with it. A rejected
+    credential is waited out longer and reported as somebody's job; a throttle
+    is waited out and needs nobody.
+  */
+  it('names a dead credential from the portal\'s own words in a logged message', () => {
+    expect(
+      classifyRefusal(
+        'Bitrix24 call "batch" failed after 1 attempt: Bitrix24 responded 401 — INVALID_CREDENTIALS: Invalid request credentials',
+      ),
+    ).toBe('CREDENTIAL')
+    expect(classifyRefusal('Bitrix24 responded 401 — NO_AUTH_FOUND')).toBe('CREDENTIAL')
+    expect(classifyRefusal('Bitrix24 error: expired_token')).toBe('CREDENTIAL')
+    expect(classifyRefusal('Bitrix24 error: WRONG_AUTH_TYPE')).toBe('CREDENTIAL')
+  })
+
+  /*
+    THE ONE IT MUST NOT CLAIM. Calling a throttle a credential puts «yangi
+    webhook kerak» in the log for a portal that needed nobody at all — the
+    2026-09-14 misdiagnosis running backwards.
+  */
+  it('does not call a throttle or a socket failure a credential problem', () => {
+    expect(classifyRefusal('Bitrix24 responded 401 — OVERLOAD_LIMIT: REST API is blocked')).toBe('THROTTLE')
+    expect(classifyRefusal('Bitrix24 error: QUERY_LIMIT_EXCEEDED')).toBe('THROTTLE')
+    expect(classifyRefusal('socket hang up')).toBe('TRANSIENT')
+  })
 })
 
 describe('PortalGate', () => {
