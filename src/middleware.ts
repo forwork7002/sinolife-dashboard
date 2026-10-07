@@ -44,6 +44,11 @@ export const config = {
    * otherwise answer that poll with the LOGIN PAGE — HTML where the reader
    * expects JSON. It carries one timestamp and no session, so there is
    * nothing in it to guard.
+   *
+   * There is no `.svg` exemption any more. It covered create-next-app's
+   * public/*.svg, deleted on 2026-08-29; nothing outside /_next/static serves
+   * an .svg now, so the alternative only let any path ending in `.svg` skip
+   * the signed-out redirect.
    */
-  matcher: ['/((?!api|login|build-id.json|_next/static|_next/image|favicon.ico|.*\\.svg).*)'],
+  matcher: ['/((?!api|login|build-id.json|_next/static|_next/image|favicon.ico).*)'],
 }
