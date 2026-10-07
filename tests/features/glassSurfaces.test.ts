@@ -249,27 +249,27 @@ describe('the controls are glass, at one radius and two heights', () => {
     expect(search[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\]/)
     expect(search[2]).toMatch(/var\(--glass-well\)/)
 
-    const trigger = /aria-haspopup="listbox"[\s\S]*?className="([^"]*)"[\s\S]*?style=\{\{([\s\S]*?)\}\}/.exec(controls)!
+    const trigger = /aria-haspopup="listbox"[\s\S]*?className=\{?["`]([^"`]*)["`]\}?[\s\S]*?style=\{\{([\s\S]*?)\}\}/.exec(controls)!
     expect(trigger[1]).toMatch(/\bh-8\b/)
     expect(trigger[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\]/)
     expect(trigger[2]).toMatch(/var\(--glass-raised\)/)
 
-    const segmented = /export function SegmentedControl[\s\S]*?className="([^"]*)"\s+style=\{\{ background: 'var\(--glass-well\)' \}\}[\s\S]*?className="([^"]*)"/.exec(controls)!
+    const segmented = /export function SegmentedControl[\s\S]*?className="([^"]*)"\s+style=\{\{ background: 'var\(--glass-well\)' \}\}[\s\S]*?className=\{?["`]([^"`]*)["`]/.exec(controls)!
     expect(segmented[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\] p-0\.5/)
     expect(segmented[2]).toMatch(/\bh-7\b/)
     expect(segmented[2]).toMatch(/rounded-\[calc\(var\(--radius-panel-sm\)-2px\)\]/)
 
-    const presets = /role="group"\s+aria-label=\{t\.period\.label\}[\s\S]*?className="([^"]*)"/.exec(period)!
+    const presets = /role="group"\s+aria-label=\{t\.period\.label\}[\s\S]*?className=\{?["`]([^"`]*)["`]/.exec(period)!
     expect(presets[1]).toMatch(/h-9 .*sm:h-7/)
     expect(period).toMatch(/className="flex shrink-0 items-center gap-0\.5 rounded-\[var\(--radius-panel-sm\)\] p-0\.5"\s+style=\{\{ background: 'var\(--glass-well\)' \}\}/)
-    const picker = /title=\{t\.period\.pick\}[\s\S]*?className="([^"]*)"/.exec(period)!
+    const picker = /title=\{t\.period\.pick\}[\s\S]*?className=\{?["`]([^"`]*)["`]/.exec(period)!
     expect(picker[1]).toMatch(/h-10 .*sm:h-8/)
     expect(picker[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\]/)
 
     // BrandSwitch, SegmentedControl's twin with a colour dot, sits beside it on every main screen.
     const brand = source('src/features/shared/BrandSwitch.tsx')
     expect(brand).toMatch(/className="flex items-center gap-0\.5 rounded-\[var\(--radius-panel-sm\)\] p-0\.5"\s+style=\{\{ background: 'var\(--glass-well\)' \}\}/)
-    expect(brand).toMatch(/className="focusable inline-flex h-7 items-center gap-1\.5 rounded-\[calc\(var\(--radius-panel-sm\)-2px\)\]/)
+    expect(brand).toMatch(/className=\{`focusable inline-flex h-7 items-center gap-1\.5 rounded-\[calc\(var\(--radius-panel-sm\)-2px\)\]/)
     expect(brand).toMatch(/background: active \? 'var\(--glass-raised\)' : 'transparent'/)
 
     // The header's «Yangi versiya» button sits among them at a Button `sm`'s height and corner.

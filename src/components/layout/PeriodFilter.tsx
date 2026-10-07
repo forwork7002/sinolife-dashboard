@@ -149,11 +149,13 @@ export function PeriodFilter({
                 aria-pressed={active}
                 // Taller under a thumb than under a pointer: a 36px chip in
                 // the well (40px with it) on a phone, the smallest target
-                // that is reliably hit; 28px (32) suits a mouse.
-                className="focusable h-9 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:h-7 sm:text-xs"
+                // that is reliably hit; 28px (32) suits a mouse. The lit chip's
+                // shadow is a (layered) class, never inline: an inline
+                // box-shadow, `none` included, beats `.focusable:focus-visible`
+                // and the keyboard ring went with it.
+                className={`focusable h-9 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:h-7 sm:text-xs ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
                 style={{
                   background: active ? 'var(--glass-raised)' : 'transparent',
-                  boxShadow: active ? 'var(--glass-highlight), var(--shadow-card)' : 'none',
                   color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
                 }}
               >
@@ -182,11 +184,11 @@ export function PeriodFilter({
           // A raised glass chip, the well's height beside it; the page's
           // accent wash while a custom window is on. Colour, not `background`,
           // inline: the hover wash is an image layer a shorthand would wipe.
-          className="focusable flex h-10 shrink-0 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] sm:h-8 sm:text-xs"
+          // The lit edge is a class for the focus ring's sake (see the chips).
+          className={`focusable flex h-10 shrink-0 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] sm:h-8 sm:text-xs ${value === 'custom' ? '' : 'shadow-[var(--glass-highlight)]'}`}
           style={{
             borderColor: value === 'custom' ? 'var(--accent)' : 'var(--border-strong)',
             backgroundColor: value === 'custom' ? 'var(--accent-soft)' : 'var(--glass-raised)',
-            boxShadow: value === 'custom' ? 'none' : 'var(--glass-highlight)',
             color: value === 'custom' ? 'var(--ink-primary)' : 'var(--ink-secondary)',
           }}
         >
@@ -316,10 +318,9 @@ function PeriodPicker({
             role="tab"
             aria-selected={mode === option.id}
             onClick={() => setMode(option.id)}
-            className="focusable h-7 flex-1 rounded-[calc(var(--radius-panel-sm)-2px)] px-2 text-[11px] font-medium transition-colors"
+            className={`focusable h-7 flex-1 rounded-[calc(var(--radius-panel-sm)-2px)] px-2 text-[11px] font-medium transition-colors ${mode === option.id ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
             style={{
               background: mode === option.id ? 'var(--glass-raised)' : 'transparent',
-              boxShadow: mode === option.id ? 'var(--glass-highlight), var(--shadow-card)' : 'none',
               color: mode === option.id ? 'var(--ink-primary)' : 'var(--ink-secondary)',
             }}
           >

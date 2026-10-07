@@ -253,13 +253,14 @@ export function MultiSelect({
           A raised chip of glass, like a secondary Button — and SUNK into the
           well while it holds a selection, the state the count badge names.
           Colour, not `background`, inline: the hover wash is an image layer a
-          shorthand would wipe.
+          shorthand would wipe. The lit edge is a (layered) class, never an
+          inline box-shadow: inline, `none` included, it beats
+          `.focusable:focus-visible` and the keyboard ring is gone.
         */
-        className="focusable flex h-8 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-xs font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] disabled:opacity-50"
+        className={`focusable flex h-8 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-xs font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] disabled:opacity-50 ${selected.length ? '' : 'shadow-[var(--glass-highlight)]'}`}
         style={{
           backgroundColor: selected.length ? 'var(--glass-well)' : 'var(--glass-raised)',
           borderColor: 'var(--border-strong)',
-          boxShadow: selected.length ? 'none' : 'var(--glass-highlight)',
           color: 'var(--ink-primary)',
         }}
       >
@@ -388,10 +389,10 @@ export function SegmentedControl<T extends string>({
             type="button"
             aria-pressed={active}
             onClick={() => onChange(option.value)}
-            className="focusable h-7 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-xs font-medium whitespace-nowrap transition-colors"
+            // The lit chip's shadow is a class so the focus ring can win it.
+            className={`focusable h-7 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
             style={{
               background: active ? 'var(--glass-raised)' : 'transparent',
-              boxShadow: active ? 'var(--glass-highlight), var(--shadow-card)' : 'none',
               color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
             }}
           >

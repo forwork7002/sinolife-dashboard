@@ -71,10 +71,10 @@ export function BrandSwitch<T extends DashboardBrand>({
             type="button"
             aria-pressed={active}
             onClick={() => onChange(option.value)}
-            className="focusable inline-flex h-7 items-center gap-1.5 rounded-[calc(var(--radius-panel-sm)-2px)] px-3 text-xs font-medium whitespace-nowrap transition-colors"
+            // The lit chip's shadow is a class so the focus ring can win it.
+            className={`focusable inline-flex h-7 items-center gap-1.5 rounded-[calc(var(--radius-panel-sm)-2px)] px-3 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
             style={{
               background: active ? 'var(--glass-raised)' : 'transparent',
-              boxShadow: active ? 'var(--glass-highlight), var(--shadow-card)' : 'none',
               color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
             }}
           >
