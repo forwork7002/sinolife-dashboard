@@ -14,8 +14,8 @@
  * say "read-only, but the whole company" — the only account that saw the
  * company was one that could also edit it.
  *
- *   ROLE      what this account may CHANGE. Administering users, running a
- *             sync, editing KPI plans. Nothing to do with reading.
+ *   ROLE      what this account may CHANGE. Administering users, editing KPI
+ *             plans. Nothing to do with reading.
  *   SECTIONS  which SCREENS it may open — and, since `getHandler` asserts it
  *             too, which endpoints it may call. The admin's ticks are the
  *             reach boundary, end to end.
@@ -42,19 +42,22 @@ export const PERMISSIONS = [
   'analytics:read:all',
   /** Read analytics limited to one's own deals. */
   'analytics:read:own',
-  'deals:read:all',
-  'deals:read:own',
   'employees:read',
-  'employees:read:detail',
   'leaderboard:read',
   'kpi:read:all',
   'kpi:read:own',
   'kpi:manage',
-  'finance:read',
-  'sync:run',
-  'sync:read',
   'users:manage',
 ] as const
+/*
+  Six permissions went on 2026-10-07 because no endpoint asked for them —
+  their endpoints (/deals, /deals/[id], /employees/[id], /finance/overview,
+  the sync routes) were deleted on 2026-09-10: deals:read:all / :own,
+  employees:read:detail, finance:read, sync:run, sync:read. A grant nothing
+  checks is a rule a security review reasons about and nothing enforces.
+  `tests/auth/rbac.test.ts` fails if one is listed here again without a
+  route, page guard or viewer asking for it.
+*/
 
 export type Permission = (typeof PERMISSIONS)[number]
 
@@ -70,12 +73,11 @@ export type Permission = (typeof PERMISSIONS)[number]
  * question any more; see READ_ANY and READ_SCOPED below.
  */
 const ROLE_PERMISSIONS: Readonly<Record<RoleValue, readonly Permission[]>> = Object.freeze({
-  ADMIN: ['users:manage', 'sync:run', 'kpi:manage', 'employees:read:detail'],
+  ADMIN: ['users:manage', 'kpi:manage'],
 
-  // A manager owns the KPI plans and may look a colleague up by name. They
-  // cannot create accounts or force a sync — those two are how the deployment
-  // itself is administered.
-  MANAGER: ['kpi:manage', 'employees:read:detail'],
+  // A manager owns the KPI plans. They cannot create accounts — that is how
+  // the deployment itself is administered.
+  MANAGER: ['kpi:manage'],
 
   // Read-only. Which screens, and how much of each, is decided per account by
   // its sections and its data scope — not by this list being short.
@@ -97,11 +99,9 @@ const ROLE_PERMISSIONS: Readonly<Record<RoleValue, readonly Permission[]>> = Obj
  */
 const READ_ANY: readonly Permission[] = Object.freeze([
   'analytics:read:own',
-  'deals:read:own',
   'kpi:read:own',
   'employees:read',
   'leaderboard:read',
-  'sync:read',
 ])
 
 /**
@@ -116,9 +116,7 @@ const READ_ANY: readonly Permission[] = Object.freeze([
  */
 const READ_SCOPED: readonly Permission[] = Object.freeze([
   'analytics:read:all',
-  'deals:read:all',
   'kpi:read:all',
-  'finance:read',
 ])
 
 export interface Principal {
@@ -251,26 +249,6 @@ export function can(principal: Principal, permission: Permission): boolean {
 }
 
 /**
- * Every permission an account with this role and scope would hold.
- *
- * Takes both because neither alone decides it any more.
- */
-export function permissionsFor(
-  role: RoleValue,
-  dataScope: DataScopeValue = 'ALL',
-): readonly Permission[] {
-  const probe: Principal = {
-    userId: '',
-    role,
-    isActive: true,
-    employeeId: null,
-    dataScope,
-    sections: [],
-  }
-  return PERMISSIONS.filter((permission) => can(probe, permission))
-}
-
-/**
  * The id that matches nobody.
  *
  * A scope that narrows to nothing must produce NOTHING. Every repository here
@@ -375,34 +353,4 @@ export function rowScopeFor(
   }
 
   return { restrictToEmployeeIds: [own] }
-}
-
-/**
- * True when the principal may view this specific employee's detail.
- *
- * THE SCOPE OUTRANKS THE ROLE, and that ordering is the whole of this
- * function. `employees:read:detail` is a ROLE permission — every ADMIN and
- * every MANAGER holds it unconditionally — so asking for it first meant a
- * MANAGER scoped to one team could open any card in the company. That is not
- * hypothetical: MANAGER is the plausible configuration for a ROP, because it
- * is the role that carries `kpi:manage` and the ROPs own the KPI plans.
- *
- * So the scope is asked FIRST and narrows everybody. An ALL-scoped account has
- * a null scope and is unrestricted, exactly as before; a narrowed one reads
- * the cards on the board it was given and no others.
- *
- * A caller that passes no scope is treated as narrowed to nothing but
- * themselves — the fail-closed reading of "we were not told".
- */
-export function canViewEmployee(
-  principal: Principal,
-  employeeId: string,
-  scope?: RowScope,
-): boolean {
-  if (principal.employeeId === employeeId) return true
-
-  const ids = scope?.restrictToEmployeeIds ?? (principal.dataScope === 'ALL' ? null : [])
-  if (ids !== null) return ids.includes(employeeId)
-
-  return can(principal, 'employees:read:detail')
 }
