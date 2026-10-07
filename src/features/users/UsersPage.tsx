@@ -230,7 +230,7 @@ export function UsersPage() {
       */
       fill
     >
-      <Card className="card-hero brackets flex h-full min-h-[420px] flex-col px-4 py-4">
+      <Card className="card-hero brackets flex h-full min-h-[420px] flex-col px-5 py-5 sm:px-6">
         <div className="flex min-h-0 flex-1 flex-col">
           <DataTable
             columns={columns}

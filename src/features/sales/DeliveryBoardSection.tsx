@@ -74,7 +74,7 @@ export function DeliveryBoardSection() {
         </p>
       </div>
 
-      <Card className="px-4 py-4">
+      <Card className="p-5">
         {/*
           THE TOTAL FIRST, because it is the one figure a manager wants without
           reading fifteen columns: how much money is standing in the delivery

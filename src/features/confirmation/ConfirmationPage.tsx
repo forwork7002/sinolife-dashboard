@@ -962,10 +962,9 @@ export function ConfirmationPage() {
           left to click that gets back to the client's own board.
         */}
         {backlog && (
-          <div
-            className="flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
-          >
+          // A card like its neighbours — the house glass, radius and lit edge,
+          // not a 12px-cornered opaque patch between glass panes.
+          <div className="card flex shrink-0 flex-wrap items-center justify-between gap-3 px-3.5 py-2.5">
             <p
               className="flex items-start gap-2 text-[13px] leading-snug"
               style={{ color: 'var(--ink-secondary)' }}
