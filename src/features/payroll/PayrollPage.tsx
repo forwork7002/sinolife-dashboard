@@ -3,11 +3,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
-import { statusOf } from '@/components/states/States'
+import { ErrorState, statusOf } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SearchInput, SegmentedControl } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
+import { ChevronGlyph } from '@/components/ui/Icons'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { PageShell } from '@/features/shared/PageShell'
 import {
@@ -115,6 +116,11 @@ export function PayrollPage() {
     the payload is used only when it answers the scheme on screen.
   */
   const data = query.data?.data.scheme === scheme ? query.data.data : undefined
+  /*
+    The hero's own reading of the request: a previous tab's payload held over
+    a new one is still loading here, not a period with nothing in it.
+  */
+  const heroStatus = viewStatus === 'ready' && !data ? 'loading' : viewStatus
   const totals = data?.totals
   const comparison = data ? query.data?.meta.comparisonPeriod : undefined
   const comparisonLabel = comparison ? comparisonText(comparison, data?.open ?? false) : null
@@ -170,7 +176,7 @@ export function PayrollPage() {
                 onClick={() => setWeek(shiftWeek(week, -1))}
                 aria-label="Oldingi hafta"
               >
-                ‹
+                <ChevronGlyph direction="left" />
               </Button>
               <span
                 className="tabular min-w-[150px] text-center text-xs font-semibold"
@@ -185,7 +191,7 @@ export function PayrollPage() {
                 /* Nothing has been delivered in a week that has not started. */
                 disabled={week >= currentMonday()}
               >
-                ›
+                <ChevronGlyph direction="right" />
               </Button>
             </div>
           ) : (
@@ -196,7 +202,7 @@ export function PayrollPage() {
                   onClick={() => setMonth(shiftMonth(month, -1))}
                   aria-label="Oldingi oy"
                 >
-                  ‹
+                  <ChevronGlyph direction="left" />
                 </Button>
                 <span
                   className="tabular min-w-[120px] text-center text-xs font-semibold"
@@ -211,7 +217,7 @@ export function PayrollPage() {
                   /* Nothing has been delivered in a month that has not started. */
                   disabled={month >= currentMonth()}
                 >
-                  ›
+                  <ChevronGlyph direction="right" />
                 </Button>
               </div>
               {view === 'half' && (
@@ -253,83 +259,103 @@ export function PayrollPage() {
           {data?.open && ' · davr davom etmoqda'}
         </p>
 
-        <div className="mt-3 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] lg:items-start">
-          <div>
-            <p
-              className="tabular text-[34px] leading-none font-semibold"
-              style={{ color: 'var(--ink-primary)' }}
-            >
-              {totals ? formatFullUzs(totals.total.amount) : NO_VALUE}
-              <span className="ml-1.5 text-[13px] font-normal" style={{ color: 'var(--ink-muted)' }}>
-                soʻm
-              </span>
-            </p>
-            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
-              {words.fund}
-              {data && compared && (
-                <>
-                  <TrendIndicator delta={data.deltas.total} />
-                  <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                    {comparisonLabel} bilan · oldin {formatFullUzs(data.previous.total.amount)} soʻm
-                  </span>
-                </>
-              )}
-            </p>
-
-            {totals && totals.total.amount > 0 && (
-              <div className="mt-4 max-w-[380px]">
-                <div
-                  className="flex h-[7px] w-full overflow-hidden rounded-full"
-                  style={{ background: 'var(--grid)' }}
-                  role="img"
-                  aria-label={`Foiz ${sharePercent(totals.percent.amount, totals.total.amount)}%, ${words.fixed.toLowerCase()} ${sharePercent(totals.fixed.amount, totals.total.amount)}%`}
-                >
-                  <div
-                    style={{
-                      width: `${sharePercent(totals.percent.amount, totals.total.amount)}%`,
-                      background: 'var(--series-3)',
-                    }}
-                  />
-                  <div
-                    style={{
-                      width: `${sharePercent(totals.fixed.amount, totals.total.amount)}%`,
-                      background: 'var(--series-4)',
-                    }}
-                  />
+        {/*
+          LOADING, FAILURE AND A GENUINE NULL ARE THREE RENDERINGS. The hero
+          printed «— soʻm» while the request was in flight AND after a 500, so
+          a failed payroll read as a period with no pay — and the retry was
+          three cards further down.
+        */}
+        {heroStatus === 'error' ? (
+          <ErrorState message={errorMessage} onRetry={retry} />
+        ) : (
+          <div className="mt-3 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)] lg:items-start">
+            <div>
+              {heroStatus === 'loading' ? (
+                // Sized to the figure below, so the number never reflows the band.
+                <div className="skeleton h-[clamp(21px,8px_+_3.6vw,40px)] w-2/3 max-w-[340px]" role="status">
+                  <span className="sr-only">Yuklanmoqda</span>
                 </div>
-                <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  Toʻlovning {sharePercent(totals.percent.amount, totals.total.amount)}% i — foiz,
-                  {' '}
-                  {sharePercent(totals.fixed.amount, totals.total.amount)}% i —{' '}
-                  {words.fixed.toLowerCase()}.
+              ) : (
+                <p
+                  className="figure-hero figure-hero-sum figure-wrap"
+                  style={{ color: 'var(--ink-primary)' }}
+                >
+                  {totals ? formatFullUzs(totals.total.amount) : NO_VALUE}
+                  <span className="ml-1.5 text-[13px] font-normal tracking-normal" style={{ color: 'var(--ink-muted)' }}>
+                    soʻm
+                  </span>
                 </p>
-              </div>
-            )}
-          </div>
+              )}
+              <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                {words.fund}
+                {data && compared && (
+                  <>
+                    <TrendIndicator delta={data.deltas.total} />
+                    <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                      {comparisonLabel} bilan · oldin {formatFullUzs(data.previous.total.amount)} soʻm
+                    </span>
+                  </>
+                )}
+              </p>
 
-          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:pt-1">
-            <Figure
-              term="FAKT 2 · Успешно"
-              value={totals ? formatFullUzs(totals.fakt2.amount) : NO_VALUE}
-              note={totals ? `${formatNumber(totals.sellers)} ta sotuvchi` : undefined}
-              delta={compared ? data?.deltas.fakt2 : undefined}
-            />
-            <Figure
-              term={`Foiz · ${words.rate}`}
-              value={totals ? formatFullUzs(totals.percent.amount) : NO_VALUE}
-              note={totals ? `${formatNumber(paid)} kishiga` : undefined}
-              swatch="var(--series-3)"
-              delta={compared ? data?.deltas.percent : undefined}
-            />
-            <Figure
-              term={words.fixed}
-              value={totals ? formatFullUzs(totals.fixed.amount) : NO_VALUE}
-              note={totals ? `${formatNumber(sellers.filter((s) => s.fixed.amount > 0).length)} kishiga` : undefined}
-              swatch="var(--series-4)"
-              delta={compared ? data?.deltas.fixed : undefined}
-            />
-          </dl>
-        </div>
+              {totals && totals.total.amount > 0 && (
+                <div className="mt-4 max-w-[380px]">
+                  <div
+                    className="flex h-[7px] w-full overflow-hidden rounded-full"
+                    style={{ background: 'var(--grid)' }}
+                    role="img"
+                    aria-label={`Foiz ${sharePercent(totals.percent.amount, totals.total.amount)}%, ${words.fixed.toLowerCase()} ${sharePercent(totals.fixed.amount, totals.total.amount)}%`}
+                  >
+                    <div
+                      style={{
+                        width: `${sharePercent(totals.percent.amount, totals.total.amount)}%`,
+                        background: 'var(--series-3)',
+                      }}
+                    />
+                    <div
+                      style={{
+                        width: `${sharePercent(totals.fixed.amount, totals.total.amount)}%`,
+                        background: 'var(--series-4)',
+                      }}
+                    />
+                  </div>
+                  <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                    Toʻlovning {sharePercent(totals.percent.amount, totals.total.amount)}% i — foiz,
+                    {' '}
+                    {sharePercent(totals.fixed.amount, totals.total.amount)}% i —{' '}
+                    {words.fixed.toLowerCase()}.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:pt-1">
+              <Figure
+                term="FAKT 2 · Успешно"
+                loading={heroStatus === 'loading'}
+                value={totals ? formatFullUzs(totals.fakt2.amount) : NO_VALUE}
+                note={totals ? `${formatNumber(totals.sellers)} ta sotuvchi` : undefined}
+                delta={compared ? data?.deltas.fakt2 : undefined}
+              />
+              <Figure
+                term={`Foiz · ${words.rate}`}
+                loading={heroStatus === 'loading'}
+                value={totals ? formatFullUzs(totals.percent.amount) : NO_VALUE}
+                note={totals ? `${formatNumber(paid)} kishiga` : undefined}
+                swatch="var(--series-3)"
+                delta={compared ? data?.deltas.percent : undefined}
+              />
+              <Figure
+                term={words.fixed}
+                loading={heroStatus === 'loading'}
+                value={totals ? formatFullUzs(totals.fixed.amount) : NO_VALUE}
+                note={totals ? `${formatNumber(sellers.filter((s) => s.fixed.amount > 0).length)} kishiga` : undefined}
+                swatch="var(--series-4)"
+                delta={compared ? data?.deltas.fixed : undefined}
+              />
+            </dl>
+          </div>
+        )}
 
         {data?.open && (
           /*
@@ -507,9 +533,12 @@ function Figure({
   note,
   swatch,
   delta,
+  loading = false,
 }: {
   term: string
   value: string
+  /** While the period is being read: a placeholder, never the em dash a real null prints. */
+  loading?: boolean
   note?: string
   /** Ties the figure to its segment in the rail. Only the two that have one. */
   swatch?: string
@@ -528,12 +557,18 @@ function Figure({
         )}
         {term}
       </dt>
-      <dd
-        className="tabular mt-0.5 text-[15px] leading-tight font-semibold"
-        style={{ color: 'var(--ink-secondary)' }}
-      >
-        {value}
-      </dd>
+      {loading ? (
+        <dd className="skeleton mt-1 h-[18px] w-24" role="status">
+          <span className="sr-only">Yuklanmoqda</span>
+        </dd>
+      ) : (
+        <dd
+          className="tabular mt-0.5 text-[15px] leading-tight font-semibold"
+          style={{ color: 'var(--ink-secondary)' }}
+        >
+          {value}
+        </dd>
+      )}
       {delta && (
         <dd className="mt-1">
           <TrendIndicator delta={delta} />
