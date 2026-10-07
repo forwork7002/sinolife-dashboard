@@ -1333,34 +1333,24 @@ body::after {
  * position:relative because the corners need this box as their containing
  * block, and this unlayered file outranks a Tailwind position utility — wrap
  * the card if it must be positioned some other way. Both corners are the
- * element's own ::before and ::after, so nothing else that draws a pseudo may
- * share the element: put it on a wrapper instead.
+ * element's own ::before — one transparent box 6px inside the edge, the two
+ * L-corners painted on it as four 1px gradients — so ::after stays free for
+ * the author's mark (see below). Nothing else may draw a ::before here.
  */
 .brackets {
   position: relative;
 }
 
-.brackets::before,
-.brackets::after {
+.brackets::before {
   content: "";
   position: absolute;
-  width: 12px;
-  height: 12px;
+  inset: 6px;
   pointer-events: none;
-}
-
-.brackets::before {
-  top: 6px;
-  left: 6px;
-  border-top: 1px solid var(--border-strong);
-  border-left: 1px solid var(--border-strong);
-}
-
-.brackets::after {
-  right: 6px;
-  bottom: 6px;
-  border-right: 1px solid var(--border-strong);
-  border-bottom: 1px solid var(--border-strong);
+  background:
+    linear-gradient(var(--border-strong), var(--border-strong)) left top / 12px 1px no-repeat,
+    linear-gradient(var(--border-strong), var(--border-strong)) left top / 1px 12px no-repeat,
+    linear-gradient(var(--border-strong), var(--border-strong)) right bottom / 12px 1px no-repeat,
+    linear-gradient(var(--border-strong), var(--border-strong)) right bottom / 1px 12px no-repeat;
 }
 
 /**
@@ -1527,27 +1517,29 @@ body::after {
 
 /**
  * The author's mark — «developed by Yusuf», barely there, in the top-right
- * corner of every card that holds a table (2026-10-07: «har bir jadval tepa
- * qismi burchagiga … korinar korinmas»). One rule instead of a prop on every
- * table, so a table added later carries it without anyone remembering to.
+ * corner of every hero band, every card that holds a table and every titled
+ * chart card (2026-10-07: «har bir jadval tepa qismi burchagiga … korinar
+ * korinmas», then «shu tepadagi boʻsh joylariga» pointing at a hero's empty
+ * corner). One rule instead of a prop on every card, so a card added later
+ * carries it without anyone remembering to. Stat tiles are left out: they
+ * are too small for a corner that is empty.
  *
- * It sits in the card's top padding (3px down, every table card has ≥12px
+ * It sits in the card's top padding (3px down, every such card has ≥12px
  * there), so it never covers a header. The text is hidden from screen
  * readers by the `/ ""` alt text — it is a signature, not content.
  *
- * `.brackets` owns both of its pseudos, so those two cards (Tasdiqlash,
- * Kogorta) carry it as a real `<DevMark />` element with the same box.
- * `position: relative` is in `components` so a Tailwind position utility on
- * a card still wins; sticky and absolute are containing blocks too.
+ * `.brackets` draws both its corners from ::before alone, so ::after is free
+ * here. `position: relative` is in `components` so a Tailwind position
+ * utility on a card still wins; sticky and absolute are containing blocks too.
  */
 @layer components {
-  :is(.card, .card-hero):not(.brackets):has(table) {
+  :is(.card-hero, .card:has(table), .card:has(> header)) {
     position: relative;
   }
 }
 
-:is(.card, .card-hero):not(.brackets):has(table)::after,
-.dev-mark {
+:is(.card-hero, .card:has(table), .card:has(> header))::after {
+  content: "developed by Yusuf" / "";
   position: absolute;
   top: 3px;
   right: 14px;
@@ -1560,10 +1552,6 @@ body::after {
   pointer-events: none;
   user-select: none;
   white-space: nowrap;
-}
-
-:is(.card, .card-hero):not(.brackets):has(table)::after {
-  content: "developed by Yusuf" / "";
 }
 
 /**

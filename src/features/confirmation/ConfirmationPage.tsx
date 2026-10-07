@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Fragment, useEffect, useState } from 'react'
 
 import { statusOf } from '@/components/states/States'
-import { Card, ChartCard, DevMark } from '@/components/ui/Card'
+import { Card, ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import {
   ArrowOutGlyph,
@@ -1125,7 +1125,6 @@ export function ConfirmationPage() {
             style={{ opacity: rowsStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
             aria-busy={rowsStale || undefined}
           >
-            <DevMark />
             <header className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
               {/*
                 THE HEADING AND ITS COUNTS ARE ONE BLOCK NOW, so the corner is
