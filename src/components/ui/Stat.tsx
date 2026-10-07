@@ -119,9 +119,13 @@ export function StatTile({
         {/* One label voice across every KPI tile: 12.5px sentence case,
             medium, secondary ink. The uppercase-tracked micro-label was a
             second dialect for the same object — and uppercase now survives
-            only in table headers. */}
+            only in table headers.
+
+            TWO LINES, NOT ONE: a single truncated line cut «Yoʻlda — FAKT 1
+            dan hali yetkazilmagan» to its first twenty characters in a
+            two-column phone band, with no way to reach the rest. */}
         <p
-          className="truncate text-[12.5px] font-medium"
+          className="line-clamp-2 text-[12.5px] font-medium"
           style={{ color: 'var(--ink-secondary)' }}
         >
           {label}
@@ -185,7 +189,7 @@ export function StatTile({
       )}
 
       {hint && (
-        <p className="mt-1 truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+        <p className="mt-1 line-clamp-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           {hint}
         </p>
       )}
@@ -418,7 +422,7 @@ export function GaugeTile({
       {/* Same label voice as StatTile/KpiCard — one treatment for the whole
           KPI family. */}
       <p
-        className="truncate text-[12.5px] font-medium"
+        className="line-clamp-2 text-[12.5px] font-medium"
         style={{ color: 'var(--ink-secondary)' }}
       >
         {label}
