@@ -86,18 +86,12 @@ export function ReklamaPage() {
             <Tiles data={data} status={status} brand={brand} />
             {/* The client's per-targetolog day sheet, full width so the targetologs stand side by side. */}
             <TargetologDaySection params={overviewParams} brand={brand} />
-            {/* The HR · Kosmetika table sits beside the sheets on a wide screen, above them on a phone. */}
-            <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start">
-              <aside className="min-w-0 xl:sticky xl:top-0 xl:col-start-2 xl:row-start-1">
-                <SideSection side={data?.side} status={status} brand={brand} />
-              </aside>
-              <div className="flex min-w-0 flex-col gap-6 xl:col-start-1 xl:row-start-1">
-                <DmSection dm={data?.dm} status={status} />
-                <FormSection form={data?.form} status={status} />
-                <QualitySection quality={data?.quality} status={status} />
-                <CampaignSection campaigns={data?.campaigns} status={status} />
-              </div>
-            </div>
+            {/* The rest of the money nobody's targetolog card carries, in the same sheet form, before the DM sheets. */}
+            <SideSection side={data?.side} status={status} brand={brand} />
+            <DmSection dm={data?.dm} status={status} />
+            <FormSection form={data?.form} status={status} />
+            <QualitySection quality={data?.quality} status={status} />
+            <CampaignSection campaigns={data?.campaigns} status={status} />
           </>
         )}
       </div>
