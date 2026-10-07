@@ -36,7 +36,10 @@ import { LIVE_CACHE, ttlCache } from './ttlCache'
  * both statements read — the zone is already spent resolving them, and the
  * repurchase horizon is a constant. The REPOSITORY'S answer is what is stored,
  * not the DTO, so no rounding rule can be served stale under a key that does
- * not name it.
+ * not name it. It is the one key that does not name a preset, and on purpose:
+ * the route only ever resolves `trailingDays`, and nothing in the DTO compares
+ * one period with another, so there is no second comparison a preset could
+ * pick.
  */
 const concentrationCache = ttlCache<[CustomerRevenueBreakdown, RepeatStats]>(
   5 * 60_000,
