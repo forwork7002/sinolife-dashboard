@@ -142,6 +142,19 @@ export interface TargetDmDto {
   /** Every DM campaign's spend, vakansiyasiz — unmapped accounts included. */
   readonly dmSpendUsd: number
   readonly dm: DmBlockDto
+  /** Each product as «Reklama samarasi» prices it under its own brand switch. */
+  readonly products: readonly DmProductDto[]
+}
+
+/** One product's DM-money pages: their spend over their kval. */
+export interface DmProductDto {
+  readonly product: Exclude<MetaProduct, 'Boshqa'>
+  readonly pages: readonly string[]
+  readonly spendUsd: number
+  readonly conversations: number
+  readonly qualified: number
+  /** Null with no kval or no DM money. */
+  readonly costPerQualifiedUsd: number | null
 }
 
 export interface TargetLeadSaleDto {

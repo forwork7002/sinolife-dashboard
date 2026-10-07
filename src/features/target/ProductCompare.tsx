@@ -5,9 +5,7 @@ import type { ReactNode } from 'react'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 
-import type { DmBlockDto, DmProductDto } from '@/features/reklama/reklamaApi'
-
-import type { MetaBlockDto, MetaProduct, MetaProductTotalsDto } from './targetApi'
+import type { DmProductDto, MetaBlockDto, MetaProduct, MetaProductTotalsDto } from './targetApi'
 import { PRODUCT_LABEL, PRODUCT_TONE, usd } from './targetTheme'
 
 /**
@@ -32,9 +30,9 @@ import { PRODUCT_LABEL, PRODUCT_TONE, usd } from './targetTheme'
  * the column and its figures stay.
  *
  * KVAL (2026-10-07): each column also counts its pages' kval («Сделка
- * успешна») and prices a DM kval from the DM sheet (`dm.products`) — the
- * product's DM money over the kval of the pages that money is written to,
- * the figure «DM · sahifalar» prints in that product's rows.
+ * успешна») and prices a DM kval from the DM sheet (`/target/dm`'s
+ * `products`) — the product's DM money over the kval of the pages that money
+ * is written to: «Reklama samarasi»'s «Итог» under that product's switch.
  */
 export function ProductCompare({
   meta,
@@ -43,8 +41,8 @@ export function ProductCompare({
 }: {
   meta: MetaBlockDto | undefined
   status: 'loading' | 'error' | 'ready'
-  /** The DM sheet for the same window; undefined while it loads. */
-  dm?: DmBlockDto
+  /** The DM sheet's products for the same window; undefined while it loads. */
+  dm?: readonly DmProductDto[]
 }) {
   if (status === 'loading' || !meta) {
     return (
@@ -64,8 +62,8 @@ export function ProductCompare({
   // The columns drawn below, summed: HR, Kosmetika and an unmapped account are in «Лид база»'s Jami, never in this hero.
   const total = meta.productsTotal
   const pair = products.length === 2
-  const dmOf = (p: MetaProduct) => dm?.products.find((d) => d.product === p)
-  const verdicts = productVerdicts(products, dm?.products)
+  const dmOf = (p: MetaProduct) => dm?.find((d) => d.product === p)
+  const verdicts = productVerdicts(products, dm)
 
   return (
     <section
@@ -110,15 +108,18 @@ export function ProductCompare({
       {pair && <ShareBars products={products} />}
 
       <div className={`mt-5 grid gap-4 ${pair ? 'md:grid-cols-2' : ''}`}>
-        {products.map((p) => (
-          <ProductColumn
-            key={p.product}
-            product={p}
-            rival={pair ? products.find((o) => o !== p) : undefined}
-            dm={dm ? (dmOf(p.product) ?? null) : undefined}
-            rivalDm={pair ? dmOf(products.find((o) => o !== p)!.product) : undefined}
-          />
-        ))}
+        {products.map((p) => {
+          const rival = pair ? products.find((o) => o !== p) : undefined
+          return (
+            <ProductColumn
+              key={p.product}
+              product={p}
+              rival={rival}
+              dm={dm ? (dmOf(p.product) ?? null) : undefined}
+              rivalDm={rival ? dmOf(rival.product) : undefined}
+            />
+          )
+        })}
       </div>
 
       {products.length === 0 && (
@@ -395,7 +396,9 @@ function ProductColumn({
             )}
             {row(
               '1 kval narxi · DM',
-              dm ? (
+              dm === undefined ? (
+                <span style={{ color: 'var(--ink-muted)' }}>…</span>
+              ) : dm && dm.costPerQualifiedUsd !== null ? (
                 <Tooltip
                   content={
                     <span className="tabular">
@@ -408,7 +411,11 @@ function ProductColumn({
                   </span>
                 </Tooltip>
               ) : (
-                NO_VALUE
+                <Tooltip content={dm ? 'Bu davrda DM sarfi yoki kvali yoʻq' : 'DM puli yoziladigan sahifa yoʻq'}>
+                  <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">
+                    {NO_VALUE}
+                  </span>
+                </Tooltip>
               ),
               {
                 mine: dm?.costPerQualifiedUsd ?? null,
@@ -508,9 +515,10 @@ export function productVerdicts(
   const dmB = dm.find((d) => d.product === b.product)?.costPerQualifiedUsd ?? null
   if (dmA !== null && dmB !== null && dmA > 0 && dmB > 0) {
     const [cheap, dear, cheapPrice, dearPrice] = dmA <= dmB ? [a, b, dmA, dmB] : [b, a, dmB, dmA]
+    const k = dearPrice / cheapPrice
     out.push(
       `1 DM kval: ${name(cheap)} ${usd(cheapPrice)}, ${name(dear)} ${usd(dearPrice)}` +
-        (dearPrice / cheapPrice >= 1.1 ? ` — ${name(dear)} kvali ${times(dearPrice / cheapPrice)} marta qimmat.` : ' — deyarli bir xil.'),
+        (k >= 1.1 ? ` — ${name(dear)} kvali ${times(k)} marta qimmat.` : ' — deyarli bir xil.'),
     )
   }
 

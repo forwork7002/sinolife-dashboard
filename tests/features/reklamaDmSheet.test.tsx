@@ -51,7 +51,6 @@ const dm: DmBlockDto = {
       days: [],
     },
   ],
-  products: [],
   unattributed: { spendUsd: 0, conversations: 0 },
 }
 

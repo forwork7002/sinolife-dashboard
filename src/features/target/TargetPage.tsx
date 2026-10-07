@@ -221,7 +221,7 @@ export function TargetPage() {
           <>
             <SourcesLine scope={product === 'all' ? scope : 'target'} names={targetSources} />
 
-            <ProductCompare meta={data?.meta} status={status} dm={dm.data?.data.dm} />
+            <ProductCompare meta={data?.meta} status={status} dm={dm.data?.data.products} />
 
             <TargetMeta meta={data?.meta} status={status} />
 
@@ -452,6 +452,9 @@ function DmTiles({ data, status }: { data: TargetDmDto | undefined; status: Stat
   const dm = data?.dm
   const priced = dm?.pages.filter((p) => p.carriesDmSpend) ?? []
   const pricedQualified = priced.reduce((n, p) => n + p.total.qualified, 0)
+  const pricedSpend = priced.reduce((n, p) => n + p.total.spendUsd, 0)
+  // Kval with no DM money behind it is no price, not «$0».
+  const price = pricedSpend > 0 ? (dm?.total.costPerQualifiedUsd ?? null) : null
   return (
     <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-5">
       <StatTile
@@ -459,7 +462,11 @@ function DmTiles({ data, status }: { data: TargetDmDto | undefined; status: Stat
         unit="usd"
         label="DM sarfi"
         value={data?.dmSpendUsd ?? null}
-        hint="Meta DM kampaniyalari, vakansiyasiz"
+        hint={
+          dm && dm.unattributed.spendUsd > 0
+            ? `vakansiyasiz · shundan ${usd(dm.unattributed.spendUsd)} hech bir sahifaga biriktirilmagan`
+            : 'Meta DM kampaniyalari, vakansiyasiz'
+        }
       />
       <StatTile
         status={status}
@@ -486,11 +493,11 @@ function DmTiles({ data, status }: { data: TargetDmDto | undefined; status: Stat
         status={status}
         unit="usd"
         label="1 kval narxi · DM"
-        value={dm?.total.costPerQualifiedUsd ?? null}
+        value={price}
         hint={
           dm
             ? priced.length > 0
-              ? `DM sarfi ÷ ${formatNumber(pricedQualified)} kval (${priced.map((p) => p.name).join(', ')})`
+              ? `${usd(pricedSpend)} ÷ ${formatNumber(pricedQualified)} kval (${priced.map((p) => p.name).join(', ')})`
               : 'DM puli yoziladigan sahifa yoʻq'
             : undefined
         }

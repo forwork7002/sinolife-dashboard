@@ -18,7 +18,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { calendarDays, reklamaOverview, ReklamaService } = await import('@/server/services/reklamaService')
+const { calendarDays, reklamaOverview, ReklamaService, targetDm } = await import('@/server/services/reklamaService')
 const { ReklamaRepository } = await import('@/server/repositories/reklamaRepository')
 
 const PAGES = [
@@ -304,50 +304,6 @@ describe('reklamaOverview', () => {
     // Both pages' kval price «Итог», and nothing is left unattributed.
     expect(out.dm.total.costPerQualifiedUsd).toBeCloseTo(70.48 / 14, 9)
     expect(out.dm.unattributed).toEqual({ spendUsd: 0, conversations: 0 })
-  })
-
-  it('sums each product\'s DM-money pages for «Target tahlili»\'s DM kval price (2026-10-07)', () => {
-    const pages = [...PAGES, { key: 'UC_NBCV5K', name: 'collagen.sinolife', product: 'Collagen' as const }]
-    const out = reklamaOverview({
-      window: WINDOW,
-      pages,
-      leadRows: [
-        lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 10),
-        lead('2026-08-01', 'UC_1X1J24', 'Недозвон', 'LOST', 10),
-        // sinolife_otziv carries no DM money: its kval never cheapens Collagen's price.
-        lead('2026-08-01', 'UC_0FMQ5Q', 'Сделка успешна', 'WON', 50),
-        { day: '2026-08-02', sourceId: 'UC_NBCV5K', source: 'collagen.sinolife', stage: 'Сделка успешна', status: 'WON', productLine: null, leads: 4 },
-        lead('2026-08-02', 'UC_A8LE21', 'Сделка успешна', 'WON', 6),
-      ],
-      campaignRows: [
-        campaign({ spendMicroUsd: 40_000_001n, conversations: 80 }),
-        campaign({
-          date: '2026-08-02',
-          accountId: '2804901113001448',
-          accountName: 'Collagen Sobirjon #2',
-          campaignName: 'I.S | SMS| New strantsa | 06.10.2026',
-          spendMicroUsd: 30_480_004n,
-          conversations: 50,
-        }),
-        campaign({
-          date: '2026-08-02',
-          accountId: '440073592484616',
-          accountName: 'Zextra Umar',
-          spendMicroUsd: 18_000_000n,
-          conversations: 30,
-        }),
-      ],
-      importedAt: null,
-    })
-    const collagen = out.dm.products.find((p) => p.product === 'Collagen')!
-    expect(collagen.pages).toEqual(['sinolifeuz', 'collagen.sinolife'])
-    expect(collagen).toMatchObject({ conversations: 130, leads: 24, qualified: 14, spendUsd: 70.48 })
-    // From micro-dollars, not the pages' rounded dollars.
-    expect(collagen.costPerQualifiedUsd).toBeCloseTo(70.480005 / 14, 9)
-    const zextra = out.dm.products.find((p) => p.product === 'Zextra')!
-    expect(zextra).toMatchObject({ pages: ['zextrauzb'], qualified: 6, spendUsd: 18, costPerQualifiedUsd: 3 })
-    // Both products together are «Итог»'s price.
-    expect(out.dm.total.costPerQualifiedUsd).toBeCloseTo((70.480005 + 18) / 20, 9)
   })
 
   it('reports an unmapped account\'s DM money as unattributed instead of guessing a page', () => {
@@ -658,6 +614,64 @@ describe('ReklamaService.overview — collagen.sinolife, the page Sobirjon #2\'s
 
   it('names each such page\'s product as the portal\'s source map does', () => {
     for (const [page, product] of DM_ACCOUNT_PAGES) expect(LEAD_SOURCE_BRAND[page]).toBe(product)
+  })
+})
+
+describe('targetDm — «Target tahlili»\'s DM sheet (2026-10-07)', () => {
+  const pages = [...PAGES, { key: 'UC_NBCV5K', name: 'collagen.sinolife', product: 'Collagen' as const }]
+  const input = {
+    window: WINDOW,
+    pages,
+    leadRows: [
+      lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 10),
+      lead('2026-08-01', 'UC_1X1J24', 'Недозвон', 'LOST', 10),
+      // A Zextra-«Проект» kval on sinolifeuz: Zextra's under the switch, never Collagen's price.
+      { ...lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 5), productLine: 'Zextra' },
+      // sinolife_otziv carries no DM money: its kval never cheapens Collagen's price.
+      lead('2026-08-01', 'UC_0FMQ5Q', 'Сделка успешна', 'WON', 50),
+      { day: '2026-08-02', sourceId: 'UC_NBCV5K', source: 'collagen.sinolife', stage: 'Сделка успешна', status: 'WON', productLine: null, leads: 4 },
+      lead('2026-08-02', 'UC_A8LE21', 'Сделка успешна', 'WON', 6),
+    ],
+    campaignRows: [
+      campaign({ spendMicroUsd: 40_000_001n, conversations: 80 }),
+      campaign({
+        date: '2026-08-02',
+        accountId: '2804901113001448',
+        accountName: 'Collagen Sobirjon #2',
+        campaignName: 'I.S | SMS| New strantsa | 06.10.2026',
+        spendMicroUsd: 30_480_004n,
+        conversations: 50,
+      }),
+      campaign({ date: '2026-08-02', accountId: '440073592484616', accountName: 'Zextra Umar', spendMicroUsd: 18_000_000n, conversations: 30 }),
+    ],
+    importedAt: null,
+  }
+
+  it('prices each product as «Reklama samarasi»\'s «Итог» under that product\'s switch', () => {
+    const out = targetDm(input, 'all')
+    for (const p of out.products) {
+      const slice = reklamaOverview({ ...input, brand: p.product }).dm
+      expect(p.costPerQualifiedUsd).toBe(slice.total.costPerQualifiedUsd)
+    }
+    const collagen = out.products.find((p) => p.product === 'Collagen')!
+    expect(collagen).toMatchObject({ pages: ['sinolifeuz', 'collagen.sinolife'], qualified: 14, spendUsd: 70.48, conversations: 130 })
+    expect(collagen.costPerQualifiedUsd).toBeCloseTo(70.480005 / 14, 9)
+    expect(out.products.find((p) => p.product === 'Zextra')).toMatchObject({ pages: ['zextrauzb'], qualified: 6, costPerQualifiedUsd: 3 })
+    // The sheet itself is the «Hammasi» block, unattributed money and all.
+    expect(out.dm).toEqual(reklamaOverview({ ...input, brand: 'all' }).dm)
+    expect(out.dmSpendUsd).toBe(88.48)
+  })
+
+  it('answers the same product figure whichever switch it is read under', () => {
+    const all = targetDm(input, 'all').products
+    expect(targetDm(input, 'Collagen').products).toEqual(all.filter((p) => p.product === 'Collagen'))
+    expect(targetDm(input, 'Zextra').products).toEqual(all.filter((p) => p.product === 'Zextra'))
+  })
+
+  it('gives a product with kval but no DM money no price, not «$0»', () => {
+    const out = targetDm({ ...input, campaignRows: input.campaignRows.slice(0, 2) }, 'all')
+    const zextra = out.products.find((p) => p.product === 'Zextra')!
+    expect(zextra).toMatchObject({ qualified: 6, spendUsd: 0, costPerQualifiedUsd: null })
   })
 })
 

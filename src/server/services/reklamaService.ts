@@ -38,7 +38,13 @@ import {
 } from '@/server/integrations/meta/accounts'
 import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
-import { type BrandFilter, type TargetProduct, brandMatches } from '@/server/domain/types'
+import {
+  type BrandFilter,
+  TARGET_PRODUCTS,
+  type TargetProduct,
+  type TargetProductFilter,
+  brandMatches,
+} from '@/server/domain/types'
 import type {
   CampaignDayRow,
   LeadStageDayRow,
@@ -93,21 +99,8 @@ export interface DmBlockDto {
   /** «Итог» a day at a time, on the same rule. */
   readonly days: readonly DmDayDto[]
   readonly pages: readonly DmPageDto[]
-  /**
-   * Each product's DM-money pages (`carriesDmSpend`) summed — «Target
-   * tahlili»'s price of a DM kval per product. Summed from micro-dollars, so
-   * a product's figure is its page rows to the cent; only the products with
-   * such a page in the slice.
-   */
-  readonly products: readonly DmProductDto[]
   /** DM money on accounts nobody has mapped to a product — no page to put it on. */
   readonly unattributed: { readonly spendUsd: number; readonly conversations: number }
-}
-
-export interface DmProductDto extends DmCellsDto {
-  readonly product: TargetProduct
-  /** The DM-money pages summed, by name. */
-  readonly pages: readonly string[]
 }
 
 /** One «Отчёт Т» cell group: a targetolog's lead-form campaigns. */
@@ -514,7 +507,6 @@ export function reklamaOverview(input: {
   const dmTotal = dmZero()
   const dmPricedDays = days.map(() => dmZero())
   const dmPriced = dmZero()
-  const dmProducts = new Map<TargetProduct, { acc: DmAcc; pages: string[] }>()
   const dmPages: DmPageDto[] = input.pages.map((page) => {
     // Another brand's DM page, shown for this slice's leads, carries none of the slice's money.
     const carriesDmSpend =
@@ -529,13 +521,7 @@ export function reklamaOverview(input: {
       return { date, ...dmCells(cell) }
     })
     addDm(dmTotal, total)
-    if (carriesDmSpend) {
-      addDm(dmPriced, total)
-      const product = dmProducts.get(page.product) ?? { acc: dmZero(), pages: [] }
-      addDm(product.acc, total)
-      product.pages.push(page.name)
-      dmProducts.set(page.product, product)
-    }
+    if (carriesDmSpend) addDm(dmPriced, total)
     return {
       key: page.key,
       name: page.name,
@@ -673,7 +659,6 @@ export function reklamaOverview(input: {
       total: dmTotalCells(dmTotal, dmPriced),
       days: days.map((date, i) => ({ date, ...dmTotalCells(dmTotalDays[i]!, dmPricedDays[i]!) })),
       pages: dmPages,
-      products: [...dmProducts.entries()].map(([product, p]) => ({ product, pages: p.pages, ...dmCells(p.acc) })),
       unattributed: { spendUsd: usd(unattributed.spend), conversations: unattributed.conversations },
     },
     form: {
@@ -723,6 +708,63 @@ function orderedPages(named: readonly { externalId: string; name: string }[]) {
     )
 }
 
+/**
+ * One product's DM kval price on «Target tahlili» — what «Reklama samarasi»
+ * prints in its «Итог» under that product's brand switch: its DM money over
+ * the kval of the pages that money is written to (`carriesDmSpend`).
+ */
+export interface DmProductDto {
+  readonly product: TargetProduct
+  /** The DM-money pages, by name. */
+  readonly pages: readonly string[]
+  /** Those pages' DM spend, dollars. */
+  readonly spendUsd: number
+  readonly conversations: number
+  /** Those pages' kval («Сделка успешна»). */
+  readonly qualified: number
+  /** spend ÷ qualified; null with no kval, and with no DM money — «$0» would read as the cheaper product. */
+  readonly costPerQualifiedUsd: number | null
+}
+
+/** «Target tahlili»'s DM sheet: the slice's DM block, and each product priced as its own slice. */
+export interface TargetDmDto {
+  readonly importedAt: string | null
+  /** Every DM campaign's spend in the slice, vakansiyasiz — `spend.dmUsd`. */
+  readonly dmSpendUsd: number
+  readonly dm: DmBlockDto
+  readonly products: readonly DmProductDto[]
+}
+
+/**
+ * Exported for its test. Each product is `reklamaOverview` run under that
+ * brand — the leads filed by «Проект» first, the money by its ad budget — so
+ * its price is the brand switch's «Итог» to the cent, never a re-derivation
+ * that could drift from it. A product with no DM-money page is left out.
+ */
+export function targetDm(
+  input: Omit<Parameters<typeof reklamaOverview>[0], 'brand'>,
+  product: TargetProductFilter,
+): TargetDmDto {
+  const slice = reklamaOverview({ ...input, brand: product })
+  const products = (product === 'all' ? TARGET_PRODUCTS : [product]).flatMap((p): DmProductDto[] => {
+    const dm = p === product ? slice.dm : reklamaOverview({ ...input, brand: p }).dm
+    const priced = dm.pages.filter((page) => page.carriesDmSpend)
+    if (priced.length === 0) return []
+    const spendUsd = Math.round(priced.reduce((n, page) => n + page.total.spendUsd, 0) * 100) / 100
+    return [
+      {
+        product: p,
+        pages: priced.map((page) => page.name),
+        spendUsd,
+        conversations: priced.reduce((n, page) => n + page.total.conversations, 0),
+        qualified: priced.reduce((n, page) => n + page.total.qualified, 0),
+        costPerQualifiedUsd: spendUsd > 0 ? dm.total.costPerQualifiedUsd : null,
+      },
+    ]
+  })
+  return { importedAt: slice.importedAt, dmSpendUsd: slice.spend.dmUsd, dm: slice.dm, products }
+}
+
 /** The ad pages, and the pages an account's DM money goes to (`DM_ACCOUNT_PAGES`) — this screen's alone. */
 const REKLAMA_SOURCE_IDS: readonly string[] = [...new Set([...TARGET_SOURCE_IDS, ...DM_ACCOUNT_PAGES.keys()])]
 
@@ -737,6 +779,16 @@ export class ReklamaService {
   constructor(private readonly repository: ReklamaRepository) {}
 
   async overview(period: Period, timeZone: string, brand: BrandFilter = 'all'): Promise<ReklamaOverviewDto> {
+    // The cache holds both brands' leads; the switch narrows after it.
+    return reklamaOverview({ ...(await this.load(period, timeZone)), brand })
+  }
+
+  /** «Target tahlili»'s DM sheet, from the same rows as `overview` (`targetDm`). */
+  async targetDm(period: Period, timeZone: string, product: TargetProductFilter): Promise<TargetDmDto> {
+    return targetDm(await this.load(period, timeZone), product)
+  }
+
+  private async load(period: Period, timeZone: string) {
     const window = {
       from: zonedDateKey(period.start, timeZone),
       to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),
@@ -750,7 +802,6 @@ export class ReklamaService {
       this.repository.campaignsImportedAt(),
     ])
 
-    // The cache holds both brands' leads; the switch narrows after it.
-    return reklamaOverview({ window, pages: orderedPages(named), leadRows, campaignRows, importedAt, brand })
+    return { window, pages: orderedPages(named), leadRows, campaignRows, importedAt }
   }
 }

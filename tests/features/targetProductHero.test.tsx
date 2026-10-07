@@ -2,9 +2,8 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import type { DmBlockDto, DmCellsDto } from '@/features/reklama/reklamaApi'
 import { ProductCompare, productVerdicts } from '@/features/target/ProductCompare'
-import type { MetaBlockDto, MetaProduct, MetaProductTotalsDto } from '@/features/target/targetApi'
+import type { DmProductDto, MetaBlockDto, MetaProduct, MetaProductTotalsDto } from '@/features/target/targetApi'
 import { usd } from '@/features/target/targetTheme'
 
 /**
@@ -90,29 +89,11 @@ describe('ProductCompare — the hero', () => {
   })
 })
 
-const dmCells = (over: Partial<DmCellsDto>): DmCellsDto => ({
-  conversations: 0,
-  leads: 0,
-  qualified: 0,
-  spendUsd: 0,
-  costPerQualifiedUsd: null,
-  qualifiedPercent: null,
-  conversationToQualifiedPercent: null,
-  costPerConversationUsd: null,
-  ...over,
-})
-
-/** The DM sheet's per-product sums, as `/target/dm` sends them. */
-const DM: DmBlockDto = {
-  total: dmCells({}),
-  days: [],
-  pages: [],
-  products: [
-    { product: 'Collagen', pages: ['sinolifeuz', 'collagen.sinolife'], ...dmCells({ qualified: 40, spendUsd: 200, costPerQualifiedUsd: 5 }) },
-    { product: 'Zextra', pages: ['zextrauzb'], ...dmCells({ qualified: 10, spendUsd: 80, costPerQualifiedUsd: 8 }) },
-  ],
-  unattributed: { spendUsd: 0, conversations: 0 },
-}
+/** `/target/dm`'s products: each one's DM-money pages, priced as «Reklama samarasi» prices its slice. */
+const DM: DmProductDto[] = [
+  { product: 'Collagen', pages: ['sinolifeuz', 'collagen.sinolife'], spendUsd: 200, conversations: 400, qualified: 40, costPerQualifiedUsd: 5 },
+  { product: 'Zextra', pages: ['zextrauzb'], spendUsd: 80, conversations: 100, qualified: 10, costPerQualifiedUsd: 8 },
+]
 
 describe('ProductCompare — kval (2026-10-07)', () => {
   const withKval: MetaBlockDto = {
@@ -139,13 +120,27 @@ describe('ProductCompare — kval (2026-10-07)', () => {
   })
 
   it('prints a dash, not a price, for a product with no DM-money page', () => {
-    render(<ProductCompare meta={withKval} status="ready" dm={{ ...DM, products: DM.products.slice(0, 1) }} />)
+    render(<ProductCompare meta={withKval} status="ready" dm={DM.slice(0, 1)} />)
     expect(screen.getByText(usd(5))).toBeTruthy()
     expect(screen.queryByText(usd(8))).toBeNull()
   })
 
+  it('gives no price and no «yaxshiroq» to a product with kval but no DM money', () => {
+    const { container } = render(
+      <ProductCompare meta={withKval} status="ready" dm={[DM[0]!, { ...DM[1]!, spendUsd: 0, costPerQualifiedUsd: null }]} />,
+    )
+    expect(screen.queryByText(usd(0))).toBeNull()
+    // Collagen's 5 $ is not «better» than a missing price.
+    expect(container.textContent).not.toContain('yaxshiroq5')
+  })
+
+  it('shows the DM price as loading, not missing, before the sheet arrives', () => {
+    const { container } = render(<ProductCompare meta={withKval} status="ready" />)
+    expect(container.textContent).toContain('1 kval narxi · DM…')
+  })
+
   it('writes no DM sentence without both prices', () => {
     const products = withKval.products.filter((p) => p.product !== 'Boshqa')
-    expect(productVerdicts(products, DM.products.slice(0, 1)).join(' ')).not.toContain('DM kval')
+    expect(productVerdicts(products, DM.slice(0, 1)).join(' ')).not.toContain('DM kval')
   })
 })

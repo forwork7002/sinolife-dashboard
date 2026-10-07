@@ -39,14 +39,7 @@ export interface DmBlockDto {
   readonly total: DmCellsDto
   readonly days: readonly DmDayDto[]
   readonly pages: readonly DmPageDto[]
-  /** Each product's DM-money pages summed — «Target tahlili»'s DM kval price per product. */
-  readonly products: readonly DmProductDto[]
   readonly unattributed: { readonly spendUsd: number; readonly conversations: number }
-}
-
-export interface DmProductDto extends DmCellsDto {
-  readonly product: TargetProduct
-  readonly pages: readonly string[]
 }
 
 export interface FormCellsDto {

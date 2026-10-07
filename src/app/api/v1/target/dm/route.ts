@@ -12,13 +12,11 @@ const ACCESS = { permission: 'analytics:read:all', section: 'target' } as const
  * «Target tahlili»'s DM sheet — «Reklama samarasi»'s own DM block, read from
  * the same service, so the two screens print the same murojat, lid, kval,
  * sarf and kval narxi for the same window and product. The product switch is
- * that screen's brand switch (`reklamaOverview`'s `brand`).
+ * that screen's brand switch (`reklamaOverview`'s `brand`); each product's
+ * DM kval price is that screen's «Итог» under the product (`targetDm`).
  */
 export const GET = getHandler(ACCESS, targetDmQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const overview = await reklamaService.overview(period, ctx.timeZone, ctx.query.product)
-  return {
-    data: { importedAt: overview.importedAt, dmSpendUsd: overview.spend.dmUsd, dm: overview.dm },
-    meta: { period: toPeriodDto(period) },
-  }
+  const data = await reklamaService.targetDm(period, ctx.timeZone, ctx.query.product)
+  return { data, meta: { period: toPeriodDto(period) } }
 })
