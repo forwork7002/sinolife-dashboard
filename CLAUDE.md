@@ -1685,6 +1685,16 @@ Per-screen traps worth knowing before you touch one:
   scored by two judges; dropped on their verdict: a second specular on the
   ring, a satin rank disc, a tone-tinted table head, the phone switch's key.
   Every base rule a 5x item repaints names it in a comment.
+  **Second step, the same day** — the client saw the first cut live and said
+  «hech qanday oʻzgarishni sezmadim», chose «oʻrtacha — kartalar + jadval»:
+  the rim is the metal itself (pale catch light → the metal → metal toward
+  black), the plaque a 46 → 28% metal tag, the pedestal 58 → 30% metal, the
+  champion throws a wide gold light; the rows get a rank DISC (`.tv-rank`,
+  1.75em, tone-tinted — the one shape added; the rank column widens ~8px and
+  the name cell gives it up, the money columns do not move), the ranked
+  column's head and cells a 7% tone wash (`tv-th--read` / `tv-cell--read`,
+  an inset shadow so it composites over hover and zebra), and a quiet zebra
+  from 1280 only (the phone's pinned cells stay opaque).
   **MEDALS, AND NO LEVELS — 2026-09-17** («uroven kerak emas, medallar
   qolsin»). Four redesigns of this board were rejected and the client asked
   for the pre-medal board (`912fc63`) back with medals on it; spec

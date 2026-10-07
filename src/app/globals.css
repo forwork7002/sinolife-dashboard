@@ -4383,26 +4383,31 @@ p {
 .tv-col .tv-seat .tv-seat-card {
   border-color: transparent;
   background:
-    radial-gradient(130% 85% at 50% -25%, color-mix(in oklab, var(--metal) 13%, transparent), transparent 58%),
-    linear-gradient(0deg, var(--surface-sunken), transparent 16px),
+    radial-gradient(130% 85% at 50% -25%, color-mix(in oklab, var(--metal) 18%, transparent), transparent 58%),
+    linear-gradient(0deg, color-mix(in oklab, var(--metal) 14%, var(--surface-sunken)), transparent 22px),
     linear-gradient(var(--surface-raised), var(--surface-raised)),
     linear-gradient(180deg,
-      color-mix(in oklab, var(--metal) 70%, #fff),
-      color-mix(in oklab, var(--metal) 50%, var(--border)) 38%,
-      color-mix(in oklab, var(--metal) 72%, var(--border))),
+      color-mix(in oklab, var(--metal) 40%, #fff),
+      var(--metal) 40%,
+      color-mix(in oklab, var(--metal) 72%, #000)),
     linear-gradient(var(--surface-raised), var(--surface-raised));
   background-origin: padding-box, padding-box, padding-box, border-box, border-box;
   background-clip: padding-box, padding-box, padding-box, border-box, border-box;
+  /* The second step (2026-10-07, the client: «hech qanday oʻzgarishni
+     sezmadim»): the first cut mixed the rim into --border and nobody saw it.
+     The rim is the METAL itself now — a pale catch light at the top, the
+     full metal at mid-height, the metal toward black at the foot — and the
+     card stands on a tinted foot. Still 1px, still paint. */
 }
 .tv-col .tv-seat--1 .tv-seat-card {
   background:
-    radial-gradient(130% 90% at 50% -25%, color-mix(in oklab, var(--metal) 24%, transparent), transparent 60%),
-    linear-gradient(0deg, var(--surface-sunken), transparent 16px),
+    radial-gradient(130% 90% at 50% -25%, color-mix(in oklab, var(--metal) 32%, transparent), transparent 62%),
+    linear-gradient(0deg, color-mix(in oklab, var(--metal) 14%, var(--surface-sunken)), transparent 22px),
     linear-gradient(var(--surface-raised), var(--surface-raised)),
     linear-gradient(180deg,
-      color-mix(in oklab, var(--metal) 70%, #fff),
-      color-mix(in oklab, var(--metal) 72%, var(--border)) 38%,
-      color-mix(in oklab, var(--metal) 88%, var(--border))),
+      color-mix(in oklab, var(--metal) 40%, #fff),
+      var(--metal) 40%,
+      color-mix(in oklab, var(--metal) 72%, #000)),
     linear-gradient(var(--surface-raised), var(--surface-raised));
   background-origin: padding-box, padding-box, padding-box, border-box, border-box;
   background-clip: padding-box, padding-box, padding-box, border-box, border-box;
@@ -4416,13 +4421,26 @@ p {
    has; the plaque is nowrap, so a text-shadow moves nothing. */
 .tv-col .tv-seat .tv-seat-plaque {
   background: linear-gradient(180deg,
-    color-mix(in oklab, var(--metal) 22%, var(--surface-raised)),
-    color-mix(in oklab, var(--metal) 12%, var(--surface-raised)));
+    color-mix(in oklab, var(--metal) 46%, var(--surface-raised)),
+    color-mix(in oklab, var(--metal) 28%, var(--surface-raised)));
+  border-color: color-mix(in oklab, var(--metal) 78%, transparent);
   box-shadow:
     var(--shadow-card),
     inset 0 1px 0 var(--px-hair),
-    inset 0 -1px 0 color-mix(in oklab, var(--metal) 24%, transparent);
+    inset 0 -1px 0 color-mix(in oklab, var(--metal) 45%, transparent);
   text-shadow: var(--px-engrave);
+}
+/* …and the champion's card throws a gold light: 2c's bezel and rest shadow
+   restated, one wide soft layer of the metal added under them. Paint only. */
+.tv-col .tv-seat--1 .tv-seat-card {
+  box-shadow:
+    0 0 0 2px var(--px-bezel-gap),
+    0 0 0 3px color-mix(in oklab, var(--metal) 70%, transparent),
+    0 18px 40px -18px color-mix(in oklab, var(--metal) 70%, transparent),
+    0 12px 36px -8px color-mix(in oklab, var(--metal) 42%, transparent),
+    var(--shadow-raised),
+    inset 0 1px 0 var(--px-hair),
+    inset 0 0 0 1px var(--px-hair-soft);
 }
 
 /* 5c · the pedestal's lip is a chamfered chrome strip: the ring's highlight
@@ -4440,11 +4458,13 @@ p {
       color-mix(in oklab, var(--metal) 70%, #fff) 1px,
       color-mix(in oklab, var(--metal) 88%, #fff) 3px,
       transparent 3px),
-    linear-gradient(90deg, transparent 8%, var(--px-sheen) 36%, transparent 60%),
+    linear-gradient(90deg, transparent 6%, var(--px-sheen) 34%, transparent 58%),
     linear-gradient(180deg,
-      color-mix(in oklab, var(--metal) 40%, var(--surface-raised)),
-      color-mix(in oklab, var(--metal) 13%, var(--surface-raised)));
+      color-mix(in oklab, var(--metal) 58%, var(--surface-raised)),
+      color-mix(in oklab, var(--metal) 30%, var(--surface-raised)));
   background-origin: border-box, padding-box, padding-box;
+  border-color: color-mix(in oklab, var(--metal) 80%, var(--border));
+  border-top-color: transparent;
 }
 
 /* 5d · the rank numeral is the row's address and the first stop of the walk
@@ -4509,6 +4529,54 @@ p {
 .medal-tip > .medal-tasnif-group[data-group="honour"],
 .medal-tip > .medal-tasnif-group[data-group="rare"] {
   color: color-mix(in oklab, var(--emal-gold-d) 85%, var(--ink-primary));
+}
+
+/* 5j · the rank is a DISC — the row's address in a small tone-tinted badge,
+   the way the seats carry theirs in a ring. The second step of this pass
+   (the client, 2026-10-07: «hech qanday oʻzgarishni sezmadim»): the one
+   place the rows take a shape, not only a colour. Sized in em of the rank's
+   own type (1.75em: 23px on a laptop, 30px on the television) inside a cell
+   whose content is three lines tall, so the row does not grow; the rank
+   column widens by about 8px and the name cell gives it up — the money
+   columns are sized by their own nowrap figures and do not move. The dash of
+   a moneyless row is a plain span and keeps its muted ink. */
+.tv-col .tv-row .tv-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75em;
+  height: 1.75em;
+  padding: 0 0.35em;
+  border-radius: 999px;
+  font-size: calc(var(--tv-money) * 0.88);
+  color: var(--ink-primary);
+  background: color-mix(in oklab, var(--tv-tone) 12%, var(--surface-sunken));
+  border: 1px solid color-mix(in oklab, var(--tv-tone) 40%, transparent);
+  box-shadow: inset 0 1px 0 var(--px-hair);
+}
+
+/* 5k · the column the board is RANKED ON wears a wash of the column's tone —
+   head and cells — so the eye finds the ranked figures before it reads a
+   label. An inset shadow rather than a background, so it composites over
+   the zebra, the hover and the phone's opaque pinned cells alike. */
+.tv-col .tv-table .tv-th--read,
+.tv-col .tv-row > .tv-cell--read {
+  box-shadow: inset 0 0 0 100vmax color-mix(in oklab, var(--tv-tone) 7%, transparent);
+}
+.tv-col .tv-table .tv-th--read {
+  color: color-mix(in oklab, var(--tv-tone) 55%, var(--ink-primary));
+}
+
+/* 5l · a quiet zebra, from the two-column width only — the phone's pinned
+   rank and name cells must stay opaque. Written at the same weight as the
+   hover and before it, so a hovered row still lifts. */
+@media (min-width: 1280px) {
+  .tv-row:nth-child(even) > td {
+    background: color-mix(in oklab, var(--surface-sunken) 55%, transparent);
+  }
+  .tv-row:hover > td {
+    background: var(--surface-sunken);
+  }
 }
 
 /* ===========================================================================

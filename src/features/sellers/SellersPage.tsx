@@ -1317,7 +1317,7 @@ function BoardList({
                     )}
                   </div>
                 </td>
-                <td className="tabular text-right">
+                <td className={`tabular text-right${onDelivered ? '' : ' tv-cell--read'}`}>
                   {ranked ? (
                     <span
                       className={`tv-money ${onDelivered ? '' : 'font-semibold'}`}
@@ -1329,7 +1329,7 @@ function BoardList({
                     <NoMoneyYet />
                   )}
                 </td>
-                <td className="tabular text-right">
+                <td className={`tabular text-right${onDelivered ? ' tv-cell--read' : ''}`}>
                   {ranked ? (
                     <span
                       className={`tv-money ${onDelivered ? 'font-semibold' : ''}`}
@@ -1426,7 +1426,7 @@ function Th({
   return (
     <th
       scope="col"
-      className={`eyebrow whitespace-nowrap ${className}`}
+      className={`eyebrow whitespace-nowrap ${className}${sorted ? ' tv-th--read' : ''}`}
       style={{ textAlign: align }}
       aria-sort={sorted ? 'descending' : undefined}
     >
