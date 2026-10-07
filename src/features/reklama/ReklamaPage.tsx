@@ -20,7 +20,6 @@ import { FormSection } from './FormSection'
 import { QualitySection } from './QualitySection'
 import type { ReklamaOverviewDto } from './reklamaApi'
 import type { Status } from './reklamaUi'
-import { SideSection } from './SideSection'
 import { TargetologDaySection } from './TargetologDaySection'
 
 /**
@@ -85,9 +84,8 @@ export function ReklamaPage() {
           <>
             <Tiles data={data} status={status} brand={brand} />
             {/* The client's per-targetolog day sheet, full width so the targetologs stand side by side. */}
-            <TargetologDaySection params={overviewParams} brand={brand} />
-            {/* The rest of the money nobody's targetolog card carries, in the same sheet form, before the DM sheets. */}
-            <SideSection side={data?.side} status={status} brand={brand} />
+            {/* «HR · Kosmetika» rides as the strip's last card: the money nobody's targetolog card carries. */}
+            <TargetologDaySection params={overviewParams} brand={brand} side={data?.side} />
             <DmSection dm={data?.dm} status={status} />
             <FormSection form={data?.form} status={status} />
             <QualitySection quality={data?.quality} status={status} />

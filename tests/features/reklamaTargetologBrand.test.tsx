@@ -110,6 +110,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
 })
 
 const { ReklamaPage } = await import('@/features/reklama/ReklamaPage')
+const { TargetologDaySection } = await import('@/features/reklama/TargetologDaySection')
 
 function mount(search: string) {
   window.history.replaceState(null, '', `/marketing${search}`)
@@ -161,5 +162,36 @@ describe('«Targetologlar · kunlik» — a card with no form money (2026-10-07)
     } finally {
       expenseOwners = []
     }
+  })
+})
+
+describe('«Targetologlar · kunlik» — «HR · Kosmetika» as the strip\'s last card (2026-10-07)', () => {
+  const side = [
+    { key: 'hr' as const, name: 'HR', totalUsd: 9.12, days: [{ date: '2026-10-06', spendUsd: 9.12 }] },
+    { key: 'kosmetika' as const, name: 'Kosmetika', totalUsd: 0, days: [{ date: '2026-10-06', spendUsd: 0 }] },
+  ]
+  const draw = (brand: 'all' | 'none' | 'Collagen') => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <TargetologDaySection params={{ preset: 'yesterday' }} brand={brand} side={side} />
+      </QueryClientProvider>,
+    )
+  }
+
+  it('closes the strip, after the targetologs, under «Hammasi» and «Brendsiz»', async () => {
+    for (const brand of ['all', 'none'] as const) {
+      cleanup()
+      draw(brand)
+      expect(await screen.findByRole('table', { name: 'HR · Kosmetika — kunlik' })).toBeTruthy()
+      const titles = cardTitles()
+      expect(titles.at(-1)).toMatch(/^HR · Kosmetika/)
+    }
+  })
+
+  it('is not drawn under one brand — the money is no brand\'s', async () => {
+    draw('Collagen')
+    expect(await screen.findByRole('table', { name: /Umar/ })).toBeTruthy()
+    expect(screen.queryByRole('table', { name: 'HR · Kosmetika — kunlik' })).toBeNull()
   })
 })

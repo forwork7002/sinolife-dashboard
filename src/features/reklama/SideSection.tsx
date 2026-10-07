@@ -1,14 +1,10 @@
 'use client'
 
-import { EmptyState } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
-import { SectionHeader } from '@/components/ui/Stat'
 import { formatUsd } from '@/features/rnp/rnpFigures'
-import { isOneBrand } from '@/features/shared/BrandSwitch'
-import type { DashboardBrand } from '@/features/shared/useDashboardFilters'
 
 import type { SideColumnDto } from './reklamaApi'
-import { type Status, muted } from './reklamaUi'
+import { muted } from './reklamaUi'
 
 /**
  * The client's narrow side table — «Сентябрь 269,0$ / Навой HR», one row a
@@ -24,15 +20,15 @@ import { type Status, muted } from './reklamaUi'
  * under «Hammasi» and «Brendsiz», and under one brand it says so instead of
  * printing that brand's (empty) rows.
  *
- * DRAWN AS ONE MORE «Targetologlar · kunlik» CARD since 2026-10-07 (the
- * user: «hr va kosmetika notoʻgʻriroq joyda turibdi, bir-biriga uygʻun»): it
- * had been a sticky 18rem aside beside the DM sheet, in «9.12 $» while every
- * sheet around it reads «$9,12», and floated next to a table it has nothing
- * to do with. Now it sits under the targetologs' money, with their dates,
- * figures, tints and a «Jami $» column.
+ * THE LAST CARD OF «Targetologlar · kunlik»'s STRIP since 2026-10-07 (the
+ * user: «hr va kosmetika notoʻgʻriroq joyda turibdi, bir-biriga uygʻun», then
+ * «shu yerda turishi kerak emas juda katta joy olayapti»): it had been a
+ * sticky 18rem aside beside the DM sheet, in «9.12 $» while every sheet
+ * around it reads «$9,12», and for a few hours a section of its own with a
+ * heading. Now it is one more card beside the targetologs' — their dates,
+ * figures, tints and a «Jami $» column — and no card at all when there is
+ * nothing to show: a window with no HR or Kosmetika money, or one brand.
  */
-
-const HINT = 'Meta sarfi, kunma-kun. Hech bir brendga kirmaydi, DM jadvaliga ham qoʻshilmaydi.'
 
 const COLUMN_HINT: Record<SideColumnDto['key'], string> = {
   hr: 'Barcha akkauntlardagi ishga olish (vakansiya) kampaniyalari va HR Eldor akkaunti',
@@ -45,53 +41,23 @@ const TITLE_TINT = 'color-mix(in oklab, var(--accent) 22%, var(--surface-raised)
 const TOTAL_TINT = 'color-mix(in oklab, var(--status-good) 14%, var(--surface-raised))'
 const SUM_TINT = 'color-mix(in oklab, var(--status-good) 10%, transparent)'
 
-export function SideSection({
-  side,
-  status,
-  brand,
-}: {
-  side: readonly SideColumnDto[] | undefined
-  status: Status
-  brand: DashboardBrand
-}) {
-  return (
-    <section className="flex min-w-0 flex-col gap-3">
-      <SectionHeader title="HR · Kosmetika" hint={HINT} />
-      <Body side={side} status={status} brand={brand} />
-    </section>
-  )
+/** Whether the window has any HR or Kosmetika money to draw. */
+export function hasSideSpend(side: readonly SideColumnDto[] | undefined): side is readonly SideColumnDto[] {
+  return !!side && (side[0]?.days.length ?? 0) > 0 && side.some((c) => c.totalUsd > 0)
 }
 
-function Body({ side, status, brand }: { side: readonly SideColumnDto[] | undefined; status: Status; brand: DashboardBrand }) {
-  if (isOneBrand(brand)) {
-    return (
-      <Card className="p-5">
-        <EmptyState title="Brend boʻyicha ajratilmaydi" body="HR va Kosmetika na Collagen, na Zextra — «Brendsiz» va «Hammasi» da koʻrinadi." />
-      </Card>
-    )
-  }
-  if (status === 'loading' || !side) {
-    return (
-      <Card className="w-[22rem] max-w-full p-4">
-        <div className="skeleton h-48 rounded" />
-      </Card>
-    )
-  }
+export function SideCard({ side }: { side: readonly SideColumnDto[] }) {
   const days = side[0]?.days ?? []
-  if (days.length === 0) {
-    return (
-      <Card className="p-5">
-        <EmptyState title="Bu davrda maʼlumot yoʻq" />
-      </Card>
-    )
-  }
-
   const sum = (values: readonly number[]) => values.reduce((a, b) => a + b, 0)
   const totals = side.map((c) => c.totalUsd)
   return (
     /* As wide as its columns, like a targetolog's card; a phone scrolls the table inside it. */
-    <Card className="w-max max-w-[calc(100vw-2.5rem)] overflow-hidden p-0">
-      <h3 className="px-3 py-2 text-sm font-semibold" style={{ background: TITLE_TINT, color: 'var(--ink-primary)' }}>
+    <Card className="w-max max-w-[calc(100vw-2.5rem)] shrink-0 snap-start self-start overflow-hidden p-0">
+      <h3
+        className="px-3 py-2 text-sm font-semibold"
+        style={{ background: TITLE_TINT, color: 'var(--ink-primary)' }}
+        title="Meta sarfi. Hech bir brendga kirmaydi, DM jadvaliga ham qoʻshilmaydi."
+      >
         HR · Kosmetika
         <span className="ml-1.5 text-xs font-normal" style={muted}>
           · Brendsiz

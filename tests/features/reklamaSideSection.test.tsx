@@ -3,14 +3,14 @@ import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import type { SideColumnDto } from '@/features/reklama/reklamaApi'
-import { SideSection } from '@/features/reklama/SideSection'
+import { SideCard, hasSideSpend } from '@/features/reklama/SideSection'
 
 /**
- * «HR · KOSMETIKA» AS ONE MORE TARGETOLOG CARD (2026-10-07).
+ * «HR · KOSMETIKA» AS THE LAST CARD OF THE TARGETOLOG STRIP (2026-10-07).
  *
- * It was a sticky aside printing «9.12 $» beside sheets that print «$9,12».
- * The card reads like «Targetologlar · kunlik»: the sheet's dollars, «06.10»
- * dates, the period's total above the days, and a «Jami $» column.
+ * It was a sticky aside printing «9.12 $» beside sheets that print «$9,12»,
+ * then a section of its own. The card reads like «Targetologlar · kunlik»:
+ * the sheet's dollars, «06.10» dates, the total above the days, «Jami $».
  */
 
 const side: SideColumnDto[] = [
@@ -36,9 +36,9 @@ const side: SideColumnDto[] = [
 
 const cellsOf = (row: HTMLElement) => within(row).getAllByRole('cell').map((c) => c.textContent)
 
-describe('SideSection', () => {
+describe('SideCard', () => {
   it('prints the server totals first, then the days, each with its own sum', () => {
-    render(<SideSection side={side} status="ready" brand="all" />)
+    render(<SideCard side={side} />)
     const table = screen.getByRole('table', { name: 'HR · Kosmetika — kunlik' })
     const headers = within(table).getAllByRole('columnheader').map((h) => h.textContent)
     expect(headers).toEqual(['Sana', 'HR $', 'Kosmetika $', 'Jami $'])
@@ -51,15 +51,13 @@ describe('SideSection', () => {
     // A day with no Kosmetika spend is a dash, as the sheet leaves it blank.
     expect(cellsOf(rows[2]!)).toEqual(['$9,12', '—', '$9,12'])
   })
+})
 
-  it('says so under one brand instead of drawing empty rows', () => {
-    render(<SideSection side={side} status="ready" brand="Collagen" />)
-    expect(screen.queryByRole('table')).toBeNull()
-    expect(screen.getByText('Brend boʻyicha ajratilmaydi')).toBeTruthy()
-  })
-
-  it('draws an empty state for a window with no days', () => {
-    render(<SideSection side={side.map((c) => ({ ...c, days: [] }))} status="ready" brand="all" />)
-    expect(screen.getByText('Bu davrda maʼlumot yoʻq')).toBeTruthy()
+describe('hasSideSpend — no card for a window with nothing to show', () => {
+  it('is false with no answer yet, no days, or no money', () => {
+    expect(hasSideSpend(undefined)).toBe(false)
+    expect(hasSideSpend(side.map((c) => ({ ...c, days: [] })))).toBe(false)
+    expect(hasSideSpend(side.map((c) => ({ ...c, totalUsd: 0 })))).toBe(false)
+    expect(hasSideSpend(side)).toBe(true)
   })
 })

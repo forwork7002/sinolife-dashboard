@@ -13,7 +13,9 @@ import type { MetaProduct } from '@/features/target/targetApi'
 import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
 import { apiGet } from '@/lib/api'
 
+import type { SideColumnDto } from './reklamaApi'
 import { SlicePicker, muted } from './reklamaUi'
+import { SideCard, hasSideSpend } from './SideSection'
 
 /**
  * «Targetologlar · kunlik» — the client's per-targetolog sheet, as they keep
@@ -100,12 +102,21 @@ const columnTint = (c: Column) => (c === 'Meta лид' ? LEAD_TINT : c === 'Jami
   Collagen and Zextra «HR $» is empty on every card and «Jami $» is not all
   the accounts spent; «Brendsiz» and «Hammasi» carry it — an owner with only
   hiring or message money has a card of its own there (`expenseOwners`, since
-  2026-10-07). «HR · Kosmetika» holds all the hiring money in one table.
+  2026-10-07). «HR · Kosmetika», the strip's last card there, holds all the hiring money.
 */
 const BRAND_NOTE =
-  ' Brend tanlanganda Jami $ — faqat shu tanlovning puli. Vakansiya puli hech bir brendniki emas: Collagen va Zextra da HR $ boʻsh, u «Brendsiz» va «Hammasi» da koʻrinadi; hammasi bir joyda — «HR · Kosmetika» jadvalida.'
+  ' Brend tanlanganda Jami $ — faqat shu tanlovning puli. Vakansiya puli hech bir brendniki emas: Collagen va Zextra da HR $ boʻsh, u «Brendsiz» va «Hammasi» da koʻrinadi; hammasi bir joyda — oxirgi «HR · Kosmetika» kartasida.'
 
-export function TargetologDaySection({ params, brand }: { params: Params; brand: DashboardBrand }) {
+export function TargetologDaySection({
+  params,
+  brand,
+  side,
+}: {
+  params: Params
+  brand: DashboardBrand
+  /** «HR · Kosmetika» (`/reklama/overview`'s `side`), the strip's last card. */
+  side?: readonly SideColumnDto[] | undefined
+}) {
   const query = useQuery({
     queryKey: ['reklama-targetologs', params],
     queryFn: ({ signal }) => apiGet<Data>('/reklama/targetologs', params, signal),
@@ -129,6 +140,8 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
   const shown = owners
     .filter((o) => brand !== 'all' || o.product === product)
     .sort((a, b) => b.spendUsd - a.spendUsd || b.totalUsd - a.totalUsd)
+  // No brand's money: drawn under «Hammasi» and «Brendsiz» only, and only when there is some.
+  const sideShown = (brand === 'all' || brand === 'none') && hasSideSpend(side) ? side : null
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
@@ -160,7 +173,7 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
             </Card>
           ))}
         </div>
-      ) : shown.length === 0 ? (
+      ) : shown.length === 0 && !sideShown ? (
         <Card className="p-5">
           <EmptyState title="Bu davrda targetologlar sarfi yoʻq" />
         </Card>
@@ -173,6 +186,7 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
           {shown.map((owner) => (
             <OwnerSheet key={owner.key} owner={owner} />
           ))}
+          {sideShown && <SideCard side={sideShown} />}
         </div>
       )}
     </section>
