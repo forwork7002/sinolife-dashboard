@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { EmptyState, ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
-import { Card, ChartCard } from '@/components/ui/Card'
+import { Card, ChartCard, DevMark } from '@/components/ui/Card'
 import { SearchInput } from '@/components/ui/Controls'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { CheckCircleGlyph, CrossCircleGlyph, MultiplyGlyph } from '@/components/ui/Icons'
@@ -77,6 +77,8 @@ export function SverkaPage() {
       accent="var(--series-2)"
       meta={query.data?.meta}
       stale={query.isPlaceholderData}
+      // The freshness line comes first here, so the mark is drawn under it, over the tiles.
+      devMark={false}
     >
       <SverkaBody
         data={query.data?.data}
@@ -134,7 +136,10 @@ export function SverkaBody({
 
   return (
     <div className="flex flex-col gap-4">
-      <FreshLine data={data} />
+      <div className="relative">
+        <FreshLine data={data} />
+        <DevMark className="absolute right-3.5 -bottom-[13px]" />
+      </div>
 
       <div className="stagger grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <PairTile

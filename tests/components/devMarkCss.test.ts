@@ -34,5 +34,9 @@ describe('developer mark', () => {
     const confirmation = read('src/features/confirmation/ConfirmationPage.tsx')
     expect(confirmation).toContain('devMark={false}')
     expect(confirmation).toContain('aside={<DevMark')
+    // Sverka opens on a text line, so its mark sits under that line, over the tiles.
+    const sverka = read('src/features/sverka/SverkaPage.tsx')
+    expect(sverka).toContain('devMark={false}')
+    expect(sverka).toContain('<DevMark className="absolute right-3.5 -bottom-[13px]" />')
   })
 })
