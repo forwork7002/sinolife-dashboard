@@ -873,12 +873,11 @@ const scanCache = ttlCache<{
   the tab opens on («Bugun», the dashboard default, and «Shu oy») every
   `LEADS_WARM_EVERY_MS` from `src/instrumentation.ts`, through `overview` —
   the same memo keys, the same scans, so a reader is handed exactly what they
-  would have waited for. Working hours only: at night nobody reads them.
+  would have waited for. Working hours only (`WARM_HOURS`, `rnpWarmer.ts`):
+  at night nobody reads them.
 */
 export const LEADS_WARM_EVERY_MS = 3 * 60_000
 const LEADS_WARM_PRESETS: readonly PeriodPreset[] = ['today', 'this_month']
-/** Tashkent hours [from, to) the warmer runs in. */
-const LEADS_WARM_HOURS = [7, 23] as const
 
 export class LeadSourcesService {
   constructor(
