@@ -69,7 +69,7 @@ describe('UnansweredCallsCard', () => {
     expect(screen.getByRole('link', { name: /Malika/ }).getAttribute('href')).toBe(
       'https://obey.bitrix24.kz/crm/contact/details/501/',
     )
-    expect(screen.getByText('● Qilinmagan')).toBeTruthy()
+    expect(screen.getByText('Qilinmagan')).toBeTruthy()
     expect(screen.queryByText('+998901110001')).toBeNull()
     expect(screen.getByText('Qilinmagan · 1')).toBeTruthy()
     expect(screen.getByText('Ulanmadi · 1')).toBeTruthy()

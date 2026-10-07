@@ -212,27 +212,23 @@ export function TargetPage() {
                 title="Voronka"
                 hint="Leaddan tushumgacha. Foizlar — leadlar soniga nisbatan."
               >
-                <div className="px-5 pb-5">
-                  <CategoryBarList rows={funnelRows(data?.total)} mode="magnitude" status={status} />
-                </div>
+                <CategoryBarList rows={funnelRows(data?.total)} mode="magnitude" status={status} />
               </ChartCard>
               <ChartCard
                 title="Kunlar boʻyicha"
                 hint="Har kuni kelgan leadlar va shu kuni ochilgan buyurtmalar, Toshkent vaqti."
                 className="xl:col-span-2"
               >
-                <div className="px-5 pb-5">
-                  {status === 'loading' ? (
-                    <ChartSkeleton height={260} />
-                  ) : data && data.total.leads + data.total.sales > 0 ? (
-                    <TargetDailyChart days={data.days} />
-                  ) : (
-                    <EmptyState
-                      title="Bu davrda lead yoʻq"
-                      body="Tanlangan davrda target manbalaridan hech narsa kelmagan."
-                    />
-                  )}
-                </div>
+                {status === 'loading' ? (
+                  <ChartSkeleton height={260} />
+                ) : data && data.total.leads + data.total.sales > 0 ? (
+                  <TargetDailyChart days={data.days} />
+                ) : (
+                  <EmptyState
+                    title="Bu davrda lead yoʻq"
+                    body="Tanlangan davrda target manbalaridan hech narsa kelmagan."
+                  />
+                )}
               </ChartCard>
             </div>
 
@@ -279,27 +275,23 @@ export function TargetPage() {
                 title="Leadlar qayerda turibdi"
                 hint="Регистрация voronkasidagi bosqichlar — registrator leadni qayerda qoldirgani."
               >
-                <div className="px-5 pb-5">
-                  <CategoryBarList
-                    rows={stageRows(data?.stages ?? [], 'lead', data?.total.leads ?? 0)}
-                    mode="magnitude"
-                    status={status}
-                    emptyBody="Bu davrda lead yoʻq."
-                  />
-                </div>
+                <CategoryBarList
+                  rows={stageRows(data?.stages ?? [], 'lead', data?.total.leads ?? 0)}
+                  mode="magnitude"
+                  status={status}
+                  emptyBody="Bu davrda lead yoʻq."
+                />
               </ChartCard>
               <ChartCard
                 title="Sotuv bitimlari qayerda"
                 hint="Leaddan ochilgan sotuv bitimlari hozir qaysi voronka va bosqichda. Summalar — bitim summasi."
               >
-                <div className="px-5 pb-5">
-                  <CategoryBarList
-                    rows={stageRows(data?.stages ?? [], 'sale', data?.total.sales ?? 0)}
-                    mode="magnitude"
-                    status={status}
-                    emptyBody="Bu davrda sotuv bitimi ochilmagan."
-                  />
-                </div>
+                <CategoryBarList
+                  rows={stageRows(data?.stages ?? [], 'sale', data?.total.sales ?? 0)}
+                  mode="magnitude"
+                  status={status}
+                  emptyBody="Bu davrda sotuv bitimi ochilmagan."
+                />
               </ChartCard>
             </div>
 

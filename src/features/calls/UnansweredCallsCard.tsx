@@ -7,6 +7,7 @@ import { statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { type Column, DataTable } from '@/components/ui/DataTable'
+import { StatusChip } from '@/components/ui/Stat'
 import { apiGet } from '@/lib/api'
 import { formatDateTime, formatNumber } from '@/lib/format'
 
@@ -99,20 +100,22 @@ function columns(groupLabel: Record<Group, string>): Column<UnansweredCallerDto>
       header: 'Qayta qoʻngʻiroq',
       render: (r) => {
         const state = stateOf(r)
+        // StatusChip, not a ● text glyph in a status colour: the drawn glyph
+        // keeps a different silhouette per state when colour is gone.
         if (state === 'waiting' || r.callback === null) {
-          return <span style={{ color: 'var(--status-critical)' }}>● Qilinmagan</span>
+          return <StatusChip tone="critical">Qilinmagan</StatusChip>
         }
         const who = r.callback.operator ? ` · ${r.callback.operator}` : ''
         return state === 'reached' ? (
-          <span style={{ color: 'var(--status-good)' }}>
-            ● Gaplashildi, {formatDateTime(r.callback.at)}
+          <StatusChip tone="good">
+            Gaplashildi, {formatDateTime(r.callback.at)}
             {who}
-          </span>
+          </StatusChip>
         ) : (
-          <span style={{ color: 'var(--status-warning)' }}>
-            ● Ulanmadi ({formatNumber(r.callback.attempts)} urinish), {formatDateTime(r.callback.at)}
+          <StatusChip tone="warning">
+            Ulanmadi ({formatNumber(r.callback.attempts)} urinish), {formatDateTime(r.callback.at)}
             {who}
-          </span>
+          </StatusChip>
         )
       },
     },
@@ -145,7 +148,7 @@ export function UnansweredCallsCard({
       title="Javobsiz qolgan raqamlar"
       hint="Davr ichida qoʻngʻiroq qilib, bironta ham soniya gaplasha olmagan raqamlar. «Qayta qoʻngʻiroq» — oxirgi kiruvchi qoʻngʻiroqdan keyin shu raqamga chiquvchi qoʻngʻiroq qilinganmi (bugungacha). Raqamni bossangiz — telefon, kontaktni bossangiz — Bitrix24 kartasi ochiladi. Raqami aniqlanmagan qoʻngʻiroqlar roʻyxatda yoʻq. Qoʻngʻiroqlar — kiruvchi ham, qayta qoʻngʻiroq ham — Bitrix24 dan har ~3 soatda keladi: hozirgina qilingan qayta qoʻngʻiroq keyingi yuklashgacha «Qilinmagan» boʻlib turishi mumkin."
     >
-      <div className="flex flex-col gap-2 px-5 pb-3">
+      <div className="flex flex-col gap-2 pb-3">
         <div className="-mx-1 max-w-full overflow-x-auto px-1 pb-1">
           <div className="inline-flex">
             <SegmentedControl<State>
