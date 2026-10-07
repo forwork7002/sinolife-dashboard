@@ -23,7 +23,20 @@ describe('distributedDaysSql', () => {
   })
 
   it('leaves out the Регистрация copy of a handed-out lead, but not a deal that names a ROP', () => {
-    expect(sql).toContain(`(p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`)
+    expect(sql).toContain(`(p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL OR d."ropKvalLidEmployeeId" IS NOT NULL)`)
+  })
+
+  it('reads «ROP KVAL LID» first, then «РОП (Первичка)», then — out of Регистрация only — the seller\'s team (2026-10-07)', () => {
+    const team = sql.slice(sql.indexOf('COALESCE('), sql.indexOf(') AS rop'))
+    const kval = team.indexOf('k."id"')
+    const field = team.indexOf('h."headId" = d."leadRopEmployeeId"')
+    const seller = team.indexOf('ad."id" = a."departmentId"')
+    expect(kval).toBeGreaterThan(-1)
+    expect(field).toBeGreaterThan(kval)
+    expect(seller).toBeGreaterThan(field)
+    expect(team.slice(seller)).toContain(`p."role" IS DISTINCT FROM 'LEAD'`)
+    expect(sql).toContain('LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"')
+    expect(sql).toContain('LEFT JOIN "employee" a ON a."id" = d."employeeId"')
   })
 
   it('names the ROP exactly as «RNP jadvali» does', () => {
@@ -108,7 +121,7 @@ describe('sellerLeadsSql', () => {
 
   it('counts the same handed-out deals as «Olgan lid», inclusive bounds', () => {
     expect(sql).toContain(`d."leadDistributedOn" BETWEEN $1::date AND $2::date`)
-    expect(sql).toContain(`(p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`)
+    expect(sql).toContain(`(p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL OR d."ropKvalLidEmployeeId" IS NOT NULL)`)
   })
 
   it('names the team exactly as the split does', () => {

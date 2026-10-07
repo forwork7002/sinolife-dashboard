@@ -34,6 +34,7 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
+import { RegistrationRepository } from './registrationRepository'
 import { dealFormTitleSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
 
@@ -165,14 +166,12 @@ export class RnpRepository {
   }
 
   /**
-   * THE ROP IS THE TEAM THE PERSON HEADS, then the team they sit in. The
-   * field names a person — Saidazizxo'ja Latipov — and the sheet a team;
-   * «РОП (Первичка)» holds the head, so headship is the first reading, and a
-   * deputy filed inside a ROP department the second. Anyone else (user 10,
-   * the registration desk's head, who holds leads not yet handed out) is
-   * null: «Taqsimlanmagan». A person heading TWO ROP units counts in the one
-   * they sit in (2026-10-02): Shohjaxon also headed «Saida(ROP)» on
-   * production, and the first by name filed all his leads under «Саида РОП».
+   * THE ROP COMES FROM `RegistrationRepository.leadRopSql`, the one rule
+   * «Lidlar» reads too: «ROP KVAL LID» first (the portal's stamp, from
+   * 2026-10-07), then the team «РОП (Первичка)» heads or sits in, then — when
+   * that field holds user 10 or nothing on a deal already out of Регистрация —
+   * the team of the seller it sits with. A person heading TWO ROP units counts
+   * in the one they sit in (2026-10-02). Anything else is «Taqsimlanmagan».
    *
    * EVERY PIPELINE, as the client counts it (2026-09-30): Bitrix24's deal list
    * filtered by «Лид таркатилган сана» and «РОП (Первичка)», nothing else — a
@@ -196,19 +195,10 @@ export class RnpRepository {
       SELECT
         /* ::text — a bare DATE is built at LOCAL midnight by node-postgres. */
         d."leadDistributedOn"::text AS day,
-        COALESCE(
-          (SELECT ${InsightsRepository.ropNameSql('h."name"')}
-             FROM "department" h
-            WHERE h."headId" = d."leadRopEmployeeId" AND h."isActive"
-              AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
-            ORDER BY (h."id" = e."departmentId") DESC, h."name"
-            LIMIT 1),
-          ${InsightsRepository.ropNameSql('dep."name"')}
-        ) AS rop,
+        ${RegistrationRepository.leadRopSql()} AS rop,
         count(*)::bigint AS leads
       FROM "deal" d
-      LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"
-      LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+      ${RegistrationRepository.handedOutJoinsSql()}
       WHERE d."leadDistributedOn" BETWEEN $1::date AND $2::date
         AND d."createdAtSource" >= d."leadDistributedOn" - interval '30 days'
       GROUP BY 1, 2`

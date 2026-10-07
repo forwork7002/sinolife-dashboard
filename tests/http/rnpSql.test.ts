@@ -47,7 +47,8 @@ describe('rnpTeamDaysSql', () => {
 describe('RnpRepository statements', () => {
   it('reads handed-out leads from every pipeline, as the portal filter does, and credits the team the ROP heads', () => {
     const sql = bare(RnpRepository.leadDaysSql())
-    expect(sql).not.toContain('"pipeline"')
+    // The pipeline is joined only for the seller fallback; nothing filters on it.
+    expect(sql.slice(sql.indexOf('WHERE d."leadDistributedOn"'))).not.toContain('"role"')
     expect(sql).toContain(`h."headId" = d."leadRopEmployeeId"`)
     expect(sql).toContain(`d."leadDistributedOn" BETWEEN $1::date AND $2::date`)
   })

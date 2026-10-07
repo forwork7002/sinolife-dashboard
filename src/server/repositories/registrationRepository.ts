@@ -68,30 +68,56 @@ export class RegistrationRepository {
   }
 
   /**
-   * The ROP a handed-out deal went to: the team the «РОП (Первичка)» person
-   * heads — of two, the one they sit in — then the team they sit in, else
-   * null. Reads `d`, `e` and `dep` from `handedOutSql`.
+   * The ROP a handed-out deal went to — ONE rule for «Lidlar» and /rnp
+   * (`RnpRepository.leadDaysSql` reads it too), so the two never disagree:
+   *
+   * 1. «ROP KVAL LID» (`k`, from 2026-10-07): the portal's own stamp of the
+   *    ROP the deal was handed to, kept when the ROP passes it on — the field
+   *    the client added because «РОП (Первичка)» drifted (on 07.10, 22 deals
+   *    named 17604 there and Asliddin here). Read like Безквал's owner.
+   * 2. «РОП (Первичка)» (`e`): the team that person heads — of two, the one
+   *    they sit in — then the team they sit in.
+   * 3. Neither names a ROP — the field holds user 10, the registration desk's
+   *    head, or nothing — yet the deal is OUT of Регистрация with a seller:
+   *    that seller's team (`a`). On 04.10 the field named user 10 on 499
+   *    handed-out deals; 92 of the fresh ones sat with Azizbek's sellers, and
+   *    the group read 85 where the team had taken 177. A Регистрация deal is
+   *    a registrar's, never a seller's, so it stays null («Taqsimlanmagan»).
+   *
+   * Reads `d`, `p`, `e`, `dep`, `k` and `a` from `handedOutJoinsSql`.
    */
-  private static leadRopSql(): string {
+  static leadRopSql(): string {
     return `COALESCE(
+            ${RegistrationRepository.bezkvalOwnerRopSql('k')},
             (SELECT ${InsightsRepository.ropNameSql('h."name"')}
                FROM "department" h
               WHERE h."headId" = d."leadRopEmployeeId" AND h."isActive"
                 AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
               ORDER BY (h."id" = e."departmentId") DESC, h."name"
               LIMIT 1),
-            ${InsightsRepository.ropNameSql('dep."name"')}
+            ${InsightsRepository.ropNameSql('dep."name"')},
+            (SELECT ${InsightsRepository.ropNameSql('ad."name"')}
+               FROM "department" ad
+              WHERE ad."id" = a."departmentId" AND ad."isActive"
+                AND p."role" IS DISTINCT FROM 'LEAD')
           )`
+  }
+
+  /** The joins `leadRopSql` reads, on a `"deal" d`. */
+  static handedOutJoinsSql(): string {
+    return `LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
+        LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"
+        LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+        LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"
+        LEFT JOIN "employee" a ON a."id" = d."employeeId"`
   }
 
   /** The handed-out deals whose «Лид таркатилган сана» matches `dayPredicate`; see `distributedDaysSql`. */
   private static handedOutSql(dayPredicate: string): string {
     return `FROM "deal" d
-        LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
-        LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"
-        LEFT JOIN "department" dep ON dep."id" = e."departmentId"
+        ${RegistrationRepository.handedOutJoinsSql()}
         WHERE d."leadDistributedOn" ${dayPredicate}
-          AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`
+          AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL OR d."ropKvalLidEmployeeId" IS NOT NULL)`
   }
 
   /** «Безквал»: `from` / `to` are inclusive `YYYY-MM-DD` in `timeZone`. */
