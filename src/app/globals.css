@@ -1529,7 +1529,11 @@ body::after {
  * readers by the `/ ""` alt text — it is a signature, not content.
  *
  * `.brackets` draws both its corners from ::before alone, so ::after is free
- * here. `position: relative` is in `components` so a Tailwind position
+ * here. `.no-dev-mark` takes it off a card or a whole page (PageShell's
+ * `devMark={false}`): the sellers board credits its author at its foot, and
+ * Roistat, Target tahlili and Reklama samarasi go without (the client). Where
+ * the corner is wrong for it, `<DevMark />` puts the same words somewhere
+ * else by hand — beside Tasdiqlash's paging, above the RNP grid. `position: relative` is in `components` so a Tailwind position
  * utility on a card still wins; sticky and absolute are containing blocks too.
  */
 @layer components {
@@ -1538,12 +1542,16 @@ body::after {
   }
 }
 
-:is(.card-hero, .card:has(table), .card:has(> header))::after {
+:is(.card-hero, .card:has(table), .card:has(> header)):not(.no-dev-mark, .no-dev-mark *)::after {
   content: "developed by Yusuf" / "";
   position: absolute;
   top: 3px;
   right: 14px;
   z-index: 4;
+}
+
+:is(.card-hero, .card:has(table), .card:has(> header)):not(.no-dev-mark, .no-dev-mark *)::after,
+.dev-mark {
   font-size: 9px;
   line-height: 1;
   letter-spacing: 0.02em;

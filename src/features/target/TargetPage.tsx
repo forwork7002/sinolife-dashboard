@@ -149,6 +149,8 @@ export function TargetPage() {
   return (
     <PageShell
       title={t.modules.target.title}
+      // No corner mark on this screen (the client, 2026-10-07).
+      devMark={false}
       description={t.modules.target.lead}
       accent="var(--series-7)"
       meta={overview.data?.meta}

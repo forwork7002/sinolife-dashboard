@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Fragment, useEffect, useState } from 'react'
 
 import { statusOf } from '@/components/states/States'
-import { Card, ChartCard } from '@/components/ui/Card'
+import { Card, ChartCard, DevMark } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import {
   ArrowOutGlyph,
@@ -1121,7 +1121,7 @@ export function ConfirmationPage() {
         */}
         {!statsOpen && (
           <Card
-            className="card-hero brackets flex min-h-[746px] flex-1 flex-col px-4 py-4"
+            className="card-hero brackets no-dev-mark flex min-h-[746px] flex-1 flex-col px-4 py-4"
             style={{ opacity: rowsStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
             aria-busy={rowsStale || undefined}
           >
@@ -1308,6 +1308,8 @@ export function ConfirmationPage() {
                 totalPages={data.pagination.totalPages}
                 totalItems={data.pagination.totalItems}
                 onPage={(next) => update({ page: next })}
+                // The corner holds the board's control; the mark sits by the paging.
+                aside={<DevMark className="mr-2" />}
               />
             )}
           </Card>

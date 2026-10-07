@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
-import { Card } from '@/components/ui/Card'
+import { Card, DevMark } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { Select } from '@/components/ui/Select'
 import { useCohortRop } from '@/features/cohort/useCohortRop'
@@ -219,22 +219,28 @@ export function RnpPage() {
               <EmptyState title="Bu oy uchun jadval yoʻq" body="Bu oy uchun jadval hali yigʻilmagan — boshqa oyni tanlang." />
             </Card>
           ) : (
-            // On a phone the header strip wraps to four lines and would leave the grid a
-            // letterbox; there the card is nearly a screen tall and the page scrolls the
-            // header away first (the confirmation board's floor, for the same reason).
-            <Card as="div" className="min-h-[320px] min-w-0 flex-1 overflow-hidden p-0 max-sm:min-h-[calc(100dvh-5rem)]">
-              <RnpSheetTable
-                lines={lines}
-                // The uncut sheet: a line keeps its key through the brand and ROP cuts.
-                allLines={data.lines}
-                blocks={data.blocks}
-                days={data.days}
-                today={data.today}
-                // The P&L's typed cost lines are the one thing on the sheet an editor types in place.
-                editCostsFor={data.canEditPlans ? data.month : null}
-                editHeadcount={editHeadcount}
-              />
-            </Card>
+            <>
+              {/* The grid runs flush to the card's top, so the mark sits above it. */}
+              <div className="flex shrink-0 justify-end pr-3.5 pb-1">
+                <DevMark />
+              </div>
+              {/* On a phone the header strip wraps to four lines and would leave the grid a
+                  letterbox; there the card is nearly a screen tall and the page scrolls the
+                  header away first (the confirmation board's floor, for the same reason). */}
+              <Card as="div" className="no-dev-mark min-h-[320px] min-w-0 flex-1 overflow-hidden p-0 max-sm:min-h-[calc(100dvh-5rem)]">
+                <RnpSheetTable
+                  lines={lines}
+                  // The uncut sheet: a line keeps its key through the brand and ROP cuts.
+                  allLines={data.lines}
+                  blocks={data.blocks}
+                  days={data.days}
+                  today={data.today}
+                  // The P&L's typed cost lines are the one thing on the sheet an editor types in place.
+                  editCostsFor={data.canEditPlans ? data.month : null}
+                  editHeadcount={editHeadcount}
+                />
+              </Card>
+            </>
           )}
         </RnpColumnScope>
       )}

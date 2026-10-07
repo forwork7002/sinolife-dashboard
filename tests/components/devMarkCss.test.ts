@@ -18,11 +18,24 @@ const CSS = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').rep
   '',
 )
 
-const TARGETS = ':is(.card-hero, .card:has(table), .card:has(> header))'
+const TARGETS = ':is(.card-hero, .card:has(table), .card:has(> header)):not(.no-dev-mark, .no-dev-mark *)'
+const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 
 describe('developer mark', () => {
   it('is drawn on hero, table and chart cards', () => {
     expect(CSS).toContain(`${TARGETS}::after {\n  content: "developed by Yusuf" / "";`)
+  })
+
+  it('is off where the client said so, and moved where the corner is taken', () => {
+    for (const page of ['sellers/SellersPage', 'roistat/RoistatPage', 'target/TargetPage', 'reklama/ReklamaPage']) {
+      expect(read(`src/features/${page}.tsx`)).toContain('devMark={false}')
+    }
+    const confirmation = read('src/features/confirmation/ConfirmationPage.tsx')
+    expect(confirmation).toContain('card-hero brackets no-dev-mark')
+    expect(confirmation).toContain('aside={<DevMark')
+    const rnp = read('src/features/rnp/RnpPage.tsx')
+    expect(rnp).toContain('<DevMark />')
+    expect(rnp).toContain('className="no-dev-mark')
   })
 
   it('makes those cards its containing block under the utilities layer', () => {

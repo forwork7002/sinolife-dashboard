@@ -105,6 +105,7 @@ export function PageShell({
   period = true,
   fill = false,
   controlsAlign = 'start',
+  devMark = true,
 }: {
   title: string
   /**
@@ -141,6 +142,8 @@ export function PageShell({
    * such rather than appearing to follow something it cannot see.
    */
   accent?: string
+  /** `false` takes the «developed by Yusuf» corner mark off every card on the page. */
+  devMark?: boolean
   actions?: ReactNode
   /**
    * The middle of the title line — between the title and the controls.
@@ -423,7 +426,7 @@ export function PageShell({
       periodAware={period}
     >
       <div
-        className={`page-container ${fill ? 'flex h-full min-h-0 flex-col gap-4' : 'space-y-4'}`}
+        className={`page-container ${devMark ? '' : 'no-dev-mark'} ${fill ? 'flex h-full min-h-0 flex-col gap-4' : 'space-y-4'}`}
         style={{
           ...(accent ? ({ '--accent': accent } as React.CSSProperties) : undefined),
           // A dimmed page is data awaiting replacement; opacity is cheap to

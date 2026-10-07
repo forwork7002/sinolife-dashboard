@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { Button } from '@/components/ui/Button'
@@ -440,11 +440,14 @@ export function Pagination({
   totalPages,
   totalItems,
   onPage,
+  aside,
 }: {
   page: number
   totalPages: number
   totalItems: number
   onPage: (page: number) => void
+  /** Drawn just left of «Oldingi». */
+  aside?: ReactNode
 }) {
   if (totalItems === 0) return null
 
@@ -454,6 +457,7 @@ export function Pagination({
         {formatNumber(totalItems)} ta yozuv · {page}/{totalPages}
       </p>
       <div className="flex items-center gap-1">
+        {aside}
         <PageButton disabled={page <= 1} onClick={() => onPage(page - 1)} label="Oldingi" />
         <PageButton
           disabled={page >= totalPages}

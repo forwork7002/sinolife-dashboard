@@ -188,6 +188,8 @@ export function SellersPage() {
   return (
     <PageShell
       title={t.nav.sellers}
+      // The board credits its author at its foot already.
+      devMark={false}
       meta={board.data?.meta}
       /*
         THE RECORD WALL RIDES THE TITLE LINE, not the board below it. The

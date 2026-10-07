@@ -109,6 +109,8 @@ export function RoistatPage() {
   return (
     <PageShell
       title={t.modules.roistat.title}
+      // No corner mark on this screen (the client, 2026-10-07).
+      devMark={false}
       description={t.modules.roistat.lead}
       accent="var(--series-2)"
       meta={overview.data?.meta}

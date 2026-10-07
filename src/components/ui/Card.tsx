@@ -37,6 +37,18 @@ export function Card({
   )
 }
 
+/**
+ * The author's mark as an element, for a place the CSS corner does not suit
+ * — see `.dev-mark` in globals.css.
+ */
+export function DevMark({ className = '' }: { className?: string }) {
+  return (
+    <span className={`dev-mark ${className}`} aria-hidden="true">
+      developed by Yusuf
+    </span>
+  )
+}
+
 export function ChartCard({
   title,
   hint,

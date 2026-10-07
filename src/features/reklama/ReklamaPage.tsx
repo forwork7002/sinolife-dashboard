@@ -65,6 +65,8 @@ export function ReklamaPage() {
   return (
     <PageShell
       title={t.modules.reklama.title}
+      // No corner mark on this screen (the client, 2026-10-07).
+      devMark={false}
       description={t.modules.reklama.lead}
       accent="var(--series-7)"
       meta={overview.data?.meta}
