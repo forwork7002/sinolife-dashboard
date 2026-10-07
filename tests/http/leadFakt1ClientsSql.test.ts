@@ -28,7 +28,11 @@ describe('leadFakt1ClientsSql', () => {
 
   it('matches every number of both contacts on its last nine digits', () => {
     expect(sql.match(/unnest\(cu\."phones" \|\| cu\."phone"\)/g)).toHaveLength(2)
-    expect(sql).toContain(`f.phone = right(regexp_replace(x.phone, '[^0-9]', '', 'g'), 9)`)
+    // Each side is reduced to its numbers first, then matched on them: lead_phone, not a
+    // per-phone re-read of the month's leads (68-106 s on production, 2026-10-07).
+    expect(sql).toContain(`right(regexp_replace(x.phone, '[^0-9]', '', 'g'), 9) AS phone`)
+    expect(sql).toContain('lead_phone AS MATERIALIZED')
+    expect(sql).toContain('JOIN fakt1_phone f ON f.phone = lp.phone')
     expect(sql).toContain(`length(right(regexp_replace(x.phone, '[^0-9]', '', 'g'), 9)) = 9`)
   })
 
@@ -40,7 +44,8 @@ describe('leadFakt1ClientsSql', () => {
     expect(sql).toContain(`p."role" = 'LEAD'`)
     expect(sql).toContain(`d."createdAtSource" >= $1 AND d."createdAtSource" < $2`)
     expect(sql).toContain(`max(c.created_at) AS created_at`)
-    expect(sql).toContain(`f.created_at > l."createdAtSource"`)
+    expect(sql).toContain(`l."createdAtSource" AS created`)
+    expect(sql).toContain(`f.created_at > lp.created`)
   })
 
   it('names the form exactly as the registration scan does, one row per lead', () => {

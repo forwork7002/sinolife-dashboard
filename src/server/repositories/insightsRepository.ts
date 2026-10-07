@@ -5670,6 +5670,18 @@ export class InsightsRepository {
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
        WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
     ),
+    -- EVERY LEAD'S PHONES, ONCE, BEFORE THE MATCH (2026-10-07, measured on production): joined
+    -- straight onto fakt1_phone, the planner took that CTE for one row and, for each of its ~800
+    -- numbers, re-read every lead of the month and unnested its customer's phones — 2.3 million
+    -- rows filtered down to ~900, 68-106 s on «Shu oy», so «Факт1 мижоз» never arrived. With
+    -- both sides reduced to (phone) first, the match is one hash join on the number.
+    lead_phone AS MATERIALIZED (
+      SELECT DISTINCT l."id" AS lead_id, ${nine('x.phone')} AS phone, l."createdAtSource" AS created
+        FROM lw l
+        JOIN "customer" cu ON cu."id" = l."customerId"
+        CROSS JOIN LATERAL unnest(cu."phones" || cu."phone") AS x(phone)
+       WHERE length(${nine('x.phone')}) = 9
+    ),
     ${formAliasOverSql('(SELECT w.sd, w.title FROM lw w) fd')}
     SELECT s."externalId" AS source_id,
            s."name" AS source,
@@ -5677,10 +5689,9 @@ export class InsightsRepository {
            min(${leadFormTitleSql('l."title"', 'l.sd', 's."externalId"', 'fa.title')}) AS form_title,
            min(NULLIF(btrim(l."productLine"), '')) AS product_line,
            min(f.phone) AS client
-      FROM lw l
-      JOIN "customer" cu ON cu."id" = l."customerId"
-      CROSS JOIN LATERAL unnest(cu."phones" || cu."phone") AS x(phone)
-      JOIN fakt1_phone f ON f.phone = ${nine('x.phone')} AND f.created_at > l."createdAtSource"
+      FROM lead_phone lp
+      JOIN fakt1_phone f ON f.phone = lp.phone AND f.created_at > lp.created
+      JOIN lw l ON l."id" = lp.lead_id
       LEFT JOIN "sales_source" s ON s."id" = l."sourceId"
       LEFT JOIN form_alias fa ON fa.sd = l.sd
      GROUP BY l."id", s."externalId", s."name"`
