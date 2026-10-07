@@ -88,6 +88,9 @@ const OWNERS = [
   owner({ key: 'form|Sinolife filtr forma 3', targetolog: 'Sinolife filtr forma 3', product: 'Boshqa', spendUsd: 0, leads: 9 }),
 ]
 
+// The cards with no form money (`forms.expenseOwners`): none, unless a test hands some.
+let expenseOwners: FormOwnerDto[] = []
+
 const requests: { path: string; params: Record<string, unknown> }[] = []
 
 vi.mock('@/lib/api', async (importOriginal) => {
@@ -99,7 +102,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
       // The ad sheets stay loading: this file is about the targetolog cards.
       if (path === '/reklama/overview') return new Promise(() => {})
       return Promise.resolve({
-        data: { forms: { owners: OWNERS, days: [], spendUsd: 20, metaLeads: 0, outcome: OWNERS[0]!.outcome }, importedAt: null },
+        data: { forms: { owners: OWNERS, expenseOwners, days: [], spendUsd: 20, metaLeads: 0, outcome: OWNERS[0]!.outcome }, importedAt: null },
         meta: {},
       })
     },
@@ -144,5 +147,19 @@ describe('«Targetologlar · kunlik» — the brand switch', () => {
     expect(cardTitles().some((t) => t.startsWith('Sinolife filtr forma 3'))).toBe(false)
     // With both brands «Jami $» is every dollar the accounts spent, HR included: no brand note.
     expect(screen.queryByText(/Brend tanlanganda/)).toBeNull()
+  })
+})
+
+describe('«Targetologlar · kunlik» — a card with no form money (2026-10-07)', () => {
+  it('draws an owner whose money is all hiring beside the targetologs, after them', async () => {
+    expenseOwners = [{ ...owner({ key: 'Boshqa|Элдор', targetolog: 'Элдор', product: 'Boshqa', spendUsd: 0, leads: 0 }), hrUsd: 3, totalUsd: 3 }]
+    try {
+      mount('?brand=none')
+      expect(await screen.findByRole('table', { name: /Элдор/ })).toBeTruthy()
+      const titles = cardTitles()
+      expect(titles.findIndex((t) => t.startsWith('Элдор'))).toBeGreaterThan(titles.findIndex((t) => t.startsWith('Umar')))
+    } finally {
+      expenseOwners = []
+    }
   })
 })

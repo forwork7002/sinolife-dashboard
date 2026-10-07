@@ -410,7 +410,8 @@ describe('leadSourcesOverview — a targetolog\'s other expenses', () => {
     }),
     campaign({ date: '2026-09-18', campaignName: 'Vakansiya', objective: 'OUTCOME_LEADS', spendMicroUsd: 5_000_000n }),
     campaign({ date: '2026-09-19', campaignName: 'Trafik', objective: 'OUTCOME_TRAFFIC', spendMicroUsd: 2_000_000n }),
-    // Newgen_davi01 runs no form: it stays out of the block, whatever it spends.
+    // Newgen_davi01 runs no form: out of the lead tables, but its money gets a card of its own (`expenseOwners`).
+    campaign({ accountId: '1657709689205277', accountName: 'HR Eldor', campaignName: 'Ishga', objective: 'OUTCOME_LEADS', spendMicroUsd: 3_000_000n }),
     campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', objective: 'OUTCOME_ENGAGEMENT', spendMicroUsd: 9_000_000n }),
   ]
   const forms = leadSourcesOverview({
@@ -442,6 +443,17 @@ describe('leadSourcesOverview — a targetolog\'s other expenses', () => {
     })
     expect(umar.days[0]).toMatchObject({ spendUsd: 235.84, siteUsd: 11.87, smsUsd: 48.51, hrUsd: 5, totalUsd: 289.35 })
     expect(umar.days[1]).toMatchObject({ spendUsd: 0, otherUsd: 2, totalUsd: 2 })
+    expect(forms.days[0]!.totalUsd).toBe(289.35)
+  })
+
+  it('gives an owner with only message or hiring money a card apart, outside the lead totals', () => {
+    expect(forms.expenseOwners.map((o) => [o.targetolog, o.product, o.spendUsd, o.smsUsd, o.hrUsd, o.totalUsd])).toEqual([
+      ['Элдор', 'Boshqa', 0, 0, 3, 3],
+      ['Newgen_davi01', 'Boshqa', 0, 9, 0, 9],
+    ])
+    expect(forms.expenseOwners[1]!.days[0]).toMatchObject({ smsUsd: 9, totalUsd: 9 })
+    // The block's own totals are the lead-form owners' alone, as before.
+    expect(forms.spendUsd).toBe(235.84)
     expect(forms.days[0]!.totalUsd).toBe(289.35)
   })
 })

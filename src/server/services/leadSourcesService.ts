@@ -240,6 +240,8 @@ export interface LeadSourcesOverviewDto {
   }
   readonly forms: {
     readonly owners: readonly FormOwnerDto[]
+    /** Owners with no form and no lead but other Meta money (SMS, hiring, other) — in none of the totals here. */
+    readonly expenseOwners: readonly FormOwnerDto[]
     readonly days: readonly FormDayDto[]
     readonly spendUsd: number
     readonly metaLeads: number
@@ -607,7 +609,7 @@ export function leadSourcesOverview(all: {
   /*
     Meta, onto the owner their account maps to: the lead forms are `spend`;
     every other campaign is an expense line beside it. An owner with no form
-    and no lead stays out of the block below, whatever else it spent.
+    and no lead stays out of the lead tables below — `expenseOwners` carries it.
   */
   for (const row of input.campaigns) {
     const channel = campaignChannel(row.objective, row.campaignName, row.accountId)
@@ -629,8 +631,27 @@ export function leadSourcesOverview(all: {
   const formOutcome = outcomeZero()
   let formSpend = 0n
   let metaFormLeads = 0
+  const hasLeadWork = (o: FormAcc) => o.spend > 0n || o.metaLeads > 0 || LEAD_BUCKETS.some((b) => o.outcome[b] > 0)
+  const ownerDto = (o: FormAcc): FormOwnerDto => {
+    const outcome = outcomeCells(o.outcome)
+    return {
+      key: o.key,
+      targetolog: o.targetolog,
+      product: o.product,
+      forms: [...o.forms].sort(),
+      accounts: [...o.accounts].sort(),
+      spendUsd: usd(o.spend),
+      metaLeads: o.metaLeads,
+      ...expenseCells(o.spend, o.expense),
+      outcome,
+      reachPercent: percent(outcome.leads, o.metaLeads),
+      costPerLeadUsd: perUnit(o.spend, outcome.leads),
+      costPerSuccessUsd: perUnit(o.spend, outcome.success),
+      days: days.map((date) => formDayCells(date, o.days.get(date) ?? formDayZero())),
+    }
+  }
   const formOwners: FormOwnerDto[] = [...owners.values()]
-    .filter((o) => o.spend > 0n || o.metaLeads > 0 || LEAD_BUCKETS.some((b) => o.outcome[b] > 0))
+    .filter(hasLeadWork)
     .sort(
       (a, b) =>
         PRODUCT_ORDER.indexOf(a.product) - PRODUCT_ORDER.indexOf(b.product) ||
@@ -639,34 +660,36 @@ export function leadSourcesOverview(all: {
         a.targetolog.localeCompare(b.targetolog, 'ru'),
     )
     .map((o) => {
-      const outcome = outcomeCells(o.outcome)
       addOutcome(formOutcome, o.outcome)
       formSpend += o.spend
       metaFormLeads += o.metaLeads
-      return {
-        key: o.key,
-        targetolog: o.targetolog,
-        product: o.product,
-        forms: [...o.forms].sort(),
-        accounts: [...o.accounts].sort(),
-        spendUsd: usd(o.spend),
-        metaLeads: o.metaLeads,
-        ...expenseCells(o.spend, o.expense),
-        outcome,
-        reachPercent: percent(outcome.leads, o.metaLeads),
-        costPerLeadUsd: perUnit(o.spend, outcome.leads),
-        costPerSuccessUsd: perUnit(o.spend, outcome.success),
-        days: days.map((date, i) => {
-          const cell = o.days.get(date) ?? formDayZero()
-          formDays[i]!.spend += cell.spend
-          formDays[i]!.metaLeads += cell.metaLeads
-          formDays[i]!.leads += cell.leads
-          formDays[i]!.success += cell.success
-          addExpense(formDays[i]!, cell)
-          return formDayCells(date, cell)
-        }),
-      }
+      days.forEach((date, i) => {
+        const cell = o.days.get(date)
+        if (!cell) return
+        formDays[i]!.spend += cell.spend
+        formDays[i]!.metaLeads += cell.metaLeads
+        formDays[i]!.leads += cell.leads
+        formDays[i]!.success += cell.success
+        addExpense(formDays[i]!, cell)
+      })
+      return ownerDto(o)
     })
+
+  /*
+    An owner whose money is ALL messages, hiring or other campaigns — HR
+    Eldor's account, a targetolog running only SMS that week — has no form and
+    no lead, so it is no row of the lead tables above and stays out of their
+    totals. «Targetologlar · kunlik» still owes it a card (2026-10-07: its
+    «Jami $» promises every dollar the accounts spent), so it rides apart.
+  */
+  const expenseOwners: FormOwnerDto[] = [...owners.values()]
+    .filter((o) => !hasLeadWork(o) && o.expense.sms + o.expense.hr + o.expense.other > 0n)
+    .sort(
+      (a, b) =>
+        PRODUCT_ORDER.indexOf(a.product) - PRODUCT_ORDER.indexOf(b.product) ||
+        a.targetolog.localeCompare(b.targetolog, 'ru'),
+    )
+    .map(ownerDto)
 
   // --- DM block: `DM_PAGES` in the portal's order, then any other page that chats
   const productOf = (key: string): TargetProduct | null => LEAD_SOURCE_BRAND[key] ?? null
@@ -778,6 +801,7 @@ export function leadSourcesOverview(all: {
     },
     forms: {
       owners: formOwners,
+      expenseOwners,
       days: formDays.map((cell, i) => formDayCells(days[i]!, cell)),
       spendUsd: usd(formSpend),
       metaLeads: metaFormLeads,

@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type { PrismaClient } from '@/generated/prisma/client'
 import type { Period } from '@/server/domain/period/period'
 import { leadBucket } from '@/server/domain/reklama/leadQuality'
-import { campaignChannel } from '@/server/integrations/meta/accounts'
+import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
+import { DM_ACCOUNT_PAGES, campaignChannel } from '@/server/integrations/meta/accounts'
 import type { CampaignDayRow, LeadStageDayRow } from '@/server/repositories/reklamaRepository'
 
 /*
@@ -17,7 +18,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { calendarDays, reklamaOverview } = await import('@/server/services/reklamaService')
+const { calendarDays, reklamaOverview, ReklamaService } = await import('@/server/services/reklamaService')
 const { ReklamaRepository } = await import('@/server/repositories/reklamaRepository')
 
 const PAGES = [
@@ -275,6 +276,36 @@ describe('reklamaOverview', () => {
     expect(out.dm.total.spendUsd).toBe(50)
   })
 
+  it('puts Sobirjon #2\'s message money on collagen.sinolife, the page its ads chat from (2026-10-07)', () => {
+    const pages = [...PAGES, { key: 'UC_NBCV5K', name: 'collagen.sinolife', product: 'Collagen' as const }]
+    const out = reklamaOverview({
+      window: WINDOW,
+      pages,
+      leadRows: [
+        lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 10),
+        { day: '2026-08-01', sourceId: 'UC_NBCV5K', source: 'collagen.sinolife', stage: 'Сделка успешна', status: 'WON', productLine: null, leads: 4 },
+      ],
+      campaignRows: [
+        campaign({ spendMicroUsd: 40_000_000n, conversations: 80 }),
+        campaign({
+          accountId: '2804901113001448',
+          accountName: 'Collagen Sobirjon #2',
+          campaignName: 'I.S | SMS| New strantsa | 06.10.2026',
+          spendMicroUsd: 30_480_000n,
+          conversations: 50,
+        }),
+      ],
+      importedAt: null,
+    })
+    const page = (key: string) => out.dm.pages.find((p) => p.key === key)!
+    expect(page('UC_1X1J24').total).toMatchObject({ spendUsd: 40, conversations: 80, costPerQualifiedUsd: 4 })
+    expect(page('UC_NBCV5K').total).toMatchObject({ spendUsd: 30.48, conversations: 50, costPerQualifiedUsd: 7.62 })
+    expect(page('UC_NBCV5K').carriesDmSpend).toBe(true)
+    // Both pages' kval price «Итог», and nothing is left unattributed.
+    expect(out.dm.total.costPerQualifiedUsd).toBeCloseTo(70.48 / 14, 9)
+    expect(out.dm.unattributed).toEqual({ spendUsd: 0, conversations: 0 })
+  })
+
   it('reports an unmapped account\'s DM money as unattributed instead of guessing a page', () => {
     const out = build(
       [],
@@ -520,6 +551,69 @@ describe('LeadSourcesService.targetologForms — «Targetologlar · kunlik» und
     expect(c.outcome.leads + z.outcome.leads + n.outcome.leads).toBe(all.outcome.leads)
     expect(c.spendUsd + z.spendUsd + n.spendUsd).toBeCloseTo(all.spendUsd, 6)
     expect(await forms('all')).toEqual(all)
+  })
+})
+
+describe('ReklamaService.overview — collagen.sinolife, the page Sobirjon #2\'s messages chat from', () => {
+  const PERIOD: Period = {
+    start: new Date('2026-07-31T19:00:00Z'),
+    end: new Date('2026-08-02T19:00:00Z'),
+    timeZone: 'Asia/Tashkent',
+    preset: 'custom',
+  }
+  const asked: { leads?: readonly string[]; sources?: readonly string[] } = {}
+  const repository = {
+    leadStageDays: async (_: Period, ids: readonly string[]) => {
+      asked.leads = ids
+      return [
+        { day: '2026-08-01', sourceId: 'UC_NBCV5K', source: 'collagen.sinolife', stage: 'Сделка успешна', status: 'WON', productLine: null, leads: 4 },
+      ]
+    },
+    sources: async (ids: readonly string[]) => {
+      asked.sources = ids
+      return [
+        { externalId: 'UC_1X1J24', name: 'sinolifeuz' },
+        { externalId: 'UC_NBCV5K', name: 'collagen.sinolife' },
+        { externalId: 'UC_A8LE21', name: 'zextrauzb' },
+      ]
+    },
+    campaignDays: async () => [
+      campaign({ accountId: '2804901113001448', accountName: 'Collagen Sobirjon #2', campaignName: 'I.S | SMS| New strantsa', spendMicroUsd: 30_000_000n, conversations: 50 }),
+    ],
+    campaignsImportedAt: async () => null,
+  }
+  const service = new ReklamaService(repository as never)
+
+  it('reads the page\'s leads and name, draws it as Collagen\'s, and puts the money on it', async () => {
+    const out = await service.overview(PERIOD, 'Asia/Tashkent')
+    expect(asked.leads).toContain('UC_NBCV5K')
+    expect(asked.sources).toContain('UC_NBCV5K')
+    const page = out.dm.pages.find((p) => p.key === 'UC_NBCV5K')!
+    expect(page).toMatchObject({ product: 'Collagen', carriesDmSpend: true })
+    expect(page.total).toMatchObject({ spendUsd: 30, qualified: 4, costPerQualifiedUsd: 7.5 })
+    // Right after sinolifeuz, the page with the product's own DM money.
+    expect(out.dm.pages.map((p) => p.key)).toEqual(['UC_1X1J24', 'UC_NBCV5K', 'UC_A8LE21'])
+  })
+
+  it('keeps it on Collagen and out of Zextra, so the slices add up to «Hammasi»', async () => {
+    const all = await service.overview(PERIOD, 'Asia/Tashkent')
+    const collagen = await service.overview(PERIOD, 'Asia/Tashkent', 'Collagen')
+    const zextra = await service.overview(PERIOD, 'Asia/Tashkent', 'Zextra')
+    const none = await service.overview(PERIOD, 'Asia/Tashkent', 'none')
+    expect(collagen.dm.pages.find((p) => p.key === 'UC_NBCV5K')!.total.spendUsd).toBe(30)
+    expect(zextra.dm.pages.some((p) => p.key === 'UC_NBCV5K')).toBe(false)
+    expect(collagen.dm.total.spendUsd + zextra.dm.total.spendUsd + none.dm.total.spendUsd).toBe(all.dm.total.spendUsd)
+  })
+
+  it('reports the money as unattributed when the portal names no such page', async () => {
+    const bare = new ReklamaService({ ...repository, sources: async () => [{ externalId: 'UC_1X1J24', name: 'sinolifeuz' }] } as never)
+    const out = await bare.overview(PERIOD, 'Asia/Tashkent')
+    expect(out.dm.total.spendUsd).toBe(0)
+    expect(out.dm.unattributed).toEqual({ spendUsd: 30, conversations: 50 })
+  })
+
+  it('names each such page\'s product as the portal\'s source map does', () => {
+    for (const [page, product] of DM_ACCOUNT_PAGES) expect(LEAD_SOURCE_BRAND[page]).toBe(product)
   })
 })
 

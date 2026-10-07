@@ -118,6 +118,8 @@ export interface LeadSourcesOverviewDto {
   }
   readonly forms: {
     readonly owners: readonly FormOwnerDto[]
+    /** Owners with no form and no lead but other Meta money (SMS, hiring, other) — in none of the totals here. */
+    readonly expenseOwners: readonly FormOwnerDto[]
     readonly days: readonly FormDayDto[]
     readonly spendUsd: number
     readonly metaLeads: number

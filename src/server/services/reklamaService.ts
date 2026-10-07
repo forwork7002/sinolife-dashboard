@@ -26,6 +26,8 @@
 import { TARGET_SOURCE_IDS, TARGET_SOURCE_PRODUCT } from '@/server/integrations/crm/bitrix24/mapping'
 import {
   type CampaignChannel,
+  DM_ACCOUNT_PAGES,
+  DM_PAGE_OF_ACCOUNT,
   DM_PAGE_OF_PRODUCT,
   adBudgetProduct,
   type MetaProduct,
@@ -364,7 +366,7 @@ const SIDE_NAMES: Readonly<Record<SideColumn, string>> = { hr: 'HR', kosmetika: 
  * before anything is summed: a lead by `leadBrand`, as «Lidlar», RNP and
  * Roistat file it — its «Проект» first (2026-10-06), so a sinolifeuz lead
  * whose project is Zextra is Zextra's and a «Kosmetika» one «Brendsiz»; else
- * its page (`TARGET_SOURCE_PRODUCT`, every lead here being a target page's).
+ * its page (`LEAD_SOURCE_BRAND`, which names every page this screen reads).
  * The pages are that brand's, then any other page still holding one of its
  * leads — dropping that page would drop the lead from every total — and only
  * a page of the slice's own brand carries its DM money. The Meta rows go to
@@ -454,7 +456,8 @@ export function reklamaOverview(input: {
     if (column !== null) side[column].set(row.date, (side[column].get(row.date) ?? 0n) + row.spendMicroUsd)
 
     if (channel === 'dm') {
-      const page = owner.product === 'Boshqa' ? undefined : dmPageOf.get(owner.product)
+      const page =
+        DM_PAGE_OF_ACCOUNT[row.accountId]?.page ?? (owner.product === 'Boshqa' ? undefined : dmPageOf.get(owner.product))
       if (page === undefined) {
         unattributed.spend += row.spendMicroUsd
         unattributed.conversations += row.conversations
@@ -500,7 +503,8 @@ export function reklamaOverview(input: {
   const dmPriced = dmZero()
   const dmPages: DmPageDto[] = input.pages.map((page) => {
     // Another brand's DM page, shown for this slice's leads, carries none of the slice's money.
-    const carriesDmSpend = dmPageOf.get(page.product) === page.key && brandMatches(brand, page.product)
+    const carriesDmSpend =
+      (dmPageOf.get(page.product) === page.key || DM_ACCOUNT_PAGES.has(page.key)) && brandMatches(brand, page.product)
     const byDay = dm.get(page.key)
     const total = dmZero()
     const pageDays = days.map((date, i) => {
@@ -521,6 +525,17 @@ export function reklamaOverview(input: {
       days: pageDays,
     }
   })
+
+  // DM money on a page the sheet does not draw (a `DM_PAGE_OF_ACCOUNT` page missing from `sales_source`) is
+  // reported as unattributed, never lost from the page totals while «DM sarfi» still counts it.
+  const drawn = new Set(input.pages.map((p) => p.key))
+  for (const [key, byDay] of dm) {
+    if (drawn.has(key)) continue
+    for (const cell of byDay.values()) {
+      unattributed.spend += cell.spend
+      unattributed.conversations += cell.conversations
+    }
+  }
 
   // --- quality block
   const qualityTotalDays = days.map(() => qualityZero())
@@ -674,7 +689,7 @@ function orderedPages(named: readonly { externalId: string; name: string }[]) {
   const products: readonly TargetProduct[] = ['Collagen', 'Zextra']
   return named
     .flatMap((s) => {
-      const product = TARGET_SOURCE_PRODUCT[s.externalId]
+      const product = TARGET_SOURCE_PRODUCT[s.externalId] ?? DM_ACCOUNT_PAGES.get(s.externalId)
       return product ? [{ key: s.externalId, name: s.name, product }] : []
     })
     .sort(
@@ -682,14 +697,19 @@ function orderedPages(named: readonly { externalId: string; name: string }[]) {
         products.indexOf(a.product) - products.indexOf(b.product) ||
         // The page that carries DM money first — the sheet's first column.
         Number(DM_PAGE_OF_PRODUCT[b.product] === b.key) - Number(DM_PAGE_OF_PRODUCT[a.product] === a.key) ||
+        Number(DM_ACCOUNT_PAGES.has(b.key)) - Number(DM_ACCOUNT_PAGES.has(a.key)) ||
         a.name.localeCompare(b.name, 'ru'),
     )
 }
+
+/** The ad pages, and the pages an account's DM money goes to (`DM_ACCOUNT_PAGES`) — this screen's alone. */
+const REKLAMA_SOURCE_IDS: readonly string[] = [...new Set([...TARGET_SOURCE_IDS, ...DM_ACCOUNT_PAGES.keys()])]
 
 /*
   A memo in front of the lead scan, keyed by the window. Company-wide by
   construction — the route refuses a narrowed account — so no scope reaches it.
 */
+
 const leadCache = ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE)
 
 export class ReklamaService {
@@ -703,8 +723,8 @@ export class ReklamaService {
     const key = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
 
     const [leadRows, named, campaignRows, importedAt] = await Promise.all([
-      leadCache.get(key, () => this.repository.leadStageDays(period, TARGET_SOURCE_IDS)),
-      this.repository.sources(TARGET_SOURCE_IDS),
+      leadCache.get(key, () => this.repository.leadStageDays(period, REKLAMA_SOURCE_IDS)),
+      this.repository.sources(REKLAMA_SOURCE_IDS),
       this.repository.campaignDays(window.from, window.to),
       this.repository.campaignsImportedAt(),
     ])

@@ -98,11 +98,12 @@ const columnTint = (c: Column) => (c === 'Meta лид' ? LEAD_TINT : c === 'Jami
   Under the brand switch a card holds that slice's money only («Lidlar»'s
   `ofBrand`: Meta money by its ad budget). Hiring is no brand's budget, so on
   Collagen and Zextra «HR $» is empty on every card and «Jami $» is not all
-  the accounts spent; on «Brendsiz» a targetolog with hiring money and no
-  brandless form or lead has no card at all. «HR · Kosmetika» holds all of it.
+  the accounts spent; «Brendsiz» and «Hammasi» carry it — an owner with only
+  hiring or message money has a card of its own there (`expenseOwners`, since
+  2026-10-07). «HR · Kosmetika» holds all the hiring money in one table.
 */
 const BRAND_NOTE =
-  ' Brend tanlanganda Jami $ — faqat shu tanlovning puli. Vakansiya puli hech bir brendniki emas: Collagen va Zextra da HR $ boʻsh, «Brendsiz» da — faqat kartasi bor targetologniki; hammasi «HR · Kosmetika» jadvalida.'
+  ' Brend tanlanganda Jami $ — faqat shu tanlovning puli. Vakansiya puli hech bir brendniki emas: Collagen va Zextra da HR $ boʻsh, u «Brendsiz» va «Hammasi» da koʻrinadi; hammasi bir joyda — «HR · Kosmetika» jadvalida.'
 
 export function TargetologDaySection({ params, brand }: { params: Params; brand: DashboardBrand }) {
   const query = useQuery({
@@ -111,7 +112,9 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
   })
   const [picked, setPicked] = useState<MetaProduct>('Collagen')
 
-  const owners = query.data?.data.forms.owners ?? []
+  // The lead-form owners, then the ones whose money is all SMS, hiring or other — «Jami $» is every dollar.
+  const forms = query.data?.data.forms
+  const owners = forms ? [...forms.owners, ...forms.expenseOwners] : []
   const products = (['Collagen', 'Zextra', 'Boshqa'] as const).filter((p) => owners.some((o) => o.product === p))
   /*
     The page's brand switch wins over this picker, which then steps aside — two switches would
@@ -122,10 +125,10 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
     have no targetolog this period: fall back to the first that has one.
   */
   const product: MetaProduct = products.includes(picked) ? picked : (products[0] ?? picked)
-  // The biggest spender first, as the sheet opens on Eldor.
+  // The biggest spender first, as the sheet opens on Eldor; cards with no form money by all they spent.
   const shown = owners
     .filter((o) => brand !== 'all' || o.product === product)
-    .sort((a, b) => b.spendUsd - a.spendUsd)
+    .sort((a, b) => b.spendUsd - a.spendUsd || b.totalUsd - a.totalUsd)
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
@@ -159,7 +162,7 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
         </div>
       ) : shown.length === 0 ? (
         <Card className="p-5">
-          <EmptyState title="Bu davrda lid-forma sarfi yoʻq" />
+          <EmptyState title="Bu davrda targetologlar sarfi yoʻq" />
         </Card>
       ) : (
         /* Side by side like the sheet; a phone swipes from one targetolog to the next. */

@@ -177,13 +177,35 @@ export function adBudgetProduct(c: {
  * stated here. An unmapped account's DM money has no page and is reported
  * as such, never folded into one. «collagen.marine», an ad page since
  * 2026-10-02, carries no DM money here either: its row shows its Bitrix24
- * leads and kval, like «sinolife_otziv». Which page Collagen's DM campaigns
- * point at is the client's to say; until then the money stays on sinolifeuz.
+ * leads and kval, like «sinolife_otziv». An account whose ads chat from
+ * another page is named in `DM_PAGE_OF_ACCOUNT`, read off its creatives.
  */
 export const DM_PAGE_OF_PRODUCT: Readonly<Record<TargetProduct, string>> = Object.freeze({
   Collagen: 'UC_1X1J24', // sinolifeuz
   Zextra: 'UC_A8LE21', // zextrauzb
 })
+
+/**
+ * An account whose DM money goes to a page of its own, ahead of
+ * `DM_PAGE_OF_PRODUCT`. Read off the ads on 2026-10-07 (creatives'
+ * `effective_object_story_id`, MESSAGE_PAGE): every message campaign Collagen
+ * Sobirjon #2 ran in 90 days — «I.S | SMS | New strantsa» — invites a chat
+ * with the Facebook page «Collagen.sinolife» (1279740328562600), whose portal
+ * source is «collagen.sinolife»; on sinolifeuz it made that page's DM kval
+ * look dearer. Umar - 64's «Sms-*» (Sinolife.uzb) and Collagen Eldor's DM
+ * (Sinolife.collagen) are Instagram messages to sinolifeuz and stay there.
+ * The page joins the DM sheet with it (`DM_ACCOUNT_PAGES`) — the client's own
+ * «DM» sheet carries a collagen.sinolife block.
+ */
+export const DM_PAGE_OF_ACCOUNT: Readonly<Record<string, { readonly page: string; readonly product: TargetProduct }>> =
+  Object.freeze({
+    '2804901113001448': { page: 'UC_NBCV5K', product: 'Collagen' }, // Collagen Sobirjon #2 → collagen.sinolife
+  })
+
+/** The pages `DM_PAGE_OF_ACCOUNT` sends money to, with the product each sells. */
+export const DM_ACCOUNT_PAGES: ReadonlyMap<string, TargetProduct> = new Map(
+  Object.values(DM_PAGE_OF_ACCOUNT).map((a) => [a.page, a.product]),
+)
 
 /**
  * The narrow columns set beside the ad sheets — the client's own side table
