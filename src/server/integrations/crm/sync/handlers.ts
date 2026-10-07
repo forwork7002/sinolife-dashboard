@@ -1261,9 +1261,17 @@ export function createSyncHandlers(
      *
      * Here, not in `persist`: the engine retries a failed batch one record at
      * a time, and a delete scoped to the batch would then take every line's
-     * siblings with it. Only deals the provider read in full are touched, and
-     * past `surplusLineLimit` nothing is deleted — the run says PARTIAL and the
-     * reason.
+     * siblings with it. Only deals the provider read in full are touched.
+     *
+     * THE GUARD COVERS ONLY THE DEALS ANSWERED WITH NO LINES. Its threat is the
+     * portal answering product rows empty, which takes a deal's every line; a
+     * deal answered with lines named its own and lost only positions past
+     * them, which is the leftover this reconciliation exists to clear. Guarding
+     * those too made it all or nothing, so the leftovers stored before it
+     * existed could never be cleared by a re-read (`bitrix:resync --
+     * DEAL_ITEMS`): any backlog past 5% refused the whole pass. Past
+     * `surplusLineLimit` the emptied deals keep their lines, the others are
+     * still trimmed, and the run says PARTIAL and the reason.
      */
     async finalize() {
       const read = [...linesRead]
@@ -1271,6 +1279,7 @@ export function createSyncHandlers(
       if (read.length === 0) return
 
       const dealIds = read.map(([dealId]) => dealId)
+      const emptied = read.filter(([, keys]) => keys.size === 0).map(([dealId]) => dealId)
       const kept = read.flatMap(([, keys]) => [...keys])
       // ONE population for the count and the delete, so the guard measures
       // exactly what would go.
@@ -1284,35 +1293,45 @@ export function createSyncHandlers(
             SELECT 1 FROM unnest($3::text[]) AS k("externalId") WHERE k."externalId" = t."externalId"
           )`
 
-      await prisma.$transaction(
+      const refusal = await prisma.$transaction(
         async (tx) => {
-          const [counted] = await tx.$queryRawUnsafe<{ stored: bigint; surplus: bigint }[]>(
+          const [counted] = await tx.$queryRawUnsafe<{ stored: bigint; surplus: bigint; emptied: bigint }[]>(
             `SELECT (SELECT count(*) ${scope})::bigint AS stored,
-                    (SELECT count(*) ${scope} ${surplus})::bigint AS surplus`,
+                    (SELECT count(*) ${scope} ${surplus})::bigint AS surplus,
+                    (SELECT count(*) ${scope} ${surplus} AND d."externalId" = ANY($4::text[]))::bigint AS emptied`,
             source,
             dealIds,
             kept,
+            emptied,
           )
           const stored = Number(counted?.stored ?? 0)
           const extra = Number(counted?.surplus ?? 0)
-          if (extra === 0) return
+          const fromEmptied = Number(counted?.emptied ?? 0)
+          if (extra === 0) return null
 
           const limit = surplusLineLimit(stored)
-          if (extra > limit) {
-            throw new Error(
-              `${dealIds.length} ta bitimning ${stored} ta qatoridan ${extra} tasini portal endi koʻrsatmaydi — ` +
-                `bu juda koʻp (chegara ${limit}), hech narsa oʻchirilmadi`,
+          const refused = fromEmptied > limit
+          // Refused, the emptied deals leave the population and the rest is
+          // the same statement over the deals that named lines.
+          const skip = new Set(refused ? emptied : [])
+          const trimmed = dealIds.filter((id) => !skip.has(id))
+          if (!refused || extra > fromEmptied) {
+            await tx.$executeRawUnsafe(
+              `DELETE FROM "deal_item" WHERE "id" IN (SELECT t."id" ${scope} ${surplus})`,
+              source,
+              trimmed,
+              kept,
             )
           }
-          await tx.$executeRawUnsafe(
-            `DELETE FROM "deal_item" WHERE "id" IN (SELECT t."id" ${scope} ${surplus})`,
-            source,
-            dealIds,
-            kept,
-          )
+          return refused
+            ? `${emptied.length} ta bitim mahsulotsiz javob berdi, ${stored} ta qatordan ${fromEmptied} tasi ` +
+                `oʻchardi — bu juda koʻp (chegara ${limit}), ular oʻchirilmadi`
+            : null
         },
         { maxWait: 10_000, timeout: 120_000 },
       )
+      // Thrown after the commit, so the deals that named their lines keep the trim.
+      if (refusal) throw new Error(refusal)
     },
   }
 

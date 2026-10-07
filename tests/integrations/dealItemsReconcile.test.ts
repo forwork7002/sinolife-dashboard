@@ -61,9 +61,16 @@ function database() {
     },
     $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
       statements.push(sql)
-      const [, dealIds, kept] = params as [string, string[], string[]]
+      const [, dealIds, kept, emptied] = params as [string, string[], string[], string[]]
       const rows = scoped(dealIds)
-      return [{ stored: BigInt(rows.length), surplus: BigInt(rows.filter((l) => !kept.includes(l.externalId)).length) }]
+      const surplus = rows.filter((l) => !kept.includes(l.externalId))
+      return [
+        {
+          stored: BigInt(rows.length),
+          surplus: BigInt(surplus.length),
+          emptied: BigInt(surplus.filter((l) => emptied.includes(externalOf(l.dealId))).length),
+        },
+      ]
     },
     $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
   }
@@ -167,7 +174,42 @@ describe('line items follow the portal', () => {
     // Written, then refused: the run reports it rather than calling it clean,
     // and says why.
     expect(r.status).toBe('PARTIAL')
-    expect(r.errorMessage).toMatch(/juda koʻp.*hech narsa oʻchirilmadi/)
+    expect(r.errorMessage).toMatch(/mahsulotsiz.*juda koʻp.*oʻchirilmadi/)
+  })
+
+  /*
+    THE BACKLOG CAN BE CLEARED. Positional leftovers stored before the
+    reconciliation existed sit on deals the portal still answers with lines; a
+    re-read of them all must trim them however many there are, or one past 5%
+    refused the whole pass and the leftovers could never go.
+  */
+  it('trims deals that named their lines however many leftovers they hold', async () => {
+    const db = database()
+    const { run } = runner(db)
+    const ids = Array.from({ length: 30 }, (_, i) => String(2000 + i))
+    await run({ items: ids.flatMap((id) => [line(id, 0, '676'), line(id, 1, '677')]), dealsRead: ids })
+
+    // Every order now lists one line: half of what is stored is surplus.
+    const r = await run({ items: ids.map((id) => line(id, 0, '677')), dealsRead: ids })
+
+    expect(r.status).toBe('SUCCESS')
+    expect(Object.keys(productsOf(db.lines))).toEqual(ids.map((id) => `${id}-0`))
+  })
+
+  it('keeps the lines of deals answered empty past the limit, and trims the rest beside them', async () => {
+    const db = database()
+    const { run } = runner(db)
+    const many = Array.from({ length: 40 }, (_, i) => line('1003', i, '676'))
+    await run({ items: [...many, line('1001', 0, '676'), line('1001', 1, '677')], dealsRead: ['1003', '1001'] })
+
+    const r = await run({ items: [line('1001', 0, '677')], dealsRead: ['1003', '1001'] })
+
+    expect(r.status).toBe('PARTIAL')
+    expect(r.errorMessage).toMatch(/mahsulotsiz.*juda koʻp/)
+    // 1003's forty lines stay; 1001 lost its second line all the same.
+    expect(db.lines.size).toBe(41)
+    expect(db.lines.has('1001-1')).toBe(false)
+    expect(db.lines.has('1003-39')).toBe(true)
   })
 
   it('counts and deletes ONE population, keyed by the lines the portal listed', async () => {
@@ -184,6 +226,8 @@ describe('line items follow the portal', () => {
     expect(doomed).toContain('d."externalId" = ANY($2::text[])')
     expect(doomed).toContain('NOT EXISTS')
     expect(doomed).toContain('unnest($3::text[])')
+    // The guard's own count is that population narrowed to the deals answered empty.
+    expect(count).toContain(`${doomed} AND d."externalId" = ANY($4::text[])`)
   })
 
   it('is at least 25 lines, or a twentieth of what the deals hold', () => {
