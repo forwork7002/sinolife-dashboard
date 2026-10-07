@@ -114,21 +114,39 @@ describe('enumeration labels', () => {
     }
   })
 
-  it('keeps the labels it had when the re-read is refused, and asks again later', async () => {
-    let list: Record<string, string> = { '898': 'Eldor' }
-    const { provider, state } = portal(() => list)
-    state.deals = ['898']
-    expect(await targetologsOf(provider)).toEqual(['Eldor'])
+  /*
+    A FAILED RE-READ IS NOT ASKED AGAIN ON THE NEXT PAGE. A full import names
+    a new item on page after page; while the portal fails `crm.deal.fields`
+    each of those pages paid a read and its retries for nothing.
+  */
+  it('keeps the labels it had when the re-read is refused, and asks again minutes later', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-06T09:00:00.000Z'))
+      let list: Record<string, string> = { '898': 'Eldor' }
+      const { provider, state } = portal(() => list)
+      state.deals = ['898']
+      expect(await targetologsOf(provider)).toEqual(['Eldor'])
 
-    list = { '898': 'Eldor', '900': 'Umar' }
-    state.refuseFields = true
-    state.deals = ['898', '900']
-    expect(await targetologsOf(provider)).toEqual(['Eldor', undefined])
-    // A refused re-read must not cost the next deals pass its labels, or the pass.
-    expect(await targetologsOf(provider)).toEqual(['Eldor', undefined])
+      list = { '898': 'Eldor', '900': 'Umar' }
+      state.refuseFields = true
+      state.deals = ['898', '900']
+      expect(await targetologsOf(provider)).toEqual(['Eldor', undefined])
+      expect(state.fieldReads).toBe(2)
+      // A refused re-read must not cost the next deals pass its labels, or the
+      // pass — and the next page does not ask again.
+      vi.setSystemTime(new Date('2026-10-06T09:04:00.000Z'))
+      expect(await targetologsOf(provider)).toEqual(['Eldor', undefined])
+      expect(state.fieldReads).toBe(2)
 
-    // A refusal is not an answer: once the portal answers, the item is named.
-    state.refuseFields = false
-    expect(await targetologsOf(provider)).toEqual(['Eldor', 'Umar'])
+      // A refusal is not an answer: once the wait is over and the portal
+      // answers, the item is named.
+      state.refuseFields = false
+      vi.setSystemTime(new Date('2026-10-06T09:05:00.000Z'))
+      expect(await targetologsOf(provider)).toEqual(['Eldor', 'Umar'])
+      expect(state.fieldReads).toBe(3)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

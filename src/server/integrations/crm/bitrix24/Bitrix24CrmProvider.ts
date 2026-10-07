@@ -192,6 +192,14 @@ const ITEM_READ_ATTEMPTS = 3
  */
 const DEAD_LABEL_MS = 60 * 60_000
 
+/**
+ * How long after a FAILED `crm.deal.fields` re-read (a timeout, a 5xx) no deal
+ * page asks again. Without it a full import asked on every page that named a
+ * new item — a read with its retries per 2 500 deals — while the portal was
+ * failing it; a few minutes still names the item within the tick or two after.
+ */
+const LABEL_RELOAD_RETRY_MS = 5 * 60_000
+
 /** One row of `crm.deal.productrows.get`, as far as this file reads it. */
 interface ProductRow {
   readonly PRODUCT_ID: string
@@ -443,6 +451,8 @@ export class Bitrix24CrmProvider implements CrmProvider {
   private readonly deadLabels = new Set<string>()
   /** When `deadLabels` began filling; it is emptied `DEAD_LABEL_MS` later. */
   private deadLabelsSince = 0
+  /** When a label re-read last failed; none is tried for `LABEL_RELOAD_RETRY_MS` after. */
+  private labelsReloadFailedAt = Number.NEGATIVE_INFINITY
   private grantedScopes: Set<string> | undefined
 
   constructor(options: Bitrix24ProviderOptions) {
@@ -1107,11 +1117,16 @@ export class Bitrix24CrmProvider implements CrmProvider {
     this.labelMisses.clear()
     let deals = rows.map((d) => this.toRawDeal(d))
 
-    if ([...this.labelMisses].some((miss) => !this.deadLabels.has(miss)) && (await this.reloadEnumLabels())) {
-      this.labelMisses.clear()
-      deals = rows.map((d) => this.toRawDeal(d))
-      if (this.deadLabels.size === 0) this.deadLabelsSince = Date.now()
-      for (const miss of this.labelMisses) this.deadLabels.add(miss)
+    const newMiss = [...this.labelMisses].some((miss) => !this.deadLabels.has(miss))
+    if (newMiss && Date.now() - this.labelsReloadFailedAt >= LABEL_RELOAD_RETRY_MS) {
+      if (await this.reloadEnumLabels()) {
+        this.labelMisses.clear()
+        deals = rows.map((d) => this.toRawDeal(d))
+        if (this.deadLabels.size === 0) this.deadLabelsSince = Date.now()
+        for (const miss of this.labelMisses) this.deadLabels.add(miss)
+      } else {
+        this.labelsReloadFailedAt = Date.now()
+      }
     }
 
     this.labelMisses.clear()
