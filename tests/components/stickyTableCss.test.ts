@@ -151,18 +151,22 @@ const computed = (element: Element, property: string) => {
   return value === undefined ? undefined : resolve(element, value)
 }
 
-/** The cells DataTable renders for a table with a pinned first column and a pinned total row. */
+/**
+ * The cells DataTable renders for a table with a pinned first column and a
+ * pinned total row. The scroll state is marked on the BOX, as DataTable's own
+ * scroll handler does (`[data-scrolled]`, `[data-scrolled-x]`), not on each cell.
+ */
 function table({ scrolledY = false, scrolledX = false } = {}) {
   document.body.innerHTML = `
-    <div class="card"><div style="overflow-x:auto"><table>
+    <div class="card"><div style="overflow-x:auto" ${scrolledY ? 'data-scrolled' : ''} ${scrolledX ? 'data-scrolled-x' : ''}><table>
       <thead><tr>
-        <th class="thead-sticky ${scrolledY ? 'is-scrolled' : ''} tcol-sticky is-edge ${scrolledX ? 'is-scrolled-x' : ''}" id="corner">ROP</th>
-        <th class="thead-sticky ${scrolledY ? 'is-scrolled' : ''}" id="head">FAKT 1</th>
+        <th class="thead-sticky tcol-sticky is-edge" id="corner">ROP</th>
+        <th class="thead-sticky" id="head">FAKT 1</th>
       </tr></thead>
       <tbody>
-        <tr><th class="tcol-sticky is-edge ${scrolledX ? 'is-scrolled-x' : ''}" id="pin">Sevinch</th><td id="cell">1</td></tr>
+        <tr><th class="tcol-sticky is-edge" id="pin">Sevinch</th><td id="cell">1</td></tr>
         <tr>
-          <th class="tfoot-sticky tcol-sticky is-edge ${scrolledX ? 'is-scrolled-x' : ''}" id="total-pin">ИТОГО</th>
+          <th class="tfoot-sticky tcol-sticky is-edge" id="total-pin">ИТОГО</th>
           <td class="tfoot-sticky" id="total">9</td>
         </tr>
       </tbody>
