@@ -1,10 +1,12 @@
 'use client'
 
+import { useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Suspense, useState } from 'react'
 
 import { authClient } from '@/lib/authClient'
 import { t } from '@/lib/messages'
+import { safeNext } from '@/lib/safeNext'
 import { ChallengeForm } from './ChallengeForm'
 
 /**
@@ -65,6 +67,7 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter()
   const params = useSearchParams()
+  const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -86,13 +89,22 @@ function LoginForm() {
    * instead means clicking Logistika, signing in, and landing somewhere
    * else — small, but it reads as the app losing your place.
    *
-   * Only a same-site path is accepted: an absolute URL here would make the
-   * login page an open redirect.
+   * Only a same-origin path is accepted — `safeNext` decides it the way the
+   * browser's URL parser will, because a regex on the raw string let
+   * `/\evil.example` and `/<TAB>/evil.example` through as an open redirect.
+   *
+   * THE QUERY CACHE IS EMPTIED FIRST. The QueryClient lives in the root
+   * layout for the life of the tab, and a session can end without the
+   * sidebar's sign-out (cookie expiry, deactivation, a revoked session — all
+   * soft-navigate here with the cache intact). Its keys carry no user, so
+   * without this the next account to sign in on the tab would be served the
+   * previous one's cached rows, roster and menu until each query went stale.
+   * This is the one door every sign-in passes through, 2FA included.
    */
   function proceed() {
-    const next = params.get('next')
-    const destination = next && /^\/(?!\/)/.test(next) ? next : '/'
+    const destination = safeNext(params.get('next'), window.location.origin)
 
+    queryClient.clear()
     router.push(destination)
     router.refresh()
   }
