@@ -7,6 +7,7 @@
  * both sides.
  */
 
+import type { DmBlockDto } from '@/features/reklama/reklamaApi'
 import type { MoneyDto } from '@/lib/api'
 
 export type TargetScope = 'target' | 'all'
@@ -132,6 +133,15 @@ export interface MetaBlockDto {
   /** The hero: the Collagen / Zextra columns drawn under it, summed — only those that spent. */
   readonly productsTotal: MetaProductTotalsDto
   readonly usdRate: number | null
+}
+
+/** `/target/dm` — «Reklama samarasi»'s DM block for the same window and product. */
+export interface TargetDmDto {
+  /** When Meta's campaign grain was last read; null means never. */
+  readonly importedAt: string | null
+  /** Every DM campaign's spend, vakansiyasiz — unmapped accounts included. */
+  readonly dmSpendUsd: number
+  readonly dm: DmBlockDto
 }
 
 export interface TargetLeadSaleDto {

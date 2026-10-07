@@ -11,7 +11,7 @@ import type { TargetGroupDto } from './targetApi'
  * One row per source, targetolog or creative — leads, what they became, money.
  *
  * THE LEAD HALF AND THE SALE HALF ARE DIFFERENT DEALS. «Leadlar» and
- * «Uzatildi» count Регистрация deals; «Buyurtma», «Yetkazildi» and «Qaytdi»
+ * «Kval» count Регистрация deals; «Buyurtma», «Yetkazildi» and «Qaytdi»
  * count the seller's deals the portal opened for the same contacts, cut by
  * the source and targetolog the portal copied onto them. So «Buyurtma %» is
  * orders over leads — how many leads it takes to make one order — and not a
@@ -163,7 +163,7 @@ function columns(
     },
     {
       key: 'pass',
-      header: 'Uzatildi',
+      header: 'Kval',
       sortKey: 'passPercent',
       align: 'right',
       numeric: true,

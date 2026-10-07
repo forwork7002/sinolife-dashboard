@@ -9,6 +9,7 @@ import { ChartSkeleton, EmptyState, ErrorState, statusOf } from '@/components/st
 import { Card, ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
+import { DmSection } from '@/features/reklama/DmSection'
 import { BrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -22,13 +23,14 @@ import { TargetMeta } from './TargetMeta'
 import { EMPTY_FILTERS, type LeadFilters, TargetLeadTable } from './TargetLeadTable'
 import type {
   TargetCountersDto,
+  TargetDmDto,
   TargetLeadsDto,
   TargetOverviewDto,
   TargetProductFilter,
   TargetScope,
   TargetStageDto,
 } from './targetApi'
-import { PRODUCT_FILTER_OPTIONS } from './targetTheme'
+import { PRODUCT_FILTER_OPTIONS, usd } from './targetTheme'
 
 /** recharts rides with the chart, not with the page — see CallsPage. */
 const TargetDailyChart = dynamic(
@@ -55,7 +57,9 @@ const PAGE_SIZE = 50
  *
  * READING ORDER: the money first (tiles), then what each targetolog spent
  * and what it bought on Meta — the question the client asks first (2026-09-19:
- * «bu targetolog shuncha sarf… klik…») — then how the leads thin out into
+ * «bu targetolog shuncha sarf… klik…») — then the DM sheet, the pages' DM
+ * money against their kval (2026-10-07: «таргет таҳлилига дм отчетини
+ * қўшинг, кейин квал лидга мослаш керак») — then how the leads thin out into
  * orders, WHO by page / targetolog / creative, where the leads and sales stand
  * now, and last every lead. Clicking a row in the «who» table narrows
  * the lead list to it.
@@ -64,6 +68,11 @@ const PAGE_SIZE = 50
  * from one GROUPING SETS scan, so the tiles, the tables and the chart sum to
  * each other; the lead list is its own paged request with the same window
  * and scope.
+ *
+ * THE DM SHEET IS «REKLAMA SAMARASI»'S (`/target/dm`), read from the same
+ * service, so both screens print the same figures for a window and product.
+ * Its kval is the overview's: a Регистрация lead created in the window that
+ * the registrar closed as «Сделка успешна».
  */
 export function TargetPage() {
   const { apiParams } = useDashboardFilters()
@@ -100,6 +109,19 @@ export function TargetPage() {
     queryFn: ({ signal }) => apiGet<TargetOverviewDto>('/target/overview', windowParams, signal),
   })
 
+  // The DM sheet narrows by product only: its pages are the DM pages whatever the source scope.
+  const dmParams = useMemo(() => {
+    const out: Record<string, string | number> = { preset: apiParams.preset, product }
+    if (apiParams.from !== undefined) out.from = apiParams.from
+    if (apiParams.to !== undefined) out.to = apiParams.to
+    return out
+  }, [apiParams.preset, apiParams.from, apiParams.to, product])
+
+  const dm = useQuery({
+    queryKey: ['target-dm', dmParams],
+    queryFn: ({ signal }) => apiGet<TargetDmDto>('/target/dm', dmParams, signal),
+  })
+
   const leadParams = useMemo(() => {
     const out: Record<string, string | number> = { ...windowParams, page, pageSize: PAGE_SIZE }
     if (filters.source) out.source = filters.source
@@ -116,6 +138,7 @@ export function TargetPage() {
   })
 
   const status: Status = statusOf(overview)
+  const dmStatus: Status = statusOf(dm)
   const leadStatus: Status = statusOf(leads)
   const data = overview.data?.data
 
@@ -198,9 +221,25 @@ export function TargetPage() {
           <>
             <SourcesLine scope={product === 'all' ? scope : 'target'} names={targetSources} />
 
-            <ProductCompare meta={data?.meta} status={status} />
+            <ProductCompare meta={data?.meta} status={status} dm={dm.data?.data.dm} />
 
             <TargetMeta meta={data?.meta} status={status} />
+
+            {dmStatus === 'error' ? (
+              <Card className="p-5">
+                <SectionHeader title="DM · sahifalar boʻyicha" />
+                <ErrorState
+                  message={dm.error instanceof Error ? dm.error.message : undefined}
+                  onRetry={() => void dm.refetch()}
+                />
+              </Card>
+            ) : (
+              <DmSection
+                dm={dm.data?.data.dm}
+                status={dmStatus}
+                lead={<DmTiles data={dm.data?.data} status={dmStatus} />}
+              />
+            )}
 
             <SectionHeader
               title="Leadlar va sotuv · Bitrix24"
@@ -355,10 +394,10 @@ function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; s
       />
       <StatTile
         status={status}
-        label="Sotuvchiga uzatildi"
-        value={total?.passPercent ?? null}
-        unit="percent"
-        hint={total ? `${formatNumber(total.leadWon)} ta «Сделка успешна»` : undefined}
+        label="Kval lidlar"
+        value={total?.leadWon ?? null}
+        unit="count"
+        hint={total ? `leadlarning ${formatPercent(total.passPercent)} i · «Сделка успешна»` : undefined}
       />
       <StatTile
         status={status}
@@ -401,6 +440,65 @@ function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; s
   )
 }
 
+/**
+ * The DM sheet's headline: what DM cost and what it bought, in kval.
+ *
+ * Every figure is the block's own «Итог» (`dmTotalCells`): the price of a
+ * kval over the pages that carry the DM money only, so this tile, the
+ * table's «Jami» row and «Reklama samarasi»'s «DM kval narxi» agree to the
+ * cent.
+ */
+function DmTiles({ data, status }: { data: TargetDmDto | undefined; status: Status }) {
+  const dm = data?.dm
+  const priced = dm?.pages.filter((p) => p.carriesDmSpend) ?? []
+  const pricedQualified = priced.reduce((n, p) => n + p.total.qualified, 0)
+  return (
+    <div className="stagger grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <StatTile
+        status={status}
+        unit="usd"
+        label="DM sarfi"
+        value={data?.dmSpendUsd ?? null}
+        hint="Meta DM kampaniyalari, vakansiyasiz"
+      />
+      <StatTile
+        status={status}
+        unit="count"
+        label="Murojaatlar"
+        value={dm?.total.conversations ?? null}
+        hint={dm ? `1 murojaat ${usd(dm.total.costPerConversationUsd)}` : undefined}
+      />
+      <StatTile
+        status={status}
+        unit="count"
+        label="DM sahifalar leadlari"
+        value={dm?.total.leads ?? null}
+        hint="Регистрация, Bitrix24"
+      />
+      <StatTile
+        status={status}
+        unit="count"
+        label="Kval lidlar"
+        value={dm?.total.qualified ?? null}
+        hint={dm ? `leadlarning ${formatPercent(dm.total.qualifiedPercent)} i · «Сделка успешна»` : undefined}
+      />
+      <StatTile
+        status={status}
+        unit="usd"
+        label="1 kval narxi · DM"
+        value={dm?.total.costPerQualifiedUsd ?? null}
+        hint={
+          dm
+            ? priced.length > 0
+              ? `DM sarfi ÷ ${formatNumber(pricedQualified)} kval (${priced.map((p) => p.name).join(', ')})`
+              : 'DM puli yoziladigan sahifa yoʻq'
+            : undefined
+        }
+      />
+    </div>
+  )
+}
+
 /** The funnel as bars — each step against the leads it started from. */
 function funnelRows(total: TargetCountersDto | undefined): CategoryBarRow[] {
   if (!total) return []
@@ -409,7 +507,7 @@ function funnelRows(total: TargetCountersDto | undefined): CategoryBarRow[] {
     { key: 'leads', label: 'Leadlar', value: total.leads, display: formatNumber(total.leads) },
     {
       key: 'won',
-      label: 'Sotuvchiga uzatildi',
+      label: 'Kval (Сделка успешна)',
       value: total.leadWon,
       display: `${formatNumber(total.leadWon)}${share(total.leadWon)}`,
     },

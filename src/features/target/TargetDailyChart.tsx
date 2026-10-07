@@ -146,7 +146,7 @@ function DayTooltip({
       rows={[
         { swatch: LEADS_COLOUR, label: 'Leadlar', value: formatNumber(row.leads) },
         {
-          label: 'Sotuvchiga uzatildi',
+          label: 'Kval lid',
           value: `${formatNumber(row.leadWon)} · ${formatPercent(row.passPercent)}`,
         },
         { swatch: ORDERS_COLOUR, label: 'Buyurtmalar', value: formatNumber(row.orders) },

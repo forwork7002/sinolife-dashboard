@@ -5,6 +5,8 @@ import type { ReactNode } from 'react'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { NO_VALUE, formatCompactUzs, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 
+import type { DmBlockDto, DmProductDto } from '@/features/reklama/reklamaApi'
+
 import type { MetaBlockDto, MetaProduct, MetaProductTotalsDto } from './targetApi'
 import { PRODUCT_LABEL, PRODUCT_TONE, usd } from './targetTheme'
 
@@ -28,13 +30,21 @@ import { PRODUCT_LABEL, PRODUCT_TONE, usd } from './targetTheme'
  *
  * With one product chosen the bars have nothing to compare and step aside;
  * the column and its figures stay.
+ *
+ * KVAL (2026-10-07): each column also counts its pages' kval («Сделка
+ * успешна») and prices a DM kval from the DM sheet (`dm.products`) — the
+ * product's DM money over the kval of the pages that money is written to,
+ * the figure «DM · sahifalar» prints in that product's rows.
  */
 export function ProductCompare({
   meta,
   status,
+  dm,
 }: {
   meta: MetaBlockDto | undefined
   status: 'loading' | 'error' | 'ready'
+  /** The DM sheet for the same window; undefined while it loads. */
+  dm?: DmBlockDto
 }) {
   if (status === 'loading' || !meta) {
     return (
@@ -54,7 +64,8 @@ export function ProductCompare({
   // The columns drawn below, summed: HR, Kosmetika and an unmapped account are in «Лид база»'s Jami, never in this hero.
   const total = meta.productsTotal
   const pair = products.length === 2
-  const verdicts = productVerdicts(products)
+  const dmOf = (p: MetaProduct) => dm?.products.find((d) => d.product === p)
+  const verdicts = productVerdicts(products, dm?.products)
 
   return (
     <section
@@ -83,7 +94,8 @@ export function ProductCompare({
           {products.length > 0 && (
             <p className="mt-1.5 text-[12.5px] tabular" style={{ color: 'var(--ink-muted)' }}>
               {formatNumber(total.bitrixLeads)} ta Bitrix24 lead · 1 lead{' '}
-              {usd(total.costPerBitrixLeadUsd)} · {formatNumber(total.orders)} buyurtma · tushum{' '}
+              {usd(total.costPerBitrixLeadUsd)} · {formatNumber(total.bitrixLeadWon)} kval ·{' '}
+              {formatNumber(total.orders)} buyurtma · tushum{' '}
               {formatCompactUzs(total.deliveredMoney.amount)} soʻm
             </p>
           )}
@@ -103,6 +115,8 @@ export function ProductCompare({
             key={p.product}
             product={p}
             rival={pair ? products.find((o) => o !== p) : undefined}
+            dm={dm ? (dmOf(p.product) ?? null) : undefined}
+            rivalDm={pair ? dmOf(products.find((o) => o !== p)!.product) : undefined}
           />
         ))}
       </div>
@@ -277,9 +291,14 @@ type Better = 'low' | 'high'
 function ProductColumn({
   product,
   rival,
+  dm,
+  rivalDm,
 }: {
   product: MetaProductTotalsWithName
   rival: MetaProductTotalsWithName | undefined
+  /** This product's DM-money pages; null when it has none, undefined while the sheet loads. */
+  dm: DmProductDto | null | undefined
+  rivalDm: DmProductDto | undefined
 }) {
   const tone = PRODUCT_TONE[product.product]
 
@@ -369,6 +388,36 @@ function ProductColumn({
           <dl className="mt-1 divide-y" style={{ borderColor: 'var(--border)' }}>
             {row('Leadlar', formatNumber(product.bitrixLeads))}
             {row(
+              'Kval lidlar',
+              `${formatNumber(product.bitrixLeadWon)} · ${formatPercent(
+                product.bitrixLeads > 0 ? (product.bitrixLeadWon / product.bitrixLeads) * 100 : null,
+              )}`,
+            )}
+            {row(
+              '1 kval narxi · DM',
+              dm ? (
+                <Tooltip
+                  content={
+                    <span className="tabular">
+                      DM sarfi {usd(dm.spendUsd, true)} ÷ {formatNumber(dm.qualified)} kval ({dm.pages.join(', ')})
+                    </span>
+                  }
+                >
+                  <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">
+                    {usd(dm.costPerQualifiedUsd)}
+                  </span>
+                </Tooltip>
+              ) : (
+                NO_VALUE
+              ),
+              {
+                mine: dm?.costPerQualifiedUsd ?? null,
+                theirs: rivalDm?.costPerQualifiedUsd ?? null,
+                better: 'low',
+              },
+              true,
+            )}
+            {row(
               '1 lead narxi',
               usd(product.costPerBitrixLeadUsd),
               {
@@ -421,7 +470,10 @@ const times = (n: number) => (n >= 10 ? n.toFixed(0) : n.toFixed(1)).replace('.'
  * numbers printed above it, and a sentence whose inputs are missing (no leads,
  * no rate) is left out rather than written around a gap. Exported for its test.
  */
-export function productVerdicts(products: readonly MetaProductTotalsWithName[]): string[] {
+export function productVerdicts(
+  products: readonly MetaProductTotalsWithName[],
+  dm: readonly DmProductDto[] = [],
+): string[] {
   const [a, b] = products
   if (!a || !b) return []
   const out: string[] = []
@@ -448,6 +500,17 @@ export function productVerdicts(products: readonly MetaProductTotalsWithName[]):
     out.push(
       `1 lead: ${name(cheap)} ${usd(cheap.costPerBitrixLeadUsd)}, ${name(dear)} ${usd(dear.costPerBitrixLeadUsd)}` +
         (k >= 1.1 ? ` — ${name(dear)} leadi ${times(k)} marta qimmat.` : ' — deyarli bir xil.'),
+    )
+  }
+
+  // 2b. The price of a DM kval — the DM sheet's, per product.
+  const dmA = dm.find((d) => d.product === a.product)?.costPerQualifiedUsd ?? null
+  const dmB = dm.find((d) => d.product === b.product)?.costPerQualifiedUsd ?? null
+  if (dmA !== null && dmB !== null && dmA > 0 && dmB > 0) {
+    const [cheap, dear, cheapPrice, dearPrice] = dmA <= dmB ? [a, b, dmA, dmB] : [b, a, dmB, dmA]
+    out.push(
+      `1 DM kval: ${name(cheap)} ${usd(cheapPrice)}, ${name(dear)} ${usd(dearPrice)}` +
+        (dearPrice / cheapPrice >= 1.1 ? ` — ${name(dear)} kvali ${times(dearPrice / cheapPrice)} marta qimmat.` : ' — deyarli bir xil.'),
     )
   }
 

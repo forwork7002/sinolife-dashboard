@@ -1,5 +1,7 @@
 'use client'
 
+import type { ReactNode } from 'react'
+
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { SectionHeader } from '@/components/ui/Stat'
 import { PRODUCT_TONE, usd } from '@/features/target/targetTheme'
@@ -21,7 +23,16 @@ import { type Status, TableCard, count, money, muted, pct } from './reklamaUi'
  * page's Регистрация leads in Bitrix24. The two meet on the day and the page
  * and nowhere else, which the column headers say.
  */
-export function DmSection({ dm, status }: { dm: DmBlockDto | undefined; status: Status }) {
+export function DmSection({
+  dm,
+  status,
+  lead,
+}: {
+  dm: DmBlockDto | undefined
+  status: Status
+  /** Drawn under the heading, above the tables — «Target tahlili»'s DM tiles. */
+  lead?: ReactNode
+}) {
   const pages = dm?.pages ?? []
 
   type PageRow = { key: string; name: string; page: DmPageDto | null; cells: DmCellsDto }
@@ -38,6 +49,7 @@ export function DmSection({ dm, status }: { dm: DmBlockDto | undefined; status: 
         title="DM · sahifalar boʻyicha"
         hint="Instagram direktga yozdiradigan reklama: murojaat va sarf Meta DM kampaniyalaridan, lid va kval shu sahifaning Bitrix24 dagi Регистрация leadlaridan."
       />
+      {lead}
 
       <TableCard
         title="Sahifalar — davr boʻyicha"

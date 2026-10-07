@@ -373,6 +373,9 @@ export const targetOverviewQuerySchema = periodQuerySchema.and(
   z.object({ scope: targetScope, product: targetProduct }),
 )
 
+/** «Target tahlili»'s DM sheet: the window and the product switch. */
+export const targetDmQuerySchema = periodQuerySchema.and(z.object({ product: targetProduct }))
+
 export const targetLeadsQuerySchema = periodQuerySchema.and(
   z.object({
     scope: targetScope,

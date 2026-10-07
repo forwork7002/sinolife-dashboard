@@ -93,8 +93,21 @@ export interface DmBlockDto {
   /** «Итог» a day at a time, on the same rule. */
   readonly days: readonly DmDayDto[]
   readonly pages: readonly DmPageDto[]
+  /**
+   * Each product's DM-money pages (`carriesDmSpend`) summed — «Target
+   * tahlili»'s price of a DM kval per product. Summed from micro-dollars, so
+   * a product's figure is its page rows to the cent; only the products with
+   * such a page in the slice.
+   */
+  readonly products: readonly DmProductDto[]
   /** DM money on accounts nobody has mapped to a product — no page to put it on. */
   readonly unattributed: { readonly spendUsd: number; readonly conversations: number }
+}
+
+export interface DmProductDto extends DmCellsDto {
+  readonly product: TargetProduct
+  /** The DM-money pages summed, by name. */
+  readonly pages: readonly string[]
 }
 
 /** One «Отчёт Т» cell group: a targetolog's lead-form campaigns. */
@@ -501,6 +514,7 @@ export function reklamaOverview(input: {
   const dmTotal = dmZero()
   const dmPricedDays = days.map(() => dmZero())
   const dmPriced = dmZero()
+  const dmProducts = new Map<TargetProduct, { acc: DmAcc; pages: string[] }>()
   const dmPages: DmPageDto[] = input.pages.map((page) => {
     // Another brand's DM page, shown for this slice's leads, carries none of the slice's money.
     const carriesDmSpend =
@@ -515,7 +529,13 @@ export function reklamaOverview(input: {
       return { date, ...dmCells(cell) }
     })
     addDm(dmTotal, total)
-    if (carriesDmSpend) addDm(dmPriced, total)
+    if (carriesDmSpend) {
+      addDm(dmPriced, total)
+      const product = dmProducts.get(page.product) ?? { acc: dmZero(), pages: [] }
+      addDm(product.acc, total)
+      product.pages.push(page.name)
+      dmProducts.set(page.product, product)
+    }
     return {
       key: page.key,
       name: page.name,
@@ -653,6 +673,7 @@ export function reklamaOverview(input: {
       total: dmTotalCells(dmTotal, dmPriced),
       days: days.map((date, i) => ({ date, ...dmTotalCells(dmTotalDays[i]!, dmPricedDays[i]!) })),
       pages: dmPages,
+      products: [...dmProducts.entries()].map(([product, p]) => ({ product, pages: p.pages, ...dmCells(p.acc) })),
       unattributed: { spendUsd: usd(unattributed.spend), conversations: unattributed.conversations },
     },
     form: {
