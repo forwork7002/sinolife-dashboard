@@ -1,6 +1,6 @@
 'use client'
 
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { type QueryKey, useMutation, useQueryClient } from '@tanstack/react-query'
 import { type CSSProperties, type KeyboardEvent, useId, useState } from 'react'
 
 import { apiWrite } from '@/lib/api'
@@ -28,6 +28,9 @@ export type RnpTyped = RnpManual | { readonly kind: 'plan'; readonly team: strin
  * the sheet is refetched (`['rnp-overview']`) so this row, «Маркетинг
  * харажат факт», CAC and the share all recompute. A save the server refuses
  * keeps the typed text, red, with the server's words.
+ *
+ * The field itself (`TypedField`) is shared since 2026-10-07 with «Reklama
+ * samarasi»'s «Telegram» card, which saves and refetches its own way.
  */
 export function CostDayCell({
   month,
@@ -132,7 +135,7 @@ export function parseDecimal(text: string, sign?: '$' | '%'): number | null {
   return Number.NaN
 }
 
-interface KindSpec {
+export interface KindSpec {
   readonly parse: (text: string) => number | null
   readonly show: (value: number) => string
   readonly max: number
@@ -161,6 +164,21 @@ const HEADCOUNT: KindSpec = {
  */
 function showUsd(v: number): string {
   return Math.abs(v) < 10 ? formatUsd(v) : `$${rnpNumber(Math.round(v * 100) / 100)}`
+}
+
+/**
+ * Typed dollars with no plan behind them — «Targetologlar · kunlik»'s
+ * «Telegram $» (2026-10-07), read and shown as a dollar plan is («390,6»,
+ * «$390,6»), a million a day the ceiling.
+ */
+export const MONEY_USD: KindSpec = {
+  parse: (t) => parseDecimal(t, '$'),
+  show: showUsd,
+  max: 1_000_000,
+  invalid: 'Son kiriting, masalan 390,6 yoki 254.',
+  tooBig: 'Juda katta son — 1 mln $ dan oshmasin.',
+  unit: '$',
+  inputMode: 'decimal',
 }
 
 const PLAN: Readonly<Record<RnpUnit, KindSpec>> = {
@@ -205,8 +223,42 @@ function CostField({
   value: number | null
   last: boolean
 }) {
+  return (
+    <TypedField
+      spec={specOf(manual)}
+      label={label}
+      value={value}
+      last={last}
+      save={(next) => {
+        const { path, body } = request(month, day, manual, next)
+        return apiWrite<{ saved: boolean }>('POST', path, body)
+      }}
+      invalidate={['rnp-overview']}
+    />
+  )
+}
+
+/**
+ * The open field itself, apart from what it saves: RNP's typed cells and
+ * «Targetologlar · kunlik»'s «Telegram $» (2026-10-07) share it. `save`
+ * sends one value; `invalidate` is the query the saved figure comes back in.
+ */
+export function TypedField({
+  spec: kind,
+  label,
+  value,
+  last = false,
+  save: send,
+  invalidate,
+}: {
+  spec: KindSpec
+  label: string
+  value: number | null
+  last?: boolean
+  save: (value: number | null) => Promise<unknown>
+  invalidate: QueryKey
+}) {
   const queryClient = useQueryClient()
-  const kind = specOf(manual)
   const shown = (v: number | null) => (v === null ? '' : kind.show(v))
   const [text, setText] = useState(() => shown(value))
   const [problem, setProblem] = useState<{ message: string; text: string } | null>(null)
@@ -220,12 +272,9 @@ function CostField({
   }
 
   const save = useMutation({
-    mutationFn: (next: number | null) => {
-      const { path, body } = request(month, day, manual, next)
-      return apiWrite<{ saved: boolean }>('POST', path, body)
-    },
+    mutationFn: send,
     // Closed only once the sheet has the new figure, so the cell never flashes the old one.
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['rnp-overview'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: invalidate }),
   })
 
   /** Save what is typed, if it changed. Nothing is sent for a typo (refused in place) or while a save is on its way. */

@@ -69,6 +69,25 @@ export interface FormOwnerDto extends FormExpenseDto {
   readonly days: readonly FormDayDto[]
 }
 
+/**
+ * Ad money typed by hand on «Targetologlar · kunlik» — the sheet's «Telegram»
+ * block (`src/server/domain/reklama/manualSpend.ts`): one channel of one
+ * product, a row per day of the window; `spendUsd` null where nobody typed.
+ */
+export interface ManualSpendDto {
+  readonly key: string
+  readonly channel: 'telegram'
+  readonly name: string
+  readonly product: TargetProduct
+  readonly totalUsd: number
+  readonly days: readonly { readonly date: string; readonly spendUsd: number | null }[]
+}
+
+/** The body of `POST /reklama/manual-spend`: dollars to the cent; null clears the day. */
+export interface SaveManualSpendBody {
+  readonly cells: readonly { day: string; project: ManualSpendDto['product']; channel: ManualSpendDto['channel']; value: number | null }[]
+}
+
 export interface DmDayDto {
   readonly date: string
   readonly conversations: number

@@ -1,4 +1,5 @@
-import { toPeriodDto } from '@/server/domain/period/period'
+import { can } from '@/server/auth/rbac'
+import { toPeriodDto, zonedDateKey } from '@/server/domain/period/period'
 import { getHandler, periodFrom } from '@/server/http/handler'
 import { reklamaOverviewQuerySchema } from '@/server/http/queryParams'
 import { leadSourcesService } from '@/server/services/container'
@@ -24,6 +25,8 @@ const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as con
  */
 export const GET = getHandler(ACCESS, reklamaOverviewQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const { forms, importedAt } = await leadSourcesService.targetologForms(period, ctx.timeZone, ctx.query.brand)
-  return { data: { forms, importedAt }, meta: { period: toPeriodDto(period) } }
+  const { forms, importedAt, manual } = await leadSourcesService.targetologForms(period, ctx.timeZone, ctx.query.brand)
+  // Who may type the «Telegram» card's days — as RNP's typed cells: `kpi:manage`, and not on a widened read.
+  const canEdit = can(ctx.principal, 'kpi:manage') && !ctx.principal.widened
+  return { data: { forms, importedAt, manual, canEdit, today: zonedDateKey(ctx.now, ctx.timeZone) }, meta: { period: toPeriodDto(period) } }
 })

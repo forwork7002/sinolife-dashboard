@@ -526,7 +526,7 @@ describe('LeadSourcesService.targetologForms — «Targetologlar · kunlik» und
     const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
     const service = new LeadSourcesService(
       { registrationDays: async () => registration } as never,
-      { campaignDays: async () => campaigns, campaignsImportedAt: async () => null } as never,
+      { campaignDays: async () => campaigns, campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       {} as never,
     )
     return (await service.targetologForms(PERIOD, 'Asia/Tashkent', brand)).forms

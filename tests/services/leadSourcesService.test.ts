@@ -573,7 +573,7 @@ describe('LeadSourcesService.targetologForms', () => {
           pipelineSourceCount: slow ? never('pipelineSourceCount') : async () => NO_SARAFAN,
           inboundCallCount: slow ? never('inboundCallCount') : async () => null,
         } as never,
-        { campaignDays: async () => campaigns, campaignsImportedAt: async () => null } as never,
+        { campaignDays: async () => campaigns, campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
         { leadFakt1Clients: slow ? never('leadFakt1Clients') : async () => [] } as never,
       )
 
@@ -609,7 +609,7 @@ describe('LeadSourcesService.overview — «Факт1 мижоз» never takes L
         pipelineSourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
-      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       {
         leadFakt1Clients: async () => {
           fakt1Calls += 1
@@ -656,7 +656,7 @@ describe('LeadSourcesService.overview — a slow «Факт1 мижоз»', () =
         pipelineSourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
-      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       {
         leadFakt1Clients: () => {
           fakt1Calls += 1
@@ -709,7 +709,7 @@ describe('LeadSourcesService.overview — the leads and their kval from one rebu
         pipelineSourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
-      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       { leadFakt1Clients: async () => [] } as never,
     )
 
@@ -753,7 +753,7 @@ describe('LeadSourcesService.overview — a reader\'s cold miss (2026-10-06 revi
         pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
         inboundCallCount: read('inboundCallCount', null),
       } as never,
-      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
     )
 
@@ -791,7 +791,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
         pipelineSourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
-      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       { leadFakt1Clients: async () => [] } as never,
     )
     // 03:00 Tashkent: nobody reads it — and it says so, for the warmer's log.
@@ -831,7 +831,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           pipelineSourceCount: read(NO_SARAFAN),
           inboundCallCount: read(null),
         } as never,
-        { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+        { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
         { leadFakt1Clients: read([]) } as never,
       )
       const tick = async () => {
@@ -873,7 +873,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
           inboundCallCount: read('inboundCallCount', null),
         } as never,
-        { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+        { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
         { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
       )
     }
@@ -922,7 +922,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
           inboundCallCount: read('inboundCallCount', null),
         } as never,
-        { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+        { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
         { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
       )
     await service(warmers.LeadSourcesService).warm(now, 'Asia/Tashkent')

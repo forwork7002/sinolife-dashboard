@@ -14,6 +14,8 @@
 import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import type { Period } from '@/server/domain/period/period'
+import type { ManualSpendChannel, ManualSpendRow } from '@/server/domain/reklama/manualSpend'
+import type { TargetProduct } from '@/server/domain/types'
 
 /** Leads created on one day, on one page, sitting in one stage now. */
 export interface LeadStageDayRow {
@@ -44,6 +46,13 @@ export interface CampaignDayRow {
   readonly leads: number
   readonly conversations: number
 }
+
+/**
+ * How long a write may wait for a pooled connection — RNP's typed cells wait
+ * the same (rnpRepository.ts): the pool runs full under the scans, and
+ * Prisma's default 2 s would fail a save with a 500.
+ */
+const CONNECTION_WAIT_MS = 20_000
 
 export class ReklamaRepository {
   private readonly tz: string
@@ -160,5 +169,39 @@ export class ReklamaRepository {
   async campaignsImportedAt(): Promise<Date | null> {
     const latest = await this.prisma.metaCampaignDaily.aggregate({ _max: { importedAt: true } })
     return latest._max.importedAt
+  }
+
+  /** The hand-typed ad money of the window (`reklama_manual_spend`); `from` / `to` are inclusive `YYYY-MM-DD`. */
+  async manualSpend(from: string, to: string): Promise<ManualSpendRow[]> {
+    const rows = await this.prisma.reklamaManualSpend.findMany({
+      where: { day: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
+      select: { day: true, project: true, channel: true, amountCents: true },
+    })
+    return rows.map((r) => ({
+      day: r.day.toISOString().slice(0, 10),
+      project: r.project as TargetProduct,
+      channel: r.channel as ManualSpendChannel,
+      amountCents: r.amountCents,
+    }))
+  }
+
+  /** Write typed cells: cents set the day's money, null clears it. One transaction. */
+  async saveManualSpend(
+    cells: readonly { day: string; project: TargetProduct; channel: ManualSpendChannel; cents: number | null }[],
+    by: string,
+  ): Promise<void> {
+    await this.prisma.$transaction(
+      cells.map((c) => {
+        const day = new Date(`${c.day}T00:00:00Z`)
+        return c.cents === null
+          ? this.prisma.reklamaManualSpend.deleteMany({ where: { day, project: c.project, channel: c.channel } })
+          : this.prisma.reklamaManualSpend.upsert({
+              where: { day_project_channel: { day, project: c.project, channel: c.channel } },
+              create: { day, project: c.project, channel: c.channel, amountCents: c.cents, updatedBy: by },
+              update: { amountCents: c.cents, updatedBy: by },
+            })
+      }),
+      { maxWait: CONNECTION_WAIT_MS },
+    )
   }
 }

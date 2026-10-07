@@ -1610,6 +1610,26 @@ model RnpManualCost {
   @@map("rnp_manual_cost")
 }
 
+/// «Reklama samarasi» → «Targetologlar · kunlik» — ad money no system holds,
+/// typed by hand in whole US cents per day: the client's «Таргетолог» sheet
+/// keeps a «Telegram» block beside the targetologs' (Telegram Ads has no feed
+/// to read), and asked for it here on 2026-10-07. `project` is 'Collagen' or
+/// 'Zextra'; `channel` is one of `MANUAL_SPEND_CHANNELS` ('telegram'). A day
+/// nobody typed has no row.
+model ReklamaManualSpend {
+  id          String   @id @default(cuid())
+  day         DateTime @db.Date
+  project     String
+  channel     String
+  amountCents Int
+  updatedAt   DateTime @updatedAt
+  updatedBy   String?
+
+  @@unique([day, project, channel])
+  @@index([day])
+  @@map("reklama_manual_spend")
+}
+
 /// «RNP jadvali» — a ROP team's «Ходим сони» (headcount) typed by hand, one
 /// number per team per day (the client, 2026-10-01: «xodim soni qo'lda
 /// kiritiladi»). `rop` is the team as the sheet's ROP blocks name it

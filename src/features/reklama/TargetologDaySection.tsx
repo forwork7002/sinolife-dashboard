@@ -6,13 +6,14 @@ import { useState } from 'react'
 import { EmptyState, ErrorState, statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { SectionHeader } from '@/components/ui/Stat'
-import type { FormDayDto, FormOwnerDto, LeadSourcesOverviewDto } from '@/features/leads/leadSourcesApi'
+import type { FormDayDto, FormOwnerDto, LeadSourcesOverviewDto, ManualSpendDto } from '@/features/leads/leadSourcesApi'
 import { formatUsd, rnpNumber, rnpPercent } from '@/features/rnp/rnpFigures'
 import type { DashboardBrand } from '@/features/shared/useDashboardFilters'
 import type { MetaProduct } from '@/features/target/targetApi'
 import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
 import { apiGet } from '@/lib/api'
 
+import { ManualSpendCard, showsManualSpend } from './ManualSpendCard'
 import type { SideColumnDto } from './reklamaApi'
 import { SlicePicker, muted } from './reklamaUi'
 import { SideCard, hasSideSpend } from './SideSection'
@@ -47,7 +48,14 @@ import { SideCard, hasSideSpend } from './SideSection'
 
 type Params = Readonly<Record<string, string | number>>
 
-type Data = Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'>
+type Data = Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'> & {
+  /** The hand-typed channels (Telegram) of the brands the switch admits — the sheet's block beside the targetologs'. */
+  readonly manual: readonly ManualSpendDto[]
+  /** Whether this account may type them (`kpi:manage`, not on a widened read). */
+  readonly canEdit: boolean
+  /** Today in the app's zone: no field opens on a later day. */
+  readonly today: string
+}
 
 const COLUMNS = [
   'Rasxod $',
@@ -126,7 +134,13 @@ export function TargetologDaySection({
   // The lead-form owners, then the ones whose money is all SMS, hiring or other — «Jami $» is every dollar.
   const forms = query.data?.data.forms
   const owners = forms ? [...forms.owners, ...forms.expenseOwners] : []
-  const products = (['Collagen', 'Zextra', 'Boshqa'] as const).filter((p) => owners.some((o) => o.product === p))
+  // The sheet's «Telegram» block, typed by hand: a brand with typed money has a card even with no targetolog this period.
+  const canEdit = query.data?.data.canEdit ?? false
+  const today = query.data?.data.today ?? ''
+  const manual = (query.data?.data.manual ?? []).filter((m) => showsManualSpend(m, canEdit))
+  const products = (['Collagen', 'Zextra', 'Boshqa'] as const).filter(
+    (p) => owners.some((o) => o.product === p) || manual.some((m) => m.product === p),
+  )
   /*
     The page's brand switch wins over this picker, which then steps aside — two switches would
     contradict. Under one brand the server has already narrowed the answer by «Lidlar»'s rules
@@ -142,12 +156,14 @@ export function TargetologDaySection({
     .sort((a, b) => b.spendUsd - a.spendUsd || b.totalUsd - a.totalUsd)
   // No brand's money: drawn under «Hammasi» and «Brendsiz» only, and only when there is some.
   const sideShown = (brand === 'all' || brand === 'none') && hasSideSpend(side) ? side : null
+  // The picked product's Telegram card under «Hammasi»; under one brand the server already narrowed it.
+  const manualShown = manual.filter((m) => brand !== 'all' || m.product === product)
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Targetologlar · kunlik"
-        hint={`Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan.${brand === 'all' ? '' : BRAND_NOTE}`}
+        hint={`Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. «Telegram» kartasi — Telegram Ads sarfi, qoʻlda kiritiladi (sheetdagi Telegram bloki). Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan.${brand === 'all' ? '' : BRAND_NOTE}`}
       />
       {brand === 'all' && products.length > 1 && (
         <SlicePicker<MetaProduct>
@@ -173,7 +189,7 @@ export function TargetologDaySection({
             </Card>
           ))}
         </div>
-      ) : shown.length === 0 && !sideShown ? (
+      ) : shown.length === 0 && manualShown.length === 0 && !sideShown ? (
         <Card className="p-5">
           <EmptyState title="Bu davrda targetologlar sarfi yoʻq" />
         </Card>
@@ -185,6 +201,9 @@ export function TargetologDaySection({
         >
           {shown.map((owner) => (
             <OwnerSheet key={owner.key} owner={owner} />
+          ))}
+          {manualShown.map((block) => (
+            <ManualSpendCard key={block.key} block={block} canEdit={canEdit} today={today} />
           ))}
           {sideShown && <SideCard side={sideShown} />}
         </div>

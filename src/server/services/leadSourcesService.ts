@@ -53,6 +53,7 @@ import {
   leadTile,
 } from '@/server/domain/leads/leadSources'
 import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
+import { type ManualSpendDto, manualSpendBlocks } from '@/server/domain/reklama/manualSpend'
 import { type Period, type PeriodPreset, periodLengthInDays, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import { type BrandFilter, type TargetProduct, brandMatches } from '@/server/domain/types'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
@@ -1051,12 +1052,13 @@ export class LeadSourcesService {
     period: Period,
     timeZone: string,
     brand: BrandFilter = 'all',
-  ): Promise<Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'>> {
+  ): Promise<Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'> & { readonly manual: readonly ManualSpendDto[] }> {
     const window = periodWindow(period, timeZone)
-    const [registration, campaigns, importedAt] = await Promise.all([
+    const [registration, campaigns, importedAt, typed] = await Promise.all([
       this.registrationDays(period),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),
+      this.meta.manualSpend(window.from, window.to),
     ])
     const { forms, importedAt: imported } = leadSourcesOverview({
       window,
@@ -1070,7 +1072,13 @@ export class LeadSourcesService {
       importedAt,
       brand,
     })
-    return { forms, importedAt: imported }
+    // The sheet's «Telegram» block beside the targetologs' cards: typed by hand, no Meta row behind it.
+    return { forms, importedAt: imported, manual: manualSpendBlocks(calendarDays(window.from, window.to), typed, brand) }
+  }
+
+  /** Save the hand-typed ad money of «Targetologlar · kunlik» (`POST /reklama/manual-spend`). */
+  saveManualSpend: ReklamaRepository['saveManualSpend'] = async (cells, by) => {
+    await this.meta.saveManualSpend(cells, by)
   }
 
   private registrationDays(period: Period): Promise<RegistrationDayRow[]> {
