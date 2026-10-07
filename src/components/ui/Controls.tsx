@@ -229,6 +229,22 @@ export function MultiSelect({
     }
   }, [open])
 
+  /*
+    …and back to the trigger when Tab leaves either end of the list. At the
+    end of <body>, Tab past the last option left the page and Shift+Tab
+    before the first landed on whatever the page ends with — and the panel
+    stayed open over the screen with focus somewhere else.
+  */
+  function onPanelKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Tab') return
+    const stops = [...event.currentTarget.querySelectorAll<HTMLElement>('input, button')]
+    const edge = event.shiftKey ? stops[0] : stops[stops.length - 1]
+    if (document.activeElement !== edge) return
+    event.preventDefault()
+    setOpen(false)
+    buttonRef.current?.focus({ preventScroll: true })
+  }
+
   const toggle = (optionId: string) => {
     onChange(
       selected.includes(optionId)
@@ -286,6 +302,7 @@ export function MultiSelect({
             role="listbox"
             aria-multiselectable="true"
             aria-label={label}
+            onKeyDown={onPanelKeyDown}
             // `z-40`, ColumnFilter's: over the page and the mobile rail, under
             // the command palette (50) and tooltips (60). Hidden until measured.
             // Frosted (`.glass-float`): the tiles repaint under it while a

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MultiSelect } from '@/components/ui/Controls'
@@ -113,6 +113,36 @@ describe('the MultiSelect panel', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('listbox')).toBeNull()
     expect(document.activeElement).toBe(screen.getByRole('button', { name: /Барча статус/ }))
+  })
+
+  it('closes and hands focus back to the trigger when Tab leaves either end of the list', () => {
+    triggerAt(100, 220)
+    const trigger = () => screen.getByRole('button', { name: /Барча статус/ })
+
+    // Past the last option: at the end of <body> that Tab would leave the page.
+    let panel = openIn()
+    const boxes = panel.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')
+    boxes[1]!.focus()
+    fireEvent.keyDown(boxes[1]!, { key: 'Tab' })
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(document.activeElement).toBe(trigger())
+
+    // Before the first stop — the red «Tozalash» with a selection.
+    cleanup()
+    panel = openIn({ selected: ['CONFIRMED'] })
+    const clear = screen.getByRole('button', { name: /Tozalash/ })
+    clear.focus()
+    fireEvent.keyDown(clear, { key: 'Tab', shiftKey: true })
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(document.activeElement).toBe(trigger())
+
+    // Tab between the options stays in the list.
+    cleanup()
+    panel = openIn()
+    const first = panel.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+    first.focus()
+    fireEvent.keyDown(first, { key: 'Tab' })
+    expect(screen.queryByRole('listbox')).not.toBeNull()
   })
 
   it('stays open while it is used, ticks what is pressed, and closes on a press outside', () => {
