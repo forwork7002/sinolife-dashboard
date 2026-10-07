@@ -26,7 +26,9 @@ import {
   lockMinutes,
   lockoutKey,
   lockoutMessage,
+  refundAttempt,
   remainingLockMs,
+  reserveAttempt,
   type LockoutState,
 } from '@/server/auth/lockout'
 
@@ -224,5 +226,42 @@ describe('lockoutMessage', () => {
     expect(message.toLowerCase()).not.toContain('email')
     expect(message).not.toMatch(/@/)
     expect(message.toLowerCase()).not.toContain('parol')
+  })
+})
+
+describe('reserveAttempt / refundAttempt', () => {
+  it('refuses while ANY key is locked and writes nothing', () => {
+    const locked: LockoutState = {
+      failedCount: 5,
+      lockedUntil: new Date(T0.getTime() + 15 * MINUTE),
+      lastFailedAt: T0,
+    }
+    expect(reserveAttempt([null, locked], T0)).toEqual({ allowed: false, remainingMs: 15 * MINUTE })
+  })
+
+  it('counts the attempt on every key when none is locked', () => {
+    const decision = reserveAttempt([null, failTimes(2)], T0)
+    expect(decision.allowed).toBe(true)
+    if (decision.allowed) expect(decision.next.map((s) => s.failedCount)).toEqual([1, 3])
+  })
+
+  it('a refund below the threshold drops the lock the reservation armed', () => {
+    const armed = failTimes(MAX_FAILED_SIGN_INS)!
+    expect(armed.lockedUntil).not.toBeNull()
+    expect(refundAttempt(armed)).toEqual({
+      failedCount: MAX_FAILED_SIGN_INS - 1,
+      lockedUntil: null,
+      lastFailedAt: armed.lastFailedAt,
+    })
+  })
+
+  it('a refund of the only failure deletes the record', () => {
+    expect(refundAttempt(failTimes(1))).toBeNull()
+    expect(refundAttempt(null)).toBeNull()
+  })
+
+  it('a refund at or above the threshold keeps the running lock', () => {
+    const armed = failTimes(MAX_FAILED_SIGN_INS + 1)!
+    expect(refundAttempt(armed)?.lockedUntil).toEqual(armed.lockedUntil)
   })
 })

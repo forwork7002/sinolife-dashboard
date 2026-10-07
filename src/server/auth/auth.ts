@@ -24,7 +24,7 @@
  */
 
 import { betterAuth } from 'better-auth'
-import { APIError, createAuthMiddleware, isAPIError } from 'better-auth/api'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { twoFactor } from 'better-auth/plugins/two-factor'
 import { username } from 'better-auth/plugins/username'
@@ -38,11 +38,12 @@ import {
   checkPassword,
 } from '@/lib/passwordPolicy'
 import {
-  checkSignInLockout,
-  clearSignInFailures,
-  lockoutMessage,
-  recordFailedSignIn,
-} from './lockout'
+  type AccountLookup,
+  SIGN_IN_PATHS,
+  guardSignIn,
+  refuseUnusedEndpoint,
+  settleSignIn,
+} from './signInHooks'
 import { resolveTrustedOrigins } from './trustedOrigins'
 import { resolveTrustedProxies } from './trustedProxies'
 
@@ -149,41 +150,15 @@ const TOTP_ISSUER = 'SinoLife'
 */
 
 /**
- * The single key both credential paths lock on.
- *
- * WHY IT HAS TO BE SHARED. The lockout used to be wired to `/sign-in/email`
- * alone. When sign-in by login name arrived, an account locked out on one path
- * could still be signed into through the other — verified against a running
- * build: five wrong passwords on the email path armed the lock and returned
- * 429 to the correct password, and twelve seconds later that same correct
- * password succeeded on the username path. The lock was decorative.
- *
- * A login name resolves to the account's REAL email so both paths land in the
- * same bucket. An unknown login has no account to resolve, and falls back to a
- * deterministic stand-in rather than skipping the lockout: an identifier that
- * cannot be locked is an identifier an attacker can guess against for free,
- * and one that locks only when it EXISTS is an oracle telling them which
- * logins are real.
+ * The lockout's view of the accounts — see `signInLockoutIdentifiers` in
+ * signInHooks.ts for what it is asked and why the answer never decides the
+ * primary key.
  */
-async function lockoutIdentifier(
-  path: string,
-  body: Record<string, unknown>,
-): Promise<string | null> {
-  if (path === '/sign-in/email') {
-    const email = body.email
-    return typeof email === 'string' && email.trim() !== '' ? email : null
-  }
-
-  const raw = body.username
-  if (typeof raw !== 'string' || raw.trim() === '') return null
-
-  const login = raw.trim().toLowerCase()
-  const owner = await prisma.user.findUnique({
-    where: { username: login },
-    select: { email: true },
-  })
-
-  return owner?.email ?? `${login}@unknown.invalid`
+const accountLookup: AccountLookup = {
+  byLogin: (login) =>
+    prisma.user.findUnique({ where: { username: login }, select: { email: true } }),
+  byEmail: (email) =>
+    prisma.user.findUnique({ where: { email }, select: { username: true } }),
 }
 
 export const auth = betterAuth({
@@ -362,41 +337,21 @@ export const auth = betterAuth({
       const body = (ctx.body ?? {}) as Record<string, unknown>
 
       /*
-        The username plugin mounts this, and nothing in the product calls it.
-
-        It answers "does this login exist?" to anyone who can reach the
-        deployment — unauthenticated, no Origin required, and on its own
-        rate-limit budget because the path does not start with /sign-in. On a
-        call centre whose logins are first names that is the staff roster, and
-        the sign-in endpoints are deliberately silent about which half of a
-        credential was wrong precisely so it cannot be asked.
+        Endpoints better-auth mounts and nothing in the product calls:
+        /is-username-available (a login-existence oracle) and /update-user
+        (any session could rename itself, unaudited). See
+        `REFUSED_AUTH_PATHS` in signInHooks.ts.
       */
-      if (path === '/is-username-available') {
-        throw new APIError('NOT_FOUND')
-      }
+      refuseUnusedEndpoint(path)
 
-      if (path === '/sign-in/email' || path === '/sign-in/username') {
-        const identifier = await lockoutIdentifier(path, body)
-        if (identifier === null) return
-
-        const remainingMs = await checkSignInLockout(identifier)
-        if (remainingMs > 0) {
-          /**
-           * 429, not 401.
-           *
-           * The message says nothing about whether the address exists — an
-           * unknown address locks on the same schedule as the owner's, so the
-           * refusal is not an oracle (see `lockout.ts`). The distinct status
-           * and code exist so the login page can render "wait N minutes"
-           * instead of "wrong password", which is the difference between the
-           * owner waiting and the owner retyping a correct password forty
-           * times convinced something is broken.
-           */
-          throw new APIError('TOO_MANY_REQUESTS', {
-            code: 'ACCOUNT_LOCKED_OUT',
-            message: lockoutMessage(remainingMs),
-          })
-        }
+      /*
+        THE LOCKOUT, RESERVED BEFORE THE PASSWORD IS CHECKED. The attempt is
+        counted as a failure here, under a lock on its key, and `after`
+        settles it — so attempts racing the scrypt verification cannot all
+        slip past a count of four. See `reserveAttempt` in lockout.ts.
+      */
+      if (SIGN_IN_PATHS.has(path)) {
+        await guardSignIn(path, body, { lookup: accountLookup })
         return
       }
 
@@ -425,19 +380,20 @@ export const auth = betterAuth({
     }),
 
     /**
-     * Count the sign-in attempt.
+     * Settle the sign-in attempt `before` reserved.
      *
      * This has to be an AFTER hook because the outcome is the input: nothing
      * before the handler knows whether the password was right.
      *
      * `ctx.context.returned` is the response the endpoint produced — an
      * `APIError` when it refused, the sign-in payload when it did not. Only a
-     * 401 counts as a failure: that is what better-auth throws for a wrong
-     * password, an unknown address and an account with no credential, and it
-     * is the only status an attacker can produce by guessing. A 403 (wrong
-     * origin) or a 500 (database down) is the deployment misbehaving, and
-     * charging the owner's lockout budget for it would turn an outage into a
-     * lockout.
+     * 401 is a failure: that is what better-auth throws for a wrong password,
+     * an unknown login and an account with no credential, and it is the only
+     * status an attacker can produce by guessing. It keeps the reserved
+     * failure. A 403 (wrong origin), a 400 or a 500 is the deployment
+     * misbehaving, and the reservation is handed back — charging the owner's
+     * budget for it would turn an outage into a lockout. A success clears the
+     * record.
      *
      * ORDER MATTERS, AND IT IS GUARANTEED. better-auth runs the config's after
      * hook before any plugin's (`getHooks` in api/dispatch.mjs pushes it
@@ -448,22 +404,12 @@ export const auth = betterAuth({
      * they are separate factors with separate budgets.
      */
     after: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== '/sign-in/email' && ctx.path !== '/sign-in/username') return
-
-      const identifier = await lockoutIdentifier(
+      await settleSignIn(
         ctx.path,
         (ctx.body ?? {}) as Record<string, unknown>,
+        ctx.context.returned,
+        { lookup: accountLookup },
       )
-      if (identifier === null) return
-
-      const returned: unknown = ctx.context.returned
-
-      if (isAPIError(returned)) {
-        if (returned.statusCode === 401) await recordFailedSignIn(identifier)
-        return
-      }
-
-      await clearSignInFailures(identifier)
     }),
   },
 
