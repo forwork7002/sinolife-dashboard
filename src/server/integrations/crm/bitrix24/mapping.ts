@@ -416,6 +416,15 @@ export const UF = Object.freeze({
   /** «РОП (Первичка)» — an employee field: the portal user id of the ROP. */
   LEAD_ROP: 'UF_CRM_1789454012',
   /**
+   * «ROP KVAL LID» — an employee field on Регистрация (#0) deals, added
+   * 2026-10-07: the ROP the deal was handed to. A business process stamps it
+   * on add/update (owner a ROP → that ROP; owner a seller and the field empty
+   * → the seller's ROP head) and never rewrites it when the ROP passes the deal
+   * on; the robots that change «Ответственный» write it too; older deals were
+   * filled over the API. Empty when the deal never reached a ROP's team.
+   */
+  ROP_KVAL_LID: 'UF_CRM_ROP_KVAL_LID',
+  /**
    * «Регистрация» — which registrar qualified the lead: an ENUMERATION of 17
    * names (Умида 638, Эъзоза 640, … Рухшона 720, Ситора 722, Маржона 730),
    * resolved through `label()`. Written only when the Регистрация deal goes

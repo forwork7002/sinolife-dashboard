@@ -924,7 +924,16 @@ Per-screen traps worth knowing before you touch one:
   owner (`ownerChangesOf`, in one transaction with the upsert; ~1 min
   granularity, nothing before 2026-10-06). The creator FK is NOT VALID on
   purpose (see the migration).
-  `bezkvalDaysSql` order: today's owner's ROP (head / «… rop» registrar) →
+  From 2026-10-07 the portal stamps «ROP KVAL LID» (UF_CRM_ROP_KVAL_LID →
+  `deal.ropKvalLidEmployeeId`) on every Регистрация deal: a business process
+  on add/update (owner a ROP → that ROP; owner a seller, field empty → the
+  seller's ROP head; never rewritten after), the owner-changing robots write
+  it too, older deals were filled over the API. It is the client's own rule
+  and comes FIRST — so a deal a seller opened for themselves counts for
+  their ROP (06.10: 122 such deals); the guesses below are only the fallback
+  for rows the sync has not re-read yet.
+  `bezkvalDaysSql` order: «ROP KVAL LID»'s team (same head / «… rop» rule) →
+  today's owner's ROP (head / «… rop» registrar) →
   a deal someone ELSE opened, now with a seller whose PRIMARY unit is a ROP
   team and who sits in NO non-ROP unit (`department_member`: a registrar is
   listed in Регистрация, so the desk stays out even when filed under a ROP;

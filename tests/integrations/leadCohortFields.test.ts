@@ -95,6 +95,7 @@ describe('fetchDeals carries the five fields', () => {
                     [UF.LEAD_DISTRIBUTED_ON]: '2026-09-23T00:00:00+03:00',
                     [UF.AI_QUALIFIED_AT]: '2026-09-22T23:35:00+03:00',
                     [UF.LEAD_ROP]: '8868',
+                    [UF.ROP_KVAL_LID]: '7010',
                     [UF.REPEAT_LEAD]: '746',
                   },
                 ],
@@ -114,6 +115,7 @@ describe('fetchDeals carries the five fields', () => {
     expect(deal.leadDistributedOn).toBe('2026-09-23')
     expect(deal.aiQualifiedAt?.toISOString()).toBe('2026-09-22T20:35:00.000Z')
     expect(deal.leadRopExternalId).toBe('8868')
+    expect(deal.ropKvalLidExternalId).toBe('7010')
     expect(deal.repeatLead).toBe('PROCESSING')
     expect(deal.createdByExternalId).toBe('10')
   })

@@ -56,6 +56,12 @@ describe('bezkvalDaysSql', () => {
     expect(sql).toContain(`d."createdAtSource" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
   })
 
+  it('credits the portal\'s «ROP KVAL LID» first, read through the same head rule', () => {
+    expect(sql).toContain(`LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"`)
+    expect(sql).toContain(`WHERE h."headId" = k."id" AND h."isActive"`)
+    expect(sql.indexOf('h."headId" = k."id"')).toBeLessThan(sql.indexOf('h."headId" = e."id"'))
+  })
+
   it('credits a team the owner HEADS first, the head read as the split reads one', () => {
     expect(sql).toContain(`WHERE h."headId" = e."id" AND h."isActive"`)
     expect(sql).toContain(`ORDER BY (h."id" = e."departmentId") DESC, h."name"`)

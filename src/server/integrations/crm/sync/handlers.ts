@@ -928,6 +928,7 @@ export function createSyncHandlers(
     { name: 'leadDistributedOn', cast: 'date' },
     { name: 'aiQualifiedAt', cast: 'timestamp' },
     { name: 'leadRopEmployeeId' },
+    { name: 'ropKvalLidEmployeeId' },
     { name: 'createdByEmployeeId' },
     { name: 'repeatLead' },
     { name: 'isReturnCustomer' },
@@ -1048,6 +1049,7 @@ export function createSyncHandlers(
           // A ROP the roster does not know yet is null, not a skipped deal:
           // the lead still counts, under «ROP koʻrsatilmagan».
           record.leadRopExternalId ? (employeeMap.get(record.leadRopExternalId) ?? null) : null,
+          record.ropKvalLidExternalId ? (employeeMap.get(record.ropKvalLidExternalId) ?? null) : null,
           record.createdByExternalId ? (employeeMap.get(record.createdByExternalId) ?? null) : null,
           record.repeatLead ?? null,
           record.isReturnCustomer ?? false,

@@ -425,6 +425,12 @@ async function pruneSyncLog(db: PrismaClient): Promise<void> {
  * NOW (2026-10-06) for «Безквал»: `deal.createdByEmployeeId` (CREATED_BY_ID),
  * which tells a deal handed to a ROP's seller from one the seller opened. The
  * month grid reaches back into September, so the same window again.
+ *
+ * NOW (2026-10-07) for «Безквал»: `deal.ropKvalLidEmployeeId` («ROP KVAL LID»,
+ * UF_CRM_ROP_KVAL_LID), the ROP the portal stamps on each Регистрация deal.
+ * The same window: every deal the month grid can show was created, so
+ * modified, after 1 September. ~254 000 deals (portal count 2026-10-07), ~5 100
+ * invocations — inside the hourly ceiling.
  */
 /** The day contact relinking shipped; see the startup read of `lastSweepAt`. */
 const CONTACT_RELINK_SINCE = new Date('2026-09-25T00:00:00Z')
@@ -432,7 +438,7 @@ const CONTACT_RELINK_SINCE = new Date('2026-09-25T00:00:00Z')
 const DEALS_BACKFILL: DealsBackfill | null = {
   since: new Date('2026-09-01T00:00:00+05:00'),
   // After the deploy, so no DEALS backfill run earlier today settles it.
-  requestedAt: new Date('2026-10-06T18:00:00+05:00'),
+  requestedAt: new Date('2026-10-07T18:00:00+05:00'),
 }
 
 /**

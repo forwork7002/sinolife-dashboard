@@ -1870,6 +1870,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
       leadDistributedOn: calendarDate(d[UF.LEAD_DISTRIBUTED_ON]),
       aiQualifiedAt: toDate(d[UF.AI_QUALIFIED_AT]),
       leadRopExternalId: portalUserId(d[UF.LEAD_ROP]),
+      ropKvalLidExternalId: portalUserId(d[UF.ROP_KVAL_LID]),
       createdByExternalId: portalUserId(d.CREATED_BY_ID),
       repeatLead: repeatLeadKind(d[UF.REPEAT_LEAD], this.label(UF.REPEAT_LEAD, d[UF.REPEAT_LEAD])),
       isReturnCustomer: d.IS_RETURN_CUSTOMER === 'Y',

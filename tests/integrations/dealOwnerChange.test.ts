@@ -50,6 +50,7 @@ describe('the deals pass', () => {
   function fakes(stored: { id: string; externalId: string; employeeId: string }[], failUpsert = false) {
     const calls: string[] = []
     const changes: unknown[] = []
+    const writes: { sql: string; params: unknown[] }[] = []
     const prisma = {
       employee: { findMany: async () => [] },
       pipeline: { findMany: async () => [{ id: 'reg' }] },
@@ -61,7 +62,8 @@ describe('the deals pass', () => {
           return { count: data.length }
         },
       },
-      $executeRawUnsafe: async () => {
+      $executeRawUnsafe: async (sql: string, ...params: unknown[]) => {
+        writes.push({ sql, params })
         calls.push('upsert')
         if (failUpsert) throw new Error('upsert failed')
         return 1
@@ -79,7 +81,7 @@ describe('the deals pass', () => {
     }
     const resolver = { map: async (e: string) => maps[e], mapFor: async () => new Map(), isCached: () => false }
     const deals = createSyncHandlers(prisma as never, 'BITRIX24', resolver as never).find((h) => h.entity === 'DEALS')!
-    return { deals, calls, changes }
+    return { deals, calls, changes, writes }
   }
   const deal = (externalId: string, owner: string, pipeline: string, stage = 'NEW'): RawDeal => ({
     externalId,
@@ -111,6 +113,21 @@ describe('the deals pass', () => {
     ])
     await deals.persist([deal('1', '7010', '12'), deal('2', '7010', '0', 'UNKNOWN')])
     expect(changes).toEqual([])
+  })
+
+  it('writes «ROP KVAL LID» into its own column, null for a person the roster does not know', async () => {
+    const { deals, writes } = fakes([])
+    await deals.persist([
+      { ...deal('1', '10', '0'), createdByExternalId: '10', ropKvalLidExternalId: '7010' },
+      { ...deal('2', '10', '0'), createdByExternalId: '10', ropKvalLidExternalId: '999' },
+    ])
+    const { sql, params } = writes[0]
+    const columns = [...sql.slice(sql.indexOf('(') + 1, sql.indexOf(')')).matchAll(/"([^"]+)"/g)].map((m) => m[1])
+    const at = columns.indexOf('ropKvalLidEmployeeId')
+    expect(at).toBeGreaterThan(-1)
+    expect(params[at]).toBe('azizbek')
+    expect(params[columns.indexOf('createdByEmployeeId')]).toBe('doniyor')
+    expect(params[columns.length + at]).toBeNull()
   })
 
   it('records nothing when the write fails', async () => {

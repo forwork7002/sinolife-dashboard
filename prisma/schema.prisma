@@ -582,6 +582,8 @@ model Employee {
   soldDeals  Deal[]      @relation("DealOperator")
   /// Leads the portal routed to this person as ROP. See Deal.leadRopEmployeeId.
   routedLeads Deal[]     @relation("DealLeadRop")
+  /// Регистрация deals handed to this person as ROP. See Deal.ropKvalLidEmployeeId.
+  kvalLidDeals Deal[]    @relation("DealRopKvalLid")
   /// Deals this person opened. See Deal.createdByEmployeeId.
   openedDeals Deal[]     @relation("DealCreator")
   ownerChangesFrom DealOwnerChange[] @relation("OwnerChangeFrom")
@@ -895,6 +897,10 @@ model Deal {
   aiQualifiedAt      DateTime?
   /// UF_CRM_1789454012 «РОП (Первичка)» — the ROP the lead was routed to.
   leadRopEmployeeId  String?
+  /// UF_CRM_ROP_KVAL_LID «ROP KVAL LID» — the ROP a Регистрация deal was handed
+  /// to, stamped by the portal's business process and kept when the ROP passes
+  /// the deal on. «Безквал» reads it first. Added 2026-10-07.
+  ropKvalLidEmployeeId String?
   /// CREATED_BY_ID — who opened the deal. Differs from `employeeId` once the
   /// deal was handed to someone else: Регистрация deals are opened by the desk
   /// (Дониёр, the admin) and given to a ROP, who may pass them on to a seller
@@ -927,6 +933,7 @@ model Deal {
   /// employee must not block the delete of a row that still has a real owner.
   operatorEmployee Employee?       @relation("DealOperator", fields: [operatorEmployeeId], references: [id], onDelete: SetNull)
   leadRop          Employee?       @relation("DealLeadRop", fields: [leadRopEmployeeId], references: [id], onDelete: SetNull)
+  ropKvalLid       Employee?       @relation("DealRopKvalLid", fields: [ropKvalLidEmployeeId], references: [id], onDelete: SetNull)
   createdBy        Employee?       @relation("DealCreator", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   source       SalesSource?       @relation(fields: [sourceId], references: [id], onDelete: SetNull)

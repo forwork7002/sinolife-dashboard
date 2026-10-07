@@ -110,6 +110,12 @@ export class RegistrationRepository {
    * (the client 2026-10-06: «ропларни номига нечта сделка ўтаяпти», a deal
    * stays the ROP's after it moves on). In order:
    *
+   * 0. «ROP KVAL LID» (`ropKvalLidEmployeeId`, from 2026-10-07): the portal's
+   *    own answer, stamped when the deal reached a ROP or a ROP's seller and
+   *    never rewritten after — so it holds where the guesses below cannot (a
+   *    hand-over before the sync recorded owner changes, a seller in two
+   *    units, a robot's assignment). Read through `bezkvalOwnerRopSql`, so it
+   *    names a team only when that person heads one;
    * 1. the team today's «Ответственный» stands for (`bezkvalOwnerRopSql`);
    * 2. a deal someone else opened, now with a seller whose PRIMARY unit is a
    *    ROP's and who sits in no other kind of unit: that ROP — the ROP passed
@@ -130,6 +136,7 @@ export class RegistrationRepository {
       SELECT
         (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
         COALESCE(
+          ${RegistrationRepository.bezkvalOwnerRopSql('k')},
           ${RegistrationRepository.bezkvalOwnerRopSql('e')},
           (SELECT ${InsightsRepository.ropNameSql('dep."name"')}
              FROM "department" dep
@@ -154,6 +161,7 @@ export class RegistrationRepository {
       FROM "deal" d
       JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
       LEFT JOIN "employee" e ON e."id" = d."employeeId"
+      LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"
       WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
       GROUP BY 1, 2`
   }
