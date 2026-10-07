@@ -145,6 +145,49 @@ describe('ROP pay (2026-10-07)', () => {
   })
 })
 
+describe('ROP pay follows the sale, not the seller', () => {
+  const now = new Date('2026-10-05T06:00:00Z')
+  const month = payrollPeriod('2026-09', 'full', 'Asia/Tashkent')
+  const previous = comparablePayrollPeriod(month, payrollPeriod('2026-08', 'full', 'Asia/Tashkent'), now)
+
+  it('leaves a moved seller\'s old share with the old ROP, and sums every ROP into ropTotals', async () => {
+    const insights = {
+      ropHeadNames: async () => new Map([['Sadriddin', 'Sadriddin B']]),
+      deliveredSellerRows: async () => [
+        slice('moved', 'Sevinchxon', 30, 10),
+        slice('moved', 'Sadriddin', 20, 24),
+      ],
+    } as unknown as InsightsRepository
+    const dto = await new PayrollService(insights).sellers(month, previous, 'full', 'UZS', now)
+
+    const team = (rop: string) => dto.teams.find((t) => t.rop === rop)!
+    expect(team('Sevinchxon').sellers).toBe(0)
+    expect(team('Sevinchxon').ropPay!.basis.amount).toBe(30_000_000)
+    expect(team('Sevinchxon').ropPay!.percent.amount).toBe(600_000)
+    expect(team('Sevinchxon').ropPay!.head).toBeNull()
+    expect(team('Sadriddin').fakt2.amount).toBe(50_000_000)
+    expect(team('Sadriddin').ropPay!.basis.amount).toBe(20_000_000)
+    expect(team('Sadriddin').ropPay!.percent.amount).toBe(400_000)
+    expect(team('Sadriddin').ropPay!.head).toBe('Sadriddin B')
+    expect(dto.ropTotals.rops).toBe(2)
+    expect(dto.ropTotals.percent.amount).toBe(1_000_000)
+    expect(dto.ropTotals.fixed.amount).toBe(4_000_000)
+    expect(dto.ropTotals.total.amount).toBe(5_000_000)
+  })
+
+  it('still answers when the head lookup fails', async () => {
+    const insights = {
+      ropHeadNames: async () => {
+        throw new Error('db down')
+      },
+      deliveredSellerRows: async () => [slice('a', 'Lola', 10, 10)],
+    } as unknown as InsightsRepository
+    const dto = await new PayrollService(insights).sellers(month, previous, 'full', 'UZS', now)
+    expect(dto.teams[0]!.ropPay!.head).toBeNull()
+    expect(dto.teams[0]!.ropPay!.total.amount).toBe(2_200_000)
+  })
+})
+
 /**
  * «KIM QANCHAGA OʻSGAN» (2026-10-05): the comparison window is read through
  * the same query, paid by the same table, and summed per ROP under the label

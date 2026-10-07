@@ -720,9 +720,14 @@ export interface PayrollTeamDto {
   } | null
   readonly fakt2Delta: DeltaDto
   readonly totalDelta: DeltaDto
-  /** The ROP's pay: 2% of the team's FAKT 2, + 2 000 000 oklad on the month. Null for «ROP yoʻq». */
+  /**
+   * The ROP's pay: 2% of `basis`, + 2 000 000 oklad on the month. Null for
+   * «ROP yoʻq» and for a label nothing was delivered under this period.
+   */
   readonly ropPay: {
     readonly head: string | null
+    /** FAKT 2 sold under this label — not `fakt2`, which follows each seller's newest team. */
+    readonly basis: MoneyDto
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
     readonly total: MoneyDto

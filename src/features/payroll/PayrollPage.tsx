@@ -684,7 +684,7 @@ function CopyButton({
             [
               tsvCell(team.ropPay!.head ?? team.rop ?? NO_ROP),
               tsvCell(team.rop ?? NO_ROP),
-              team.fakt2.amount,
+              team.ropPay!.basis.amount,
               team.ropPay!.percent.amount,
               team.ropPay!.fixed.amount,
               tsvCell(ropFormula(team)),
@@ -1014,7 +1014,7 @@ function sellerFormula(row: PayrollSellerDto): string {
 function ropFormula(team: PayrollTeamDto): string {
   const pay = team.ropPay
   if (!pay) return ''
-  const base = `${formatFullUzs(team.fakt2.amount)} × 2%`
+  const base = `${formatFullUzs(pay.basis.amount)} × 2%`
   return pay.fixed.amount > 0 ? `${base} + ${formatFullUzs(pay.fixed.amount)} =` : `${base} =`
 }
 
@@ -1071,7 +1071,7 @@ function RopPayTable({
       numeric: true,
       width: '140px',
       render: (line) =>
-        line.kind === 'total' ? NO_VALUE : formatFullUzs(line.team.fakt2.amount),
+        line.kind === 'total' ? NO_VALUE : formatFullUzs(line.team.ropPay!.basis.amount),
     },
     {
       key: 'percent',

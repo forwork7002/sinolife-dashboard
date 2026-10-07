@@ -117,6 +117,13 @@ export interface PayrollTeamDto {
    */
   readonly ropPay: {
     readonly head: string | null
+    /**
+     * The FAKT 2 the 2% is taken of: every delivery SOLD UNDER this label,
+     * read off the raw slices — not `fakt2`, which follows each seller's
+     * newest team. A seller who moved mid-month leaves the old ROP's share
+     * with the old ROP (`mergeSellerTeamSlices`' own rule for teams).
+     */
+    readonly basis: MoneyDto
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
     readonly total: MoneyDto
@@ -285,10 +292,22 @@ export class PayrollService {
     and pay is a person's: two slices would split one FAKT 2 across the
     tiers and rank one seller twice. See `mergeSellerTeamSlices`.
   */
-  private rows(period: Period): Promise<ConfirmationSellerRatingRow[]> {
-    return rowsCache.get(`${period.start.toISOString()}|${period.end.toISOString()}`, async () =>
-      mergeSellerTeamSlices(await this.insights.deliveredSellerRows(period)),
+  private slices(period: Period): Promise<ConfirmationSellerRatingRow[]> {
+    return rowsCache.get(`${period.start.toISOString()}|${period.end.toISOString()}`, () =>
+      this.insights.deliveredSellerRows(period),
     )
+  }
+
+  private async rows(period: Period): Promise<ConfirmationSellerRatingRow[]> {
+    return mergeSellerTeamSlices(await this.slices(period))
+  }
+
+  /*
+    A NAME, NEVER A REASON TO FAIL. The heads only label the ROP rows; a
+    refused lookup prints the team label instead of taking the payroll down.
+  */
+  private heads(): Promise<Map<string, string>> {
+    return headsCache.get('heads', () => this.insights.ropHeadNames()).catch(() => new Map())
   }
 
   private async build(
@@ -302,13 +321,19 @@ export class PayrollService {
       Both windows at once, through the same query. An empty comparison
       window (a period that has not started) is not asked for at all.
     */
-    const [rows, previousRows, heads] = await Promise.all([
-      this.rows(period),
+    const [slices, previousRows, heads] = await Promise.all([
+      this.slices(period),
       previousPeriod.end.getTime() > previousPeriod.start.getTime()
         ? this.rows(previousPeriod)
         : Promise.resolve([] as ConfirmationSellerRatingRow[]),
-      headsCache.get('heads', () => this.insights.ropHeadNames()),
+      this.heads(),
     ])
+    const rows = mergeSellerTeamSlices(slices)
+    /* The ROPs' basis: what was sold under each label, slice by slice. */
+    const ropBasis = new Map<string, bigint>()
+    for (const slice of slices) {
+      if (slice.rop !== null) ropBasis.set(slice.rop, (ropBasis.get(slice.rop) ?? 0n) + slice.deliveredMinor)
+    }
 
     /*
       THE COMPARISON WINDOW IS PAID BY THE SAME TABLE. A half against a half,
@@ -420,7 +445,7 @@ export class PayrollService {
     }
 
     const printed = new Set(rows.map((row) => row.employeeId))
-    const teams = teamsOf(sellers, previousPay, cash, delta, scheme, heads)
+    const teams = teamsOf(sellers, previousPay, cash, delta, scheme, heads, ropBasis)
     const paidRops = teams.flatMap((team) => (team.ropPay ? [team.ropPay] : []))
 
     return {
@@ -474,6 +499,7 @@ function teamsOf(
   delta: (current: bigint, previous: bigint | null) => DeltaDto,
   scheme: PayrollSchemeValue,
   heads: ReadonlyMap<string, string>,
+  ropBasis: ReadonlyMap<string, bigint>,
 ): PayrollTeamDto[] {
   const minor = (value: MoneyDto) => BigInt(value.amountMinor)
 
@@ -509,11 +535,16 @@ function teamsOf(
   for (const rop of then.keys()) {
     if (!now.has(rop)) now.set(rop, { sellers: 0, fakt2: 0n, percent: 0n, fixed: 0n, total: 0n })
   }
+  /* A label only a moved seller sold under still pays its ROP — no card draws. */
+  for (const [rop, basis] of ropBasis) {
+    if (basis > 0n && !now.has(rop)) now.set(rop, { sellers: 0, fakt2: 0n, percent: 0n, fixed: 0n, total: 0n })
+  }
 
   return [...now.entries()]
     .map(([rop, team]): PayrollTeamDto => {
       const before = then.get(rop) ?? null
-      const pay = rop !== null && team.sellers > 0 ? ropPayroll({ basisMinor: team.fakt2, scheme }) : null
+      const basis = rop === null ? 0n : (ropBasis.get(rop) ?? 0n)
+      const pay = basis > 0n ? ropPayroll({ basisMinor: basis, scheme }) : null
       return {
         rop,
         sellers: team.sellers,
@@ -528,6 +559,7 @@ function teamsOf(
         totalDelta: delta(team.total, before?.total ?? null),
         ropPay: pay && {
           head: (rop !== null && heads.get(rop)) || null,
+          basis: cash(basis),
           percent: cash(pay.percentMinor),
           fixed: cash(pay.fixedMinor),
           total: cash(pay.totalMinor),

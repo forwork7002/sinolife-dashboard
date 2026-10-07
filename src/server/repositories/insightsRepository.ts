@@ -5163,9 +5163,9 @@ export class InsightsRepository {
   async ropHeadNames(): Promise<Map<string, string>> {
     const rop = InsightsRepository.ropNameSql('d."name"')
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string; heads: string }[]>(`
-      SELECT ${rop} AS rop, string_agg(DISTINCT e."fullName", ', ') AS heads
+      SELECT ${rop} AS rop, string_agg(DISTINCT e."fullName", ', ' ORDER BY e."fullName") AS heads
         FROM "department" d
-        JOIN "employee" e ON e."id" = d."headId"
+        JOIN "employee" e ON e."id" = d."headId" AND e."isActive"
        WHERE d."isActive" AND ${rop} IS NOT NULL
        GROUP BY 1
     `)

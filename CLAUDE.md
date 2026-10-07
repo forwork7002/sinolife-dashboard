@@ -1864,7 +1864,10 @@ Per-screen traps worth knowing before you touch one:
   FAKT 2 on EVERY tab, + 2 000 000 oklad on «Oylik» only (the user's choice).
   `teams[].ropPay` (head = the «(ROP)» unit's `headId`, `ropHeadNames`;
   several units under one label list every head) and `ropTotals`, kept APART
-  from the sellers' fund. A team with no seller paid now gets no ROP row. The
+  from the sellers' fund. The ROP's basis is FAKT 2 SOLD UNDER the label
+  (raw slices), not the card's `fakt2`: a seller who moved team mid-period
+  leaves the old ROP's share with the old ROP. A label nothing was delivered
+  under gets no ROP row (no oklad either — flagged to the user). The
   page prints «ROP lar maoshi» under the hero and a «Hisob» column per seller
   («52 340 000 × 8% + 500 000 =») beside JAMI; the copy carries both.
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
