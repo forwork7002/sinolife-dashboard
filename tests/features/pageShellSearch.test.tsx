@@ -74,8 +74,11 @@ describe('the search box', () => {
     expect(blank.activeCount).toBe(0)
     expect(blank.apiParams.q).toBeUndefined()
 
-    // A real term is still read as typed.
+    // A real term is still read as typed, and sent trimmed: «ali» and «ali »
+    // are one question and one cache entry.
     address.search = 'q=ali%20'
-    expect(renderHook(() => useDashboardFilters()).result.current.filters.q).toBe('ali ')
+    const typed = renderHook(() => useDashboardFilters()).result.current
+    expect(typed.filters.q).toBe('ali ')
+    expect(typed.apiParams.q).toBe('ali')
   })
 })

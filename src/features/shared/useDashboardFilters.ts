@@ -591,7 +591,10 @@ export function useDashboardFilters() {
     // byte-identical, so their react-query caches are untouched by this.
     if (filters.queue === 'backlog') out.queue = filters.queue
     if (filters.brand !== 'all') out.brand = filters.brand
-    if (filters.q) out.q = filters.q
+    // Trimmed here and only here: the box keeps the space a reader is typing,
+    // while «ali» and «ali » are one question to the server (it trims too) and
+    // must be one cache entry, not two requests for the same answer.
+    if (filters.q) out.q = filters.q.trim()
     return out
   }, [filters])
 
