@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 
 import { ErrorState } from "@/components/states/States";
+import { ChartCard } from "@/components/ui/Card";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { RankBadge, StatTile } from "@/components/ui/Stat";
 import { AdSalesDaysTable } from "@/features/sales/AdSalesDaysTable";
@@ -361,13 +362,9 @@ function SellersForecastTable({
   ];
 
   return (
-    <div className="space-y-2">
-      <h3
-        className="text-sm font-semibold tracking-tight"
-        style={{ color: "var(--ink-primary)" }}
-      >
-        Sotuvchilar boʻyicha · hozirgi va prognoz
-      </h3>
+    // In a card like every other table in the product: on the bare page the
+    // rows sat on the backdrop's grain and the sunken header band floated.
+    <ChartCard title="Sotuvchilar boʻyicha · hozirgi va prognoz">
       <DataTable
         columns={columns}
         rows={rows}
@@ -379,10 +376,10 @@ function SellersForecastTable({
         minWidth={980}
       />
       {!projecting && status === "ready" && (
-        <p className="text-[11px]" style={{ color: "var(--ink-muted)" }}>
+        <p className="mt-2 text-[11px]" style={{ color: "var(--ink-muted)" }}>
           Prognoz ustunlari boʻsh — sababi yuqorida yozilgan.
         </p>
       )}
-    </div>
+    </ChartCard>
   );
 }

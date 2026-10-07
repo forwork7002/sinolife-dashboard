@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { ErrorState, statusOf } from '@/components/states/States'
+import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { GaugeTile, RankBadge, StatTile } from '@/components/ui/Stat'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -600,10 +601,8 @@ function TeamsTable({
   const teamless = data?.totals.teamlessSellers ?? 0
 
   return (
-    <div className="space-y-2">
-      <h3 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-        Jamoalar boʻyicha · FAKT 1 / FAKT 2
-      </h3>
+    // In a card like every other table in the product (see SellersForecastTable).
+    <ChartCard title="Jamoalar boʻyicha · FAKT 1 / FAKT 2">
       <DataTable
         columns={columns}
         rows={teams}
@@ -635,12 +634,12 @@ function TeamsTable({
         a screen that offered no explanation.
       */}
       {teamless > 0 && (
-        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+        <p className="mt-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           {formatNumber(teamless)} ta sotuvchi hech qaysi ROP jamoasida emas — ular yuqoridagi
           jamlarda bor, bu jadvalda yoʻq.
         </p>
       )}
-    </div>
+    </ChartCard>
   )
 }
 
