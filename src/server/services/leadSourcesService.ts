@@ -923,8 +923,6 @@ const scanCache = processWide('sinolife.leads.scanCache', () => ttlCache<WindowS
 */
 export const LEADS_WARM_EVERY_MS = 3 * 60_000
 const LEADS_WARM_PRESETS: readonly PeriodPreset[] = ['today', 'this_month']
-/** Tashkent hours [from, to) the warmer runs in. */
-const LEADS_WARM_HOURS = [7, 23] as const
 const LEADS_WARM_SCANS_AT_ONCE = 2
 
 type Answers<T extends readonly (() => Promise<unknown>)[]> = {
