@@ -3147,6 +3147,9 @@ p {
  * strip, and the thing that ties it to the seats below at a glance. Metal is
  * chrome here in the same sense it is there: it may carry tint and never a
  * value, which is why «Rekord» and «Yetakchi» are words rather than colours.
+ * The WORD's ink is SAYQAL 5h's — the same gold deepened toward ink, because
+ * --medal-gold measured 2.5:1 on the light title band; the cup and the lozenge
+ * keep --metal. `color: var(--metal)` stays here as the pinned base.
  */
 .record-month {
   color: var(--metal);
@@ -3355,6 +3358,7 @@ p {
 .tv-fakt-tab[aria-pressed='true'] {
   color: var(--ink-primary);
 }
+/* The unlit lamp's ring is SAYQAL 5f's; the lit lamp is the rule below + 4b. */
 .tv-fakt-dot {
   width: 6px;
   height: 6px;
@@ -3513,6 +3517,7 @@ p {
  * to be the first thing seen from across the room, in ink on the metal's
  * wash so the metal never carries the glyph itself.
  */
+/* The lip's colour is SAYQAL 5c's chamfer, painted in the 3px declared here. */
 .tv-pedestal {
   position: relative;
   height: var(--tv-pedestal);
@@ -3685,7 +3690,9 @@ p {
  * THE CHAMPION'S CARD IS FRAMED IN ITS METAL, the other two only rimmed —
  * the seat the client wants «unmistakable from across the room» differs from
  * its flankers in outline, not only in size. The frame itself (a dark gap, a
- * fine metal line, a pool of gold light under it) is SAYQAL 2c's bezel.
+ * fine metal line, a pool of gold light under it) is SAYQAL 2c's bezel. The
+ * rim's colour is SAYQAL 5a's bevel now (these mixes are its mid-height stop);
+ * the two rules below keep the cascade and paint nothing.
  */
 .tv-seat--1 .tv-seat-card {
   border-color: color-mix(in oklab, var(--metal) 72%, var(--border));
@@ -3699,6 +3706,7 @@ p {
 .tv-seat .podium-plaque {
   white-space: nowrap;
 }
+/* Its background and box-shadow are SAYQAL 5b's satin tag. */
 .tv-seat-plaque {
   position: absolute;
   top: 0;
@@ -3816,6 +3824,7 @@ p {
   border-collapse: separate;
   border-spacing: 0;
 }
+/* From 1280 the rule under the head is SAYQAL 5e's --axis; this one is the phone's. */
 .tv-table th {
   position: sticky;
   top: 0;
@@ -3864,6 +3873,7 @@ p {
 .tv-row:hover > td {
   background: var(--surface-sunken);
 }
+/* Its ink is SAYQAL 5d's (secondary); the td's muted ink is the dash's. */
 .tv-rank {
   font-variant-numeric: tabular-nums lining-nums;
   font-size: var(--tv-money);
@@ -4202,7 +4212,8 @@ p {
  * medallar + sayqal»): line icons where colour emoji stood, the heading disc,
  * the seat cards' hairlines and the champion's bezel, the pedestal's satin,
  * one cut of numerals, a drawn lozenge on the record wall and the FAKT switch
- * as a well and a key. Dropped, each for a measured reason: the tone-bar
+ * as a well and a key. Item 5 (2026-10-07) is a second pass in the same hand,
+ * paint only — see its own header. Dropped, each for a measured reason: the tone-bar
  * strip, the list-foot fade (it veiled row 8 and changed scrollHeight), the
  * «soʻm» scaling (moved the seat sum 1.3px) and the month tracking (+16.7px
  * of marquee run).
@@ -4332,6 +4343,170 @@ p {
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--tv-tone) 22%, transparent), 0 0 8px color-mix(in oklab, var(--tv-tone) 60%, transparent);
 }
 
+/* 5 · PREMIUM — 2026-10-07. The client, over a screenshot of this board:
+   «kartochkani premium, professionalroq qilish kerak … elementlarni toʻgʻri
+   qilish … oʻzgarib ketmasin juda kuchli, shunga oʻrganishgan». A jeweller's
+   finishing pass over the chrome, in the ring's own hand (its highlight cut is
+   `color-mix(metal N%, #fff)`, the expression `.medal-ring` and `.tv-pedestal`
+   already use): every metal edge becomes a lit bevel, every ink step is one
+   notch along the house ladder, the FAKT lamp gets its documented two states,
+   and every WORD set in gold wears one gold ink. PAINT ONLY — colour,
+   background, box-shadow, text-shadow: no box, gap, size, weight or wording
+   changes, so the SAYQAL promises above (number columns Δ 0, row height Δ 0,
+   the podium never taller) hold by construction. Two colour values moved in
+   `SellersPage.tsx` with it: the row bar's FAKT 1 layer (--seq-250 → 350) and
+   the «Buyurtma» count (primary → secondary ink). Every rule here outweighs
+   the rule it refines, or ties it and is written after it. Proposed by three
+   design lenses and scored by two judges on gain / restraint / safety; what
+   they dropped — a second specular on the ring, a satin rank disc, a
+   tone-tinted table head, the phone switch's key — is not here. */
+
+/* 5a · seat cards: the rim is a metal BEVEL instead of a flat tinted line —
+   the pedestal lip's own cut (metal 70% + white) along the top, TODAY'S EXACT
+   rim colour at mid-height (metal 50% / 72% into --border, composited over the
+   raised ground the border sat on), and a cut two steps more metal at the foot
+   (72% / 88%) — which is also what silver's 3px rail and bronze's 2px rail now
+   show. Drawn as a border-box gradient under a transparent 1px border: the
+   card is OPAQUE (--surface-raised), so the veil the hero's rim suffered under
+   glass (DESIGN.md) cannot happen here. The crown-light wash is restated
+   unchanged (13% / 24%, the same ellipse) and clipped to the padding box,
+   where the border covered it anyway; a 16px contact shade of --surface-sunken
+   along the foot sits the card on its block, ending inside the bottom padding
+   and the lower half of the bar row, under no line of text. The
+   `.tv-seat--N .tv-seat-card { border-color }` rules in TV BOARD keep
+   cascading and paint nothing. The champion's rule ties this one and is
+   written second. */
+.tv-col .tv-seat .tv-seat-card {
+  border-color: transparent;
+  background:
+    radial-gradient(130% 85% at 50% -25%, color-mix(in oklab, var(--metal) 13%, transparent), transparent 58%),
+    linear-gradient(0deg, var(--surface-sunken), transparent 16px),
+    linear-gradient(var(--surface-raised), var(--surface-raised)),
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--metal) 70%, #fff),
+      color-mix(in oklab, var(--metal) 50%, var(--border)) 38%,
+      color-mix(in oklab, var(--metal) 72%, var(--border))),
+    linear-gradient(var(--surface-raised), var(--surface-raised));
+  background-origin: padding-box, padding-box, padding-box, border-box, border-box;
+  background-clip: padding-box, padding-box, padding-box, border-box, border-box;
+}
+.tv-col .tv-seat--1 .tv-seat-card {
+  background:
+    radial-gradient(130% 90% at 50% -25%, color-mix(in oklab, var(--metal) 24%, transparent), transparent 60%),
+    linear-gradient(0deg, var(--surface-sunken), transparent 16px),
+    linear-gradient(var(--surface-raised), var(--surface-raised)),
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--metal) 70%, #fff),
+      color-mix(in oklab, var(--metal) 72%, var(--border)) 38%,
+      color-mix(in oklab, var(--metal) 88%, var(--border))),
+    linear-gradient(var(--surface-raised), var(--surface-raised));
+  background-origin: padding-box, padding-box, padding-box, border-box, border-box;
+  background-clip: padding-box, padding-box, padding-box, border-box, border-box;
+}
+
+/* 5b · the plaque reads as a struck metal tag: satin top-to-bottom (today's
+   22% metal at the top edge, 12% at the bottom — the ordinal never sits on a
+   stronger tint than today), a lit hairline inside its top edge, a metal line
+   along its lower edge, and the ordinal engraved with the pedestal numeral's
+   own --px-engrave. The rest shadow and the 40% metal border are the ones it
+   has; the plaque is nowrap, so a text-shadow moves nothing. */
+.tv-col .tv-seat .tv-seat-plaque {
+  background: linear-gradient(180deg,
+    color-mix(in oklab, var(--metal) 22%, var(--surface-raised)),
+    color-mix(in oklab, var(--metal) 12%, var(--surface-raised)));
+  box-shadow:
+    var(--shadow-card),
+    inset 0 1px 0 var(--px-hair),
+    inset 0 -1px 0 color-mix(in oklab, var(--metal) 24%, transparent);
+  text-shadow: var(--px-engrave);
+}
+
+/* 5c · the pedestal's lip is a chamfered chrome strip: the ring's highlight
+   cut on its top row, today's lip colour (metal 70% + white) in the middle, a
+   cut near the metal (88%) on its bottom row — painted in the 3px the
+   border-top already owns (the border-top goes transparent; its 3px width and
+   the 1px sides and bottom stay). The satin face, its sheen band and 2d's
+   hairline and lower shade are restated or left exactly as they are, so the
+   numeral's ground does not change. */
+.tv-col .tv-seat .tv-pedestal {
+  border-top-color: transparent;
+  background:
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--metal) 45%, #fff) 0,
+      color-mix(in oklab, var(--metal) 70%, #fff) 1px,
+      color-mix(in oklab, var(--metal) 88%, #fff) 3px,
+      transparent 3px),
+    linear-gradient(90deg, transparent 8%, var(--px-sheen) 36%, transparent 60%),
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--metal) 40%, var(--surface-raised)),
+      color-mix(in oklab, var(--metal) 13%, var(--surface-raised)));
+  background-origin: border-box, padding-box, padding-box;
+}
+
+/* 5d · the rank numeral is the row's address and the first stop of the walk
+   rank → name → figure: one step up from the dash it shares a cell with. The
+   td's own muted ink still colours the «—» of a row with no money. */
+.tv-col .tv-row .tv-rank { color: var(--ink-secondary); }
+
+/* 5e · the sticky header's rule is the table's AXIS, the rows' dividers its
+   GRID: the one line the rows scroll under is a step firmer than the lines
+   between them. From 1280 only — under it the pinned name-column header
+   carries its own right-edge shadow (`.tv-table th:nth-child(2)`), which this
+   must not replace. */
+@media (min-width: 1280px) {
+  .tv-col .tv-table th { box-shadow: inset 0 -1px 0 var(--axis); }
+}
+
+/* 5f · the unlit FAKT lamp is HOLLOW — the «hollow one» `FaktSwitch` has
+   always described, not a 40% disc. Scoped by [aria-pressed='false'] so the
+   two lit rules (TV BOARD and 4b) are never touched; both shadow lists are
+   outer, so the dot's existing transition still slides ring → lamp on a
+   press. The ring paints into the 6px gap beside the label: paint, no box. */
+.tv-col .tv-fakt-tab[aria-pressed='false'] .tv-fakt-dot {
+  background: transparent;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ink-muted) 60%, transparent);
+}
+
+/* 5g · the key's lit edge sits INSIDE its rim — a card is «a border plus a lit
+   top edge» (DESIGN.md), and 4b painted the key's edge UNDER its 52% rim,
+   where the rim covered it. 4b's rim and drop are restated; one hairline is
+   added at the second pixel, in the board's own --px-hair. Same selector as
+   4b, written after it: wins on source order, as this block's header says. */
+.tv-col .tv-fakt::before {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--tv-tone) 52%, transparent),
+    var(--px4-thumb-hi),
+    inset 0 2px 0 var(--px-hair),
+    var(--px4-thumb-drop);
+}
+
+/* 5h · the record wall's month is gold that can be READ. --medal-gold measures
+   2.5:1 on the light title band (the glassContrast sampling: pools 1 + 2 at
+   60% under the aurora) on 10.5–14px uppercase text; the medals' device gold
+   deepened toward ink reads 4.7 there and 8.5 in dark — the same gold to the
+   eye on the television. The cup, the lozenge and the wall's --metal stay what
+   they were (`.record-month { color: var(--metal) }` is pinned and stays as
+   the base). Mixed from two tokens, so it flips by theme on its own. */
+.record-wall .record-month {
+  color: color-mix(in oklab, var(--emal-gold-d) 85%, var(--ink-primary));
+}
+
+/* 5i · the medal key's gold words at the text floor — «MEDALLAR» and the
+   honour / rare group chips, on the strip and in the medal tip — wear
+   --emal-gold-d on a 12% gold wash, which measures 4.41:1 in light, under the
+   4.5 that 11–15px uppercase text needs; 5h's ink reads 5.44 there (dark
+   8.96). Ancestors on purpose: the TASNIFI and MEDAL TIP blocks sit AFTER
+   SAYQAL in the file, so a rule of equal specificity written here would lose
+   on source order. Together with 5h: ONE gold for every word set in gold, and
+   --medal-gold / --emal-gold left to things that are not words. */
+.tv-foot .medal-tasnif-title,
+.tv-foot .medal-tasnif-group[data-group="honour"],
+.tv-foot .medal-tasnif-group[data-group="rare"],
+.medal-tip > .medal-tasnif-group[data-group="honour"],
+.medal-tip > .medal-tasnif-group[data-group="rare"] {
+  color: color-mix(in oklab, var(--emal-gold-d) 85%, var(--ink-primary));
+}
+
 /* ===========================================================================
  * MEDALLAR TASNIFI — the medal key, crawling along the foot of the board
  *
@@ -4384,7 +4559,8 @@ p {
   box-shadow: var(--shadow-card), inset 0 1px 0 var(--px-hair);
   overflow: hidden;
 }
-/* The strip's own name — fixed, in the podium's gold, behind a hairline. */
+/* The strip's own name — fixed, in the podium's gold, behind a hairline. Its
+   ink (and the honour / rare chips') is SAYQAL 5i's gold ink. */
 .medal-tasnif-title {
   flex: none;
   align-self: stretch;

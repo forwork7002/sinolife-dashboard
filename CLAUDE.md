@@ -1662,6 +1662,24 @@ Per-screen traps worth knowing before you touch one:
   under a FAKT 1 reading says «N buyurtma» where «0 / N buyurtma» led with a
   delivered-count zero. `sellersTvBoard.test.tsx` pins the opening on both
   columns and the column order.
+  **«PREMIUM» — 2026-10-07, the same ask** («kartochkani premium,
+  professionalroq qilish kerak … oʻzgarib ketmasin juda kuchli»): SAYQAL item
+  5 in `globals.css`, a second finishing pass in the ring's own hand and
+  PAINT ONLY — colour, background, box-shadow, text-shadow, so the measured
+  promises above hold by construction. The seat rim is a metal bevel drawn as
+  a border-box gradient under a transparent 1px border (the card is opaque, so
+  the hero's glass veil cannot happen), with a 16px contact shade at the foot;
+  the plaque is a satin tag with the ordinal engraved; the pedestal lip a
+  chamfered strip in the 3px it owns; the rank numeral secondary ink; the
+  sticky head's rule `--axis` from 1280; the unlit FAKT lamp a hollow ring and
+  the key's lit edge inside its rim; the record wall's month and the medal
+  key's gold words in one gold INK (`--emal-gold-d` toward ink — `--medal-gold`
+  measured 2.5:1 on the light title band). In the TSX: the row bar's FAKT 1
+  layer is `--seq-350` (250 read 1.5:1 against the dark track) and the
+  «Buyurtma» count is secondary ink. Proposed by three design lenses and
+  scored by two judges; dropped on their verdict: a second specular on the
+  ring, a satin rank disc, a tone-tinted table head, the phone switch's key.
+  Every base rule a 5x item repaints names it in a comment.
   **MEDALS, AND NO LEVELS — 2026-09-17** («uroven kerak emas, medallar
   qolsin»). Four redesigns of this board were rejected and the client asked
   for the pre-medal board (`912fc63`) back with medals on it; spec

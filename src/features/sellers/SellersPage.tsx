@@ -1195,6 +1195,11 @@ function BoardList({
   // One scale for the whole column — the biggest intake — so a bar can be
   // read against the bar above it. Two layers from the same edge, each the
   // row's own figure on that one scale: light for FAKT 1, dark for FAKT 2.
+  // The light layer is `--seq-350`, one step up the same ramp from the 250 it
+  // was (2026-10-07): at 250 the FAKT 1 bar measured 1.5:1 against the track
+  // on the dark television — invisible on the fact the board now opens on —
+  // and 350 reads 2.2:1 against both the track and the FAKT 2 layer, so the
+  // two stay apart (450 would merge them at 1.5:1).
   // NOT a part-of-whole: FAKT 2 is not a subset of FAKT 1 (an order refused
   // in the queue and delivered anyway is FAKT 2 money that never entered
   // FAKT 1), so the dark layer may run past the light one, and the legend
@@ -1285,7 +1290,7 @@ function BoardList({
                         className="absolute inset-y-0 left-0 rounded-full"
                         style={{
                           width: `${Math.max(1, (entry.ordered / ceiling) * 100)}%`,
-                          background: 'var(--seq-250)',
+                          background: 'var(--seq-350)',
                           transition: 'width var(--duration-enter) var(--ease-out)',
                         }}
                       />
@@ -1334,7 +1339,11 @@ function BoardList({
                   )}
                 </td>
                 <td className="tv-col-optional tabular text-right">
-                  <span className="tv-money" style={{ color: 'var(--ink-primary)' }}>
+                  {/* Secondary ink (2026-10-07): a row carries ONE loud figure,
+                      the ranked money, and the loudness falls away to the
+                      right — the seat above prints the same count in the same
+                      ink. */}
+                  <span className="tv-money" style={{ color: 'var(--ink-secondary)' }}>
                     {formatNumber(entry.orders)}
                   </span>
                   {entry.openOrders !== null && entry.openOrders > 0 && (
