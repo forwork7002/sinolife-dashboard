@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { useMemo, useRef, useState } from 'react'
 
 import { type CategoryBarRow, CategoryBarList } from '@/components/charts/CategoryBarList'
-import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
+import { ChartSkeleton, EmptyState, ErrorState, statusOf } from '@/components/states/States'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
@@ -101,8 +101,8 @@ export function TargetPage() {
     placeholderData: keepPreviousData,
   })
 
-  const status: Status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
-  const leadStatus: Status = leads.isPending ? 'loading' : leads.isError ? 'error' : 'ready'
+  const status: Status = statusOf(overview)
+  const leadStatus: Status = statusOf(leads)
   const data = overview.data?.data
 
   const changeFilters = (next: LeadFilters) => {

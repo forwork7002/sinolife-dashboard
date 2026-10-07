@@ -143,15 +143,3 @@ export function summarizeDeals(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Trend
-// ---------------------------------------------------------------------------
-
-export interface TrendPoint {
-  readonly bucketStart: Date
-  readonly bucketEnd: Date
-  readonly revenue: Money
-  readonly dealsWon: number
-  readonly dealsCreated: number
-}
-

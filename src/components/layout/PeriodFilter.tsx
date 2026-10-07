@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
+import { isCustomWindow } from '@/lib/customWindow'
 import { APP_TIME_ZONE } from '@/lib/format'
 import { t } from '@/lib/messages'
 
@@ -231,7 +232,8 @@ function PeriodPicker({
   const thisYear = Number(todayIso().slice(0, 4))
   const years = Array.from({ length: 6 }, (_, i) => thisYear - i)
 
-  const apply = () => {
+  /** What «Qoʻllash» applies for the fields as they stand, or null — see below. */
+  const chosen = (): PeriodSelection | null => {
     /*
       NEVER PAST TODAY.
 
@@ -249,17 +251,28 @@ function PeriodPicker({
     */
     const notFuture = (iso: string) => (iso > todayIso() ? todayIso() : iso)
 
+    /*
+      A FIELD HALF TYPED OR CLEARED APPLIES NOTHING. Firefox and Safari on a
+      desk draw `type="month"` as plain text, so «2026-9» reached the API as
+      `from=2026-9-01` (a 400 on every request, then remembered for every
+      screen), and «09.2026» or an emptied field threw a RangeError out of
+      `lastDayOfMonth`. This runs on every render now, so the month guard
+      below is what keeps a half-typed field from taking the popover down.
+    */
+    const pick = (selection: PeriodSelection) => (isCustomWindow(selection.from, selection.to) ? selection : null)
+
     switch (mode) {
       case 'day':
-        return onPick({ preset: 'custom', from: day, to: day })
+        return pick({ preset: 'custom', from: day, to: day })
       case 'month':
-        return onPick({
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return null
+        return pick({
           preset: 'custom',
           from: `${month}-01`,
           to: notFuture(lastDayOfMonth(month)),
         })
       case 'year':
-        return onPick({
+        return pick({
           preset: 'custom',
           from: `${year}-01-01`,
           to: notFuture(`${year}-12-31`),
@@ -267,13 +280,21 @@ function PeriodPicker({
       case 'range':
         // Swap rather than reject: someone who picks the end first meant a
         // range, and refusing it teaches them to distrust the control.
-        return onPick(
+        return pick(
           rangeFrom <= rangeTo
             ? { preset: 'custom', from: rangeFrom, to: rangeTo }
             : { preset: 'custom', from: rangeTo, to: rangeFrom },
         )
     }
   }
+
+  /*
+    AND «QOʻLLASH» SAYS SO: disabled while nothing would apply. Pressable, it
+    did nothing and left the popover open with no reason given — for a month
+    typed as text, a future month (its end, clamped to today, falls before its
+    start) or a range over ten years.
+  */
+  const selection = chosen()
 
   const MODES: readonly { id: Mode; label: string }[] = [
     { id: 'day', label: t.period.day },
@@ -371,7 +392,14 @@ function PeriodPicker({
       {/* The kit's primary — the popover's ONE leading action. The old
           hand-rolled ink fill was the same idea minus the hover, active and
           press states the kit standardises. */}
-      <Button variant="primary" onClick={apply} className="mt-3 w-full">
+      <Button
+        variant="primary"
+        onClick={() => {
+          if (selection) onPick(selection)
+        }}
+        disabled={selection === null}
+        className="mt-3 w-full"
+      >
         {t.period.apply}
       </Button>
     </div>

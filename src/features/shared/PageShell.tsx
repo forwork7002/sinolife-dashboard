@@ -322,7 +322,13 @@ export function PageShell({
         {enabled.search && (
           <SearchInput
             value={filters.q ?? ''}
-            onChange={(q) => update({ q: q || undefined })}
+            /*
+              Only spaces is no search: `?q=%20` once answered 400 on every
+              request of the page. A real term is written as typed, not
+              trimmed — the box re-reads the address, and a trimmed «ali»
+              would eat the space between «ali» and «vali» mid-word.
+            */
+            onChange={(q) => update({ q: q.trim() ? q : undefined })}
             placeholder={enabled.searchPlaceholder}
           />
         )}

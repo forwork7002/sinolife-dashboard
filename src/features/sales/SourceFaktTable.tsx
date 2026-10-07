@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
+import { statusOf } from '@/components/states/States'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { RankBadge } from '@/components/ui/Stat'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -42,7 +43,7 @@ export function SourceFaktTable() {
     placeholderData: keepPreviousData,
   })
 
-  const status = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+  const status = statusOf(query)
 
   return (
     <div

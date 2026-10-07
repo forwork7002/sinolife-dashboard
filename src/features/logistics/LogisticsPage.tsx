@@ -5,7 +5,7 @@ import { useState } from 'react'
 
 import { CategoryBarList, type CategoryBarRow } from '@/components/charts/CategoryBarList'
 import { StatusCompositionBar } from '@/components/charts/StatusCompositionBar'
-import { ErrorState } from '@/components/states/States'
+import { ErrorState, statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { SegmentedControl } from '@/components/ui/Controls'
@@ -81,7 +81,7 @@ export function LogisticsPage() {
    * The tables each rebuilt this ternary inline, which is one place per block
    * for a loading state to fall out of step with the hero above it.
    */
-  const viewStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+  const viewStatus = statusOf(query)
   const errorMessage = (query.error as Error | null)?.message
   const retry = () => void query.refetch()
 
@@ -165,7 +165,7 @@ export function LogisticsPage() {
         its denominator is an opinion.
       */}
       <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Qamrov">
-        {query.isError ? (
+        {viewStatus === 'error' ? (
           <ErrorState message={errorMessage ?? 'Olinmadi'} onRetry={retry} />
         ) : (
           <div className="grid items-center gap-5 sm:grid-cols-[1fr_1fr_auto]">

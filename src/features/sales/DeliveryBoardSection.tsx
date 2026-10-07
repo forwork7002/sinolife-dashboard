@@ -2,7 +2,7 @@
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
-import { EmptyState, ErrorState } from '@/components/states/States'
+import { EmptyState, ErrorState, statusOf } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card } from '@/components/ui/Card'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -117,7 +117,7 @@ export function DeliveryBoardSection() {
         )}
 
         <div className="mt-3">
-          {query.isError ? (
+          {statusOf(query) === 'error' ? (
             <ErrorState
               message={(query.error as Error | null)?.message}
               onRetry={() => void query.refetch()}

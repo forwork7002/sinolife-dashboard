@@ -1,7 +1,8 @@
 'use client'
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
+import { usePathname } from 'next/navigation'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { ViewerProvider, type Viewer } from '@/lib/viewer'
 
@@ -56,6 +57,23 @@ export function Providers({
              */
             refetchInterval: 120_000,
             staleTime: 115_000,
+
+            /**
+             * Half an hour in the cache after the last reader leaves.
+             *
+             * There is no dashboard layout: every screen's queries live in its
+             * page component, which unmounts on every navigation. At the
+             * library's five-minute default, ten minutes on «Tasdiqlash» was
+             * enough to throw «Savdo dinamikasi»'s answer away, and going back
+             * to it drew skeletons and waited the whole round trip (~1–1.6 s on
+             * the heavier endpoints) instead of painting the last figures at
+             * once. Kept, they are past `staleTime` by then, so the return
+             * still refetches them — behind the figures, not instead of them.
+             * Nothing outlives the account that read it: «Chiqish» clears the
+             * cache (`Shell`), and so does reaching /login by any other road
+             * (`ForgetOnLogin` below).
+             */
+            gcTime: 30 * 60_000,
 
             /**
              * Not while the tab is hidden.
@@ -115,7 +133,29 @@ export function Providers({
 
   return (
     <QueryClientProvider client={client}>
+      <ForgetOnLogin />
       <ViewerProvider value={viewer}>{children}</ViewerProvider>
     </QueryClientProvider>
   )
+}
+
+/**
+ * The cache is emptied on the way IN, not only on the way out.
+ *
+ * `Shell`'s «Chiqish» clears it, but that button is not the only way a session
+ * ends. A revoked or expired one is sent to /login by the middleware or the
+ * page guard, and the login form comes back with `router.push` — both soft
+ * navigations, so this one client, holding up to half an hour of answers
+ * (`gcTime`), lived on into whichever account signed in next on the tab and
+ * painted the last account's figures before its own refetch landed: a ROP
+ * shown company-wide numbers under the same key. Nothing on /login reads a
+ * query, so emptying it there costs nothing.
+ */
+function ForgetOnLogin() {
+  const client = useQueryClient()
+  const pathname = usePathname()
+  useEffect(() => {
+    if (pathname === '/login') client.clear()
+  }, [client, pathname])
+  return null
 }

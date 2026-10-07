@@ -1,6 +1,7 @@
 'use client'
 
 import type { PeriodSelection } from '@/components/layout/PeriodFilter'
+import { isCustomWindow } from '@/lib/customWindow'
 
 /**
  * THE reporting window, remembered per browser and shared by every screen.
@@ -104,11 +105,13 @@ export function rememberedPeriod(): PeriodSelection | null {
  * A stored window we can actually resolve.
  *
  * A custom range missing a bound resolves to nothing, and storing one is a bug
- * elsewhere rather than something to render around.
+ * elsewhere rather than something to render around. So does one the API would
+ * refuse («2026-9-01» typed into a month field drawn as text): remembered, it
+ * rode every nav link and opened every screen on a 400.
  */
 function usable(stored: PeriodSelection | undefined): PeriodSelection | null {
   if (!stored?.preset) return null
-  if (stored.preset === 'custom' && !(stored.from && stored.to)) return null
+  if (stored.preset === 'custom' && !isCustomWindow(stored.from, stored.to)) return null
   return stored
 }
 
@@ -121,18 +124,6 @@ export function rememberPeriod(selection: PeriodSelection): void {
   } catch {
     // Nothing to do and nothing worth telling the reader: the dates on screen
     // are correct either way, they just will not be there next time.
-  }
-}
-
-/** Drop the remembered window, so "clear filters" really clears it. */
-export function forgetPeriod(): void {
-  if (typeof window === 'undefined') return
-
-  try {
-    window.localStorage.removeItem(KEY)
-    refresh()
-  } catch {
-    /* see rememberPeriod */
   }
 }
 

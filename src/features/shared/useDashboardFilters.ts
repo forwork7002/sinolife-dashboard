@@ -7,6 +7,7 @@ import { rememberPeriod, rememberedPeriod } from './periodMemory'
 
 import { PERIOD_PRESETS, type PeriodPreset, type PeriodSelection } from '@/components/layout/PeriodFilter'
 import { CONFIRMATION_OUTCOMES, type ConfirmationOutcome } from '@/lib/api'
+import { isCustomWindow } from '@/lib/customWindow'
 
 /**
  * Dashboard filter state, held in the URL.
@@ -191,6 +192,16 @@ function positive(value: string | null): number | undefined {
 }
 
 /**
+ * A search term off the address bar, as typed — or nothing, when it is only
+ * spaces. PageShell no longer writes one, but an older link still carries
+ * `?q=%20`: read raw, the box showed a space, «Filtrlarni tozalash (1)»
+ * counted it and every request sent it.
+ */
+function searched(value: string | null): string | undefined {
+  return value?.trim() ? value : undefined
+}
+
+/**
  * A preset the application actually has.
  *
  * The URL is user-editable and arrives from links pasted between phones, so
@@ -228,7 +239,8 @@ export function resolvePresetParam(
   from: string | null,
   to: string | null,
 ): PeriodPreset {
-  if (value === 'custom') return from && to ? 'custom' : DEFAULTS.preset
+  // Both bounds, and bounds the API accepts: a real day each, in order, ten years at most.
+  if (value === 'custom') return isCustomWindow(from, to) ? 'custom' : DEFAULTS.preset
   return (PERIOD_PRESETS as readonly string[]).includes(value ?? '')
     ? (value as PeriodPreset)
     : DEFAULTS.preset
@@ -373,7 +385,7 @@ export function useDashboardFilters() {
       queue: params.get('queue') === 'backlog' ? 'backlog' : DEFAULTS.queue,
       // A brand this application has, or both — an unknown one is a 400.
       brand: DASHBOARD_BRANDS.find((brand) => brand === params.get('brand')) ?? DEFAULTS.brand,
-      q: params.get('q') ?? undefined,
+      q: searched(params.get('q')),
       // Same rule as `queue` above: a name this application has, or the
       // default. An unrecognised one used to be a blank region of page with
       // no control on screen able to put it right.

@@ -60,12 +60,31 @@ const nameList = z
   )
   .pipe(z.array(z.string().min(1).max(200)).max(40).optional())
 
-/** A calendar date, `YYYY-MM-DD`, interpreted in the app timezone downstream. */
+/**
+ * A calendar date, `YYYY-MM-DD`, interpreted in the app timezone downstream.
+ *
+ * «2026-02-30» is refused, not rolled over: `Date` turns it into 2 March, and
+ * a reused leap-day link answered 1 March's numbers with a 200 under a picker
+ * that said 29.02. The string has to come back unchanged from its own date —
+ * the check `registration/schema.ts` and `rnp/costs/schema.ts` already make.
+ *
+ * BOTH CHECKS ABORT. A failed check is continuable in zod 4: the transform is
+ * skipped, but `periodQuerySchema`'s `superRefine` still ran — on the raw
+ * string — and its `.getTime()` threw a TypeError, which the handler answers as
+ * a 500 and logs as a fault, for a typo in a pasted link («2026-9-01»).
+ * Aborting skips the object's refinement, so the answer is the field's 400.
+ */
 const isoDate = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date in YYYY-MM-DD format')
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { error: 'Expected a date in YYYY-MM-DD format', abort: true })
+  .refine(
+    (value) => {
+      const date = new Date(`${value}T00:00:00.000Z`)
+      return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+    },
+    { error: 'Not a valid calendar date', abort: true },
+  )
   .transform((value) => new Date(`${value}T00:00:00.000Z`))
-  .refine((date) => !Number.isNaN(date.getTime()), 'Not a valid calendar date')
 
 /** Ten years, in milliseconds. See the span check in `periodQuerySchema`. */
 const MAX_CUSTOM_RANGE_MS = 10 * 366 * 24 * 60 * 60 * 1000
@@ -115,6 +134,15 @@ export const periodQuerySchema = z
     }
   })
 
+/** Free text reaching a WHERE clause: trimmed, bounded, empty means absent. */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((value) => (value ? value : undefined))
+
 const filterQuerySchema = z.object({
   employeeIds: idList,
   departmentIds: idList,
@@ -122,8 +150,15 @@ const filterQuerySchema = z.object({
   productIds: idList,
   sourceIds: idList,
   status: z.enum(DEAL_STATUSES).optional(),
-  /** Free-text search. Bounded so it cannot become a scan of arbitrary length. */
-  q: z.string().trim().min(1).max(120).optional(),
+  /**
+   * Free-text search. Bounded so it cannot become a scan of arbitrary length.
+   *
+   * A term of nothing but spaces is NO term, not a bad one: it was `min(1)`
+   * after the trim, so a space typed into Тасдиклаш's box and left for the
+   * debounce answered 400 on every request of the page — the table, all six
+   * tiles and the region list — until the box was cleared.
+   */
+  q: optionalText(120),
 })
 
 export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
@@ -333,15 +368,6 @@ export const brandFilter = z.enum(BRAND_FILTERS).default('all')
 
 /** «Reklama samarasi»: the window and the brand switch. */
 export const reklamaOverviewQuerySchema = periodQuerySchema.and(z.object({ brand: brandFilter }))
-
-/** Free text reaching a WHERE clause: trimmed, bounded, empty means absent. */
-const optionalText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max)
-    .optional()
-    .transform((value) => (value ? value : undefined))
 
 export const targetOverviewQuerySchema = periodQuerySchema.and(
   z.object({ scope: targetScope, product: targetProduct }),

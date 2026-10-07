@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { ZodError } from 'zod'
 
 import { rowScopeFor, type Principal } from '@/server/auth/rbac'
-import { analyticsQuerySchema, searchParamsToObject } from '@/server/http/queryParams'
+import {
+  analyticsQuerySchema,
+  confirmationOrdersQuerySchema,
+  searchParamsToObject,
+} from '@/server/http/queryParams'
 
 /**
  * Query-contract and scoping tests.
@@ -122,9 +127,30 @@ describe('filter parsing end to end', () => {
     expect(() => buildFilters('preset=custom', manager)).toThrow()
   })
 
+  it('refuses a date the calendar does not have, rather than rolling it into the next month', () => {
+    // A leap-day link reused in 2026 answered 1 March's numbers with a 200.
+    // A ZodError, not merely a throw: it is the one error the handler answers
+    // as a 400 — anything else is a 500, which is what these once were.
+    for (const day of ['2026-02-29', '2026-02-30', '2026-04-31', '2026-13-01', '2026-00-10', '2026-9-01']) {
+      expect(() => buildFilters(`preset=custom&from=${day}&to=${day}`, manager), day).toThrow(ZodError)
+      expect(() => buildFilters(`preset=custom&from=2026-01-01&to=${day}`, manager), day).toThrow(ZodError)
+    }
+    const leap = buildFilters('preset=custom&from=2024-02-29&to=2024-02-29', manager)
+    expect(leap.from?.toISOString()).toBe('2024-02-29T00:00:00.000Z')
+  })
+
   it('trims and bounds free-text search', () => {
     expect(buildFilters('q=%20%20Oq%20%20', manager).q).toBe('Oq')
     expect(() => buildFilters(`q=${'x'.repeat(200)}`, manager)).toThrow()
+  })
+
+  it('reads a search of nothing but spaces as no search, never as a 400', () => {
+    // A space left in Тасдиклаш's box turned the whole board into a 400.
+    expect(buildFilters('q=%20', manager).q).toBeUndefined()
+    expect(buildFilters('q=%20%20%09', manager).q).toBeUndefined()
+    expect(
+      confirmationOrdersQuerySchema.parse(searchParamsToObject(new URLSearchParams('preset=today&q=%20'))).q,
+    ).toBeUndefined()
   })
 
   it('applies defaults for an empty query string', () => {

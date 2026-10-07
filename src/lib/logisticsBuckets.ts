@@ -144,11 +144,6 @@ export type LogisticsBucketKey = (typeof LOGISTICS_BUCKETS)[number]['key']
  */
 export const UNMAPPED_BUCKET = 'OTHER'
 
-/** The six keys in the client's own funnel order. Never sorted by size. */
-export const LOGISTICS_BUCKET_KEYS: readonly LogisticsBucketKey[] = LOGISTICS_BUCKETS.map(
-  (bucket) => bucket.key,
-)
-
 const BY_KEY = new Map<string, (typeof LOGISTICS_BUCKETS)[number]>(
   LOGISTICS_BUCKETS.map((bucket) => [bucket.key, bucket]),
 )
@@ -162,17 +157,4 @@ export function bucketLabel(key: string): string {
 export function bucketColour(key: string): string {
   const bucket = BY_KEY.get(key)
   return bucket ? `var(${bucket.colour})` : 'var(--axis)'
-}
-
-/**
- * Which column a `logisticsRole` falls in — the same rule the SQL is built
- * from, for the rare client-side reading that needs it (the reconciliation
- * table receives its bucket on the payload rather than deriving it here).
- */
-export function bucketForRole(role: string | null | undefined): string {
-  if (!role) return UNMAPPED_BUCKET
-  for (const bucket of LOGISTICS_BUCKETS) {
-    if ((bucket.roles as readonly string[]).includes(role)) return bucket.key
-  }
-  return UNMAPPED_BUCKET
 }

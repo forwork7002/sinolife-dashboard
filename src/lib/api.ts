@@ -58,82 +58,37 @@ export class ApiClientError extends Error {
 }
 
 /**
+ * The body as an envelope, or a failure the screens can print.
+ *
+ * Not every answer is ours to shape: the platform's proxy answers a 502/503/504
+ * with an HTML page during a restart or an upstream timeout, and a crashed
+ * route can answer an empty 500. Parsed blind, that rejected with a bare
+ * SyntaxError — «Unexpected token '<', "<!DOCTYPE "… is not valid JSON» printed
+ * on every card in place of the house error text, the status lost with it. An
+ * abort still throws as itself, so a cancelled request never reads as a fault.
+ */
+async function readEnvelope<B>(response: Response): Promise<B> {
+  try {
+    return (await response.json()) as B
+  } catch (error) {
+    if ((error as { name?: unknown } | null)?.name === 'AbortError') throw error
+    throw new ApiClientError(
+      response.ok ? 'BAD_RESPONSE' : 'UPSTREAM_UNAVAILABLE',
+      'Server vaqtincha javob bermadi. Qayta urinib koʻring.',
+      response.status,
+    )
+  }
+}
+
+/**
  * Fetch and unwrap the envelope.
  *
- * An error envelope becomes a typed throw carrying the correlation id, so the
- * UI can show the user something quotable without ever seeing a stack trace.
+ * An error envelope becomes a typed throw, `ApiClientError`: the code, the
+ * status and the server's own message, which is what the screens print —
+ * never a stack trace. It carries the correlation id as well, and no screen
+ * shows that: the server logs the failure under the response's
+ * `meta.correlationId`, which is where the id is for.
  */
-/**
- * Static demo mode.
- *
- * When `NEXT_PUBLIC_STATIC_DEMO` is set, the build has no server and no
- * database: responses are read from JSON frozen at build time by
- * `npm run demo:snapshot`. Everything above this function — pages, charts,
- * filters, tables — is unchanged, which is the point: it is the real frontend,
- * not a mock-up of it.
- *
- * Only the parameters that were snapshotted vary. Anything else falls back to
- * the unfiltered response for that period rather than showing an error, since
- * a demo that breaks when you touch a filter is worse than one that ignores it.
- */
-const STATIC_DEMO = process.env.NEXT_PUBLIC_STATIC_DEMO === '1'
-
-/** Must match `snapshotKey` in scripts/snapshotApi.ts. */
-const SNAPSHOT_PARAMS = new Set(['preset', 'metric', 'page', 'pageSize'])
-
-function snapshotKey(path: string, params: Record<string, string>): string {
-  const ordered = Object.keys(params)
-    .sort()
-    .map((k) => `${k}=${params[k]}`)
-    .join('&')
-  return path.replace(/^\//, '').replace(/\//g, '_') + (ordered ? `__${ordered}` : '') + '.json'
-}
-
-/** Where the static files live — respects a subpath deploy. */
-function demoBase(): string {
-  const prefix = process.env.NEXT_PUBLIC_BASE_PATH ?? ''
-  return `${prefix}/demo-api`
-}
-
-async function staticGet<T>(
-  path: string,
-  params: Record<string, string>,
-  signal?: AbortSignal,
-): Promise<ApiSuccess<T>> {
-  const kept: Record<string, string> = {}
-  for (const [k, v] of Object.entries(params)) {
-    if (SNAPSHOT_PARAMS.has(k)) kept[k] = v
-  }
-
-  const attempts = [snapshotKey(path, kept)]
-
-  // Deals were snapshotted on page 1 only; other pages reuse it so paging
-  // still renders instead of failing.
-  if (kept.page && kept.page !== '1') {
-    attempts.push(snapshotKey(path, { ...kept, page: '1' }))
-  }
-
-  for (const key of attempts) {
-    const res = await fetch(`${demoBase()}/${key}`, { signal })
-    if (!res.ok) continue
-
-    const body = (await res.json()) as
-      | ApiSuccess<T>
-      | { error: { code: string; message: string }; meta: ResponseMeta }
-
-    if ('error' in body) {
-      throw new ApiClientError(body.error.code, body.error.message, 501, body.meta.correlationId)
-    }
-    return body
-  }
-
-  throw new ApiClientError(
-    'NOT_FOUND',
-    'Bu koʻrinish demo nusxada saqlanmagan.',
-    404,
-  )
-}
-
 export async function apiGet<T>(
   path: string,
   params: Record<string, string | number | undefined> = {},
@@ -144,19 +99,15 @@ export async function apiGet<T>(
     if (value !== undefined && value !== '') search.set(key, String(value))
   }
 
-  if (STATIC_DEMO) {
-    return staticGet<T>(path, Object.fromEntries(search.entries()), signal)
-  }
-
   const query = search.toString()
   const response = await fetch(`/api/v1${path}${query ? `?${query}` : ''}`, {
     signal,
     headers: { accept: 'application/json' },
   })
 
-  const body = (await response.json()) as
-    | ApiSuccess<T>
-    | { error: { code: string; message: string }; meta: ResponseMeta }
+  const body = await readEnvelope<
+    ApiSuccess<T> | { error: { code: string; message: string }; meta: ResponseMeta }
+  >(response)
 
   if (!response.ok || 'error' in body) {
     const error = 'error' in body ? body.error : { code: 'UNKNOWN', message: 'Unknown error' }
@@ -192,7 +143,7 @@ export async function apiWrite<T>(
     body: JSON.stringify(body),
   })
 
-  const payload = (await response.json()) as
+  const payload = await readEnvelope<
     | ApiSuccess<T>
     | {
         error: {
@@ -202,6 +153,7 @@ export async function apiWrite<T>(
         }
         meta: ResponseMeta
       }
+  >(response)
 
   if (!response.ok || 'error' in payload) {
     const error =

@@ -3,7 +3,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { type ReactNode, useMemo, useState } from 'react'
 
-import { ErrorState } from '@/components/states/States'
+import { ErrorState, statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { MultiSelect, SegmentedControl } from '@/components/ui/Controls'
 import { type Column, DataTable } from '@/components/ui/DataTable'
@@ -68,7 +68,7 @@ export function LeadCohortSection() {
     placeholderData: keepPreviousData,
   })
 
-  const status: Status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
+  const status: Status = statusOf(overview)
   const data = overview.data?.data
 
   if (status === 'error') {

@@ -76,8 +76,6 @@ export const RETENTION_GROUPS = [
   colour: string
 }[]
 
-export type RetentionGroupKey = (typeof RETENTION_GROUPS)[number]['key']
-
 /**
  * База stages that are not customers of the base at all, and are left out of
  * every count on the card — bars and base alike.
@@ -115,13 +113,4 @@ export function retentionGroupSpec(key: string): {
       colour: '--ink-muted',
     }
   )
-}
-
-/** Which group a stage id falls in. The one rule the SQL and the screen share. */
-export function retentionGroupOf(externalId: string | null): string {
-  if (externalId === null) return UNMAPPED_RETENTION_GROUP
-  for (const group of RETENTION_GROUPS) {
-    if ((group.stages as readonly string[]).includes(externalId)) return group.key
-  }
-  return UNMAPPED_RETENTION_GROUP
 }

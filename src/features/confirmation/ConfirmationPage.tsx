@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Fragment, useEffect, useState } from 'react'
 
+import { statusOf } from '@/components/states/States'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import {
@@ -561,13 +562,9 @@ export function ConfirmationPage() {
     same situation. A moved window still blanks, because there the next figures
     genuinely could be anything.
   */
-  const tileStatus = query.isPending
-    ? 'loading'
-    : query.isError
-      ? 'error'
-      : summaryIsCurrent || cohortIsCurrent
-        ? 'ready'
-        : 'loading'
+  const queryStatus = statusOf(query)
+  const tileStatus =
+    queryStatus !== 'ready' ? queryStatus : summaryIsCurrent || cohortIsCurrent ? 'ready' : 'loading'
   const tilesStale = tileStatus === 'ready' && !summaryIsCurrent
   const data = query.data?.data
   const totals = data?.totals
@@ -1220,7 +1217,7 @@ export function ConfirmationPage() {
                 columns={columns}
                 rows={data?.items ?? []}
                 rowKey={(row) => row.dealId}
-                status={query.isPending ? 'loading' : query.isError ? 'error' : 'ready'}
+                status={queryStatus}
                 errorMessage={(query.error as Error | null)?.message}
                 onRetry={() => void query.refetch()}
                 sort={sort}
@@ -1376,7 +1373,7 @@ function RegionFilterList({
     refetchInterval: false,
   })
 
-  if (query.isError)
+  if (statusOf(query) === 'error')
     return (
       <p className="px-2 py-2 text-xs" style={{ color: 'var(--status-critical)' }}>
         Регионлар рўйхати олинмади.

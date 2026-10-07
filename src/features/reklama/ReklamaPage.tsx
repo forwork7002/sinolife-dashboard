@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-import { ErrorState } from '@/components/states/States'
+import { ErrorState, statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
 import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
@@ -60,7 +60,7 @@ export function ReklamaPage() {
     queryFn: ({ signal }) => apiGet<ReklamaOverviewDto>('/reklama/overview', overviewParams, signal),
   })
 
-  const status: Status = overview.isPending ? 'loading' : overview.isError ? 'error' : 'ready'
+  const status: Status = statusOf(overview)
   const data = overview.data?.data
 
   return (

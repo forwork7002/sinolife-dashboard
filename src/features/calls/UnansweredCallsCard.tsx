@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
+import { statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { type Column, DataTable } from '@/components/ui/DataTable'
@@ -133,7 +134,7 @@ export function UnansweredCallsCard({
   const [group, setGroup] = useState<Group | 'all'>('all')
 
   const data = query.data?.data
-  const status = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+  const status = statusOf(query)
   const rows = (data?.rows ?? []).filter(
     (r) => (state === 'all' || stateOf(r) === state) && (group === 'all' || r.group === group),
   )

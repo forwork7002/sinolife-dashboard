@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  forgetPeriod,
   periodMemoryServerSnapshot,
   periodMemorySnapshot,
   periodQuery,
@@ -73,12 +72,14 @@ describe('remembering the window', () => {
     expect(periodQuery()).toBe('')
   })
 
-  it('forgets it, so "clear filters" really clears it', () => {
-    rememberPeriod({ preset: 'this_week' })
-
-    forgetPeriod()
-
+  it('refuses a custom range the API would refuse, so it cannot ride every nav link', () => {
+    // Remembered, it put a 400 on every screen the sidebar opened.
+    rememberPeriod({ preset: 'custom', from: '2026-9-01', to: '2026-09-30' })
     expect(rememberedPeriod()).toBeNull()
+    expect(periodQuery()).toBe('')
+
+    const backwards = JSON.stringify({ window: { preset: 'custom', from: '2026-08-15', to: '2026-08-01' } })
+    expect(periodQuery(backwards)).toBe('')
   })
 })
 
@@ -101,7 +102,6 @@ describe('when storage will not cooperate', () => {
     // The dates on screen are correct either way; they just will not be there
     // next time. Nothing may propagate to the render.
     expect(() => rememberPeriod({ preset: 'today' })).not.toThrow()
-    expect(() => forgetPeriod()).not.toThrow()
   })
 
   it('ignores a stored value that is not an object', () => {

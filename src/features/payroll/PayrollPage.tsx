@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
+import { statusOf } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SearchInput, SegmentedControl } from '@/components/ui/Controls'
@@ -96,7 +97,7 @@ export function PayrollPage() {
         : apiGet<PayrollDto>('/payroll/sellers', { month, half: monthHalf }, signal),
   })
 
-  const viewStatus = query.isPending ? 'loading' : query.isError ? 'error' : 'ready'
+  const viewStatus = statusOf(query)
   const errorMessage = (query.error as Error | null)?.message
   const retry = () => void query.refetch()
 

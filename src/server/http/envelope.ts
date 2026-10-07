@@ -45,8 +45,6 @@ export interface ErrorEnvelope {
   readonly meta: ResponseMeta
 }
 
-export type Envelope<T> = SuccessEnvelope<T> | ErrorEnvelope
-
 export interface PaginationMeta {
   readonly page: number
   readonly pageSize: number
@@ -88,10 +86,6 @@ export function failure(error: ApiError, meta: ResponseMeta): ErrorEnvelope {
     // `error.cause` is deliberately absent: it goes to the log, not the wire.
     meta,
   }
-}
-
-export function isSuccess<T>(envelope: Envelope<T>): envelope is SuccessEnvelope<T> {
-  return 'data' in envelope
 }
 
 /**

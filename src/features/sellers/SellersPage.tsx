@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { EmptyState, ErrorState } from '@/components/states/States'
+import { EmptyState, ErrorState, statusOf } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { BoardIcon, type BoardIconName } from '@/features/sellers/BoardIcon'
 import { MedalDefs } from '@/features/sellers/MedalDefs'
@@ -137,7 +137,7 @@ export function SellersPage() {
   const newMedals = useNewMedals(medalsById)
 
   const data = board.data?.data
-  const status = board.isPending ? 'loading' : board.isError ? 'error' : 'ready'
+  const status = statusOf(board)
   const errorMessage = (board.error as Error | null)?.message
   const retry = () => void board.refetch()
 

@@ -416,11 +416,11 @@ function useStickyOffsets(
  * An empty string for every column of every other table in the application:
  * the pinning costs a class only where it is asked for.
  */
-function pinClass(left: number | null, isEdge: boolean, scrolledX: boolean): string {
+function pinClass(left: number | null, isEdge: boolean): string {
   if (left === null) return ''
-  // The divider belongs to the LAST pinned column and only once the rows have
-  // moved — see `.tcol-sticky` in globals.css.
-  return `tcol-sticky${isEdge ? ' is-edge' : ''}${isEdge && scrolledX ? ' is-scrolled-x' : ''}`
+  // The divider belongs to the LAST pinned column, and deepens once the rows
+  // have moved — `[data-scrolled-x]` on the box, see `.tcol-sticky` in globals.css.
+  return `tcol-sticky${isEdge ? ' is-edge' : ''}`
 }
 
 export function DataTable<T>({
@@ -447,31 +447,30 @@ export function DataTable<T>({
   const [expanded, setExpanded] = useState(false)
   /*
     Whether the rows have moved under the header. The hairline under a resting
-    header belongs to the first row and scrolls away with it; `.is-scrolled`
-    puts one back as a shadow so the header reads as floating — which is what
-    it is then actually doing. State, not a class toggle by hand, so React
-    owns the DOM as usual.
-  */
-  const [scrolled, setScrolled] = useState(false)
-  /*
-    The same reading for the OTHER axis, and it is a separate one on purpose: a
-    table can be scrolled down without being scrolled across, and each rule
-    belongs to the edge that has actually moved. Read from the same event, so
-    the pair costs one handler and no extra listener.
-  */
-  const [scrolledX, setScrolledX] = useState(false)
+    header belongs to the first row and scrolls away with it; `[data-scrolled]`
+    on the box puts one back as a shadow so the header reads as floating —
+    which is what it is then actually doing. And the same reading for the
+    OTHER axis, `[data-scrolled-x]`, separate on purpose: a table can be
+    scrolled down without being scrolled across, and each rule belongs to the
+    edge that has actually moved.
 
+    ATTRIBUTES ON THE BOX, NOT STATE — `markScrolledX` on the «RNP» sheet is the
+    precedent. As state, the first wheel tick, the first sideways drag and every
+    return to an edge re-ran every row's and every cell's `render`: thousands
+    of cells on Roistat's «Продавец» or Sverka's 200 rows, a hitch exactly as
+    the scroll began, for a shadow on one band.
+  */
   const onScroll = (event: UIEvent<HTMLDivElement>) => {
-    const isScrolled = event.currentTarget.scrollTop > 0
-    if (isScrolled !== scrolled) setScrolled(isScrolled)
+    const box = event.currentTarget
+    const isScrolled = box.scrollTop > 0
+    if (isScrolled !== box.hasAttribute('data-scrolled')) box.toggleAttribute('data-scrolled', isScrolled)
     /*
       Only measured when something is actually pinned. Without pinned columns
-      the class it drives is on nothing, so reading it would be a state update
-      per horizontal scroll of every table in the application for no paint.
+      the rule it drives is on nothing, so there is nothing to mark.
     */
     if (stickyColumns > 0) {
-      const isScrolledX = event.currentTarget.scrollLeft > 0
-      if (isScrolledX !== scrolledX) setScrolledX(isScrolledX)
+      const isScrolledX = box.scrollLeft > 0
+      if (isScrolledX !== box.hasAttribute('data-scrolled-x')) box.toggleAttribute('data-scrolled-x', isScrolledX)
     }
   }
 
@@ -601,7 +600,7 @@ export function DataTable<T>({
                         : 'none'
                       : undefined
                   }
-                  className={`thead-sticky ${scrolled ? 'is-scrolled' : ''} ${pinClass(left, index === lastPinned, scrolledX)} px-2 py-2 text-[11px] font-medium tracking-wide uppercase ${
+                  className={`thead-sticky ${pinClass(left, index === lastPinned)} px-2 py-2 text-[11px] font-medium tracking-wide uppercase ${
                     column.align === 'right' ? 'text-right' : 'text-left'
                   }`}
                 >
@@ -717,7 +716,7 @@ export function DataTable<T>({
                        degrees. A cell in the bottom-left corner of a table with
                        both wears both, which is why neither sets `position`
                        twice over the other. */
-                    className={`${pinned ? 'tfoot-sticky ' : ''}${pinClass(left, colIndex === lastPinned, scrolledX)} px-2 py-2.5 ${
+                    className={`${pinned ? 'tfoot-sticky ' : ''}${pinClass(left, colIndex === lastPinned)} px-2 py-2.5 ${
                       column.rowHeader ? 'font-medium' : 'font-normal'
                     } ${column.align === 'right' ? 'text-right' : 'text-left'} ${
                       column.numeric ? 'tabular' : ''

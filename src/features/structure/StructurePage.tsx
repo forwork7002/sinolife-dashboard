@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
-import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
+import { ChartSkeleton, EmptyState, ErrorState, statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { PageShell } from '@/features/shared/PageShell'
@@ -95,6 +95,7 @@ export function StructurePage() {
     refetchInterval: 5 * 60_000,
   })
 
+  const status = statusOf(query)
   const roots = useMemo(() => query.data?.data ?? [], [query.data])
   const flat = useMemo(() => flatten(roots), [roots])
 
@@ -155,16 +156,16 @@ export function StructurePage() {
       fill={chart}
     >
       {query.isPending && <ChartSkeleton height={chart ? 480 : 280} />}
-      {query.isError && (
+      {status === 'error' && (
         <ErrorState
           message={(query.error as Error).message}
           onRetry={() => void query.refetch()}
         />
       )}
-      {/* `!isError` too: a failed request rendered the error AND "the
+      {/* `ready` only: a failed request rendered the error AND "the
           structure is empty" one under the other, which are contradictory
           claims — the second one is a guess about data nobody received. */}
-      {!query.isPending && !query.isError && roots.length === 0 && (
+      {status === 'ready' && roots.length === 0 && (
         <EmptyState
           title="Tuzilma boʻsh"
           body="Bitrix24 kompaniya strukturasi import qilinmagan."

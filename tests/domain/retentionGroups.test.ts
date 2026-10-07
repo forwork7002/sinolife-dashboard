@@ -5,7 +5,6 @@ import {
   RETENTION_GROUPS,
   RETENTION_GROUP_ORDER,
   UNMAPPED_RETENTION_GROUP,
-  retentionGroupOf,
   retentionGroupSpec,
 } from '@/lib/retentionGroups'
 
@@ -24,6 +23,18 @@ import {
  * amber on the LAST case rather than failing the others, which is the right
  * order: the partition is still sound, there is simply something new to file.
  */
+
+/**
+ * Which group a stage id falls in, read off `RETENTION_GROUPS` — the table the
+ * repository builds its statement from. The test's own reading: the screen
+ * never derives a group (it draws the keys the server sends), so this lives
+ * here rather than in `src/lib`.
+ */
+function retentionGroupOf(externalId: string | null): string {
+  if (externalId === null) return UNMAPPED_RETENTION_GROUP
+  const group = RETENTION_GROUPS.find((g) => (g.stages as readonly string[]).includes(externalId))
+  return group?.key ?? UNMAPPED_RETENTION_GROUP
+}
 
 /** The C10 «База» funnel, exactly as `deal_stage` holds it. */
 const BAZA_STAGES = [

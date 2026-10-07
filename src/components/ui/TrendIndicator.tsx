@@ -141,7 +141,7 @@ export function TrendIndicator({
       >
         <Arrow size={11} className="shrink-0" />
         {pointChange === null
-          ? formatChange(Math.abs(delta.percent))
+          ? formatChange(Math.abs(delta.percent), delta.direction)
           : `${formatNumber(Math.abs(pointChange))} pp`}
       </span>
     </Tooltip>
@@ -161,11 +161,17 @@ export function TrendIndicator({
  * under a doubling; every «×» is at least a doubling. Whatever the digits, a
  * row with × outgrew a row with %.
  *
+ * ONLY A RISE TAKES THE ×. The percent arrives unsigned, and a fall to zero is
+ * −100% — so it went down the same branch and printed «↓×2», the very text of
+ * a doubling with only the arrow to tell them apart: Roistat's tiles on a
+ * morning before the first lead, a payroll team with nothing delivered yet on
+ * a Monday. A fall is never a multiple; it prints its percentage.
+ *
  * The exact percentage stays in the tooltip, because it is still the number
  * the calculation produced.
  */
-function formatChange(percent: number): string {
-  if (percent >= 100) {
+function formatChange(percent: number, direction: 'up' | 'down'): string {
+  if (direction === 'up' && percent >= 100) {
     const multiple = 1 + percent / 100
     return `×${multiple >= 10 ? Math.round(multiple) : Math.round(multiple * 10) / 10}`
   }

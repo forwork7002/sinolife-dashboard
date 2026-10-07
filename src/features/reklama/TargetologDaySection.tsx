@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { EmptyState, ErrorState } from '@/components/states/States'
+import { EmptyState, ErrorState, statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { SectionHeader } from '@/components/ui/Stat'
 import type { FormDayDto, FormOwnerDto, LeadSourcesOverviewDto } from '@/features/leads/leadSourcesApi'
@@ -126,7 +126,7 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
         />
       )}
 
-      {query.isError ? (
+      {statusOf(query) === 'error' ? (
         <Card className="p-5">
           <ErrorState
             message={query.error instanceof Error ? query.error.message : undefined}

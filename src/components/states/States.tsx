@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/Button'
+import { ApiClientError } from '@/lib/api'
 import { t } from '@/lib/messages'
 
 /**
@@ -19,6 +20,50 @@ import { t } from '@/lib/messages'
  * Three DIFFERENT silhouettes on purpose: ghost bars, a broken line, a
  * dashed socket — recognisable from across the room, before a word is read.
  */
+
+export type ViewStatus = 'loading' | 'error' | 'ready'
+
+/**
+ * Which of the three a block draws for its query: a skeleton, the error card
+ * or the figures — the rule below, stated once. (A few blocks that already
+ * had it right spell it inline as `isError && !data`; same answer.)
+ *
+ * THE ERROR CARD IS FOR HAVING NOTHING TO SHOW. TanStack Query 5 keeps the
+ * last good `data` when a refetch fails and still reports `isError`, so a
+ * block that read `isError` alone threw away figures it was holding: two
+ * misses in a row on the 120 s poll (`retry: 1` in `providers.tsx`) — a
+ * deploy restart, one statement timeout on a busy database — and the TV
+ * board, Logistika or «Lid manbalari» sat behind «Qayta urinish» until the
+ * next good poll, with every number still in memory. A failed BACKGROUND
+ * refetch keeps the screen; the next good poll replaces it.
+ *
+ * A first read that fails still gets the card, and so does a new period
+ * whose read fails: placeholder data covers only a query that is still
+ * pending, so after the failure there is no `data` to keep.
+ *
+ * AND SO DOES A REFUSAL, FIGURES OR NOT. A 401 or a 403 is not a blip the next
+ * poll clears: a password change revokes every other session, a section can
+ * be taken away, an account deactivated, and every poll after that answers
+ * the same. Keeping the figures there left the TV board on its last ranking
+ * indefinitely, with nothing on screen but a header chip that reads like a
+ * Bitrix24 delay; the card prints the server's own sentence instead
+ * («Tizimga kirish talab qilinadi.»).
+ */
+export function statusOf(query: {
+  readonly isPending: boolean
+  readonly isError: boolean
+  readonly data: unknown
+  readonly error: unknown
+}): ViewStatus {
+  if (query.isPending) return 'loading'
+  if (!query.isError) return 'ready'
+  return query.data === undefined || isRefusal(query.error) ? 'error' : 'ready'
+}
+
+/** The server said no to this account — signed out (401) or not allowed (403) — rather than failed to answer. */
+function isRefusal(error: unknown): boolean {
+  return error instanceof ApiClientError && (error.status === 401 || error.status === 403)
+}
 
 export function LoadingSkeleton({ rows = 3, className = '' }: { rows?: number; className?: string }) {
   return (
@@ -124,14 +169,9 @@ export function EmptyState({
 
 export function ErrorState({
   message,
-  correlationId,
-  hint,
   onRetry,
 }: {
   message?: string
-  correlationId?: string
-  /** One-line suggestion beyond retrying, when the caller knows one. */
-  hint?: ReactNode
   onRetry?: () => void
 }) {
   return (
@@ -146,16 +186,6 @@ export function ErrorState({
       <p className="max-w-sm text-xs" style={{ color: 'var(--ink-secondary)' }}>
         {message ?? t.state.errorBody}
       </p>
-      {hint && (
-        <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-          {hint}
-        </p>
-      )}
-      {correlationId && (
-        <p className="tabular text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          ID: {correlationId}
-        </p>
-      )}
       {onRetry && (
         <Button variant="secondary" size="sm" className="mt-1.5" onClick={onRetry}>
           {t.state.retry}

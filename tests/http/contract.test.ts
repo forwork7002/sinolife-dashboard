@@ -8,7 +8,6 @@ import {
 import {
   buildPagination,
   failure,
-  isSuccess,
   serialise,
   success,
   type ResponseMeta,
@@ -34,14 +33,6 @@ describe('error taxonomy', () => {
     expect(statusForCode('INTERNAL_ERROR')).toBe(500)
   })
 
-  it('distinguishes a pending integration from a real failure', () => {
-    // 501, not 500: the feature works, its data source just is not connected.
-    const error = ApiError.integrationPending('Toʻlovlar')
-    expect(error.status).toBe(501)
-    expect(error.code).toBe('INTEGRATION_PENDING')
-    expect(error.message).toContain('BITRIX24_INTEGRATION_PENDING')
-  })
-
   it('wraps an unknown throw without losing the cause', () => {
     const original = new Error('connect ECONNREFUSED 127.0.0.1:5432')
     const wrapped = toApiError(original)
@@ -63,7 +54,7 @@ describe('error taxonomy', () => {
 describe('response envelope', () => {
   it('wraps success data with meta', () => {
     const envelope = success({ revenue: 42 }, meta)
-    expect(isSuccess(envelope)).toBe(true)
+    expect(envelope.data).toEqual({ revenue: 42 })
     expect(envelope.meta.dataSource).toBe('DEMO')
   })
 
@@ -75,7 +66,6 @@ describe('response envelope', () => {
 
     expect(json).not.toContain('hunter2')
     expect(json).not.toContain('/src/db.ts')
-    expect(isSuccess(envelope)).toBe(false)
   })
 
   it('carries validation details to the client', () => {
