@@ -21,7 +21,21 @@ import { type Permission, type Principal, can, sectionsFor, wideSectionsFor } fr
  * it must never grant more than the minimum either.
  */
 export async function requirePrincipal(request: Request): Promise<Principal> {
-  const session = await auth.api.getSession({ headers: request.headers })
+  /*
+    FROM THE SESSION TABLE, NEVER THE COOKIE CACHE.
+
+    `session.cookieCache` (auth.ts) lets getSession answer for five minutes
+    from a signed `session_data` cookie without reading the `session` table.
+    The user row below is re-read on every request, but the SESSION was not —
+    so a session deleted by a password change («boshqa qurilmalardan chiqish»),
+    an administrator's reset or a deactivation kept passing every check for up
+    to five minutes on a stolen cookie pair. One indexed lookup by token, beside
+    the primary-key read this function already pays, ends it at once.
+  */
+  const session = await auth.api.getSession({
+    headers: request.headers,
+    query: { disableCookieCache: true },
+  })
 
   if (!session?.user) {
     throw ApiError.unauthenticated()
@@ -94,6 +108,7 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
   const sections = sectionsFor(role, live.sections)
   const principal: Principal = {
     userId: user.id,
+    sessionId: session.session.id,
     role,
     isActive: live.isActive,
     employeeId: live.employeeId,

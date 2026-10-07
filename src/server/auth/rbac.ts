@@ -123,6 +123,11 @@ const READ_SCOPED: readonly Permission[] = Object.freeze([
 
 export interface Principal {
   readonly userId: string
+  /**
+   * The session this request arrived on. Only `updateUser` reads it, to keep
+   * the editor signed in when they reset their own password on /users.
+   */
+  readonly sessionId?: string
   readonly role: RoleValue
   readonly isActive: boolean
   /** Set when the login is linked to a salesperson. Drives own-data scoping. */
