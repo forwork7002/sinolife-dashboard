@@ -1526,6 +1526,47 @@ body::after {
 }
 
 /**
+ * The author's mark — «developed by Yusuf», barely there, in the top-right
+ * corner of every card that holds a table (2026-10-07: «har bir jadval tepa
+ * qismi burchagiga … korinar korinmas»). One rule instead of a prop on every
+ * table, so a table added later carries it without anyone remembering to.
+ *
+ * It sits in the card's top padding (3px down, every table card has ≥12px
+ * there), so it never covers a header. The text is hidden from screen
+ * readers by the `/ ""` alt text — it is a signature, not content.
+ *
+ * `.brackets` owns both of its pseudos, so those two cards (Tasdiqlash,
+ * Kogorta) carry it as a real `<DevMark />` element with the same box.
+ * `position: relative` is in `components` so a Tailwind position utility on
+ * a card still wins; sticky and absolute are containing blocks too.
+ */
+@layer components {
+  :is(.card, .card-hero):not(.brackets):has(table) {
+    position: relative;
+  }
+}
+
+:is(.card, .card-hero):not(.brackets):has(table)::after,
+.dev-mark {
+  position: absolute;
+  top: 3px;
+  right: 14px;
+  z-index: 4;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+  opacity: 0.4;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+:is(.card, .card-hero):not(.brackets):has(table)::after {
+  content: "developed by Yusuf" / "";
+}
+
+/**
  * The page-identity rule.
  *
  * A short bar in the page's accent above the title. Cheap, immediate, and it

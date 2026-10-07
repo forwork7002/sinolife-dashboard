@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { CategoryBarList } from '@/components/charts/CategoryBarList'
 import { CohortHeatmap, type CohortMatrixRow, type CohortView } from '@/components/charts/Heatmap'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
-import { ChartCard } from '@/components/ui/Card'
+import { ChartCard, DevMark } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { GaugeTile, Meter, SectionHeader, StatTile } from '@/components/ui/Stat'
 import { InfoTip } from '@/components/ui/Tooltip'
@@ -585,6 +585,7 @@ export function CohortPage() {
             </div>
           }
         >
+          <DevMark />
           {query.isPending && <ChartSkeleton height={320} />}
           {tileStatus === 'error' && (
             <ErrorState message={(query.error as Error).message} onRetry={() => void query.refetch()} />

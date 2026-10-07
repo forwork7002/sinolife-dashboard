@@ -37,6 +37,19 @@ export function Card({
   )
 }
 
+/**
+ * The author's mark for a `.brackets` card that holds a table — the CSS
+ * draws it on every other table card, but `.brackets` owns both pseudos.
+ * See `.dev-mark` in globals.css.
+ */
+export function DevMark() {
+  return (
+    <span className="dev-mark" aria-hidden="true">
+      developed by Yusuf
+    </span>
+  )
+}
+
 export function ChartCard({
   title,
   hint,
