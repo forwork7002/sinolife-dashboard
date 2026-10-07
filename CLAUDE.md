@@ -1660,8 +1660,13 @@ Per-screen traps worth knowing before you touch one:
   morning's column of zeros), the fact not being read prints its «0» in the
   dash's muted ink (`asideInk` — still a «0», it is a measurement), and a seat
   under a FAKT 1 reading says «N buyurtma» where «0 / N buyurtma» led with a
-  delivered-count zero. `sellersTvBoard.test.tsx` pins the opening on both
-  columns and the column order.
+  delivered-count zero — and «won / N buyurtma» again the moment that seller
+  has delivered (the FAKT 2 money line's own test), with the conversion
+  behind the same gate, so «Shu oy» keeps the count the floor read on it.
+  `sellersMedals.test.tsx` pins the PAGE's opening (it mounts the real
+  `SellersPage`: FAKT 1 lit in both headings, every seat «tasdiqlangan»);
+  `sellersTvBoard.test.tsx` reads the opening line at the source and pins the
+  column order, the heads' `aria-sort` and the one-choice-both-columns rule.
   **«PREMIUM» — 2026-10-07, the same ask** («kartochkani premium,
   professionalroq qilish kerak … oʻzgarib ketmasin juda kuchli»): SAYQAL item
   5 in `globals.css`, a second finishing pass in the ring's own hand and

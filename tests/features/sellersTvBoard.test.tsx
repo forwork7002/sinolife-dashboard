@@ -7,7 +7,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { SellerBoardDto } from '@/lib/api'
-import { formatFullUzs, formatUzs } from '@/lib/format'
+import { formatFullUzs, formatPercent, formatUzs } from '@/lib/format'
 
 /**
  * THE TELEVISION BOARD: two columns, each a podium over a list.
@@ -69,8 +69,8 @@ function seller(fullName: string, rank: number, won: number, ordered: number, ro
     openOrders: 0,
     ordered: money(ordered),
     won: money(won),
-    sharePercent: null,
-    conversionPercent: null,
+    sharePercent: null as number | null,
+    conversionPercent: null as number | null,
   }
 }
 
@@ -387,6 +387,20 @@ describe('the rows under the seats', () => {
       expect.stringContaining('Farida 106'),
     ])
 
+    // FAKT 1 BEFORE FAKT 2 (2026-10-07), and the ranked head is the one
+    // marked `aria-sort` — the heads, not only the cells.
+    const heads = within(screen.getByRole('table')).getAllByRole('columnheader')
+    expect(heads.map((h) => h.textContent)).toEqual([
+      '#',
+      'Sotuvchi',
+      'FAKT 1 · tasdiq.',
+      'FAKT 2 · yetkaz.',
+      'Buyurtma',
+      'Konv.',
+    ])
+    expect(heads[2]!.getAttribute('aria-sort')).toBe('descending')
+    expect(heads[3]!.getAttribute('aria-sort')).toBeNull()
+
     // Confirmed money, nothing delivered: FAKT 1 first — the fact being read
     // — and FAKT 2 stays a real «0» beside it, in the dash's muted ink since
     // 2026-10-07 rather than the secondary ink a figure gets.
@@ -628,6 +642,11 @@ describe('reading the same board on the other fact', () => {
     expect(column('tv-teams').getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed')).toBe(
       'true',
     )
+    // …and the sort mark moves to the FAKT 2 head (the sellers' table — the
+    // three teams are all seated on this reading, so theirs has no rows).
+    const heads = within(column('tv-sellers').getByRole('table')).getAllByRole('columnheader')
+    expect(heads[2]!.getAttribute('aria-sort')).toBeNull()
+    expect(heads[3]!.getAttribute('aria-sort')).toBe('descending')
 
     press('tv-teams', 'FAKT 1')
     expect(seatsOf('tv-sellers')[0]).toBe('Saparboyeva 110 Farida')
@@ -647,6 +666,51 @@ describe('reading the same board on the other fact', () => {
 
     expect(ranksOf('tv-sellers')).toEqual(['1', '1', '3'])
     expect(column('tv-sellers').getByRole('table').querySelector('.tv-rank')?.textContent).toBe('4')
+  })
+
+  /*
+    THE PAGE'S OWN OPENING, pinned where it lives. `Board` above is this file's
+    copy of the page's wiring, so what it opens on proves nothing about
+    `SellersPage`; `sellersMedals.test.tsx` mounts the real page and asserts
+    the lit buttons, and this reads the one line the client's ask lives on.
+  */
+  it('opens the page on FAKT 1 — the line the client’s ask lives on', () => {
+    const page = readFileSync(join(process.cwd(), 'src/features/sellers/SellersPage.tsx'), 'utf8')
+    expect(page).toMatch(/useState<FaktChoice>\('fakt1'\)/)
+    expect(page).toMatch(/export type FaktChoice = 'fakt1' \| 'fakt2'/)
+    expect(page).not.toMatch(/resolveFakt/)
+  })
+
+  /*
+    THE ORDERS LINE UNDER A FAKT 1 READING (2026-10-07). «0 / 2 buyurtma» led
+    a card about confirmed money with a delivered-count zero, so a seat with
+    nothing delivered prints the orders taken alone — and the moment there IS
+    a delivered count it comes back as «delivered / taken», the way the FAKT 2
+    money line appears on the seat, so «Shu oy» keeps the count the floor read
+    on it; the conversion (delivered ÷ settled) follows the same gate.
+  */
+  it('prints the delivered count on a FAKT 1 seat only where there is one', () => {
+    const MIXED = board({
+      orders: 9,
+      wonOrders: 2,
+      won: 5_000_000,
+      rows: [
+        { ...seller('Aziza 121 Toshmatova', 1, 5_000_000, 30_000_000), conversionPercent: 40 },
+        { ...seller('Bonu 102', 2, 0, 20_000_000), conversionPercent: 0 },
+        seller('Charos 103', 3, 0, 10_000_000),
+      ],
+    })
+    render(<SellersColumn data={MIXED} {...PROPS} fakt="fakt1" />)
+
+    const ordersLine = (place: 1 | 2 | 3) =>
+      [...document.querySelectorAll(`#tv-sellers .tv-seat--${place} .tv-seat-card p`)].find((p) =>
+        p.textContent?.includes('buyurtma'),
+      )!.textContent
+    // Delivered 2 of 3 — the count and the conversion are printed.
+    expect(ordersLine(1)).toBe(`2 / 3 buyurtma·${formatPercent(40)}`)
+    // Nothing delivered: the orders taken, no leading zero, no «0.0%».
+    expect(ordersLine(2)).toBe('3 buyurtma')
+    expect(ordersLine(3)).toBe('3 buyurtma')
   })
 
   it('keeps that rule on the opening fact, where the two keys are swapped', () => {

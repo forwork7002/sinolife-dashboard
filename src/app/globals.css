@@ -2728,6 +2728,9 @@ p {
  * beats a Tailwind position utility — wrap the card if a call site ever
  * needs it positioned otherwise. No `display` here on purpose: the call
  * site's responsive utilities keep that decision.
+ *
+ * Its background — wash and ground — and its rim are SAYQAL 5a's bevel now;
+ * the layers here keep the cascade for a seat 5a does not reach (today, none).
  */
 .podium-card {
   position: relative;
@@ -2748,6 +2751,7 @@ p {
 }
 
 /*
+ * (Restated by SAYQAL 5a's champion rule — 24%, the same ellipse — under its bevel.)
  * The champion outranks the flankers in elevation too, and now in wash: the
  * same crown-light every card carries, turned up from 13% to 24% on the one
  * card the client wants "unmistakable from across the room". Still the seat's
@@ -3321,7 +3325,7 @@ p {
     color-mix(in oklab, var(--tv-tone) 26%, var(--surface-raised)),
     color-mix(in oklab, var(--tv-tone) 14%, var(--surface-raised))
   );
-  /* The key's edge and drop are SAYQAL 4b. */
+  /* The key's edge and drop are SAYQAL 4b, refined by 5g. */
 }
 .tv-fakt[data-fakt='fakt2']::before {
   transform: translateX(100%);
@@ -4278,7 +4282,7 @@ p {
   box-shadow: 0 0 0 4px color-mix(in oklab, var(--tv-tone) 7%, transparent), var(--px-well);
 }
 
-/* 2c · seat cards: a lit top hairline + a hairline inside the metal rim. Backgrounds are NOT restated. */
+/* 2c · seat cards: a lit top hairline + a hairline inside the metal rim. Backgrounds are NOT restated here (5a restates them under its bevel). */
 .tv-col .podium-card {
   box-shadow: var(--shadow-card), inset 0 1px 0 var(--px-hair), inset 0 0 0 1px var(--px-hair-soft);
 }
@@ -4666,6 +4670,7 @@ p {
   border: 1px solid color-mix(in oklab, var(--emal-steel) 55%, transparent);
   background: color-mix(in oklab, var(--emal-steel) 10%, transparent);
 }
+/* The honour / rare chips' INK is SAYQAL 5i's gold ink (strip and tip alike); this is the base. */
 .medal-tasnif-group[data-group="honour"],
 .medal-tasnif-group[data-group="rare"] {
   color: var(--emal-gold-d);

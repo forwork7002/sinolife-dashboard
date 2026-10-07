@@ -296,6 +296,33 @@ describe('qator medallari — 3 tagacha, first-sale yashirin, sanoq yo‘q', () 
 })
 
 describe('taxta bo‘ylab', () => {
+  /*
+    SAHIFA FAKT 1 DA OCHILADI — 2026-10-07, mijoz: «jadvalga kirganda FAKT 2
+    boʻlib turishi emas, FAKT 1 maʼlumot bilan turadi». Bu yerda HAQIQIY
+    `SellersPage` mount qilinadi (sellersTvBoard.test.tsx faqat ustunlarni
+    oladi), shuning uchun ochilish holati shu yerda pinlanadi: ikkala
+    sarlavhada FAKT 1 yonib turadi va har bir oʻrindiq «FAKT 1 · tasdiqlangan»
+    deydi — payloadda yetkazilgan pul boʻlsa ham.
+  */
+  it('sahifa FAKT 1 da ochiladi — ikkala sarlavhada FAKT 1 yoniq, oʻrindiqlar tasdiqlangan pulda', async () => {
+    const { container } = await openBoard()
+
+    for (const id of ['tv-sellers', 'tv-teams']) {
+      const col = container.querySelector(`#${id}`)!
+      const lamps = [...col.querySelectorAll('.tv-fakt-tab')].map((b) => [
+        b.textContent?.trim(),
+        b.getAttribute('aria-pressed'),
+      ])
+      expect(lamps).toEqual([
+        ['FAKT 1', 'true'],
+        ['FAKT 2', 'false'],
+      ])
+      const seats = [...col.querySelectorAll('.tv-seat-card')]
+      expect(seats).toHaveLength(3)
+      for (const card of seats) expect(card.textContent).toContain('FAKT 1 · tasdiqlangan')
+    }
+  })
+
   it('hech qayerda «+N» yo‘q', async () => {
     const { container } = await openBoard()
     const texts = [...container.querySelectorAll('#tv-sellers *, #tv-teams *')]

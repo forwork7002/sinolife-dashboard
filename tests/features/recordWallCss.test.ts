@@ -33,6 +33,16 @@ describe('the record ticker, as the stylesheet defines it', () => {
     */
     expect(ruleFor('.record-wall')).toContain('--metal: var(--medal-gold)')
     expect(ruleFor('.record-month')).toContain('color: var(--metal)')
+    /*
+      The WORD's ink is SAYQAL 5h's (2026-10-07): the same gold deepened toward
+      ink, because --medal-gold read 2.5:1 on the light title band under
+      uppercase text. Mixed from two tokens and nothing else — still gold,
+      still chrome, never a literal — and it is the rule that actually paints,
+      so it is pinned beside the base it refines.
+    */
+    expect(ruleFor('.record-wall .record-month')).toMatch(
+      /color: color-mix\(in oklab, var\(--emal-gold-d\) 85%, var\(--ink-primary\)\)/,
+    )
   })
 
   it('is bounded to the title block’s height, so it cannot grow the header', () => {

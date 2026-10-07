@@ -905,6 +905,8 @@ function PodiumSeat({
   const closeness = leaderFigure > 0 ? (figure / leaderFigure) * 100 : 0
   const lead = runnerUp ? figure - figureOf(runnerUp) : null
   const rack = medals ? seatMedals(medals, seat.rack) : []
+  /** Is there a delivered count to print — the reading asks for it, or it is non-zero. */
+  const hasDelivered = onDelivered || entry.wonOrders > 0
 
   return (
     <div className={`${seat.col} tv-seat tv-seat--${place} tv-seat--at-${column}`}>
@@ -1009,13 +1011,19 @@ function PodiumSeat({
             </p>
           )}
           <p>
-            {/* «delivered / taken» under a FAKT 2 reading; the orders taken
-                under FAKT 1 — «0 / 2 buyurtma» led a card about confirmed
-                money with a delivered-count zero (the client, 2026-10-07). */}
-            {onDelivered
+            {/* «delivered / taken» wherever there IS a delivered count to
+                print — under a FAKT 2 reading, and under FAKT 1 on a window
+                where this seller has delivered: the same test the FAKT 2
+                money line above uses, so «Shu oy» keeps the count the floor
+                read on it. On the morning board it is the orders taken, alone:
+                «0 / 2 buyurtma» led a card about confirmed money with a
+                delivered-count zero (the client, 2026-10-07). The conversion
+                is delivered ÷ settled and follows the same gate, or the card
+                would print a «0.0%» whose numerator had just left it. */}
+            {hasDelivered
               ? `${formatNumber(entry.wonOrders)} / ${formatNumber(entry.orders)} buyurtma`
               : `${formatNumber(entry.orders)} buyurtma`}
-            {entry.conversionPercent !== null && (
+            {hasDelivered && entry.conversionPercent !== null && (
               <>
                 <span className="mx-1">·</span>
                 {formatPercent(entry.conversionPercent)}
