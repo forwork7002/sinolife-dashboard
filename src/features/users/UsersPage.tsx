@@ -549,10 +549,12 @@ function UserDialog({
 
   return (
     // A modal, because this is a decision that should not be half-made while
-    // the table behind it changes under a refetch.
+    // the table behind it changes under a refetch. The house scrim
+    // (`.backdrop-dim`): page-tinted, not black — a black one turned the light
+    // app into a darker room — and denser, unblurred, under reduced
+    // transparency.
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
-      style={{ background: 'color-mix(in oklab, black 55%, transparent)' }}
+      className="backdrop-dim fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -560,7 +562,9 @@ function UserDialog({
         if (event.target === event.currentTarget) onClose()
       }}
     >
-      <Card className="w-full max-w-3xl px-5 py-5">
+      {/* Frosted (`.glass-float`) over the dimmed table, not plain glass:
+          the page under a modal is content, and it would read through. */}
+      <Card className="glass-float w-full max-w-3xl px-5 py-5">
         <header className="mb-4 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold" style={{ color: 'var(--ink-primary)' }}>

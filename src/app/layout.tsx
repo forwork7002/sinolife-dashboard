@@ -24,10 +24,16 @@ export const viewport: Viewport = {
     third, media-less meta prepended ahead of these by `lib/theme.ts` — the
     first matching one wins, and these two are keyed to exactly the setting a
     forced theme is overriding.
+
+    They are `--page`'s two values, written out because metadata cannot read
+    the stylesheet — and so they went stale: the «koʻk» re-tint moved the page
+    to navy and these stayed the old grey and near-black, so the address bar
+    and the page differed on every «Tizim» load and on /login.
+    `tests/features/theme.test.ts` now pins them to globals.css.
   */
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f6f7f9' },
-    { media: '(prefers-color-scheme: dark)', color: '#050609' },
+    { media: '(prefers-color-scheme: light)', color: '#edf1fb' },
+    { media: '(prefers-color-scheme: dark)', color: '#060a1a' },
   ],
 }
 

@@ -32,8 +32,12 @@
  * glass, electric blue and cyan): every SURFACE moved to a navy hue, and
  * three slots moved with it — 1 (blue) brighter, 3 (teal → cyan) and 7
  * (violet) lighter — so the marks keep their hue family on the new ground.
- * Re-measured on the new surfaces: every series slot ≥ 4.7:1 on the dark
- * raised card and ≥ 3.6:1 on the light page; the slot ORDER is unchanged.
+ * Re-measured on the new surfaces (2026-10-06; the figures first written
+ * here were not what the tokens give): on the CARD every slot clears the
+ * 3:1 a mark needs — dark 3.82 (olive) to 8.24, light 3.04 (amber) to 4.91.
+ * Off the card it does not always: amber reads 2.67:1 on the light page and
+ * 2.56 on the sunken band, which is one more reason marks sit on cards. The
+ * slot ORDER is unchanged.
  *
  * The previous set cleared CVD at 9.1 and left three slots below 3:1 contrast,
  * so every one of those numbers is an improvement rather than a repaint. The
@@ -50,9 +54,15 @@
   color-scheme: light;
 
   /* --- Surfaces and ink ------------------------------------------------- */
-  --page: #edf0fa;
+  /* The ground under the backdrop's four pools (--backdrop, «Shisha» below). */
+  --page: #edf1fb;
   --surface: #f7f8fd;
-  --surface-raised: #ffffff;
+  /* OPAQUE, and it stays opaque: the colour of everything that must never be
+     see-through — pinned table cells and every table's ground, tooltips, the
+     org chart, the TV board. It is the glass card (--glass-card) composited
+     over the bare --page, so an opaque part sits inside a glass one as the
+     same colour wherever the backdrop is unlit. */
+  --surface-raised: #fbfcfe;
   /* Sunken: table headers, inset panels, the well behind a chart. */
   --surface-sunken: #e8ebf6;
   --ink-primary: #0f1533;
@@ -61,15 +71,22 @@
    * Chosen against the WORST surface it lands on, not against white.
    *
    * It carries every label, column header and hint in the application, and it
-   * appears on three light surfaces. Picked against `--surface` alone it
-   * cleared 4.83:1 there and 4.24:1 on `--surface-sunken`, which is the table
-   * header — the place a column label most needs to be legible.
+   * appears on every surface there is. Picked against `--surface` alone it
+   * once cleared 4.83:1 there and 4.24:1 on `--surface-sunken`, which is the
+   * table header — the place a column label most needs to be legible.
    *
-   *   on --raised  #ffffff        5.62:1
-   *   on --page    #edf0fa        4.94:1
-   *   on --sunken  #e8ebf6        4.73:1   ← the one that decides the value
+   *   on --raised  #fbfcfe                       6.28:1
+   *   on --sunken  #e8ebf6                       5.41:1
+   *   on --grid    #e1e5f2                       5.12:1
+   *   on the page, under two pools at 60%        5.04:1
+   *   under the title band's worst light         4.86:1   ← the one that decides
+   *
+   * Glass moved the floor: the backdrop's pools darken the light page, and
+   * the page is a surface text sits on (titles, lead lines, the filter row).
+   * #5a6583 read 4.53:1 on the pooled page; #535e7c keeps a margin there and
+   * under the title band, where the aurora darkens it a little further.
    */
-  --ink-muted: #5c6785;
+  --ink-muted: #535e7c;
   --grid: #e1e5f2;
   /* What an empty track is drawn in. Same as --grid in light; dark needs its
      own step because --grid on a raised card measured 1.07:1 there — a ring's
@@ -107,7 +124,12 @@
   --series-1: #2f66f0; /* blue */
   --series-2: #ca4c07; /* orange */
   --series-3: #00897d; /* teal */
-  --series-4: #be8b1e; /* amber */
+  /* Amber, and the darkest of the eight on purpose: #be8b1e was 3.04:1 on
+     white and under 3:1 on every other light surface (2.38 on the page under
+     two pools). #a07410 clears 3:1 on all of them — 3.29 at the worst — and
+     re-passes the validator (CVD ΔE 10.6, normal ΔE 17.2). It sits 7.7 ΔE
+     from --status-warning, the distance dark mode's pair has always had. */
+  --series-4: #a07410; /* amber */
   --series-5: #e93882; /* pink */
   --series-6: #528118; /* olive */
   --series-7: #8749fb; /* violet */
@@ -121,13 +143,19 @@
   --seq-650: #1538bc;
 
   /* --- Status — reserved, never reused as a series colour ---------------- */
-  /* Each step clears 4.5:1 on its surface, so a status may carry TEXT and not
-     only a mark. It still ships with an icon or a word; colour alone is not a
-     channel. */
+  /* Each step clears 4.5:1 on every surface status text can land on — the
+     page and the glass card over every pool of the backdrop, the chrome, a
+     floating panel, the sunken band, the hero's bloom and the danger
+     button's own tint — so a status may carry TEXT and not only a mark
+     (tightest: warning 4.66 and good 4.68 on the page under two pools,
+     critical 4.59 on the danger button pressed there). Glass moved two of
+     them: warning from #915c00 (4.40:1 on the pooled page) and critical
+     from #d02222 (4.18 there, 4.49 on --surface-sunken). Still not on
+     --grid or a control's well; keep status text off those. It ships with
+     an icon or a word; colour alone is not a channel. */
   --status-good: #00733a;
-  --status-warning: #915c00;
-  --status-serious: #ab4500;
-  --status-critical: #d02222;
+  --status-warning: #8d5800;
+  --status-critical: #c50f16;
 
   --delta-up: #006a31;
   --delta-down: #c31d1d;
@@ -235,9 +263,27 @@
    *
    * A literal `#fff` in a component is a colour the palette cannot reach: it
    * stays white when the surface under it changes, and there is nowhere to fix
-   * it once. Every series step clears 4.5:1 against this in both modes.
+   * it once.
+   *
+   * NO ONE INK CLEARS 4.5:1 ON EVERY SLOT, so there are two, measured per slot:
+   *
+   *   --ink-on-series         slots 1, 2, 6, 7, 8 (and --ink-muted as a fill)
+   *     light #ffffff    4.91 · 4.62 · 4.65 · 4.80 · 4.78   (muted 6.44)
+   *     dark  #02040c    6.31 · 5.24 · 4.59 · 5.78 · 5.07   (muted 7.47)
+   *   --ink-on-series-bright  slots 3, 4, 5 — teal, amber, pink
+   *     #02040c, both    light 4.75 · 4.88 · 5.22   dark 9.89 · 6.65 · 6.00
+   *
+   * This was one theme-free #fff said to clear every slot in both modes. In
+   * light it failed teal, amber and pink (4.31 / 3.04 / 3.92); in dark it
+   * failed all eight (2.07–4.46). The dark override is in both dark blocks.
    */
   --ink-on-series: #ffffff;
+  --ink-on-series-bright: #02040c;
+  /* White on the house's own brand fills, which do not follow the theme's
+     series steps: the active rail item (--rail-active-bg, 4.91 and 5.93 on its
+     two stops) and the S mark, a logotype. Not a series ink, so the dark
+     blocks leave it alone. */
+  --ink-on-brand: #ffffff;
 
   /* --- Elevation -------------------------------------------------------- */
   --shadow-card:
@@ -280,8 +326,10 @@
 
   /* Film grain strength. Doubled in dark, where a flat hex wall is most
      visibly flat. 2% is a ceiling, not a taste: the worst-case contrast
-     check on .page-atmosphere::before folds the grain in and lands exactly
-     on --ink-muted's 4.5:1 floor. Raising this re-opens that check. */
+     check on .page-atmosphere::before folds the grain in, and the title
+     band is the tightest place light --ink-muted sits. Raising this
+     re-opens that check. Glass lets it through a card at a fifth of this
+     in light and a third in dark — under a percent either way. */
   --grain-alpha: 0.02;
 
   /* Hero-number glow strength — 0% in light: a glow in daylight is smudge,
@@ -289,17 +337,112 @@
      .card-hero .figure-hero. */
   --glow-hero-mix: 0%;
 
+  /* The hero card's bloom — the page accent pooled in `.card-hero`'s top-left
+     corner. Its own strength since 2026-10-06; it borrowed --atmos-mix-accent,
+     which the «koʻk» pass raised to 22% in dark for the aurora, and the
+     aurora sits on the bare page while the bloom sits under the card's own
+     text: muted text read 4.00:1 on cyan pages. The hero is glass now, so the
+     bloom lands on the backdrop's light as well as on the card: 8% in dark
+     keeps every status step at 4.5:1 or better on its peak over the brightest
+     pool, for every pool accent (16% read 3.71); light keeps its 5%. */
+  --hero-bloom-mix: 5%;
+
   /**
    * «Koʻk» finish (2026-09-28) — the client's reference boards are navy glass
-   * with a lit top edge and neon plot lines. Two strengths, both 0 in light:
-   * a card's top-edge sheen (ink mixed over the card, so it is white on the
-   * navy card and would be a smudge on a white one) and the glow under a
-   * plot line. The gradient behind the active rail item is theme-free: white
-   * text on both stops measures 4.9:1 and 5.9:1.
+   * with a lit top edge and neon plot lines. One strength, 0 in light: the
+   * glow under a plot line — a mix percentage, not a finished shadow, because
+   * each line glows in its OWN series colour and that colour is only known at
+   * the line (`.glow-series-N`, ANALYSIS INDICATORS). The card's sheen it also
+   * carried is --glass-card-top below. The gradient behind the active rail
+   * item is theme-free: white text on both stops measures 4.9:1 and 5.9:1.
    */
-  --card-sheen: 0%;
-  --line-glow: none;
+  --line-glow-mix: 0%;
   --rail-active-bg: linear-gradient(135deg, #2f66f0, #6a3df0);
+
+  /**
+   * «SHISHA» — GLASS (2026-10-06). The client: «shaffof, yoqimli, eng kuchli
+   * dizayn» — translucent and pleasant — and fast.
+   *
+   * THESE ARE FILLS, NOT FILTERS. The document never scrolls: the Shell is
+   * 100dvh and only <main> scrolls, so what lies behind every card, the
+   * header and the rail is html's own background — --page and the pools of
+   * --backdrop, static. A translucent fill over a static backdrop that is
+   * already soft looks like a backdrop-filter blur and costs nothing; a blur
+   * there would cost a layer and a render pass per element for no difference
+   * anyone can see. Live content moves under exactly two kinds of thing:
+   * pinned table cells, which are OPAQUE (--surface-raised, and every table
+   * in a card is laid on that ground), and the floating panels, the only
+   * place a real blur (--glass-frost) is spent, and only while one is open.
+   *
+   * EVERY VALUE IS A LITERAL rgba, never a color-mix: the floor's television
+   * runs an old Chromium that can drop a color-mix stop (see the MEDALS
+   * note). And every glass surface reads one of these tokens — a class or a
+   * var(), never a colour written into a component — so the one transparency
+   * fallback (the block at the end of BASE) makes all of them opaque by
+   * pointing each token at its solid twin.
+   *
+   *   token              light                       dark                     solid twin
+   *   --glass-card       white 80%                   navy 64%                 --surface-raised
+   *   --glass-card-top   white 50% (top 42%)         white 2.5%               none
+   *   --glass-chrome     white 62%                   navy 62%                 --surface
+   *   --glass-float      white 90% + frost           navy 92% + frost         --surface-raised
+   *   --glass-well       ink 6%                      black 40%                --surface-sunken
+   *   --glass-raised     white 90%                   blue 28%                 --surface-raised
+   *   --glass-hover      ink 7%                      blue-white 10%           --grid
+   *
+   * The sheen is faint on purpose and the light goes on the EDGE instead
+   * (--glass-highlight): in dark a brighter fill is lower contrast for every
+   * ink, and a 5% sheen took --status-critical to 4.13:1 at the top of a card.
+   *
+   * MEASURED, every ink over every surface over every sample of the backdrop
+   * — the bare page, each pool at its peak, each pair at 60% — in both themes
+   * (floors: --ink-primary 7, secondary / muted / status 4.5, a series 3):
+   *
+   *   worst over the samples   page   card   card top  chrome  raised  sunken
+   *   light --ink-muted        5.04   6.14   6.29      5.88    6.28    5.41
+   *   light status (warning)   4.66   5.68   5.81      5.43    5.80    5.00
+   *   light series (pink)      3.07   3.74   3.83      3.58    3.82    3.30
+   *   dark --ink-muted         5.44   5.97   5.61      6.36    6.62    7.03
+   *   dark status (critical)   5.17   5.67   5.34      6.05    6.29    6.68
+   *   dark series (olive)      3.34   3.67   3.45      3.91    4.07    4.32
+   *
+   * `tests/features/glassContrast.test.ts` re-measures all of it from this
+   * file, so changing a value here re-runs the check rather than this table.
+   */
+  --glass-card: rgba(255, 255, 255, 0.8);
+  --glass-card-top: rgba(255, 255, 255, 0.5);
+  --glass-chrome: rgba(255, 255, 255, 0.62);
+  --glass-float: rgba(255, 255, 255, 0.9);
+  --glass-well: rgba(30, 50, 120, 0.06);
+  --glass-raised: rgba(255, 255, 255, 0.9);
+  --glass-hover: rgba(30, 50, 120, 0.07);
+  --glass-edge: rgba(30, 50, 120, 0.1);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  --glass-shadow: 0 1px 2px rgba(20, 30, 80, 0.05), 0 8px 24px -14px rgba(30, 50, 120, 0.22);
+  /* Theme-free, and spent only on --glass-float: see .glass-float. */
+  --glass-frost: blur(18px) saturate(1.4);
+  /* How much --page a modal scrim lays over what it dims (`.backdrop-dim`). */
+  --scrim-mix: 60%;
+
+  /**
+   * The backdrop — four soft pools of light over --page, painted by `html`.
+   *
+   * Blue from the top-left corner, violet from the top-right, cyan from the
+   * bottom-left, indigo from the bottom-right, each an ellipse nearly the
+   * viewport's size (percentages of the viewport, which is the box a
+   * `background-attachment: fixed` gradient is sized against), falling to
+   * 40% of its peak at 45% of its reach and to nothing at the edge. The old
+   * two pools reached the top ~300px only, so a glass card anywhere below
+   * the title had nothing but a flat --page to show; these meet in the
+   * middle at 12–17% of their peaks, so every card has colour behind it.
+   * No filter — a radial gradient is already as soft as a blur of one.
+   * Literal colours, chrome only: no mark that encodes a value reads them.
+   */
+  --backdrop:
+    radial-gradient(95% 90% at 0% 0%, rgba(76, 120, 255, 0.11), rgba(76, 120, 255, 0.044) 45%, rgba(76, 120, 255, 0) 100%),
+    radial-gradient(90% 85% at 100% 0%, rgba(150, 110, 255, 0.09), rgba(150, 110, 255, 0.036) 45%, rgba(150, 110, 255, 0) 100%),
+    radial-gradient(85% 85% at 0% 100%, rgba(20, 184, 200, 0.07), rgba(20, 184, 200, 0.028) 45%, rgba(20, 184, 200, 0) 100%),
+    radial-gradient(90% 85% at 100% 100%, rgba(99, 102, 241, 0.07), rgba(99, 102, 241, 0.028) 45%, rgba(99, 102, 241, 0) 100%);
 
   /**
    * House radii, deliberately NOT named --radius-sm / --radius-lg.
@@ -355,15 +498,17 @@
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
 
-    --page: #070b1c;
+    --page: #060a1a;
     --surface: #0c1229;
-    --surface-raised: #121a38;
+    /* The glass card over the bare --page — see the light block. */
+    --surface-raised: #0d142e;
     --surface-sunken: #080d20;
     --ink-primary: #f2f5ff;
     --ink-secondary: #aab4d4;
-    /* 6.75 surface · 6.22 raised · 7.03 sunken · 7.13 page. Raised decides it:
-       a card in dark mode is the lightest surface, and the previous value
-       cleared only 4.32:1 there. */
+    /* 6.62 raised · 7.03 sunken · 5.97 on the glass card and 5.44 on the
+       page under the brightest pool, which decides it now: glass lets the
+       backdrop's light under the text, and light is what a light ink loses
+       contrast to. It cleared only 4.32:1 on the old raised card once. */
     --ink-muted: #8f9bc4;
     --grid: #1d2649;
     --track: #2a3563;
@@ -392,7 +537,7 @@
        The old dark ramp reused the light one, so "further along the funnel"
        meant "darker" — and against a near-black page the last step fell to
        1.8:1 and simply disappeared. Re-derived and re-validated: monotone,
-       ΔL ≥ 0.06 throughout, light end 2.36:1 on the surface. */
+       ΔL ≥ 0.06 throughout, light end 2.34:1 on the surface. */
     --seq-250: #1c43c4;
     --seq-350: #3462e4;
     --seq-450: #5081ff;
@@ -401,14 +546,17 @@
 
     --status-good: #2fb862;
     --status-warning: #d9a01c;
-    --status-serious: #f0762e;
-    --status-critical: #f0524e;
+    /* Lighter than the #f0524e it was: on the page under the brightest pool
+       that read 4.28:1, on a glass card's sheen 4.13. #ff655e clears 4.5:1
+       on every surface in the light block's list (5.17 at the worst; 4.56 on
+       the danger button pressed, the tightest place it is drawn). */
+    --status-critical: #ff655e;
 
     --delta-up: #2fb862;
-    /* Lighter than --status-critical on purpose: delta text sits ON a 12%
-       tint of itself, which raises the backdrop above the bare card — #f0524e
-       measured 4.11:1 there, under the 4.5:1 text minimum. Same hue, 4.73:1
-       on the tint, 5.57:1 on the card. */
+    /* Lighter than the old --status-critical on purpose: delta text sits ON a
+       12% tint of itself, which raises the backdrop above the bare card —
+       #f0524e measured 4.34:1 there, under the 4.5:1 text minimum. Same hue,
+       4.83:1 on the tint over the glass card at its brightest. */
     --delta-down: #f56b62;
 
     /* Medal chrome, re-anchored for the dark surface — see the light block. */
@@ -472,6 +620,9 @@
     --px4-track: inset 0 1px 3px rgba(0, 0, 0, 0.65);
     --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
     --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
+    /* Dark ink on the dark series steps — white failed all eight; see the
+       light block for every slot's figure. */
+    --ink-on-series: #02040c;
 
     --shadow-card: 0 1px 2px rgba(2, 5, 20, 0.55), 0 8px 24px -12px rgba(40, 80, 220, 0.25);
     --shadow-raised: 0 1px 2px rgba(2, 5, 20, 0.55), 0 12px 32px -10px rgba(40, 80, 220, 0.35);
@@ -482,21 +633,41 @@
        canvas is where a flat hex wall is most visibly flat; the hero number
        gains its whisper of glow. See the light block for what each does. */
     --shadow-ambient: 0 0 15px rgba(0, 0, 0, 0.35), 0 0 3px rgba(0, 0, 0, 0.5);
-    --atmos-mix-accent: 22%;
-    --atmos-mix-violet: 18%;
+    /* The aurora steps down from the «koʻk» 22% / 18%: the backdrop's blue
+       pool now lies under the title band too, and at 22% the 12px muted
+       lead line read 4.44:1 over it on a cyan page (16%: 4.68). */
+    --atmos-mix-accent: 16%;
+    --atmos-mix-violet: 13%;
     --grain-alpha: 0.04;
     --glow-hero-mix: 40%;
-    --card-sheen: 5%;
-    --line-glow: drop-shadow(0 0 6px rgba(80, 140, 255, 0.55));
+    --hero-bloom-mix: 8%;
+    --line-glow-mix: 55%;
+
+    /* «Shisha» on the dark ground — see the light block. */
+    --glass-card: rgba(17, 25, 58, 0.64);
+    --glass-card-top: rgba(242, 245, 255, 0.025);
+    --glass-chrome: rgba(10, 16, 40, 0.62);
+    --glass-float: rgba(14, 21, 50, 0.92);
+    --glass-well: rgba(2, 6, 22, 0.4);
+    --glass-raised: rgba(70, 92, 170, 0.28);
+    --glass-hover: rgba(130, 155, 255, 0.1);
+    --glass-edge: rgba(140, 165, 255, 0.16);
+    --glass-highlight: inset 0 1px 0 rgba(170, 195, 255, 0.16);
+    --glass-shadow: 0 1px 2px rgba(2, 5, 20, 0.5), 0 10px 30px -14px rgba(4, 10, 40, 0.7);
+    --backdrop:
+      radial-gradient(95% 90% at 0% 0%, rgba(56, 108, 255, 0.26), rgba(56, 108, 255, 0.104) 45%, rgba(56, 108, 255, 0) 100%),
+      radial-gradient(90% 85% at 100% 0%, rgba(140, 82, 255, 0.2), rgba(140, 82, 255, 0.08) 45%, rgba(140, 82, 255, 0) 100%),
+      radial-gradient(85% 85% at 0% 100%, rgba(34, 199, 207, 0.12), rgba(34, 199, 207, 0.048) 45%, rgba(34, 199, 207, 0) 100%),
+      radial-gradient(90% 85% at 100% 100%, rgba(79, 70, 229, 0.16), rgba(79, 70, 229, 0.064) 45%, rgba(79, 70, 229, 0) 100%);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --page: #070b1c;
+  --page: #060a1a;
   --surface: #0c1229;
-  --surface-raised: #121a38;
+  --surface-raised: #0d142e;
   --surface-sunken: #080d20;
   --ink-primary: #f2f5ff;
   --ink-secondary: #aab4d4;
@@ -531,8 +702,7 @@
 
   --status-good: #2fb862;
   --status-warning: #d9a01c;
-  --status-serious: #f0762e;
-  --status-critical: #f0524e;
+  --status-critical: #ff655e;
 
   --delta-up: #2fb862;
   --delta-down: #f56b62;
@@ -598,6 +768,8 @@
   --px4-track: inset 0 1px 3px rgba(0, 0, 0, 0.65);
   --px4-thumb-hi: inset 0 1px 0 rgba(255, 255, 255, 0.14);
   --px4-thumb-drop: 0 1px 2px rgba(0, 0, 0, 0.6);
+  /* Series ink — kept in lockstep with the media-query block above. */
+  --ink-on-series: #02040c;
 
   --shadow-card: 0 1px 2px rgba(2, 5, 20, 0.55), 0 8px 24px -12px rgba(40, 80, 220, 0.25);
   --shadow-raised: 0 1px 2px rgba(2, 5, 20, 0.55), 0 12px 32px -10px rgba(40, 80, 220, 0.35);
@@ -605,12 +777,29 @@
 
   /* Night physics — kept in lockstep with the media-query block above. */
   --shadow-ambient: 0 0 15px rgba(0, 0, 0, 0.35), 0 0 3px rgba(0, 0, 0, 0.5);
-  --atmos-mix-accent: 22%;
-  --atmos-mix-violet: 18%;
+  --atmos-mix-accent: 16%;
+  --atmos-mix-violet: 13%;
   --grain-alpha: 0.04;
   --glow-hero-mix: 40%;
-  --card-sheen: 5%;
-  --line-glow: drop-shadow(0 0 6px rgba(80, 140, 255, 0.55));
+  --hero-bloom-mix: 8%;
+  --line-glow-mix: 55%;
+
+  /* «Shisha» — kept in lockstep with the media-query block above. */
+  --glass-card: rgba(17, 25, 58, 0.64);
+  --glass-card-top: rgba(242, 245, 255, 0.025);
+  --glass-chrome: rgba(10, 16, 40, 0.62);
+  --glass-float: rgba(14, 21, 50, 0.92);
+  --glass-well: rgba(2, 6, 22, 0.4);
+  --glass-raised: rgba(70, 92, 170, 0.28);
+  --glass-hover: rgba(130, 155, 255, 0.1);
+  --glass-edge: rgba(140, 165, 255, 0.16);
+  --glass-highlight: inset 0 1px 0 rgba(170, 195, 255, 0.16);
+  --glass-shadow: 0 1px 2px rgba(2, 5, 20, 0.5), 0 10px 30px -14px rgba(4, 10, 40, 0.7);
+  --backdrop:
+    radial-gradient(95% 90% at 0% 0%, rgba(56, 108, 255, 0.26), rgba(56, 108, 255, 0.104) 45%, rgba(56, 108, 255, 0) 100%),
+    radial-gradient(90% 85% at 100% 0%, rgba(140, 82, 255, 0.2), rgba(140, 82, 255, 0.08) 45%, rgba(140, 82, 255, 0) 100%),
+    radial-gradient(85% 85% at 0% 100%, rgba(34, 199, 207, 0.12), rgba(34, 199, 207, 0.048) 45%, rgba(34, 199, 207, 0) 100%),
+    radial-gradient(90% 85% at 100% 100%, rgba(79, 70, 229, 0.16), rgba(79, 70, 229, 0.064) 45%, rgba(79, 70, 229, 0) 100%);
 }
 
 /**
@@ -632,25 +821,30 @@
  */
 :root {
   --accent: var(--series-1);
-  --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
-  --accent-line: color-mix(in oklab, var(--accent) 40%, transparent);
-  --accent-ink: color-mix(in oklab, var(--accent) 88%, var(--ink-primary));
 }
 
-@theme inline {
-  --color-page: var(--page);
-  --color-surface: var(--surface);
-  --color-surface-raised: var(--surface-raised);
-  --color-surface-sunken: var(--surface-sunken);
-  --color-ink: var(--ink-primary);
-  --color-ink-secondary: var(--ink-secondary);
-  --color-ink-muted: var(--ink-muted);
-  --color-grid: var(--grid);
-  --color-axis: var(--axis);
-  --color-hairline: var(--border);
-  --color-accent: var(--accent);
-  --radius-card: var(--radius-panel);
-  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+/*
+ * The accent's three derivatives — a wash, a hairline and an accent-coloured
+ * ink — declared on `.page-container` as well as on :root.
+ *
+ * A var() inside a custom property is filled in on the element that DECLARES
+ * it (the trap the aurora tokens above describe), and PageShell sets the
+ * page's --accent inline on `.page-container`. Declared on :root alone, all
+ * three froze to series-1 and every page that read them painted blue beside
+ * its own hue: the custom-period chip on every page, /structure's found row
+ * and «Rahbar» tag, /rnp's today column, /roistat's drill links. :root keeps
+ * its copies for the chrome outside any page.
+ *
+ * The ink is 80% accent, not more, because it is TEXT and now wears every
+ * pool slot: 80% is the most that clears 4.5:1 for all six on their own
+ * --accent-soft over a raised card in both themes (worst, light slot 5:
+ * 4.62:1; on the bare card 5.29:1). At 88% dark slot 6 read 4.15:1.
+ */
+:root,
+.page-container {
+  --accent-soft: color-mix(in oklab, var(--accent) 12%, transparent);
+  --accent-line: color-mix(in oklab, var(--accent) 40%, transparent);
+  --accent-ink: color-mix(in oklab, var(--accent) 80%, var(--ink-primary));
 }
 
 /* ===========================================================================
@@ -687,24 +881,20 @@
  *
  * Both live on `html`, not on `body::before`. A pseudo-element at
  * `z-index: -1` sits behind its own element's background, and body had one —
- * so the two accent pools were painted and then covered by the flat page
- * colour, every time, invisibly. Layering the gradients over the colour on one
- * element cannot fail that way, and `background-attachment: fixed` keeps them
- * behaving like light in a room rather than like content that scrolls.
+ * so the accent pools were painted and then covered by the flat page colour,
+ * every time, invisibly. Layering the gradients over the colour on one element
+ * cannot fail that way.
+ *
+ * The light is --backdrop's four pools (the token says why four, and why so
+ * wide). This is what every glass surface shows through, and it never moves:
+ * in the Shell the document does not scroll, so a card scrolling inside
+ * <main> passes over a still sky. `background-attachment: fixed` is for the
+ * pages that DO scroll the document — /login — where it keeps the pools in
+ * the window like light in a room rather than like content.
  */
 html {
   background-color: var(--page);
-  background-image:
-    radial-gradient(
-      60rem 40rem at 12% -10%,
-      color-mix(in oklab, var(--accent) 7%, transparent),
-      transparent 60%
-    ),
-    radial-gradient(
-      48rem 34rem at 100% 0%,
-      color-mix(in oklab, var(--series-7) 5%, transparent),
-      transparent 60%
-    );
+  background-image: var(--backdrop);
   background-attachment: fixed;
   background-repeat: no-repeat;
 }
@@ -745,8 +935,7 @@ body {
   axis on every chart the same tabular figures the tables use, and a Y axis
   of amounts stops wobbling as the window changes.
 */
-.recharts-cartesian-axis-tick-value,
-.recharts-polar-angle-axis-tick-value {
+.recharts-cartesian-axis-tick-value {
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: "tnum" 1, "lnum" 1;
 }
@@ -885,30 +1074,72 @@ body {
 }
 
 /**
- * Recharts focuses its own wrapper.
+ * Recharts focuses its own svg surface.
+ *
+ * recharts 3 puts the chart's tab stop on `svg.recharts-surface` (tabIndex 0,
+ * role="application" — its keyboard layer, on by default), never on the
+ * `.recharts-wrapper` div around it, which only hears focus bubble up. The
+ * ring was written on the wrapper until 2026-10-06, so a keyboard reader
+ * tabbing onto a chart saw nothing at all: the surface's own outline was
+ * removed and the replacement could never match.
  *
  * The default browser outline on that box adds nothing — but `outline: none`
  * with no replacement removes a keyboard user's only way of knowing where they
  * are. `:focus-visible` shows the house ring for the keyboard and stays out of
  * the way for the mouse.
+ *
+ * SQUARE, unlike the wrapper's ring was meant to be: an svg clips its own
+ * content (`overflow: hidden` is its default) to its border radius, so a
+ * rounded ring would shave the plot's corners for as long as the chart had
+ * focus.
  */
-/* Neon under a plot line — dark only (--line-glow is `none` in light). A
-   filter on a handful of paths, never on bars or grid: cheap, and the glow
-   never touches a mark that has to be measured against its neighbour. */
-.recharts-line-curve,
-.recharts-area-curve {
-  filter: var(--line-glow);
-}
-
-.recharts-wrapper:focus,
 .recharts-surface:focus {
   outline: none;
 }
 
-.recharts-wrapper:focus-visible {
+.recharts-surface:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: var(--radius-panel-sm);
+}
+
+/*
+ * THE ONE TRANSPARENCY FALLBACK — reduced transparency, more contrast, forced
+ * colours — and it is one block because every glass surface is a token.
+ *
+ * A reader who asks for less transparency gets none: each glass token points
+ * at its solid twin (the card and a float at --surface-raised, the chrome at
+ * --surface, a control's well at --surface-sunken, its chip at
+ * --surface-raised, the hover wash at --grid), the frost becomes `none`, the
+ * backdrop's pools go, and the aurora and the grain with them. Contrast-more
+ * asks for the cleanest possible ground and forced colours throws the palette
+ * away, so they take the same ground: the canvas is --page again and every
+ * check above holds by construction rather than by margin. A scrim gets
+ * denser instead of disappearing — it is what says a dialog is modal.
+ *
+ * This is why no glass is written into a component: a colour in a style prop
+ * is a colour this block cannot reach (`tests/features/glassSurfaces.test.ts`).
+ * `:root[data-theme]` as well as `:root`, after both dark blocks, so it wins
+ * over a forced theme at the same weight.
+ */
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
+  :root,
+  :root[data-theme] {
+    --backdrop: none;
+    --glass-card: var(--surface-raised);
+    --glass-card-top: rgba(0, 0, 0, 0);
+    --glass-chrome: var(--surface);
+    --glass-float: var(--surface-raised);
+    --glass-well: var(--surface-sunken);
+    --glass-raised: var(--surface-raised);
+    --glass-hover: var(--grid);
+    --glass-frost: none;
+    --scrim-mix: 85%;
+  }
+
+  body::after,
+  .page-atmosphere::before {
+    display: none;
+  }
 }
 
 /* ===========================================================================
@@ -960,8 +1191,8 @@ body {
  * flagship panel. All of it is STATIC — this is a work tool, and the sky
  * must not drift while someone reads a number — and none of it may cover a
  * figure, intercept a click, or tint a plot area. The aurora and the grain
- * enforce that by painting in the negative z phase, under every opaque
- * surface; the brackets paint above their panel but are four pointer-inert
+ * enforce that by painting in the negative z phase, under every surface;
+ * the brackets paint above their panel but are four pointer-inert
  * hairlines pinned 6px into its padding, where no content sits.
  * ======================================================================== */
 
@@ -1019,26 +1250,33 @@ body {
  * page's aurora follows its own accent (strengths live in --atmos-mix-*, and
  * the note there says why the split exists). Series-7 is chrome here in the
  * same sense the html backdrop already uses it: nothing that encodes a value
- * reads either colour. The peaks sit ABOVE the canvas edge, like the html
+ * reads either colour. The peaks sit ABOVE the canvas edge, like the
  * backdrop's own pools, so the tint under the actual title line is already
- * decaying — and the -80px overdraw gives the 70px blur material past the
- * clip, so the band cannot vignette against its own edges.
+ * decaying.
+ *
+ * NO FILTER. This was blurred 70px and saturated 1.3 — a blur of a radial
+ * gradient, which is a wider radial gradient — rasterised again on every
+ * navigation, resize, theme flip and stale dim. The ellipses are 70px wider
+ * and run further before they reach nothing instead; the -80px overdraw that
+ * fed the blur is kept, so the percentages place the peaks where they were.
  *
  * CONTRAST, checked rather than assumed — the title block sits on this.
- * Worst realistic backdrop = one blob's full on-canvas peak + the other's
- * cross-residual (opposite corners never fully coincide) + the grain's mean
- * contribution, composited over --page:
+ * The binding text is PageShell's 12px muted lead line. Its worst realistic
+ * backdrop: the page under the backdrop's brightest sample (a pool at its
+ * peak, or two at 60% — the blue pool's corner is right there), the accent
+ * blob at most 0.45 of --atmos-mix-* where that line sits (its falloff times
+ * this band's mask), the violet blob's residual (none on the left, where
+ * the line is) and the grain's mean (half its opacity, mid-grey); worst
+ * pool accent:
  *
- *   light (≈#EBEEF9 at the accent peak):
- *     --ink-primary 16.7:1 · --ink-secondary 6.8:1 · --ink-muted 4.5:1
- *   dark  (≈#1C1C3E at the accent peak):
- *     --ink-primary 15.1:1 · --ink-secondary 7.5:1 · --ink-muted 5.1:1
+ *   light:  --ink-primary 13.5:1 · --ink-secondary 6.04:1 · --ink-muted 4.86:1
+ *   dark:   --ink-primary 11.8:1 · --ink-secondary 6.22:1 · --ink-muted 4.68:1
  *
- * Every ink holds its 4.5:1 floor. Light-mode muted is the tight one — it
- * lands where its own token comment already lives (4.61 on --surface-sunken),
- * so the aurora never becomes a new worst backdrop — and that margin is why
- * --atmos-mix-* light stays at 5% and the light grain at 2%. Anyone raising
- * either re-runs this arithmetic.
+ * Every ink holds its 4.5:1 floor, and that is why dark's --atmos-mix-* came
+ * down from 22% to 16% when the backdrop went in (the pool and the aurora
+ * both lighten the same corner), and why light's stays at 5% and the light
+ * grain at 2%. `tests/features/designTokens.test.ts` re-runs this; anyone
+ * raising either changes it there first.
  */
 .page-atmosphere::before {
   content: "";
@@ -1046,16 +1284,15 @@ body {
   inset: -80px;
   background-image:
     radial-gradient(
-      48rem 30rem at 16% -18%,
+      52.5rem 34.5rem at 16% -18%,
       color-mix(in oklab, var(--accent) var(--atmos-mix-accent), transparent),
-      transparent 62%
+      transparent 68%
     ),
     radial-gradient(
-      40rem 26rem at 84% -32%,
+      44.5rem 30.5rem at 84% -32%,
       color-mix(in oklab, var(--series-7) var(--atmos-mix-violet), transparent),
-      transparent 60%
+      transparent 66%
     );
-  filter: blur(70px) saturate(1.3);
 }
 
 /**
@@ -1065,8 +1302,9 @@ body {
  * enough to read as paper rather than noise. z-index -1 is the safety: the
  * grain paints UNDER every piece of in-flow content — cards, tables, text,
  * plots — so it can neither cover an interactive element (pointer-events
- * none besides) nor dirty a plot area. Cards are opaque surface tokens and
- * simply blot it out.
+ * none besides) nor dirty a plot area. A glass card lets a fifth of it
+ * through in light and a third in dark (0.4% and 1.4% — paper, not a
+ * texture on a plot), and a table's opaque ground blots it out entirely.
  *
  * Visible by agreement with the chrome: Shell's root div deliberately
  * paints NO background of its own (see the comment on its root element) —
@@ -1092,13 +1330,11 @@ body::after {
  * aligned. Used ONCE per page at most, on the lead .card-hero — a second
  * pair on the same screen demotes both to decoration.
  *
- * position:relative for the same documented reason as .glow-track: the
- * corners need this box as their containing block, and this unlayered file
- * outranks a Tailwind position utility — wrap the card if it must be
- * positioned some other way. Do NOT stack .brackets with .glow-track on one
- * element: both claim ::after, and the cascade would weld the two rules into
- * one broken pseudo. Put the glow on the card and the brackets on a wrapper
- * (or vice versa) if a panel ever needs both.
+ * position:relative because the corners need this box as their containing
+ * block, and this unlayered file outranks a Tailwind position utility — wrap
+ * the card if it must be positioned some other way. Both corners are the
+ * element's own ::before and ::after, so nothing else that draws a pseudo may
+ * share the element: put it on a wrapper instead.
  */
 .brackets {
   position: relative;
@@ -1152,197 +1388,127 @@ body::after {
  * in light (the mix collapses to transparent — no rule to un-set, no theme
  * drift). The digits themselves stay in ink: the glow is the panel's
  * backlight leaking around the figure, not a colour channel — it is constant,
- * so it cannot encode anything, and at 18% it is a whisper. Neon is the
- * gallery cliché this file explicitly refuses.
+ * so it cannot encode anything, and spread over 24px even dark's 40% is a
+ * whisper. Neon is the gallery cliché this file explicitly refuses.
  */
 .card-hero .figure-hero {
   text-shadow: 0 0 24px
     color-mix(in oklab, var(--accent) var(--glow-hero-mix, 0%), transparent);
 }
 
-/**
- * Crosshair glide + active-dot pop — the instrument's needle.
- *
- * The Recharts cursor line eases to the hovered index instead of teleporting,
- * and the active dot swells into place: the TradingView feel, delivered in
- * two transitions with no scripting. 90ms tracks the hand closely enough to
- * feel attached; the dot gets 120ms because r animates area, which reads
- * faster than it is. SVG geometry attributes are CSS-transitionable in
- * modern engines; where an engine disagrees, the cursor snaps — exactly the
- * behaviour reduced-motion gets on purpose, since both rules live inside the
- * guard and a gliding crosshair is precisely the chased motion the
- * preference asks to stop.
- */
-@media (prefers-reduced-motion: no-preference) {
-  .recharts-tooltip-cursor {
-    transition: x1 90ms var(--ease-out), x2 90ms var(--ease-out);
-  }
-
-  .recharts-active-dot circle {
-    transition: r 120ms var(--ease-out);
-  }
-}
-
-/* The atmosphere degrades to nothing, never to less-legible. A translucent
-   wash is the one thing reduced-transparency is about; forced colours
-   flattens the palette the aurora is mixed from; contrast-more asks for the
-   cleanest possible ground. In every case the canvas is simply --page again
-   and the check above becomes moot rather than marginal. */
-@media (prefers-reduced-transparency: reduce) {
-  .page-atmosphere::before {
-    display: none;
-  }
-}
-
-@media (prefers-contrast: more), (forced-colors: active) {
-  body::after,
-  .page-atmosphere::before {
-    display: none;
-  }
-}
+/* The atmosphere degrades to nothing, never to less-legible: see the one
+   transparency fallback at the end of BASE, which hides the aurora and the
+   grain and takes the backdrop away. */
 
 /* ===========================================================================
  * SURFACE PRIMITIVES
  * ======================================================================== */
 
 /**
- * A card.
+ * A card — and since 2026-10-06 («Shisha») a pane of glass.
  *
+ * A translucent fill (--glass-card) over the backdrop html paints, which in
+ * the Shell never moves: so a fill does what a blur would, at no cost, and
+ * the colour behind the card changes with where on the screen the card is.
  * Border, elevation and a 1px highlight along the top edge. The highlight is
  * what separates this from a flat rectangle with a shadow: a real raised
  * surface catches light on its top edge, and the eye reads that as depth far
- * more readily than it reads a blur underneath.
+ * more readily than it reads a blur underneath. On glass it is also where
+ * the light goes instead of the fill — see --glass-card-top.
+ *
+ * Card, ChartCard and StatTile all wear this class. What may not wear glass
+ * is anything data scrolls under — a table's ground and its pinned cells are
+ * opaque, see «Data never sits on glass» below.
  */
 .card {
   /* The sheen is the second «koʻk» cue after the lit edge: the top ~40% of
-     the card is a whisper brighter, as glass is where the light lands. It
-     mixes to nothing in light (--card-sheen 0%). */
+     the card is a whisper brighter, as glass is where the light lands. A
+     literal per theme (--glass-card-top), faint on purpose — see the token. */
   background:
-    linear-gradient(
-      180deg,
-      color-mix(in oklab, var(--ink-primary) var(--card-sheen), transparent),
-      transparent 42%
-    ),
-    var(--surface-raised);
-  border: 1px solid var(--border);
+    linear-gradient(180deg, var(--glass-card-top), transparent 42%),
+    var(--glass-card);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-card), var(--edge-highlight);
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
 }
 
 /**
  * The lead instrument — at most ONE per screen.
  *
  * A hero band is a card that outranks its neighbours three ways: the larger
- * radius, the raised shadow, and a hairline painted as a GRADIENT so the top
- * edge is visibly brighter than the bottom — the strongest "this surface is
- * nearest the light" cue a 1px line can give.
+ * radius, the raised shadow, and a rim whose top edge is visibly brighter
+ * than the rest — the strongest "this surface is nearest the light" cue a
+ * 1px line can give.
  *
- * A border cannot take a gradient directly (border-image discards
- * border-radius), so the gradient rides in as the second of two stacked
- * backgrounds: an opaque surface fill clipped to the padding box, the
- * gradient clipped to the border box, and a transparent 1px border between
- * them leaving exactly that much of the gradient visible. The stops are
- * --edge-hero-*, which flip with the theme by construction — see the token.
+ * THE RIM IS AN INSET SHADOW NOW, NOT A BORDER-BOX GRADIENT. The gradient
+ * rode in as a background layer clipped to the border box under a fill
+ * clipped to the padding box, which worked while the fill was opaque; under
+ * a translucent fill the whole gradient showed through the card as a grey
+ * veil. So the border is the quieter stop (--edge-hero-bottom) all round,
+ * and the brighter one (--edge-hero-top) is a 1px inset shadow along the
+ * top, which follows the corner radius and fades down the sides as a lit
+ * edge does. Both stops flip with the theme by construction — see the token.
  *
- * Declared after .card ON PURPOSE: a call site may stack the two classes,
- * and source order is what lets this one win every property they share.
- * Two of these on a screen is not two heroes — it is none; the treatment
- * only ranks the card because nothing else wears it.
+ * It stands alone or stacked on `.card` (most heroes are a bare
+ * `card-hero`), so it states the whole surface. Declared after .card ON
+ * PURPOSE: source order is what lets it win every property they share. Two
+ * of these on a screen is not two heroes — it is none; the treatment only
+ * ranks the card because nothing else wears it.
  */
 .card-hero {
-  border: 1px solid transparent;
+  border: 1px solid var(--edge-hero-bottom);
   border-radius: var(--radius-panel-lg);
   /* The «koʻk» bloom: the page's accent pooled in the top-left corner, at
-     the atmosphere's own strength (--atmos-mix-accent — 5% in light, so it
-     reads as the hint of a light source; 22% in dark, where it is the
-     reference boards' backlit hero card). Read at the element, so it follows
-     the page accent PageShell sets, like the aurora above the title. */
+     --hero-bloom-mix — 5% in light, so it reads as the hint of a light
+     source; 8% in dark, the reference boards' backlit hero card, the most
+     that keeps muted and status text at 4.5:1 on its peak over the
+     backdrop's brightest pool (see the token). Read at the element, so it
+     follows the page accent PageShell sets, like the aurora above the
+     title. */
   background:
     radial-gradient(
-        42rem 18rem at 0% 0%,
-        color-mix(in oklab, var(--accent) var(--atmos-mix-accent), transparent),
-        transparent 70%
-      )
-      padding-box,
-    linear-gradient(var(--surface-raised), var(--surface-raised)) padding-box,
-    linear-gradient(180deg, var(--edge-hero-top), var(--edge-hero-bottom)) border-box;
-  box-shadow: var(--shadow-raised), var(--edge-highlight);
+      42rem 18rem at 0% 0%,
+      color-mix(in oklab, var(--accent) var(--hero-bloom-mix), transparent),
+      transparent 70%
+    ),
+    linear-gradient(180deg, var(--glass-card-top), transparent 42%),
+    var(--glass-card);
+  box-shadow:
+    var(--shadow-raised),
+    inset 0 1px 0 var(--edge-hero-top),
+    var(--glass-highlight);
 }
 
 /**
- * A card that responds to the pointer.
+ * DATA NEVER SITS ON GLASS.
  *
- * Only for cards that DO something — a link, a drill-down. A hover state on a
- * card that cannot be clicked is a promise the interface does not keep.
+ * A table inside a glass card is laid on an opaque ground, --surface-raised
+ * — the glass card over the bare page — and that is not taste, it is the
+ * pinned cells. A sticky column or header has to be opaque, or the cells
+ * scrolling under it show through (`.tcol-sticky`, `.thead-sticky`); on glass
+ * the cells beside it were the card's colour while it was the opaque one, so
+ * the frozen columns read as a darker or lighter strip wherever the backdrop
+ * was lit — the strip the dark «koʻk» sheen already drew over a raised card.
+ * With the table on the same opaque ground, pinned and moving cells are one
+ * colour everywhere, and every number reads on a surface that does not change
+ * with where on the screen it is. One rule, so every table in every card has
+ * it: DataTable's box, the RNP sheet, the cohort heatmap, the hand-written
+ * sheets in Reklama and Lidlar, Struktura's list and Sverka's.
+ *
+ * The sellers board is not glass — `.tv-col` paints its own opaque surface —
+ * and is pixel-tuned, so it is left out by name.
+ *
+ * `overflow: clip` keeps the ground inside the card's rounded corners where a
+ * table runs flush to the card's edge (TableCard, the Reklama sheets). Clip,
+ * not hidden: it makes no scroll container, so nothing sticky inside a card
+ * changes what it sticks to.
  */
-@media (hover: hover) {
-  .card-interactive {
-    transition:
-      box-shadow 200ms var(--ease-out),
-      transform 200ms var(--ease-out),
-      border-color 200ms var(--ease-out);
-  }
-
-  .card-interactive:hover {
-    box-shadow: var(--shadow-raised), var(--edge-highlight);
-    border-color: var(--border-strong);
-    transform: translateY(-2px);
-  }
-
-  .card-interactive:active {
-    transform: translateY(0);
-    transition-duration: 60ms;
-  }
+:is(.card, .card-hero):not(.tv-col) table {
+  background-color: var(--surface-raised);
 }
 
-/**
- * The mouse-tracked hover glow — interactive cards only.
- *
- * Linear's recipe: a radial highlight that follows the pointer across the
- * card, so the card answers the hand before it is clicked. The component
- * feeds --mx/--my from mousemove; this file only paints. Ink at 5%, never
- * the accent — a glow that changed hue per page would make the same gesture
- * look like a different affordance on different screens — and 5% is enough
- * to register while staying far too faint to compete with the figures the
- * card exists to show.
- *
- * The whole effect sits behind (hover: hover) AND no-preference: on touch
- * there is no pointer to track, and a highlight that chases the hand is
- * exactly the motion the preference asks us not to make. Outside the guard
- * the pseudo-element is never created at all.
- *
- * `position: relative` here knowingly breaks the .gauge rule ("positioning
- * belongs to the call site"): the glow needs a containing block, or inset:0
- * quietly sizes it to some positioned ancestor instead of the card. This
- * stylesheet is unlayered and beats Tailwind's utilities, so a call site
- * that needs the card itself positioned differently wraps it — the wrapper
- * takes the position, the card keeps the glow.
- */
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .glow-track {
-    position: relative;
-  }
-
-  .glow-track::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    /* Light ON the card, never a layer IN FRONT of it: clicks, hovers and
-       text selection pass straight through. */
-    pointer-events: none;
-    background: radial-gradient(
-      480px circle at var(--mx, 50%) var(--my, 50%),
-      color-mix(in oklab, var(--ink-primary) 5%, transparent),
-      transparent 40%
-    );
-    opacity: 0;
-    transition: opacity 300ms var(--ease-out);
-  }
-
-  .glow-track:hover::after {
-    opacity: 1;
-  }
+:is(.card, .card-hero):not(.tv-col):has(table) {
+  overflow: clip;
 }
 
 /**
@@ -1420,7 +1586,7 @@ body::after {
   border-radius: var(--radius-panel-sm);
   background: var(--surface-raised);
   color: var(--ink-primary);
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--shadow-ambient);
 }
 
 /**
@@ -1450,7 +1616,10 @@ body::after {
 
 :where([data-scrolled] > table > thead > tr) > .thead-sticky,
 .thead-sticky.is-scrolled {
-  box-shadow: 0 1px 0 var(--border-strong), var(--shadow-card);
+  /* As a variable as well, so a PINNED header cell — whose own box-shadow is
+     its column's seam — can stack the band's rule under it (`.tcol-sticky`). */
+  --band-rule: 0 1px 0 var(--border-strong), var(--shadow-card);
+  box-shadow: var(--band-rule);
 }
 
 /* The shadow fades in rather than popping at scroll pixel one — but a fade
@@ -1494,7 +1663,9 @@ body::after {
   bottom: 0;
   z-index: 1;
   background: var(--surface-sunken);
-  box-shadow: 0 -1px 0 var(--border-strong);
+  /* A variable too, for the pinned cells of the total — see `.thead-sticky.is-scrolled`. */
+  --band-rule: 0 -1px 0 var(--border-strong);
+  box-shadow: var(--band-rule);
 }
 
 /**
@@ -1516,8 +1687,10 @@ body::after {
  * from the client's own Excel exports.
  *
  * THE CONFIRMATION QUEUE NO LONGER PINS ANYTHING — the client asked on
- * 2026-09-11 for plain columns («zakrepit ustun kerak emas»). The one caller
- * left is Logistika's day sheet (`stickyColumns={1}`, its date).
+ * 2026-09-11 for plain columns («zakrepit ustun kerak emas»). It was not the
+ * last caller, as this note once said: the others pin a name or a date —
+ * Logistika's day sheet and ROP strip, Qoʻngʻiroqlar, the «Lidlar» and
+ * «Reklama samarasi» tables, Roistat, payroll's teams.
  *
  * ON THE CELLS AND NOT THE COLUMN, for the reason `.thead-sticky` records:
  * there is no such thing as a sticky <col>, and sticky on a <tr> is still
@@ -1529,8 +1702,11 @@ body::after {
  * sliding beneath it show through, which is worse than not pinning at all.
  * `--surface-raised` and not `--surface-sunken`: these are DATA cells, and they
  * must go on reading as part of their row rather than as a band of chrome, so
- * they take the card's own background (`.card`) — the surface the rest of the
- * row is already painted on.
+ * they take the table's own ground — `--surface-raised`, which every table in
+ * a card is laid on (see «Data never sits on glass») — the surface the rest of
+ * the row is already painted on. The ground is `--pin-ground`, so the hover and
+ * the header's and total's own cells can change it in one place and the seam
+ * below follows.
  *
  * THE HOVER WASH HAD TO BE PUT BACK BY HAND. The row paints its hover on <tr>,
  * and an opaque cell lifted out of the flow paints over it — so the pinned
@@ -1547,13 +1723,28 @@ body::after {
 .tcol-sticky {
   position: sticky;
   z-index: 1;
-  background: var(--surface-raised);
+  --pin-ground: var(--surface-raised);
+  background: var(--pin-ground);
 }
 
-/* Above the pinned columns AND above the ordinary header cells: this handful
-   of cells is sticky in both directions at once, so it has to win both. */
+/*
+ * THE HEADER'S AND THE TOTAL'S PINNED CELLS ARE BAND CELLS FIRST.
+ *
+ * Sticky in both directions at once, so they have to win both: above the
+ * pinned columns, and above the band's own unpinned cells, which come later
+ * in their row at the same z-index and would otherwise paint over them as they
+ * scroll underneath — the header always had this, the total did not.
+ *
+ * And they wear the band's sunken ground, not the column's. `.tcol-sticky`
+ * comes later than `.thead-sticky` / `.tfoot-sticky` at the same weight, so
+ * until 2026-10-06 it painted every pinned header and total cell in the row
+ * colour — a raised patch in a sunken band on about thirteen tables — and its
+ * seam shadow replaced the band's own rule under them.
+ */
+.tfoot-sticky.tcol-sticky,
 .thead-sticky.tcol-sticky {
   z-index: 3;
+  --pin-ground: var(--surface-sunken);
 }
 
 /**
@@ -1578,23 +1769,25 @@ body::after {
  * place the scrolling cells are SUPPOSED to appear, and that edge carries the
  * divider below instead — a background bleed there would paint a pixel of
  * card over the first column of moving data.
+ *
+ * The bleed is the cell's own ground, whatever paints it (a hovered row, a
+ * header, a total), and under it rides the band's rule where there is one
+ * (`--band-rule`): a pinned header cell keeps the scrolled header's shadow,
+ * a pinned total cell the total's top rule.
  */
 .tcol-sticky:not(.is-edge) {
-  box-shadow: 1px 0 0 0 var(--surface-raised);
+  box-shadow: 1px 0 0 0 var(--pin-ground), var(--band-rule, 0 0 #0000);
 }
 
-tr:hover > .tcol-sticky {
-  background: var(--surface-sunken);
-}
-
-/* The wash reaches the bleed too, or the seam stays card-coloured down a lit
-   row — the same "one row read as two" the rule above exists to prevent. */
-tr:hover > .tcol-sticky:not(.is-edge) {
-  box-shadow: 1px 0 0 0 var(--surface-sunken);
+/* The row's wash reaches its pinned cells, and through --pin-ground their
+   bleed — BODY rows only. A header or a total is not a row you point at: the
+   header's corner used to flip colour under the pointer. */
+tbody tr:hover > .tcol-sticky {
+  --pin-ground: var(--surface-sunken);
 }
 
 .tcol-sticky.is-edge {
-  box-shadow: 1px 0 0 var(--border);
+  box-shadow: 1px 0 0 var(--border), var(--band-rule, 0 0 #0000);
 }
 
 /* `[data-scrolled-x]` is that state, set on DataTable's scroll box rather than
@@ -1686,7 +1879,7 @@ tr:hover > .tcol-sticky:not(.is-edge) {
  * The keyboard layer of the interface. Everything in this section is chrome,
  * never data: it may borrow the elevation system, and it must never borrow a
  * series or status colour. Its two animations carry `reduce` overrides via
- * keyframe redefinition, same pattern as `pulse` below.
+ * keyframe redefinition.
  * ======================================================================== */
 
 /**
@@ -1770,38 +1963,65 @@ tr:hover > .tcol-sticky:not(.is-edge) {
 }
 
 /**
- * The scrim behind the command palette.
+ * A floating panel — MultiSelect's list, a column's filter, the date picker,
+ * the ⌘K panel, a modal dialog — is FROSTED: the one place in the house a
+ * real blur is spent.
+ *
+ * These are the only surfaces live content moves under: rows scroll beneath
+ * a column filter while it is open, a refetch repaints the tiles under a
+ * dropdown, the page dims under the palette. A plain translucent fill there
+ * would show text through text, so the fill is nearly opaque (--glass-float,
+ * 90% light / 92% dark) and the little that comes through is blurred 18px
+ * and saturated back, as a blur greys what it averages. Each exists only
+ * while it is open, so the blur is paid only then. The panel's text is
+ * measured over the worst thing that can pass beneath it, an ink at full
+ * strength (glassContrast.test.ts).
+ *
+ * A browser with no backdrop-filter gets the opaque raised surface: a 90%
+ * fill with nothing blurring the other 10% would let the text beneath read
+ * through. A TOOLTIP IS NOT THIS — it carries data and stays opaque (`.tip`,
+ * the chart tooltip, MedalTip). Declared after `.card`, so a dialog that is a
+ * Card takes this fill.
+ */
+.glass-float {
+  background: var(--glass-float);
+  -webkit-backdrop-filter: var(--glass-frost);
+  backdrop-filter: var(--glass-frost);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-float {
+    background: var(--surface-raised);
+  }
+}
+
+/**
+ * The scrim behind the command palette — and behind every modal.
  *
  * Tinted from --page, not black: a black scrim in light mode turns the app
  * into a different, darker room for the duration of a search, while a
- * page-coloured frost dims WITHOUT changing the room. In dark mode --page is
- * near-black and the very same mix is the conventional dim. The 2px blur
- * softens content just enough to say "inactive" while the layout stays
+ * page-coloured veil dims WITHOUT changing the room. In dark mode --page is
+ * near-black and the very same mix is the conventional dim. The layout stays
  * recognisable underneath — which is what makes the palette feel like a
  * layer of the app rather than a modal interruption.
  *
- * `prefers-reduced-transparency` trades the blur for opacity: the same
- * separation, delivered without the see-through effect the preference asks
- * to avoid.
+ * NO BLUR since 2026-10-06. It blurred the whole viewport 2px for as long as
+ * the scrim was up, the largest backdrop pass in the house, to soften a page
+ * the frosted panel over it now blurs where it matters. The tint alone says
+ * "inactive". Its density is --scrim-mix, so the transparency fallback (the
+ * end of BASE) can make it denser without a rule of its own.
  */
 .backdrop-dim {
-  background: color-mix(in oklab, var(--page) 60%, transparent);
-  backdrop-filter: blur(2px);
+  background: color-mix(in oklab, var(--page) var(--scrim-mix), transparent);
 }
 
-@media (prefers-reduced-transparency: reduce) {
-  .backdrop-dim {
-    backdrop-filter: none;
-    background: color-mix(in oklab, var(--page) 85%, transparent);
-  }
-}
 
 /**
  * Command-palette entrance.
  *
  * Scale 0.98 → 1 with a fade, 150ms: the palette must feel FASTER than a
  * page — it is what you reach for INSTEAD of navigating — so it gets less
- * than the page's 220ms and no translate, only the settle. Under reduced
+ * than the page's 180ms and no translate, only the settle. Under reduced
  * motion the keyframes drop the scale and the fade alone remains.
  */
 @keyframes palette-enter {
@@ -1881,32 +2101,6 @@ tr:hover > .tcol-sticky:not(.is-edge) {
   .stagger > *:nth-child(7) { animation-delay: 240ms; }
 }
 
-/**
- * The live-data pulse.
- *
- * Shown only while a request is genuinely in flight. A dot that pulses
- * permanently stops carrying information within about a day, so the component
- * turns the animation off between fetches rather than leaving it running.
- */
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-  }
-}
-
 @keyframes shimmer {
   100% {
     transform: translateX(100%);
@@ -1917,7 +2111,22 @@ tr:hover > .tcol-sticky:not(.is-edge) {
   position: relative;
   overflow: hidden;
   background: var(--grid);
-  border-radius: var(--radius-panel-sm);
+}
+
+/*
+  THE RADIUS IS A DEFAULT, SO IT LIVES IN A LAYER — the one declaration here a
+  call site is meant to override. Unlayered it beat every Tailwind `rounded-*`,
+  as an unlayered rule outranks any layered one whatever the specificity (the
+  `@layer base` note under BASE): the two ring placeholders — StatTile's gauge
+  and Yalpi marja's — asked for `rounded-full`, drew as 12px squares and popped
+  into circles when the data came, and every other skeleton that named a radius
+  drew 12px too. `components` sits under `utilities`, so a skeleton that asks
+  for a radius gets it, and a bare one keeps the house 12px.
+*/
+@layer components {
+  .skeleton {
+    border-radius: var(--radius-panel-sm);
+  }
 }
 
 .skeleton::after {
@@ -1937,34 +2146,6 @@ tr:hover > .tcol-sticky:not(.is-edge) {
 @media (prefers-reduced-motion: reduce) {
   .skeleton::after {
     animation: none;
-  }
-}
-
-/**
- * Chart draw-in.
- *
- * A line that draws itself left to right, once, on first paint.
- *
- * The element MUST carry `pathLength="1"`. That attribute renormalises the
- * path's own length to 1 for every length-based property, which is what lets
- * a dash animation work without anyone measuring the geometry in JavaScript.
- * The alternative — a `--len` custom property the component sets from
- * `getTotalLength()` — fails silently when it is forgotten: no error, just a
- * line that never appears or never animates.
- */
-@keyframes draw {
-  from {
-    stroke-dashoffset: 1;
-  }
-  to {
-    stroke-dashoffset: 0;
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .draw-in {
-    stroke-dasharray: 1;
-    animation: draw 800ms var(--ease-out) both;
   }
 }
 
@@ -2268,20 +2449,32 @@ tr:hover > .tcol-sticky:not(.is-edge) {
 }
 
 /**
- * Line glow — SCOPED, never app-wide.
+ * Line glow — opted into per series, never app-wide; dark only.
  *
- * A faint halo under the data line, from the line's own colour. It is what
- * makes a chart read as luminous rather than drawn — most visible in dark
- * mode, where a bare 2px stroke on a near-black card looks like a wire.
+ * A faint halo under a data line, from the line's OWN colour, at
+ * --line-glow-mix: 55% in dark, where a bare 2px stroke on a navy card reads
+ * as a wire, and 0% in light, where the mix collapses to transparent (a glow
+ * in daylight is smudge). A filter on a handful of paths, never on bars or
+ * grid, so it never touches a mark measured against its neighbour.
  *
- * The scope class is the rule: an unscoped `.recharts-area-curve` selector
- * would hand a series-1 blue halo to every future Area drawn in any other
- * slot — a colour-follows-entity violation waiting to fire. Each chart opts
- * in with the class that names its own series. (The sparkline glows via an
- * inline drop-shadow from its own colour prop, the same pattern.)
+ * THE CLASS IS THE RULE. From 2026-09-28 an unscoped `.recharts-line-curve`
+ * rule gave every line the same blue halo whatever it encoded — the orange
+ * FAKT 1 area, the red refusals line, the green confirmation rate — while
+ * the one scoped rule, `.glow-series-1`, had lost its last user and the FAKT
+ * chart's `glow-series-2` matched nothing. A <Line> or <Area> opts in
+ * with `className="glow-series-N"`, N the slot its stroke already wears; only
+ * the slots in use have a rule. A STATUS line never glows — a state is not an
+ * entity — and neither does a dashed projection, which is drawn to read
+ * quieter than what was measured.
  */
-.glow-series-1 .recharts-area-curve {
-  filter: drop-shadow(0 2px 8px color-mix(in oklab, var(--series-1) 45%, transparent));
+.glow-series-1 { --glow-color: var(--series-1); }
+.glow-series-2 { --glow-color: var(--series-2); }
+.glow-series-3 { --glow-color: var(--series-3); }
+.glow-series-8 { --glow-color: var(--series-8); }
+
+:is(.glow-series-1, .glow-series-2, .glow-series-3, .glow-series-8)
+  :is(.recharts-line-curve, .recharts-area-curve) {
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--glow-color) var(--line-glow-mix), transparent));
 }
 
 /* Heatmap cells lift slightly under the pointer, so the eye keeps its place
@@ -2337,6 +2530,36 @@ p {
 
 
 /*
+ * THE CHROME — header, rail and the phone drawer — is glass too («Shisha»),
+ * and it is the cheapest glass in the house: nothing ever moves under it.
+ *
+ * The header is a row of a column exactly the viewport tall and the rail is
+ * the column beside it, so behind both there is only html's backdrop, which
+ * does not scroll. The header's old blur(12px) saturate(1.6) blurred that
+ * still picture and nothing else — a composited layer and a backdrop pass
+ * for a bar that looks the same as this fill. No backdrop-filter here, then,
+ * and classes rather than inline styles, so the one transparency fallback
+ * reaches them. `viewTransitionName` stays on the elements (Shell.tsx).
+ */
+.app-header,
+.app-rail {
+  background: var(--glass-chrome);
+  border-color: var(--glass-edge);
+}
+
+/*
+ * The drawer is the one piece of chrome that opens OVER the page, and the
+ * page is content: a translucent panel there showed the cards under it as
+ * ghost text through the scrim. So it lays the chrome over --page, the bare
+ * sky — the colour the rail is wherever the backdrop is unlit — and hides
+ * whatever is beneath it.
+ */
+.app-drawer {
+  background: linear-gradient(var(--glass-chrome), var(--glass-chrome)), var(--page);
+  border-color: var(--glass-edge);
+}
+
+/*
  * The sidebar's items — hover, active, folded — in one place.
  *
  * Inline styles cannot express :hover, and the rail had none: a pointer over a
@@ -2354,23 +2577,29 @@ p {
     color 150ms ease-out,
     transform 120ms ease-out;
 }
+/* A wash, not the opaque --grid it was: on glass chrome a solid hover patch
+   read as a hole in the pane. Under the pointer the label is --ink-primary,
+   which holds 7:1 on the wash over every sample of the backdrop. */
 .rail-item:hover {
   color: var(--ink-primary);
-  background: var(--grid);
+  background: var(--glass-hover);
 }
 .rail-item:active {
   transform: scale(0.98);
 }
 .rail-item[aria-current='page'] {
-  color: var(--ink-on-series);
+  color: var(--ink-on-brand);
   background: var(--rail-active-bg);
   box-shadow:
     0 8px 18px -8px rgba(47, 102, 240, 0.7),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
+/* The hover DEEPENS the gradient. It brightened it (1.08) until 2026-10-06,
+   which took the white label on the blue stop from 4.91:1 to 4.36:1; at 0.94
+   the two stops read 5.43 and 6.51. */
 .rail-item[aria-current='page']:hover {
-  color: var(--ink-on-series);
-  filter: brightness(1.08);
+  color: var(--ink-on-brand);
+  filter: brightness(0.94);
 }
 
 .rail-icon {
@@ -2388,7 +2617,7 @@ p {
 }
 .rail-item[aria-current='page'] .rail-icon,
 .rail-item[aria-current='page']:hover .rail-icon {
-  color: var(--ink-on-series);
+  color: var(--ink-on-brand);
 }
 
 /* Folded to icons: the glyph grows from 15px to 18px so a 40px square does
@@ -2434,17 +2663,6 @@ p {
   .drawer-backdrop-enter {
     animation: none;
   }
-}
-
-/*
-  A scroller a thumb drives needs no bar. Used only where the content itself
-  makes the overflow obvious — a row of buttons cut at the screen's edge.
-*/
-.no-scrollbar {
-  scrollbar-width: none;
-}
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
 }
 
 /*
@@ -2499,7 +2717,9 @@ p {
  */
 .podium-card {
   position: relative;
-  border: 1px solid color-mix(in oklab, var(--metal) 42%, var(--border));
+  /* Width and style only: the rim's colour is the seat's
+     (`.tv-seat--N .tv-seat-card`), the only place a card is ever drawn. */
+  border: 1px solid;
   border-radius: var(--radius-panel);
   background:
     radial-gradient(
@@ -2530,8 +2750,9 @@ p {
     var(--surface-raised);
 }
 
-/** The place plaque: rosette (`BoardIcon`) + ordinal on a soft metal tint. The words
-    stay in primary ink — the metal may not carry text. */
+/** The place plaque: rosette (`BoardIcon`) + ordinal on a soft metal tint (the
+    tint is `.tv-seat-plaque`'s, the plaque's only use). The words stay in
+    primary ink — the metal may not carry text. */
 .podium-plaque {
   display: inline-flex;
   align-items: center;
@@ -2542,7 +2763,6 @@ p {
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--ink-primary);
-  background: color-mix(in oklab, var(--metal) 14%, transparent);
   border: 1px solid color-mix(in oklab, var(--metal) 40%, transparent);
 }
 
@@ -2594,14 +2814,14 @@ p {
 
 /**
  * The base rail — the podium's steps, folded into the cards' own bottom
- * edges: 3px under silver, 2 under bronze.
+ * edges: 3px under silver, 2 under bronze, in the rim's colour.
  */
 .podium-col--silver .podium-card {
-  border-bottom: 3px solid color-mix(in oklab, var(--metal) 55%, var(--border));
+  border-bottom: 3px solid;
 }
 
 .podium-col--bronze .podium-card {
-  border-bottom: 2px solid color-mix(in oklab, var(--metal) 50%, var(--border));
+  border-bottom: 2px solid;
 }
 
 /**
@@ -2752,9 +2972,8 @@ p {
   --tv-name: clamp(13px, 0.88vw, 18px);
   --tv-money: clamp(13px, 0.88vw, 18px);
   --tv-small: clamp(11px, 0.62vw, 13px);
-  --tv-seat-scale: 1;
-  --tv-seat-name: clamp(14px, calc(1.05vw * var(--tv-seat-scale)), 21px);
-  --tv-seat-figure: clamp(17px, calc(1.35vw * var(--tv-seat-scale)), 28px);
+  --tv-seat-name: clamp(14px, 1.05vw, 21px);
+  --tv-seat-figure: clamp(17px, 1.35vw, 28px);
 }
 
 .tv-col--sellers { --tv-tone: var(--series-5); }
@@ -2951,7 +3170,6 @@ p {
  */
 .record-sep {
   /* Drawn, not a glyph — the lozenge itself is SAYQAL 4a. */
-  color: color-mix(in oklab, var(--metal) 55%, transparent);
   margin: 0 22px;
 }
 
@@ -3011,7 +3229,7 @@ p {
      and the halo are SAYQAL 2b. */
   border-radius: 999px;
   font-size: 17px;
-  border: 1px solid color-mix(in oklab, var(--tv-tone) 45%, transparent);
+  border: 1px solid;
 }
 
 /*
@@ -3200,9 +3418,13 @@ p {
 /**
  * The seats: a three-column grid with the bottoms aligned, so the champion's
  * extra padding makes it a step TALLER — the podium's own shape — rather than
- * a card floating higher. Silver and bronze step their type and ring down a
- * notch each (`--tv-seat-scale`), which is what keeps first place readable
- * as first from across the room with every card the same width.
+ * a card floating higher. Silver and bronze step their ring down a notch each
+ * (`SEATS` in SellersPage: 56 / 43 / 37px) and stand on lower pedestals,
+ * which is what keeps first place readable as first from across the room.
+ * The name and the sum are one size on all three seats: `--tv-seat-name` and
+ * `--tv-seat-figure` resolve on `.tv-col`, where nothing set on a seat can
+ * reach them (a var() inside a custom property is filled in where it is
+ * declared — the :root trap DESIGN TOKENS describes).
  */
 .tv-podium {
   flex-shrink: 0;
@@ -3345,10 +3567,6 @@ p {
   .tv-seat--2 {
     --tv-pedestal: var(--tv-step);
   }
-  .tv-seat-card {
-    padding-left: 8px;
-    padding-right: 8px;
-  }
 }
 /*
  * THE NARROW TWO-COLUMN BAND — 1280 to 1599, a 720p television or a zoomed
@@ -3365,8 +3583,8 @@ p {
  */
 @media (min-width: 1280px) and (max-width: 1599px) {
   .tv-col {
-    --tv-seat-name: clamp(12px, calc(0.95vw * var(--tv-seat-scale)), 16px);
-    --tv-seat-figure: clamp(13px, calc(1.05vw * var(--tv-seat-scale)), 18px);
+    --tv-seat-name: clamp(12px, 0.95vw, 16px);
+    --tv-seat-figure: clamp(13px, 1.05vw, 18px);
   }
   .tv-col-optional {
     display: none;
@@ -3377,8 +3595,8 @@ p {
    * it 148px at 1366: the words stood 1.2px outside the pill on either side,
    * on the old board and on this one, measured on production figures. Same
    * answer as the sum above it, type rather than layout: 10px of type, 6px of
-   * pill padding instead of 10, and the card's side padding at the 8px a phone
-   * already uses. That is 136px of text in 142px of pill at 1366, two lines as
+   * pill padding instead of 10, and the card's side padding at 8px instead of
+   * 12. That is 136px of text in 142px of pill at 1366, two lines as
    * before, and the podium is not a pixel taller. Under ~1340 even that does
    * not fit, and there the pill WRAPS before «oldinda» (see `PodiumSeat`)
    * instead of spilling.
@@ -3412,9 +3630,6 @@ p {
     max-width: 36px;
   }
 }
-
-.tv-seat--2 { --tv-seat-scale: 0.9; }
-.tv-seat--3 { --tv-seat-scale: 0.82; }
 
 .tv-seat-card {
   display: flex;
@@ -3598,17 +3813,15 @@ p {
   box-shadow: inset 0 -1px 0 var(--grid);
 }
 /*
- * On a phone the pinned name cell has to be narrow, or the sums slide under
- * it before they can be read: the chase may break between «Oldingiga» and
- * its figure (the figure itself never breaks — see `Chase`), which brings
- * the cell down from the width of one long line to the width of the sum.
+ * On a phone the list gives its side padding to the table (4px, not 10), so
+ * the pinned name cell keeps as much of the row as it can — see the chase
+ * line's own phone rule below for how that cell is kept narrow. The cells
+ * keep the board's 6.2px × 8px: the phone-only padding once written here sat
+ * ABOVE `.tv-row > td` at equal specificity and never applied.
  */
 @media (max-width: 639px) {
   .tv-list {
     padding: 0 4px 8px;
-  }
-  .tv-row > td {
-    padding: 8px 6px;
   }
 }
 
@@ -4085,7 +4298,6 @@ p {
 /* 4 · RECORD MARQUEE lozenge + FAKT SWITCH. */
 /* 4a · the lozenge is DRAWN, not a font's ◆ (the month label keeps its shipped tracking and size) */
 .record-wall .record-sep {
-  font-size: 0;
   width: 6px;
   height: 6px;
   align-self: center;
@@ -4704,8 +4916,14 @@ p {
 /*
   Two clusters, both inside the canvas: the view controls at the top and the
   zoom stepper at the bottom left, exactly where the source screen puts them.
-  `--shadow-float` and a blur, because they sit over a moving tree and a flat
-  panel would read as part of it.
+  `--shadow-ambient`, because they sit over a moving tree and a flat panel
+  would read as part of it.
+
+  OPAQUE since 2026-10-06, like a tooltip. They were 88% raised over an 8px
+  blur — the house's only standing glass — and the tree pans under them, so
+  that blur was re-run on every frame of every drag, on the page every seller
+  is meant to open. A floating panel that is only there while open may be
+  frosted (`.glass-float`); one that is always there is a surface.
 */
 .org-float {
   position: absolute;
@@ -4715,10 +4933,9 @@ p {
   gap: 4px;
   padding: 4px;
   border-radius: 999px;
-  background: color-mix(in oklab, var(--surface-raised) 88%, transparent);
-  backdrop-filter: blur(8px);
+  background: var(--surface-raised);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--shadow-ambient);
 }
 .org-float--top {
   /* Above the roster panel (z-index 3): `.org-float` is a stacking context,
@@ -4771,8 +4988,12 @@ p {
   color: var(--ink-on-series);
   font-weight: 600;
 }
+/* The hover moves the fill AWAY from its label, toward --ink-primary (darker
+   in light, lighter in dark). It moved toward --ink-on-series, which is the
+   label's own colour, and read 3.55:1 in light and 3.43:1 in dark; this
+   reads 5.81 and 5.87 on /structure's olive. */
 .org-float-btn--primary:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--accent) 85%, var(--ink-on-series));
+  background: color-mix(in oklab, var(--accent) 85%, var(--ink-primary));
   color: var(--ink-on-series);
 }
 
@@ -4810,7 +5031,7 @@ p {
   border-radius: var(--radius-panel-sm);
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--shadow-ambient);
 }
 .org-hit {
   display: block;
@@ -4944,7 +5165,7 @@ p {
   border-radius: var(--radius-panel-sm);
   background: var(--surface-raised);
   border: 1px solid var(--border);
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--shadow-ambient);
   font-size: 11px;
   line-height: 1.5;
   color: var(--ink-secondary);
@@ -5017,7 +5238,7 @@ p {
   background: var(--surface-raised);
   border: 1px solid var(--border);
   border-radius: var(--radius-panel-sm);
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--shadow-ambient);
   overflow: hidden;
 }
 

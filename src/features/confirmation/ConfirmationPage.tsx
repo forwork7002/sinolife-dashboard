@@ -147,7 +147,7 @@ const OUTCOMES: readonly OutcomeSpec[] = [
       --series-7 clears 4.8:1 on the light card where the pink managed 3.9:1,
       and it stands 33 ΔE from the --series-1 of Кутилмоқда, the only other
       cool tile in the row. Unused elsewhere on this screen, whose own page
-      accent is --series-4.
+      accent is --series-3.
     */
     color: 'var(--series-7)',
   },
@@ -818,7 +818,16 @@ export function ConfirmationPage() {
         screen had anyway.
       */
       controlsAlign="end"
-      accent="var(--series-4)"
+      /*
+        Teal, from the accent pool (globals.css «Page identity»), which amber
+        is not: as this board's focus ring amber read 2.87:1 against the
+        ring's own inner band, under the 3:1 a focus indicator needs, on the
+        one screen the floor keyboards through all day — teal reads 4.06 in
+        light. Of the pool slots no tile here wears (the tiles are --series-1,
+        --series-7 and three status hues) it stands furthest from its nearest
+        tile in both themes, ΔE 10.4 from the green «Тасдиқланди».
+      */
+      accent="var(--series-3)"
       /*
         640 WAS A CEILING. IT IS NOW A FLOOR.
 

@@ -588,10 +588,11 @@ export function Shell({
 
   return (
     /*
-      No background here on purpose. `html` already paints `--page` plus the two
-      ambient accent pools, and the film grain lives on `body::after` at z:-1 —
-      an opaque fill on this wrapper was silently covering all three. The shell
-      stays transparent so the atmosphere the stylesheet paints can reach the eye.
+      No background here on purpose. `html` already paints `--page` plus the
+      backdrop's pools, and the film grain lives on `body::after` at z:-1 — an
+      opaque fill on this wrapper was silently covering all of it. The shell
+      stays transparent so the light every glass surface shows through can
+      reach the eye.
     */
     /*
       THE APPLICATION IS EXACTLY ONE SCREEN TALL, and the browser never
@@ -623,16 +624,13 @@ export function Shell({
           browser sees the same named element in both snapshots and, with the
           animation suppressed in globals.css, leaves it alone entirely. Without
           it the sidebar crossfades along with the content and the whole screen
-          appears to flicker. */}
+          appears to flicker. Its surface is `.app-rail` — glass chrome, a
+          class so the transparency fallback reaches it. */}
       <aside
-        className={`hidden shrink-0 border-r transition-[width] duration-200 ease-out lg:flex lg:flex-col ${
+        className={`app-rail hidden shrink-0 border-r transition-[width] duration-200 ease-out lg:flex lg:flex-col ${
           collapsed ? 'w-16' : 'w-60'
         }`}
-        style={{
-          background: 'var(--surface)',
-          borderColor: 'var(--border)',
-          viewTransitionName: 'app-sidebar',
-        }}
+        style={{ viewTransitionName: 'app-sidebar' }}
       >
         <RailBody
           variant="rail"
@@ -672,10 +670,8 @@ export function Shell({
             onClick={closeMenu}
           />
           <div
-            className="drawer-enter relative flex h-full w-[min(19rem,86vw)] flex-col border-r"
+            className="app-drawer drawer-enter relative flex h-full w-[min(19rem,86vw)] flex-col border-r"
             style={{
-              background: 'var(--surface)',
-              borderColor: 'var(--border)',
               paddingTop: 'env(safe-area-inset-top)',
               paddingBottom: 'env(safe-area-inset-bottom)',
               paddingLeft: 'env(safe-area-inset-left)',
@@ -696,21 +692,19 @@ export function Shell({
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header
-          className="z-20 shrink-0 border-b"
+          /*
+            Glass chrome, `.app-header`: a translucent fill and NO blur. The
+            bar is a row of a column that is exactly the viewport tall, so it
+            cannot be scrolled away from and nothing is ever scrolled under it
+            — the scrolling happens below it, inside `main`. Behind it there is
+            only html's backdrop, which never moves, so the blur(12px)
+            saturate(1.6) it carried blurred a still picture: a composited
+            layer and a backdrop pass for a bar that looks the same without
+            them. A class rather than a style, so the transparency fallback
+            can make it opaque.
+          */
+          className="app-header z-20 shrink-0 border-b"
           style={{
-            /* Glass: a translucent surface over a real backdrop blur, so the
-               ambient wash the stylesheet paints on `html` shows through the
-               bar rather than being cut off by it. Saturation is raised
-               because blurring alone desaturates what comes through and the
-               accent bar below goes grey.
-
-               It no longer needs `sticky`: the bar is a row of a column that
-               is exactly the viewport tall, so it cannot be scrolled away from
-               — the scrolling happens under it, inside `main`. */
-            background: 'color-mix(in oklab, var(--surface) 72%, transparent)',
-            backdropFilter: 'blur(12px) saturate(1.6)',
-            WebkitBackdropFilter: 'blur(12px) saturate(1.6)',
-            borderColor: 'var(--border)',
             viewTransitionName: 'app-header',
             // Under a notch or a status bar the bar's content starts below it,
             // and the glass runs up behind it — which is what `viewport-fit:
@@ -860,8 +854,12 @@ export function Shell({
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="focusable rounded-lg px-2.5 py-1.5 text-[11px] font-semibold whitespace-nowrap"
-                  style={{ background: 'var(--series-3)', color: '#fff' }}
+                  // The controls' radius and small height (28px, a Button `sm`),
+                  // not the 8px corner and padding-made 29px it had beside them.
+                  className="focusable inline-flex h-7 items-center rounded-[var(--radius-panel-sm)] px-2.5 text-[11px] font-semibold whitespace-nowrap"
+                  // Teal takes the dark ink in both themes: white on it read
+                  // 4.31:1 in light and 2.07:1 in dark (see --ink-on-series).
+                  style={{ background: 'var(--series-3)', color: 'var(--ink-on-series-bright)' }}
                 >
                   Yangi versiya · yangilash
                 </button>
@@ -1005,11 +1003,14 @@ function WordmarkBadge({ small = false }: { small?: boolean }) {
           : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold'
       }
       style={{
+        // White in both themes (--ink-on-brand): the mark shares the active
+        // rail item's ink, and the light it leans toward is white whatever
+        // the series inks do.
         background:
-          'linear-gradient(180deg, color-mix(in oklab, var(--series-1) 86%, var(--ink-on-series)) 0%, var(--series-1) 65%)',
-        color: 'var(--ink-on-series)',
+          'linear-gradient(180deg, color-mix(in oklab, var(--series-1) 86%, var(--ink-on-brand)) 0%, var(--series-1) 65%)',
+        color: 'var(--ink-on-brand)',
         boxShadow:
-          'inset 0 1px 0 color-mix(in oklab, var(--ink-on-series) 30%, transparent), var(--shadow-card)',
+          'inset 0 1px 0 color-mix(in oklab, var(--ink-on-brand) 30%, transparent), var(--shadow-card)',
       }}
       aria-hidden="true"
     >

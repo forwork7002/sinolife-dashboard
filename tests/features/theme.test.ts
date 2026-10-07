@@ -191,6 +191,28 @@ describe('the copy of the key that cannot import the module', () => {
     expect(layout).toContain(`localStorage.getItem('${declared}')`)
   })
 
+  it('paints the browser bar in the page colour the stylesheet paints, in both modes', () => {
+    /*
+      The layout's `themeColor` pair is what a phone's address bar wears for a
+      «Tizim» reader and on /login, and it is a copy of `--page` that metadata
+      cannot read from the CSS. The «koʻk» re-tint moved the page to navy and
+      left this pair grey and near-black, so the bar and the page differed —
+      silently, which is why it is pinned here beside the other copy.
+    */
+    const layout = readFileSync(resolve(process.cwd(), 'src/app/layout.tsx'), 'utf8')
+    const css = readFileSync(resolve(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const page = (selector: string) =>
+      new RegExp(`--page:\\s*(#[0-9a-f]{6})`, 'i').exec(css.slice(css.indexOf(`${selector} {`)))?.[1]?.toLowerCase()
+    const bar = (scheme: string) =>
+      new RegExp(`media: '\\(prefers-color-scheme: ${scheme}\\)', color: '(#[0-9a-f]{6})'`, 'i').exec(layout)?.[1]?.toLowerCase()
+
+    expect(bar('light')).toBeDefined()
+    expect(bar('light')).toBe(page(':root'))
+    expect(bar('dark')).toBeDefined()
+    expect(bar('dark')).toBe(page(':root[data-theme="dark"]'))
+    expect(bar('dark')).toBe(page(':root:where(:not([data-theme="light"]))'))
+  })
+
   it('sets the attribute for exactly the two forced modes', () => {
     const layout = readFileSync(resolve(process.cwd(), 'src/app/layout.tsx'), 'utf8')
 

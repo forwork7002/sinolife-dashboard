@@ -55,11 +55,13 @@ export function BrandSwitch<T extends DashboardBrand>({
   options: readonly { value: T; label: string }[]
 }) {
   return (
+    // SegmentedControl's glass well and chip, radius and 32px — the two sit in
+    // one filter row on every main screen and must read as one control.
     <div
       role="group"
       aria-label="Brend"
-      className="flex items-center gap-0.5 rounded-lg p-0.5"
-      style={{ background: 'var(--grid)' }}
+      className="flex items-center gap-0.5 rounded-[var(--radius-panel-sm)] p-0.5"
+      style={{ background: 'var(--glass-well)' }}
     >
       {options.map((option) => {
         const active = option.value === value
@@ -69,10 +71,10 @@ export function BrandSwitch<T extends DashboardBrand>({
             type="button"
             aria-pressed={active}
             onClick={() => onChange(option.value)}
-            className="focusable inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+            // The lit chip's shadow is a class so the focus ring can win it.
+            className={`focusable inline-flex h-7 items-center gap-1.5 rounded-[calc(var(--radius-panel-sm)-2px)] px-3 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
             style={{
-              background: active ? 'var(--surface-raised)' : 'transparent',
-              boxShadow: active ? 'var(--shadow-card)' : 'none',
+              background: active ? 'var(--glass-raised)' : 'transparent',
               color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
             }}
           >

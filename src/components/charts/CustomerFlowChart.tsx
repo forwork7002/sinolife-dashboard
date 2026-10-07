@@ -145,6 +145,8 @@ export function CustomerFlowChart({
               <Line
                 type="monotone"
                 dataKey="newCustomers"
+                // Each line glows in its own slot in dark (globals.css, «Line glow»).
+                className="glow-series-1"
                 stroke="var(--series-1)"
                 strokeWidth={2}
                 dot={endpointDot({
@@ -168,6 +170,7 @@ export function CustomerFlowChart({
               <Line
                 type="monotone"
                 dataKey="returningCustomers"
+                className="glow-series-3"
                 stroke="var(--series-3)"
                 strokeWidth={2}
                 dot={endpointDot({

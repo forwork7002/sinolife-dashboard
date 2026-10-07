@@ -98,8 +98,12 @@ export function StatTile({
       style={
         fillColor
           ? {
-              background: `color-mix(in oklab, ${fillColor} 12%, var(--surface-raised))`,
-              borderColor: `color-mix(in oklab, ${fillColor} 30%, var(--border))`,
+              // Tinted GLASS, like the tile beside it: mixed into the glass
+              // token rather than the opaque card, so a filled tile is no
+              // solid block in a row of translucent ones — and the one
+              // transparency fallback still reaches it through the token.
+              background: `color-mix(in oklab, ${fillColor} 12%, var(--glass-card))`,
+              borderColor: `color-mix(in oklab, ${fillColor} 30%, var(--glass-edge))`,
             }
           : undefined
       }

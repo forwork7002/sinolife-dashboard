@@ -58,18 +58,21 @@ export function SearchInput({
 
           The browser's own ✕ is hidden: in Chrome it is a 9px grey mark the
           client never found, and it cleared through the debounce. The red one
-          below replaces it. */}
+          below replaces it.
+
+          A sunken well of glass, the controls' one radius and their two
+          heights: 40px under a thumb, 32px on a desk (see SegmentedControl). */}
       <input
         type="search"
         value={local}
         onChange={(e) => setLocal(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className={`focusable w-full rounded-lg border py-2 pl-8 text-[13px] outline-none sm:min-w-[200px] sm:py-1.5 sm:text-xs [&::-webkit-search-cancel-button]:appearance-none ${
+        className={`focusable h-10 w-full rounded-[var(--radius-panel-sm)] border pl-8 text-[13px] outline-none sm:h-8 sm:min-w-[200px] sm:text-xs [&::-webkit-search-cancel-button]:appearance-none ${
           local ? 'pr-8' : 'pr-2.5'
         }`}
         style={{
-          background: 'var(--surface-raised)',
+          backgroundColor: 'var(--glass-well)',
           borderColor: 'var(--border-strong)',
           color: 'var(--ink-primary)',
         }}
@@ -124,16 +127,99 @@ export function MultiSelect({
   disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
+  /**
+   * Where the panel is drawn, in VIEWPORT pixels — null until first measured.
+   *
+   * PORTALLED TO <body> AND FIXED, as ColumnFilter's panel is, and for two
+   * reasons production showed. It hung inside the page, and `main` is
+   * `overflow-x: hidden`: anchored to its trigger's left edge, the
+   * confirmation board's «Барча статус» — last in a right-aligned row — lost
+   * about 100px of its 240px list, and the last control of a wrapped row on a
+   * phone lost 25–55px. And it hung inside `.page-container`, which dims to
+   * 60% while the data behind it is replaced (`stale`) — exactly what ticking
+   * an option on Savdo dinamikasi or KPI does — so the list went see-through
+   * over the tiles while it was being used.
+   *
+   * IT OPENS RIGHTWARD FROM THE TRIGGER, as it always has, and ends at the
+   * trigger's right edge instead only when the viewport has no room for that;
+   * either way it is held 8px inside the screen. Below the trigger, above it
+   * only when below cannot hold it and above can.
+   */
+  const [place, setPlace] = useState<{ top: number; left: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const id = useId()
+
+  /*
+    Before paint, so the panel never flashes in the wrong place — and again on
+    every scroll (a CAPTURE listener: scroll does not bubble, and what scrolls
+    here is `main`, never the window) and resize, because a fixed panel does
+    not travel with its trigger on its own.
+  */
+  useLayoutEffect(() => {
+    if (!open) return
+
+    const measure = () => {
+      const trigger = buttonRef.current?.getBoundingClientRect()
+      if (!trigger) return
+      const width = panelRef.current?.offsetWidth || PANEL_WIDTH
+      const rightward = trigger.left + width <= window.innerWidth - 8
+      const anchored = rightward ? trigger.left : trigger.right - width
+      const left = Math.max(8, Math.min(anchored, window.innerWidth - width - 8))
+
+      const height = panelRef.current?.offsetHeight ?? 0
+      const below = window.innerHeight - trigger.bottom
+      const top =
+        below < height + 12 && trigger.top > below ? trigger.top - 4 - height : trigger.bottom + 4
+
+      setPlace((previous) =>
+        previous && previous.top === top && previous.left === left ? previous : { top, left },
+      )
+    }
+
+    measure()
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    if (panelRef.current) observer?.observe(panelRef.current)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+    }
+  }, [open])
+
+  /*
+    Into the list on open, back to the trigger on Escape: portalled to the end
+    of <body>, the panel no longer follows its button in the tab order. The
+    FIRST CHECKBOX, not the first control — with a selection the first control
+    is the red «Tozalash», and a Space pressed on arrival would clear it.
+    Only once placed: until then the panel is `visibility: hidden`, and a
+    browser refuses focus to a hidden element (see ColumnFilter).
+  */
+  const placed = place !== null
+  useEffect(() => {
+    if (!open || !placed) return
+    const panel = panelRef.current
+    const first =
+      panel?.querySelector<HTMLElement>('input[type="checkbox"]') ?? panel?.querySelector<HTMLElement>('button')
+    first?.focus({ preventScroll: true })
+  }, [open, placed])
 
   useEffect(() => {
     if (!open) return
+    // The panel is outside the trigger's box in the DOM now, so a press inside
+    // EITHER counts as inside.
     function onPointerDown(event: MouseEvent) {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+      const target = event.target as Node
+      if (containerRef.current?.contains(target) || panelRef.current?.contains(target)) return
+      setOpen(false)
     }
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      buttonRef.current?.focus({ preventScroll: true })
     }
     document.addEventListener('mousedown', onPointerDown)
     document.addEventListener('keydown', onKey)
@@ -142,6 +228,22 @@ export function MultiSelect({
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
+
+  /*
+    …and back to the trigger when Tab leaves either end of the list. At the
+    end of <body>, Tab past the last option left the page and Shift+Tab
+    before the first landed on whatever the page ends with — and the panel
+    stayed open over the screen with focus somewhere else.
+  */
+  function onPanelKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== 'Tab') return
+    const stops = [...event.currentTarget.querySelectorAll<HTMLElement>('input, button')]
+    const edge = event.shiftKey ? stops[0] : stops[stops.length - 1]
+    if (document.activeElement !== edge) return
+    event.preventDefault()
+    setOpen(false)
+    buttonRef.current?.focus({ preventScroll: true })
+  }
 
   const toggle = (optionId: string) => {
     onChange(
@@ -154,6 +256,7 @@ export function MultiSelect({
   return (
     <div className="relative" ref={containerRef}>
       <button
+        ref={buttonRef}
         type="button"
         disabled={disabled || options.length === 0}
         onClick={() => setOpen((v) => !v)}
@@ -162,9 +265,17 @@ export function MultiSelect({
         // document is a dangling reference, not a relationship.
         aria-controls={open ? id : undefined}
         aria-haspopup="listbox"
-        className="focusable flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-50"
+        /*
+          A raised chip of glass, like a secondary Button — and SUNK into the
+          well while it holds a selection, the state the count badge names.
+          Colour, not `background`, inline: the hover wash is an image layer a
+          shorthand would wipe. The lit edge is a (layered) class, never an
+          inline box-shadow: inline, `none` included, it beats
+          `.focusable:focus-visible` and the keyboard ring is gone.
+        */
+        className={`focusable flex h-8 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-xs font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] disabled:opacity-50 ${selected.length ? '' : 'shadow-[var(--glass-highlight)]'}`}
         style={{
-          background: selected.length ? 'var(--grid)' : 'var(--surface-raised)',
+          backgroundColor: selected.length ? 'var(--glass-well)' : 'var(--glass-raised)',
           borderColor: 'var(--border-strong)',
           color: 'var(--ink-primary)',
         }}
@@ -183,53 +294,66 @@ export function MultiSelect({
         </svg>
       </button>
 
-      {open && (
-        <div
-          id={id}
-          role="listbox"
-          aria-multiselectable="true"
-          aria-label={label}
-          className="absolute z-30 mt-1 max-h-72 w-60 overflow-y-auto rounded-[var(--radius-panel)] border p-1"
-          style={{
-            background: 'var(--surface-raised)',
-            borderColor: 'var(--border-strong)',
-            boxShadow: 'var(--shadow-float)',
-          }}
-        >
-          {selected.length > 0 && (
-            // Red, like every clear and delete in the application — the client
-            // asked on 2026-09-11 for all of them to be findable at a glance
-            // («barcha tozalash va oʻchirish funksiyalari aniqroq koʻrinsin»).
-            // As a ghost it was grey text above the list and read as a label.
-            <Button
-              variant="danger"
-              size="sm"
-              className="mb-1 w-full"
-              icon={<MultiplyGlyph size={12} />}
-              onClick={() => onChange([])}
-            >
-              Tozalash
-            </Button>
-          )}
-          {options.map((option) => (
-            <label
-              key={option.id}
-              role="option"
-              aria-selected={selected.includes(option.id)}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-[var(--grid)]"
-              style={{ color: 'var(--ink-primary)' }}
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(option.id)}
-                onChange={() => toggle(option.id)}
-                className="h-3.5 w-3.5"
-              />
-              <span className="truncate">{option.label}</span>
-            </label>
-          ))}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={panelRef}
+            id={id}
+            role="listbox"
+            aria-multiselectable="true"
+            aria-label={label}
+            onKeyDown={onPanelKeyDown}
+            // `z-40`, ColumnFilter's: over the page and the mobile rail, under
+            // the command palette (50) and tooltips (60). Hidden until measured.
+            // Frosted (`.glass-float`): the tiles repaint under it while a
+            // ticked option refetches.
+            className="glass-float z-40 max-h-72 w-60 overflow-y-auto rounded-[var(--radius-panel)] border p-1"
+            style={{
+              position: 'fixed',
+              top: place?.top ?? 0,
+              left: place?.left ?? 0,
+              visibility: place ? 'visible' : 'hidden',
+              borderColor: 'var(--border-strong)',
+              // Floating chrome: the directional float stack in light, an
+              // offset-free halo in dark (see --shadow-ambient).
+              boxShadow: 'var(--shadow-ambient)',
+            }}
+          >
+            {selected.length > 0 && (
+              // Red, like every clear and delete in the application — the client
+              // asked on 2026-09-11 for all of them to be findable at a glance
+              // («barcha tozalash va oʻchirish funksiyalari aniqroq koʻrinsin»).
+              // As a ghost it was grey text above the list and read as a label.
+              <Button
+                variant="danger"
+                size="sm"
+                className="mb-1 w-full"
+                icon={<MultiplyGlyph size={12} />}
+                onClick={() => onChange([])}
+              >
+                Tozalash
+              </Button>
+            )}
+            {options.map((option) => (
+              <label
+                key={option.id}
+                role="option"
+                aria-selected={selected.includes(option.id)}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-[var(--grid)]"
+                style={{ color: 'var(--ink-primary)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(option.id)}
+                  onChange={() => toggle(option.id)}
+                  className="h-3.5 w-3.5"
+                />
+                <span className="truncate">{option.label}</span>
+              </label>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   )
 }
@@ -237,12 +361,21 @@ export function MultiSelect({
 /**
  * Single-choice segmented control.
  *
- * The active segment is a raised chip — `--surface-raised` with the card
- * shadow — sitting in a `--grid` well, the same recipe the period picker's
- * tablist already used. The previous solid-ink block was the heaviest mark
- * on any toolbar it appeared in, which handed the strongest ink on the
- * screen to a CONTROL; the chip says "you are here" with elevation instead
- * of weight, and the well provides the boundary the border used to.
+ * The active segment is a raised chip sitting in a sunken well, the same
+ * recipe the period presets and the date picker's tabs use. The previous
+ * solid-ink block was the heaviest mark on any toolbar it appeared in, which
+ * handed the strongest ink on the screen to a CONTROL; the chip says "you are
+ * here" with elevation instead of weight, and the well provides the boundary
+ * the border used to.
+ *
+ * GLASS («Shisha», 2026-10-06): the well is --glass-well and the chip
+ * --glass-raised with the lit top, so the control is a pane on the card or
+ * the page and not an opaque patch. ONE RADIUS for every control,
+ * --radius-panel-sm (the Button's), the chip two pixels less inside the
+ * well's two-pixel padding; TWO HEIGHTS, 32px — this, a Button, MultiSelect,
+ * the period control and the search box on a desk — and 40px for the period
+ * control and the search box under a thumb. They were 28, 30, 32 and 34px in
+ * one filter row, at 6, 8 and 12px corners.
  *
  * Semantics stay native: real buttons with `aria-pressed`, so Tab reaches
  * every option and Space/Enter work for free.
@@ -262,8 +395,8 @@ export function SegmentedControl<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className="flex items-center gap-0.5 rounded-lg p-0.5"
-      style={{ background: 'var(--grid)' }}
+      className="flex items-center gap-0.5 rounded-[var(--radius-panel-sm)] p-0.5"
+      style={{ background: 'var(--glass-well)' }}
     >
       {options.map((option) => {
         const active = option.value === value
@@ -273,10 +406,10 @@ export function SegmentedControl<T extends string>({
             type="button"
             aria-pressed={active}
             onClick={() => onChange(option.value)}
-            className="focusable rounded-md px-2.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors"
+            // The lit chip's shadow is a class so the focus ring can win it.
+            className={`focusable h-7 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
             style={{
-              background: active ? 'var(--surface-raised)' : 'transparent',
-              boxShadow: active ? 'var(--shadow-card)' : 'none',
+              background: active ? 'var(--glass-raised)' : 'transparent',
               color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
             }}
           >
@@ -423,10 +556,11 @@ export function StatusBadge({ status }: { status: string }) {
  * anchored under a 32px-tall pill. A column header is 11px uppercase in a cell
  * that may be 96px wide, and the trigger has to be a mark rather than a word or
  * it becomes the widest thing in the header. What the two DO share is the
- * dismissal behaviour and the panel's surface, and those are the parts worth
- * having identical — a reader who learns that Escape closes one has learnt the
- * other. They are kept in step by sitting in one file, not by an abstraction
- * neither of them asked for.
+ * dismissal behaviour, the panel's surface and — since 2026-10-06 — where the
+ * panel is drawn (portalled to <body>, fixed, measured from the trigger), and
+ * those are the parts worth having identical — a reader who learns that
+ * Escape closes one has learnt the other. They are kept in step by sitting in
+ * one file, not by an abstraction neither of them asked for.
  *
  * THE FUNNEL IS FILLED WHEN THE FILTER IS ON, and that is the whole of the
  * state indicator. A count badge was tried and dropped: at 11px beside a
@@ -630,16 +764,16 @@ export function ColumnFilter({
               `z-40` clears the page's own dropdowns and the mobile rail; the
               command palette (z-50) and tooltips (60) still go over it.
               Hidden until measured — one frame — so it never flashes at 0,0.
+              Frosted (`.glass-float`): the table's rows scroll under it.
             */
-            className="z-40 w-60 rounded-[var(--radius-panel)] border p-1 text-left text-xs"
+            className="glass-float z-40 w-60 rounded-[var(--radius-panel)] border p-1 text-left text-xs"
             style={{
               position: 'fixed',
               top: place?.top ?? 0,
               left: place?.left ?? 0,
               visibility: place ? 'visible' : 'hidden',
-              background: 'var(--surface-raised)',
               borderColor: 'var(--border-strong)',
-              boxShadow: 'var(--shadow-float)',
+              boxShadow: 'var(--shadow-ambient)',
             }}
           >
             {children(() => setOpen(false))}
@@ -692,9 +826,9 @@ export function ColumnFilterList({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Qidirish…"
           aria-label="Roʻyxatdan qidirish"
-          className="focusable mb-1 w-full rounded-md border px-2 py-1.5 text-xs outline-none"
+          className="focusable mb-1 h-7 w-full rounded-[var(--radius-panel-sm)] border px-2 text-xs outline-none"
           style={{
-            background: 'var(--surface)',
+            background: 'var(--glass-well)',
             borderColor: 'var(--border-strong)',
             color: 'var(--ink-primary)',
           }}
@@ -815,9 +949,10 @@ export function ColumnFilterRange({
     return /^\d+$/.test(digits) ? Number(digits) : null
   }
 
-  const box = 'focusable tabular w-full rounded-md border px-2 py-1.5 text-xs outline-none'
+  // The search box's well, at the Button's small height inside the panel.
+  const box = 'focusable tabular h-7 w-full rounded-[var(--radius-panel-sm)] border px-2 text-xs outline-none'
   const boxStyle = {
-    background: 'var(--surface)',
+    background: 'var(--glass-well)',
     borderColor: 'var(--border-strong)',
     color: 'var(--ink-primary)',
   }
