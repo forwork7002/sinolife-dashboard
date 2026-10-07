@@ -312,7 +312,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
     ])
   })
 
-  it('cuts the table again once a newer scan lands — two stale windows never stack into one answer', async () => {
+  it('cuts the table again once a newer scan lands, behind its reader — two stale windows never stack into one answer', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     try {
       vi.setSystemTime(new Date('2026-10-05T07:00:00Z'))
@@ -331,8 +331,16 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
       vi.setSystemTime(new Date('2026-10-05T07:02:01Z'))
       expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(100)
       await new Promise((resolve) => setTimeout(resolve, 0))
-      // …and the next read is cut from the new scan, not from a table rebuilt over the old one.
+      // …then the new scan has landed: its reader is handed the old table while ONE re-cut from it runs behind…
+      expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(100)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      // …and the next read is the table cut from the new scan, not one rebuilt over the old.
       expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(200)
+
+      // Past the scan's whole life nothing old is handed out: the reader waits for a new scan and a new table.
+      leads = 300
+      vi.setSystemTime(new Date('2026-10-05T07:12:00Z'))
+      expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(300)
     } finally {
       vi.useRealTimers()
     }
@@ -365,9 +373,57 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
       await service.overview(PERIOD, { dim: 'rop' }, NOW)
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(spendReads).toBe(2)
-      // …then cut once, from the new scan.
+      // …then cut once, from the new scan, behind the reader that found it landed…
       await service.overview(PERIOD, { dim: 'rop' }, NOW)
+      await service.overview(PERIOD, { dim: 'rop' }, NOW)
+      await new Promise((resolve) => setTimeout(resolve, 0))
       expect(spendReads).toBe(4)
+      // …and not again while that scan is the one handed out.
+      await service.overview(PERIOD, { dim: 'rop' }, NOW)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(spendReads).toBe(4)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps handing out the old table when its re-cut from a newer scan fails', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-10-05T07:00:00Z'))
+      let leads = 100
+      let spendFails = false
+      const repository = {
+        bitrix: async () => [bitrixRow('total', { leads })],
+        meta: async () => [],
+        metaName: async () => null,
+        metaImportedAt: async () => null,
+      }
+      const reklama = {
+        campaignDays: async () => {
+          if (spendFails) throw new Error('statement timeout')
+          return []
+        },
+      }
+      const service = new RoistatService(repository as never, reklama, { forDays: async (d: readonly string[]) => d.map(() => 12_000) })
+      expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(100)
+
+      leads = 200
+      spendFails = true
+      vi.setSystemTime(new Date('2026-10-05T07:02:01Z'))
+      await service.overview(PERIOD, { dim: 'rop' }, NOW)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      // The new scan has landed and its re-cut fails behind the reader: nobody is shown the failure.
+      expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(100)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(100)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+
+      // Once the spend reads again, the next re-cut lands.
+      spendFails = false
+      await service.overview(PERIOD, { dim: 'rop' }, NOW)
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(200)
     } finally {
       vi.useRealTimers()
     }

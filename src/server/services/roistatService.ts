@@ -202,24 +202,47 @@ function spendOfBrand(days: readonly SpendDay[], brand: BrandFilter): readonly S
 
 /** The overview's two Bitrix cohort scans: this window's every grouping set, the previous window's total. */
 interface BitrixScan {
-  /** Which build this is — the table memo's key carries it (see `overview`). */
+  /** Which build this is — a table cut from an older one is re-cut (see `overview`). */
   readonly build: number
+  /** When this build started reading: every table cut from it is that old, whatever its own age. */
+  readonly at: number
   readonly current: readonly RoistatBitrixRow[]
   readonly previous: readonly RoistatBitrixRow[]
 }
 
 /** The scans' TTL, the production sync tick; the table's life is derived from it. */
 const SCAN_TTL_MS = 120_000
+/** How long a scan, and so every table cut from it, may still be handed out. */
+const SCAN_LIFE_MS = SCAN_TTL_MS + (LIVE_CACHE.staleMs ?? 0)
 /*
-  A table lives as long as the scan it was cut from can be handed out (that
-  TTL and LIVE_CACHE's stale window) and is never rebuilt behind a reader. It
-  is cut after its scan, so it expires only after that scan has, and by then
-  the scan is rebuilding and the table's key, which carries the scan's build,
-  is about to move on. Rebuilt then, it cut the OLD scan again (the Meta reads
-  once more per open cut, every cycle) and was dropped the moment the new
-  scan landed; the next read cuts it once, from the new scan.
+  THE TABLES, held per question and versioned by the scan they were cut from
+  (2026-10-07) rather than kept in a `ttlCache`. A table is cut after its scan,
+  so a TTL of its own always ran out once that scan had: its stale-while-
+  revalidate rebuild then cut the OLD scan again (the Meta reads once more per
+  open cut, every cycle) and was dropped the moment the new scan landed. With
+  the scan's build in a `ttlCache` key instead, nothing was rebuilt behind a
+  reader, but every ~120 s the first reader of each open cut waited for its
+  table to be cut again (spend twice, Meta, rates, the import time — a few
+  hundred ms on the saturated database, see the Tezlik note).
+
+  So a table is good while the scan handed out is the one it was cut from.
+  Once a newer scan has landed, the old table is handed out once more while
+  ONE re-cut from the new scan runs behind the reader — the same promise
+  `LIVE_CACHE` makes, with the build, not a clock, saying when to re-cut. Its
+  age is its SCAN's: a table whose scan is past `SCAN_LIFE_MS` is never handed
+  out, so two stale windows never stack into one answer twice as old as
+  either allows. A failed re-cut keeps the old table and is logged; a first
+  cut that fails is not held, as in `ttlCache`.
 */
-const overviewCache = ttlCache<RoistatOverviewDto>(SCAN_TTL_MS + (LIVE_CACHE.staleMs ?? 0))
+interface CutTable {
+  readonly build: number
+  readonly scanAt: number
+  readonly value: Promise<RoistatOverviewDto>
+  /** Resolved: only a table that has an answer is worth handing out while it is re-cut. */
+  settled: boolean
+  recut: Promise<void> | null
+}
+const overviewTables = new Map<string, CutTable>()
 const daysCache = ttlCache<RoistatDaysDto>(120_000, LIVE_CACHE)
 /*
   The two scans, memoised apart from the table (2026-10-06). Neither depends
@@ -235,7 +258,7 @@ let bitrixScanBuilds = 0
 
 /** Test seam: each case builds its own answer, and the memo would hand the first one to the rest. */
 export function resetRoistatCaches(): void {
-  overviewCache.clear()
+  overviewTables.clear()
   daysCache.clear()
   bitrixScanCache.clear()
 }
@@ -255,16 +278,53 @@ export class RoistatService {
     the window, the cut, its parent and the brand. `now` moves the «today» cells and the
     previous cohort's age, which two minutes cannot change in substance.
     The overview's scans have a memo of their own (`bitrixScanCache`), and
-    the table's key carries the scan's build: a table is cut again the moment
-    a newer scan lands, so two stale-while-revalidate windows never stack into
-    one answer twice as old as either allows.
+    each table is held against the scan build it was cut from
+    (`overviewTables`).
   */
   async overview(period: Period, query: RoistatQuery, now: Date): Promise<RoistatOverviewDto> {
     const parent = query.dim === 'adset' || query.dim === 'ad' ? (query.parent ?? '') : ''
     const brand = query.brand ?? 'all'
     const scan = await this.bitrixScan(period, brand !== 'all', now)
-    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), query.dim, parent, brand, scan.build].join('|')
-    return overviewCache.get(key, () => this.buildOverview(period, query, now, scan))
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), query.dim, parent, brand].join('|')
+
+    // Swept by the scan's age, which is also what stops a month of custom ranges accumulating.
+    const at = Date.now()
+    for (const [k, table] of overviewTables) {
+      if (at - table.scanAt >= SCAN_LIFE_MS && !table.recut) overviewTables.delete(k)
+    }
+
+    const held = overviewTables.get(key)
+    if (held?.build === scan.build) return held.value
+    if (held?.settled) {
+      held.recut ??= this.buildOverview(period, query, now, scan).then(
+        (value) => {
+          if (overviewTables.get(key) === held) overviewTables.set(key, this.holdTable(key, scan, Promise.resolve(value)))
+        },
+        (error: unknown) => {
+          held.recut = null
+          LIVE_CACHE.onError?.(key, error)
+        },
+      )
+      return held.value
+    }
+
+    const value = this.buildOverview(period, query, now, scan)
+    overviewTables.set(key, this.holdTable(key, scan, value))
+    return value
+  }
+
+  /** One held table: marked settled once it resolves, dropped if it fails while still the one held. */
+  private holdTable(key: string, scan: BitrixScan, value: Promise<RoistatOverviewDto>): CutTable {
+    const table: CutTable = { build: scan.build, scanAt: scan.at, value, settled: false, recut: null }
+    value.then(
+      () => {
+        table.settled = true
+      },
+      () => {
+        if (overviewTables.get(key) === table) overviewTables.delete(key)
+      },
+    )
+    return table
   }
 
   async days(period: Period, now: Date, brand: BrandFilter = 'all'): Promise<RoistatDaysDto> {
@@ -277,6 +337,7 @@ export class RoistatService {
     // The preset too: `previousEquivalent` reads it, so two presets on one window compare against different ones.
     const key = [period.preset, period.start.toISOString(), period.end.toISOString(), keyed].join('|')
     return bitrixScanCache.get(key, async () => {
+      const at = Date.now()
       const previous = previousEquivalent(period)
       const [current, previousRows] = await Promise.all([
         this.repository.bitrix(period, now, 'all', keyed),
@@ -291,7 +352,7 @@ export class RoistatService {
         this.repository.bitrix(previous, new Date(now.getTime() - (period.start.getTime() - previous.start.getTime())), 'total', keyed),
       ])
       bitrixScanBuilds += 1
-      return { build: bitrixScanBuilds, current, previous: previousRows }
+      return { build: bitrixScanBuilds, at, current, previous: previousRows }
     })
   }
 
