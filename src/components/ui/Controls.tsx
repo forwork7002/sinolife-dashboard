@@ -379,6 +379,12 @@ export function MultiSelect({
  *
  * Semantics stay native: real buttons with `aria-pressed`, so Tab reaches
  * every option and Space/Enter work for free.
+ *
+ * An option may carry a `swatch` — the identity colour of what it selects,
+ * drawn as a small square before the word (BrandSwitch: each brand's
+ * `PRODUCT_TONE`). Decoration beside the word, never instead of it. The brand
+ * switch was a copy of this control that differed only by that dot; one
+ * control means the two in one filter row cannot drift apart again.
  */
 export function SegmentedControl<T extends string>({
   value,
@@ -387,7 +393,7 @@ export function SegmentedControl<T extends string>({
   ariaLabel,
 }: {
   value: T
-  options: readonly { readonly value: T; readonly label: string }[]
+  options: readonly { readonly value: T; readonly label: string; readonly swatch?: string }[]
   onChange: (value: T) => void
   ariaLabel: string
 }) {
@@ -407,12 +413,19 @@ export function SegmentedControl<T extends string>({
             aria-pressed={active}
             onClick={() => onChange(option.value)}
             // The lit chip's shadow is a class so the focus ring can win it.
-            className={`focusable h-7 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
+            className={`focusable inline-flex h-7 items-center gap-1.5 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
             style={{
               background: active ? 'var(--glass-raised)' : 'transparent',
               color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
             }}
           >
+            {option.swatch && (
+              <span
+                aria-hidden
+                className="inline-block h-2 w-2 shrink-0 rounded-sm"
+                style={{ background: option.swatch }}
+              />
+            )}
             {option.label}
           </button>
         )

@@ -266,11 +266,12 @@ describe('the controls are glass, at one radius and two heights', () => {
     expect(picker[1]).toMatch(/h-10 .*sm:h-8/)
     expect(picker[1]).toMatch(/rounded-\[var\(--radius-panel-sm\)\]/)
 
-    // BrandSwitch, SegmentedControl's twin with a colour dot, sits beside it on every main screen.
+    // BrandSwitch sits beside it on every main screen, and IS it — a colour
+    // swatch per option, not a copy of the control that could drift.
     const brand = source('src/features/shared/BrandSwitch.tsx')
-    expect(brand).toMatch(/className="flex items-center gap-0\.5 rounded-\[var\(--radius-panel-sm\)\] p-0\.5"\s+style=\{\{ background: 'var\(--glass-well\)' \}\}/)
-    expect(brand).toMatch(/className=\{`focusable inline-flex h-7 items-center gap-1\.5 rounded-\[calc\(var\(--radius-panel-sm\)-2px\)\]/)
-    expect(brand).toMatch(/background: active \? 'var\(--glass-raised\)' : 'transparent'/)
+    expect(brand).toMatch(/<SegmentedControl<T>/)
+    expect(brand).not.toMatch(/<button/)
+    expect(controls).toMatch(/option\.swatch && \(/)
 
     // The header's «Yangi versiya» button sits among them at a Button `sm`'s height and corner.
     const version = /Yangi versiya · yangilash/.exec(source('src/components/layout/Shell.tsx'))

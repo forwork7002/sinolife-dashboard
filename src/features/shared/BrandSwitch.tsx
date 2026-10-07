@@ -1,5 +1,6 @@
 'use client'
 
+import { SegmentedControl } from '@/components/ui/Controls'
 import { PRODUCT_FILTER_OPTIONS, PRODUCT_TONE } from '@/features/target/targetTheme'
 
 import { type DashboardBrand, useDashboardFilters } from './useDashboardFilters'
@@ -55,41 +56,17 @@ export function BrandSwitch<T extends DashboardBrand>({
   options: readonly { value: T; label: string }[]
 }) {
   return (
-    // SegmentedControl's glass well and chip, radius and 32px — the two sit in
-    // one filter row on every main screen and must read as one control.
-    <div
-      role="group"
-      aria-label="Brend"
-      className="flex items-center gap-0.5 rounded-[var(--radius-panel-sm)] p-0.5"
-      style={{ background: 'var(--glass-well)' }}
-    >
-      {options.map((option) => {
-        const active = option.value === value
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={active}
-            onClick={() => onChange(option.value)}
-            // The lit chip's shadow is a class so the focus ring can win it.
-            className={`focusable inline-flex h-7 items-center gap-1.5 rounded-[calc(var(--radius-panel-sm)-2px)] px-3 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
-            style={{
-              background: active ? 'var(--glass-raised)' : 'transparent',
-              color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-            }}
-          >
-            {option.value !== 'all' && (
-              <span
-                aria-hidden
-                className="inline-block h-2 w-2 rounded-sm"
-                style={{ background: TONE[option.value as Exclude<DashboardBrand, 'all'>] }}
-              />
-            )}
-            {option.label}
-          </button>
-        )
-      })}
-    </div>
+    // The house segmented control itself — it was a copy of it that differed
+    // only by the dot, and the two share a filter row on every main screen.
+    <SegmentedControl<T>
+      ariaLabel="Brend"
+      value={value}
+      onChange={onChange}
+      options={options.map((option) => ({
+        ...option,
+        swatch: option.value === 'all' ? undefined : TONE[option.value as Exclude<DashboardBrand, 'all'>],
+      }))}
+    />
   )
 }
 
