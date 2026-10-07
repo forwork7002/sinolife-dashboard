@@ -339,6 +339,8 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   '/sverka',
   // «RNP jadvali»: `src/app/rnp/page.tsx` reads none either; its `?month=` / `?rop=` are written the same way.
   '/rnp',
+  // «Lidlar»: `src/app/leads/page.tsx` reads none either; its tab and day are local state (2026-10-06 audit).
+  '/leads',
 ])
 
 export function useDashboardFilters() {

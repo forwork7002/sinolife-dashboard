@@ -8,8 +8,8 @@ import { brandFilter } from '@/server/http/queryParams'
   route file may export only its handlers) so their rules can be tested.
 */
 
-/** A real calendar day, `YYYY-MM-DD`, inside the portal's years — «2026-02-30» is refused, not rolled over. */
-export const calendarDay = z
+/** A real calendar day, `YYYY-MM-DD`, of any year — «2026-02-30» is refused, not rolled over. */
+export const realDay = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
   .refine((d) => {
@@ -17,7 +17,9 @@ export const calendarDay = z
     // «2026-99-99» is an Invalid Date, and toISOString would throw — a 400, not a 500.
     return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d
   }, 'Not a calendar day')
-  .refine((d) => d >= '2025-01-01' && d <= '2100-12-31', 'Day out of range')
+
+/** A real calendar day inside the portal's years. */
+export const calendarDay = realDay.refine((d) => d >= '2025-01-01' && d <= '2100-12-31', 'Day out of range')
 
 export const overviewQuerySchema = z.object({
   /** Omitted: today, on the Tashkent calendar. */

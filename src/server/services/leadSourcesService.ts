@@ -816,21 +816,45 @@ export function leadSourcesOverview(all: {
 }
 
 /*
-  The Регистрация scan alone, under the full memo below too: «Targetologlar ·
-  kunlik» needs nothing else, and must not wait on the other scans — the
-  FAKT 1 phone match can run into the 20 s statement timeout on a month (prod
-  2026-10-06), and one failed scan took the whole sheet down with it.
+  THE MEMOS LIVE ON `globalThis`, ONE PER PROCESS (2026-10-06 audit).
+  `src/instrumentation.ts` and the route handlers are separate bundles in one
+  process, each with its own copy of this module: as module variables, the
+  warmer's builds filled memos no route read, and «Lidlar» stayed cold for
+  its readers all the same. The warmers' first-build flag in `rnpWarmer.ts`
+  is held this way for the same reason; `Symbol.for` hands both copies the
+  one key, `sinolife.leads.<memo>`. Under `next dev` a reloaded module finds
+  them too, so a TTL edited there needs a server restart.
 */
-const registrationCache = ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE)
+function processWide<T>(key: string, make: () => T): T {
+  const g = globalThis as Record<symbol, unknown>
+  return (g[Symbol.for(key)] ??= make()) as T
+}
 
 /*
-  «Факт1 мижоз» on its own memo, and never awaited past `FAKT1_WAIT_MS`: the
+  The Регистрация scan alone: «Targetologlar · kunlik» needs nothing else,
+  and must not wait on the other scans — the FAKT 1 phone match can run into
+  the 20 s statement timeout on a month (prod 2026-10-06), and one failed scan
+  took the whole sheet down with it.
+
+  BESIDE THE SCAN MEMO, NEVER INSIDE IT (2026-10-06 audit). The overview read
+  it from within `scanCache`'s build, and the two memos expire together: a
+  rebuild of the scans took this memo's stale rows (rebuilding them behind)
+  and stored them with fresh kval. So «Жами лидлар» trailed «Квал лидлар
+  сони» by a rebuild for good, and «Targetologlar · kunlik», which reads this
+  memo directly, showed more form leads than «Lidlar» for the same window.
+*/
+const registrationCache = processWide('sinolife.leads.registrationCache', () =>
+  ttlCache<RegistrationDayRow[]>(120_000, LIVE_CACHE),
+)
+
+/*
+  «Факт1 мижоз» on its own memo, a reader never waits past `FAKT1_WAIT_MS`: the
   phone match is the heaviest scan of the tab (prod 2026-10-05: mean 4.4 s,
   max 19.4 s on a month, against a 20 s statement timeout). A reader who
   arrives first gets the tab without it; the query keeps running and fills
   the memo for the next poll. A failure is evicted, so the next one retries.
 */
-const fakt1Cache = ttlCache<LeadFakt1ClientRow[]>(120_000, LIVE_CACHE)
+const fakt1Cache = processWide('sinolife.leads.fakt1Cache', () => ttlCache<LeadFakt1ClientRow[]>(120_000, LIVE_CACHE))
 const FAKT1_WAIT_MS = 8_000
 /** Still waited for when the other scans alone took past `FAKT1_WAIT_MS`. */
 const FAKT1_GRACE_MS = 1_000
@@ -850,18 +874,18 @@ async function within<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 }
 
 /*
-  One memo per window in front of the three deal scans. Company-wide by
-  construction — both routes that read it (`/leads/overview`,
-  `/reklama/targetologs`) refuse a narrowed account — so no scope reaches it.
+  One memo per window in front of the other deal scans. Company-wide by
+  construction — both routes that read these memos (`/leads/overview`,
+  `/reklama/targetologs`) refuse a narrowed account — so no scope reaches them.
 */
-const scanCache = ttlCache<{
-  registration: RegistrationDayRow[]
+interface WindowScans {
   triage: TriageDayRow[]
   qualified: QualifiedSourceRow[]
   aiQualified: AiQualifiedStageRow[]
   sarafan: PipelineSourceCount
   inboundCalls: number | null
-}>(120_000, LIVE_CACHE)
+}
+const scanCache = processWide('sinolife.leads.scanCache', () => ttlCache<WindowScans>(120_000, LIVE_CACHE))
 
 /*
   KEPT WARM (2026-10-06, «Lidlar juda sekin ochilayapti»). The memos above
@@ -870,14 +894,64 @@ const scanCache = ttlCache<{
   every deploy — was built in front of its reader: six scans, the FAKT 1
   phone match alone 4.4 s on average on a month. `warm` builds the windows
   the tab opens on («Bugun», the dashboard default, and «Shu oy») every
-  `LEADS_WARM_EVERY_MS` from `src/instrumentation.ts`, through `overview` —
-  the same memo keys, the same scans, so a reader is handed exactly what they
-  would have waited for. Working hours only: at night nobody reads them.
+  `LEADS_WARM_EVERY_MS` from `src/instrumentation.ts`, into `overview`'s own
+  memo keys with its own scans, so a reader is handed exactly what they would
+  have waited for. Working hours only: at night nobody reads them.
+
+  EACH REBUILD WAITED FOR, ONE AT A TIME (2026-10-06 audit). `warm` went
+  through `overview`, whose memos past their TTL hand out the old answer and
+  rebuild behind it: from the second tick on it returned in milliseconds,
+  moved straight on to «Shu oy», and both windows' scans — 14–16 statements,
+  the FAKT 1 phone match twice — met on an 8-connection pool every three
+  minutes, while «leads warmed» timed nothing and never heard of a failure.
+  Now each memo is `refresh`ed in turn — Регистрация and the scans window by
+  window, then every window's «Факт1 мижоз» (see `warm`) — and the scans go
+  `LEADS_WARM_SCANS_AT_ONCE` at a time, as `RnpService.monthRows` does:
+  behind no reader, a few seconds longer cost nobody anything. A reader's
+  cold miss still runs them all at once. The Meta reads are not memoised,
+  so there is nothing of them to warm.
+
+  THE PRICE, ONCE PER DEPLOY (2026-10-06 review). A new server's first tick
+  builds every memo cold this way, after RNP's first build (38.7 s on
+  production) and with FAKT 1 waited out in full, so it can outlast
+  `/api/health`'s `WARMING_GRACE_S` (75 s from start): the platform then
+  hands the new server its readers while «Lidlar» is still building, and a
+  reader shares a build in flight as the warmer shares a reader's. Accepted:
+  the grace only bounds how long a deploy waits, and the pacing is what
+  leaves the pool to the readers on every tick after.
 */
 export const LEADS_WARM_EVERY_MS = 3 * 60_000
 const LEADS_WARM_PRESETS: readonly PeriodPreset[] = ['today', 'this_month']
 /** Tashkent hours [from, to) the warmer runs in. */
 const LEADS_WARM_HOURS = [7, 23] as const
+const LEADS_WARM_SCANS_AT_ONCE = 2
+
+type Answers<T extends readonly (() => Promise<unknown>)[]> = {
+  -readonly [K in keyof T]: T[K] extends () => Promise<infer R> ? R : never
+}
+
+/**
+ * `tasks` at most `width` at a time — the next starts as one settles — with
+ * their answers in order. A failure starts nothing further and rejects.
+ */
+async function atMost<const T extends readonly (() => Promise<unknown>)[]>(width: number, tasks: T): Promise<Answers<T>> {
+  const answers: unknown[] = []
+  let next = 0
+  let failed = false
+  const lane = async (): Promise<void> => {
+    while (next < tasks.length && !failed) {
+      const i = next++
+      try {
+        answers[i] = await tasks[i]!()
+      } catch (error) {
+        failed = true
+        throw error
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(width, tasks.length) }, lane))
+  return answers as unknown as Answers<T>
+}
 
 export class LeadSourcesService {
   constructor(
@@ -900,18 +974,9 @@ export class LeadSourcesService {
         throw error
       }),
     )
-    const [scans, campaigns, importedAt] = await Promise.all([
-      scanCache.get(key, async () => {
-        const [registration, triage, qualified, aiQualified, sarafan, inboundCalls] = await Promise.all([
-          this.registrationDays(period),
-          this.repository.triageDays(period),
-          this.repository.qualifiedSources(period),
-          this.repository.aiQualifiedStages(period),
-          this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
-          this.repository.inboundCallCount(period),
-        ])
-        return { registration, triage, qualified, aiQualified, sarafan, inboundCalls }
-      }),
+    const [registration, scans, campaigns, importedAt] = await Promise.all([
+      this.registrationDays(period),
+      scanCache.get(key, () => this.scans(period)),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),
     ])
@@ -919,7 +984,7 @@ export class LeadSourcesService {
     const fakt1 = await within(fakt1Scan, Math.max(FAKT1_GRACE_MS, FAKT1_WAIT_MS - (Date.now() - started)))
 
     // Narrowed after the memo: one scan serves both brands and the whole.
-    return leadSourcesOverview({ window, ...scans, fakt1, campaigns, importedAt, brand })
+    return leadSourcesOverview({ window, registration, ...scans, fakt1, campaigns, importedAt, brand })
   }
 
   /** Builds the windows the tab opens on into the memos, one after another — see `LEADS_WARM_EVERY_MS`. */
@@ -927,7 +992,31 @@ export class LeadSourcesService {
     const hour = Number(new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hourCycle: 'h23', timeZone }).format(now))
     if (hour < LEADS_WARM_HOURS[0] || hour >= LEADS_WARM_HOURS[1]) return
     // One at a time: two cold months side by side would take the pool from every other screen.
-    for (const preset of LEADS_WARM_PRESETS) await this.overview(resolvePeriod(preset, { timeZone, now }), timeZone)
+    const windows = LEADS_WARM_PRESETS.map((preset) => resolvePeriod(preset, { timeZone, now }))
+    for (const period of windows) {
+      await registrationCache.refresh(windowKey(period), () => this.repository.registrationDays(period))
+      await scanCache.refresh(windowKey(period), () => this.scans(period, LEADS_WARM_SCANS_AT_ONCE))
+    }
+    /*
+      «Факт1 мижоз» LAST, AND ITS FAILURE STOPS NOTHING (2026-10-06 review).
+      The tab answers without it (`fakt1Cache`), yet built in turn with each
+      window's other memos, a phone match timing out on «Bugun» left «Shu oy»
+      cold for the tick — which `overview`, waiting no longer than
+      `FAKT1_WAIT_MS`, never did. Every window's is tried, and the first
+      failure is thrown after, for the warmer to log. A failure above still
+      ends the tick: those memos are the tab itself, and when «Bugun»'s fail
+      the month's heavier scans would only add to the strain — the next tick
+      tries again.
+    */
+    let failure: { error: unknown } | undefined
+    for (const period of windows) {
+      try {
+        await fakt1Cache.refresh(windowKey(period), () => this.insights.leadFakt1Clients(period))
+      } catch (error) {
+        failure ??= { error }
+      }
+    }
+    if (failure) throw failure.error
   }
 
   /**
@@ -961,6 +1050,18 @@ export class LeadSourcesService {
 
   private registrationDays(period: Period): Promise<RegistrationDayRow[]> {
     return registrationCache.get(windowKey(period), () => this.repository.registrationDays(period))
+  }
+
+  /** `scanCache`'s build: its five reads, at most `width` at a time — all at once for a reader. */
+  private async scans(period: Period, width = Infinity): Promise<WindowScans> {
+    const [triage, qualified, aiQualified, sarafan, inboundCalls] = await atMost(width, [
+      () => this.repository.triageDays(period),
+      () => this.repository.qualifiedSources(period),
+      () => this.repository.aiQualifiedStages(period),
+      () => this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
+      () => this.repository.inboundCallCount(period),
+    ])
+    return { triage, qualified, aiQualified, sarafan, inboundCalls }
   }
 }
 

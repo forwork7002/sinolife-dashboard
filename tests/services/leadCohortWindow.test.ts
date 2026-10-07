@@ -30,10 +30,30 @@ describe('leadCohortWindow', () => {
     })
   })
 
+  it('never ends after today when the START is in the future (2026-10-06 audit)', () => {
+    // A day typed past the picker's max: swapped in as the end, it drew empty future rows.
+    expect(leadCohortWindow({ from: '2026-10-20', today: '2026-10-06' })).toEqual({ from: '2026-10-06', to: '2026-10-06' })
+    expect(leadCohortWindow({ from: '2026-10-20', to: '2026-10-03', today: '2026-10-06' })).toEqual({
+      from: '2026-10-03',
+      to: '2026-10-06',
+    })
+  })
+
   it(`keeps the end and trims the start past ${LEAD_COHORT_MAX_DAYS} days`, () => {
     const w = leadCohortWindow({ from: '2025-01-01', to: '2026-09-24', today: '2026-09-24' })
     expect(w.to).toBe('2026-09-24')
     expect(w.from).toBe('2026-06-25')
+  })
+
+  it('never reaches before 2025 — PostgreSQL has no year 0 (2026-10-06 review)', () => {
+    // «0001-01-05» defaulted its start to «0000-12-23», which `$3::date` refused: a 500.
+    expect(leadCohortWindow({ to: '0001-01-05', today: '2026-10-06' })).toEqual({ from: '2025-01-01', to: '2025-01-01' })
+    expect(leadCohortWindow({ from: '0002-01-01', to: '0002-03-01', today: '2026-10-06' })).toEqual({
+      from: '2025-01-01',
+      to: '2025-01-01',
+    })
+    // A start shifted back from the end is held as well.
+    expect(leadCohortWindow({ to: '2025-01-05', today: '2026-10-06' })).toEqual({ from: '2025-01-01', to: '2025-01-05' })
   })
 })
 
@@ -103,6 +123,8 @@ describe('LeadCohortService', () => {
     expect(sql).toMatch(/h\."headId" = e\."id"/)
     expect(sql).toMatch(/e\."id" = ANY\(\$1::text\[\]\)/)
     expect(sql).toMatch(/DISTINCT ON \(e\."id"\)/)
+    // Of two ROP units they head, the one they sit in — «THE ROP OF A LEAD», as the split cards and RNP read it.
+    expect(sql).toMatch(/IS NULL, \(h\."id" = e\."departmentId"\) DESC, h\."name"\s*$/)
   })
 
   it('reads the deal SQL with the three windows and the three pipelines', () => {

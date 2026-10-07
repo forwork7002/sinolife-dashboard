@@ -669,6 +669,99 @@ describe('LeadSourcesService.overview — a slow «Факт1 мижоз»', () =
   })
 })
 
+describe('LeadSourcesService.overview — the leads and their kval from one rebuild (2026-10-06 audit)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('never pairs the previous rebuild\'s leads with this one\'s kval, and agrees with «Targetologlar · kunlik»', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-03-10T00:00:00Z'),
+      customEnd: new Date('2026-03-11T00:00:00Z'),
+    })
+    // Each scan answers with how many times it has been read: the n-th rebuild says n.
+    let registrations = 0
+    let kvals = 0
+    const service = new LeadSourcesService(
+      {
+        registrationDays: async () => [reg({ day: '2026-03-10', formTitle: UMAR_FORM, leads: ++registrations })],
+        triageDays: async () => [],
+        qualifiedSources: async () => [
+          { sourceId: 'REPEAT_SALE', formTitle: UMAR_FORM, productLine: null, aiQualified: false, qualified: ++kvals },
+        ],
+        aiQualifiedStages: async () => [],
+        pipelineSourceCount: async () => NO_SARAFAN,
+        inboundCallCount: async () => null,
+      } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { leadFakt1Clients: async () => [] } as never,
+    )
+
+    const first = await service.overview(period, 'Asia/Tashkent')
+    expect([first.funnel.total, first.funnel.qualified]).toEqual([1, 1])
+
+    // Past the TTL: the old answer at once, every memo rebuilt behind it.
+    vi.advanceTimersByTime(180_000)
+    await service.overview(period, 'Asia/Tashkent')
+    await vi.runAllTimersAsync()
+
+    const second = await service.overview(period, 'Asia/Tashkent')
+    expect([second.funnel.total, second.funnel.qualified]).toEqual([2, 2])
+    const sheet = await service.targetologForms(period, 'Asia/Tashkent')
+    expect(sheet.forms.outcome.leads).toBe(second.forms.outcome.leads)
+  })
+})
+
+describe('LeadSourcesService.overview — a reader\'s cold miss (2026-10-06 review)', () => {
+  it('runs every read at once — only the warmer goes two scans at a time', async () => {
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-02-10T00:00:00Z'),
+      customEnd: new Date('2026-02-11T00:00:00Z'),
+    })
+    const inFlight: string[] = []
+    const answers: (() => void)[] = []
+    /** A read that answers only when the test lets it. */
+    const read = <T,>(name: string, rows: T) => () => {
+      inFlight.push(name)
+      return new Promise<T>((resolve) => answers.push(() => resolve(rows)))
+    }
+    const service = new LeadSourcesService(
+      {
+        registrationDays: read('registrationDays', [reg({ day: '2026-02-10', formTitle: UMAR_FORM, leads: 2 })]),
+        triageDays: read('triageDays', []),
+        qualifiedSources: read('qualifiedSources', []),
+        aiQualifiedStages: read('aiQualifiedStages', []),
+        pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
+        inboundCallCount: read('inboundCallCount', null),
+      } as never,
+      { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+      { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
+    )
+
+    const answer = service.overview(period, 'Asia/Tashkent')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    // Nothing has answered and every read is out — the five scans with them, where the warmer's pace shows two.
+    expect([...inFlight].sort()).toEqual([
+      'aiQualifiedStages',
+      'inboundCallCount',
+      'leadFakt1Clients',
+      'pipelineSourceCount',
+      'qualifiedSources',
+      'registrationDays',
+      'triageDays',
+    ])
+    for (const release of answers) release()
+    expect((await answer).funnel.total).toBe(2)
+  })
+})
+
 describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', () => {
   it('builds «Bugun» then «Shu oy» by working hours, through the reader\'s own memo keys, and nothing at night', async () => {
     const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
@@ -694,5 +787,142 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
     // 10:00 Tashkent.
     await service.warm(new Date('2026-05-12T05:00:00Z'), 'Asia/Tashkent')
     expect(windows).toEqual(['today', 'this_month'])
+  })
+
+  describe('each rebuild waited for (2026-10-06 audit)', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('waits for every memo\'s rebuild, window by window and two scans at a time — on the second tick too', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+      vi.setSystemTime(new Date('2026-04-14T05:00:00Z')) // 10:00 Tashkent
+      const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+      let inFlight = 0
+      let peak = 0
+      let reads = 0
+      /** A read that holds a connection for a second. */
+      const read = <T,>(rows: T) => async () => {
+        reads++
+        peak = Math.max(peak, ++inFlight)
+        await new Promise((resolve) => setTimeout(resolve, 1_000))
+        inFlight--
+        return rows
+      }
+      const service = new LeadSourcesService(
+        {
+          registrationDays: read([]),
+          triageDays: read([]),
+          qualifiedSources: read([]),
+          aiQualifiedStages: read([]),
+          pipelineSourceCount: read(NO_SARAFAN),
+          inboundCallCount: read(null),
+        } as never,
+        { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+        { leadFakt1Clients: read([]) } as never,
+      )
+      const tick = async () => {
+        let done = false
+        const warming = service.warm(new Date(), 'Asia/Tashkent').then(() => (done = true))
+        // Each window: registration 1 s, the five scans two at a time 3 s; then each window's FAKT 1, 1 s. 10 s in all.
+        await vi.advanceTimersByTimeAsync(9_999)
+        expect(done).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        await warming
+        expect(inFlight).toBe(0)
+      }
+
+      await tick() // cold: every memo's first build
+      expect(reads).toBe(14)
+      // Three minutes on: every memo past its TTL and still showable — `get` would hand it out and rebuild behind.
+      vi.advanceTimersByTime(180_000)
+      await tick()
+      expect(reads).toBe(28)
+      expect(peak).toBe(2)
+    })
+  })
+
+  describe('a memo that fails (2026-10-06 review)', () => {
+    /** Each read logged as «<read> <preset>»; `fails` names the one that throws. */
+    const warmer = async (reads: string[], fails: string) => {
+      const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+      const read = <T,>(name: string, rows: T) => async (period: { preset: string }) => {
+        reads.push(`${name} ${period.preset}`)
+        if (`${name} ${period.preset}` === fails) throw new Error('canceling statement due to statement timeout')
+        return rows
+      }
+      return new LeadSourcesService(
+        {
+          registrationDays: read('registrationDays', []),
+          triageDays: read('triageDays', []),
+          qualifiedSources: read('qualifiedSources', []),
+          aiQualifiedStages: read('aiQualifiedStages', []),
+          pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
+          inboundCallCount: read('inboundCallCount', null),
+        } as never,
+        { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+        { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
+      )
+    }
+
+    it('still builds «Shu oy» when «Bugun»\'s «Факт1 мижоз» fails — the tab answers without it — and reports it', async () => {
+      const reads: string[] = []
+      const service = await warmer(reads, 'leadFakt1Clients today')
+      // 10:00 Tashkent. Thrown at the end, for «leads warm-up failed».
+      await expect(service.warm(new Date('2026-08-12T05:00:00Z'), 'Asia/Tashkent')).rejects.toThrow('statement timeout')
+      expect(reads.filter((r) => r.endsWith(' this_month')).map((r) => r.split(' ')[0]).sort()).toEqual([
+        'aiQualifiedStages',
+        'inboundCallCount',
+        'leadFakt1Clients',
+        'pipelineSourceCount',
+        'qualifiedSources',
+        'registrationDays',
+        'triageDays',
+      ])
+      // Every window's other memos come first: a slow phone match holds up none of them.
+      expect(reads.slice(-2)).toEqual(['leadFakt1Clients today', 'leadFakt1Clients this_month'])
+    })
+
+    it('ends the tick when «Bugun»\'s Регистрация fails — the month\'s heavier scans would only add to the strain', async () => {
+      const reads: string[] = []
+      const service = await warmer(reads, 'registrationDays today')
+      await expect(service.warm(new Date('2026-01-13T05:00:00Z'), 'Asia/Tashkent')).rejects.toThrow('statement timeout')
+      expect(reads).toEqual(['registrationDays today'])
+    })
+  })
+
+  it('fills the memos the routes read — `instrumentation.ts` runs its own copy of this module (2026-10-06 audit)', async () => {
+    const warmers = await import('@/server/services/leadSourcesService')
+    const now = new Date('2026-06-16T05:00:00Z') // 10:00 Tashkent
+    const reads: string[] = []
+    const read = <T,>(name: string, rows: T) => async () => {
+      reads.push(name)
+      return rows
+    }
+    const service = (Service: typeof warmers.LeadSourcesService) =>
+      new Service(
+        {
+          registrationDays: read('registrationDays', [reg({ day: '2026-06-16', formTitle: UMAR_FORM, leads: 4 })]),
+          triageDays: read('triageDays', []),
+          qualifiedSources: read('qualifiedSources', []),
+          aiQualifiedStages: read('aiQualifiedStages', []),
+          pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
+          inboundCallCount: read('inboundCallCount', null),
+        } as never,
+        { campaignDays: async () => [], campaignsImportedAt: async () => null } as never,
+        { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
+      )
+    await service(warmers.LeadSourcesService).warm(now, 'Asia/Tashkent')
+    expect(reads).toHaveLength(14)
+
+    // A second instance of the module, as the route handlers' bundle holds one.
+    vi.resetModules()
+    const routes = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    expect(routes.LeadSourcesService).not.toBe(warmers.LeadSourcesService)
+    reads.length = 0
+    const today = await service(routes.LeadSourcesService).overview(resolvePeriod('today', { timeZone: 'Asia/Tashkent', now }), 'Asia/Tashkent')
+    expect(reads).toEqual([])
+    expect(today.funnel.total).toBe(4)
   })
 })

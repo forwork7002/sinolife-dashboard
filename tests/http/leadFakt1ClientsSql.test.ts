@@ -10,7 +10,7 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
-const { dealFormTitleSql, formAliasJoinSql } = await import('@/server/repositories/leadFormSql')
+const { formAliasOverSql, leadFormTitleSql } = await import('@/server/repositories/leadFormSql')
 
 /*
   «Факт1 мижоз» on «Barcha manbalar · Регистрация». Run against a local
@@ -38,15 +38,23 @@ describe('leadFakt1ClientsSql', () => {
 
   it('reads Регистрация leads created in the window, and only orders created after the lead', () => {
     expect(sql).toContain(`p."role" = 'LEAD'`)
-    expect(sql).toContain(`l."createdAtSource" >= $1 AND l."createdAtSource" < $2`)
+    expect(sql).toContain(`d."createdAtSource" >= $1 AND d."createdAtSource" < $2`)
     expect(sql).toContain(`max(c.created_at) AS created_at`)
     expect(sql).toContain(`f.created_at > l."createdAtSource"`)
   })
 
   it('names the form exactly as the registration scan does, one row per lead', () => {
     // leadFormSql.ts: the title, else a repeat lead's SOURCE_DESCRIPTION.
-    expect(sql).toContain(`min(${dealFormTitleSql('l', 's', 'fa')}) AS form_title`)
-    expect(sql).toContain(formAliasJoinSql('l', 'fa'))
+    expect(sql).toContain(`min(${leadFormTitleSql('l."title"', 'l.sd', 's."externalId"', 'fa.title')}) AS form_title`)
+    expect(sql).toContain('LEFT JOIN form_alias fa ON fa.sd = l.sd')
     expect(sql).toMatch(/GROUP BY l\."id", s\."externalId", s\."name"\s*$/)
+  })
+
+  it('reads the window\'s leads once, the form aliases from those same rows (2026-10-06 audit)', () => {
+    // The alias CTE of its own (`FROM "deal" ad`) was a second pass over a month of Регистрация deals.
+    expect(sql.match(/FROM "deal"/g)).toHaveLength(1)
+    expect(sql).toContain('lw AS MATERIALIZED (')
+    expect(sql).toContain(formAliasOverSql('(SELECT w.sd, w.title FROM lw w) fd'))
+    expect(sql).toMatch(/FROM lw l\b/)
   })
 })
