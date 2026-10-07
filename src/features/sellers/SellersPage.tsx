@@ -45,8 +45,8 @@ import { t } from '@/lib/messages'
  * `ForecastSection`, where the manager who reads those numbers actually is.
  * The rest is gone altogether: the bonus ladder (2026-09-10), and the per-row
  * Plan / Lid / FOT columns and the per-seller drill-down with its day chart,
- * which left this screen on 2026-09-07 and whose payload fields and endpoint
- * went on 2026-10-06. Nothing about a bonus is printed here at all, per the
+ * which left this screen on 2026-09-07 and whose payload fields and the
+ * `?employeeId=` branch of `/analytics/sellers` went on 2026-10-06. Nothing about a bonus is printed here at all, per the
  * client's own note of 2026-09-07.
  *
  * A TELEVISION HAS NO MOUSE, and that decides the rest of the layout:
