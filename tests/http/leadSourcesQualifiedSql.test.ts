@@ -86,3 +86,27 @@ describe('LeadSourcesRepository.aiQualifiedStages', () => {
     expect(params).toEqual([start, end])
   })
 })
+
+/*
+  «Жами лидлар» and every table built on the creation scan leave out a late
+  «Qayta zayavka» copy — 05.10.2026: 1 071 form fills of earlier days opened
+  at once, 2 337 → 1 266 on the portal's own deals — by RNP's rule.
+*/
+describe('LeadSourcesRepository.registrationDays — late «Qayta zayavka» copies', () => {
+  it('drops the replayed deals by the shared rule, seeded from the day before the window', async () => {
+    const seen: string[] = []
+    const client = {
+      $queryRawUnsafe: async (sql: string) => {
+        seen.push(sql)
+        return []
+      },
+    }
+    const { replayActSql, replayedCteSql } = await import('@/server/repositories/leadFormSql')
+    await new LeadSourcesRepository(client as never).registrationDays({ start: new Date(0), end: new Date(1) } as never)
+    const sql = seen[0]!
+    expect(sql).toContain(`${replayActSql(sourceDescriptionSql('d'))} AS act`)
+    expect(sql).toContain(replayedCteSql('(SELECT r.id, r.created, r.act FROM reg r) q0', '$1'))
+    expect(sql).toContain('WHERE NOT EXISTS (SELECT 1 FROM replayed rp WHERE rp.id = r.id)')
+    expect(sql).toMatch(/pd\."createdAtSource" >= \$1 - interval '1 day' AND pd\."createdAtSource" < \$1/)
+  })
+})
