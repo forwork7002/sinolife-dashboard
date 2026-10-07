@@ -31,7 +31,7 @@ import { sessionUser, signOut, useSession } from '@/lib/authClient'
 import { useNewBuildAvailable } from '@/lib/buildVersion'
 import { formatCompactUzs, formatDateTime, syncFailureScope } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
-import { useServerViewer } from '@/lib/viewer'
+import { pickViewer, useServerViewer } from '@/lib/viewer'
 import {
   isCompanyWideSection,
   readsCompanyWide,
@@ -416,8 +416,25 @@ export function Shell({
     whose account had just been opened for them signed in and met the
     administrator's menu for a second. Reported 2026-09-11.
   */
+  /*
+    ONE ACCOUNT, OR THE SERVER'S ANSWER. The fetched copy is used only while
+    its userId is the server viewer's (`pickViewer`): a cached viewer left by
+    the previous account on this tab must never draw the next one's menu.
+    When the two disagree, the root layout's copy can be the stale one (a
+    layout is not re-rendered on a soft navigation — an account switched in
+    another tab leaves it behind), so the layout is refreshed once per
+    disagreement and the pair converges on the live session.
+  */
   const serverViewer = useServerViewer()
-  const viewer = useFilterOptions().data?.data.viewer ?? serverViewer
+  const fetchedViewer = useFilterOptions().data?.data.viewer
+  const viewer = pickViewer(fetchedViewer, serverViewer)
+  const viewerMismatch =
+    fetchedViewer && serverViewer && fetchedViewer.userId !== serverViewer.userId
+      ? `${fetchedViewer.userId}|${serverViewer.userId}`
+      : null
+  useEffect(() => {
+    if (viewerMismatch) router.refresh()
+  }, [viewerMismatch, router])
   const role = user?.role ?? viewer?.role
   /*
     A NARROWED ACCOUNT LOSES THE LINKS ITS SCOPE CANNOT OPEN.
