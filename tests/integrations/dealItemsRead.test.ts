@@ -222,6 +222,43 @@ describe('reading line items', () => {
   })
 
   /*
+    A CREDENTIAL CODE INSIDE AN ANSWERED BATCH IS ABOUT THE DEAL. Every command
+    ran on one webhook, so `ACCESS_DENIED` beside answered commands is a deal
+    the webhook's user may not read. Taken for the portal's refusal it shut the
+    gate, never counted against the deal, and the deal — asked about alone on
+    every retry — shut the portal again each time the gate reopened.
+  */
+  it("keeps an ACCESS_DENIED beside answered commands off the gate, and gives that deal up", async () => {
+    let quiet = false
+    const denied = { error: 'ACCESS_DENIED', error_description: 'Access denied.' }
+    const { provider, asked, warnings } = portal(
+      (id) => (id === '1002' ? denied : [LINE]),
+      () => (quiet ? [] : PAID),
+    )
+    await provider.fetchDeals()
+
+    const page = await provider.fetchDealItems()
+    expect(page.dealsRead).toEqual(['1001', '1003'])
+    expect(provider.gate.isOpen()).toBe(false)
+
+    // Asked about alone, nothing in the batch answers: the gate is told, and
+    // the deal's count moves all the same — twice more, then it is given up.
+    quiet = true
+    for (let read = 0; read < 2; read++) {
+      await provider.fetchDeals()
+      await expect(provider.fetchDealItems()).rejects.toThrow(/ACCESS_DENIED/)
+      expect(provider.gate.isOpen()).toBe(true)
+      expect(await provider.probe()).toBe(true)
+    }
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/1002.*ACCESS_DENIED/)
+
+    await provider.fetchDeals()
+    expect((await provider.fetchDealItems()).items).toEqual([])
+    expect(asked).toEqual([['1001', '1002', '1003'], ['1002'], ['1002']])
+  })
+
+  /*
     A REFUSAL IS NOT THE DEAL'S MISS. A read the portal refused for everybody
     leaves each deal's count where it was, so a block cannot hasten giving up
     a deal the portal has merely not answered yet.

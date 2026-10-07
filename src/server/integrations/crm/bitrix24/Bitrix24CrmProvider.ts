@@ -2083,7 +2083,9 @@ export class Bitrix24CrmProvider implements CrmProvider {
    *
    * - a REFUSAL (a spent basket, an overloaded or locked-out portal) is told to
    *   the gate under `crm.deal.productrows.get`, the method that was spent and
-   *   never `batch`, and fails the read;
+   *   never `batch`, and fails the read — though a CREDENTIAL code beside an
+   *   answered command is the deal's error, and alone it is the deal's miss
+   *   as well as the gate's (see the loop);
    * - a command the portal left UNANSWERED fails it too, unless that deal is
    *   on its last attempt;
    * - an error about ONE deal (deleted since the DEALS pass read it, most
@@ -2142,6 +2144,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
         const errors = (payload.result?.result_error ?? {}) as Record<string, { error?: string } | undefined>
         const results = (payload.result?.result ?? {}) as Record<string, unknown>
+        const anyAnswered = chunk.some((id) => !errors[`d${id}`] && Array.isArray(results[`d${id}`]))
 
         for (const id of chunk) {
           const error = errors[`d${id}`]
@@ -2161,10 +2164,24 @@ export class Bitrix24CrmProvider implements CrmProvider {
             PRODUCT_ROWS,
           )
           const kind = error ? classifyRefusal(problem) : null
-          if (kind === 'THROTTLE' || kind === 'CREDENTIAL' || kind === 'METHOD') {
+          /*
+            A CREDENTIAL code inside a batch the portal answered is not about
+            the webhook: every command ran on the same credential, and a dead
+            one fails the `batch` call itself. Beside an answered command it is
+            about this deal — `ACCESS_DENIED` on a deal the webhook's user may
+            not read — and is that deal's error, never the gate's. Alone it
+            still trips the gate (a webhook that lost its CRM scope refuses
+            every command alike), but counts as the deal's miss as well:
+            otherwise such a deal, asked about by itself on the retry, shut
+            the portal on every read, its count never moving towards
+            `ITEM_READ_ATTEMPTS`.
+          */
+          const credential = kind === 'CREDENTIAL'
+          if (kind === 'THROTTLE' || kind === 'METHOD' || (credential && !anyAnswered)) {
             // Not about this deal: the method, or the portal, said no.
             this.gate.trip(problem, new Date())
             failure ??= problem
+            if (credential) missed.set(id, JSON.stringify(error).slice(0, 120))
             continue
           }
 
