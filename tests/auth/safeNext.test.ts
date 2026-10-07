@@ -28,6 +28,13 @@ const HOSTILE = [
   'javascript:alert(1)',
   ' //evil.example',
   '\\/evil.example',
+  // dot-segments the parser collapses into «//host»
+  '/.//evil.example',
+  '/..//evil.example',
+  '/%2e//evil.example',
+  '/%2E%2E//evil.example',
+  '/a/..//evil.example/x?y#z',
+  '/.///evil.example',
 ]
 
 describe('safeNext', () => {

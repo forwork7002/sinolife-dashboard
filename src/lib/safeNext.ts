@@ -42,5 +42,10 @@ export function safeNext(next: string | null | undefined, origin: string): strin
   }
   if (target.origin !== base.origin) return '/'
 
-  return `${target.pathname}${target.search}${target.hash}`
+  // The parser removes dot-segments, so «/.//evil.example» passes the origin
+  // check as a path on OUR host and comes out as «//evil.example» — which the
+  // router then reads as protocol-relative and leaves the site. Check the
+  // result, not only the input.
+  const path = `${target.pathname}${target.search}${target.hash}`
+  return path.startsWith('//') ? '/' : path
 }
