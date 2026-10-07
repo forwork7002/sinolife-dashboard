@@ -72,9 +72,12 @@ interface Basis {
 const basisCache = ttlCache<Basis>(120_000, LIVE_CACHE)
 const reportCache = ttlCache<InboundCallsDto>(120_000, LIVE_CACHE)
 /*
-  No stale window: a callback made a minute ago must leave «Qilinmagan» on the
-  next poll, not five minutes later. The calls under it may still be up to one
-  basis TTL old, which the card's hint says.
+  No stale window: once a callback is written it must leave «Qilinmagan» on the
+  next poll, not up to five minutes later. It is written only by the CALLS pass,
+  which runs with the three-hourly reference data (REFERENCE, never HOT, in
+  `scripts/syncWorker.ts`) — so a callback made a minute ago can stand as
+  «Qilinmagan» for up to three hours, and the card's hint says that, not «a
+  minute or two». The calls under it may also be up to one basis TTL old.
 */
 const unansweredCache = ttlCache<UnansweredCallsDto>(120_000)
 

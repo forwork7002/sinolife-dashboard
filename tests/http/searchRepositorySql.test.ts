@@ -125,6 +125,44 @@ describe('a term not worth a round trip', () => {
   })
 })
 
+describe('the deal hits', () => {
+  it('say whether each deal arrived in Тасдиклаш, which is what the queue can find it by', async () => {
+    for (const term of ['925842', 'Dilnoza']) {
+      const calls: Call[] = []
+      await repositoryCapturing(calls).search(term, null)
+      expect(stripped(calls[0]!.sql)).toMatch(
+        /EXISTS \(\s*SELECT 1 FROM "deal_stage_history"[\s\S]*"confirmationSignal" = 'CONFIRM_NEW'\s*\) AS queued/,
+      )
+    }
+  })
+
+  it('say whether ANY deal of the customer arrived there — what a link by phone can find', async () => {
+    for (const term of ['925842', 'Dilnoza']) {
+      const calls: Call[] = []
+      await repositoryCapturing(calls).search(term, null)
+      expect(stripped(calls[0]!.sql)).toMatch(
+        /EXISTS \(\s*SELECT 1 FROM "deal" cd[\s\S]*cd\."customerId" = d\."customerId"[\s\S]*"confirmationSignal" = 'CONFIRM_NEW'\s*\) AS customer_queued/,
+      )
+    }
+  })
+})
+
+describe('a blank first number', () => {
+  /*
+    The sync stores the contact's PHONE[0] as the portal sent it, '' included,
+    and COALESCE keeps ''. Every link built from it read q=, which opens the
+    whole year's queue unfiltered.
+  */
+  it('falls through to the next number on the deal hits and the customers alike', async () => {
+    const calls: Call[] = []
+    await repositoryCapturing(calls).search('Dilnoza', null)
+    const [deals, customers] = calls.map((c) => stripped(c.sql))
+
+    expect(deals).toContain(`COALESCE(NULLIF(btrim(cust."phone"), ''), cust."phones"[1]) AS customer_phone`)
+    expect(customers).toContain(`COALESCE(NULLIF(btrim(c."phone"), ''), c."phones"[1]) AS phone`)
+  })
+})
+
 describe('scope', () => {
   it('reaches every row-bearing statement as the joined employee list', async () => {
     const calls: Call[] = []

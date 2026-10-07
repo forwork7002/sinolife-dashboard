@@ -114,6 +114,13 @@ export function CallActivity({
 }) {
   const total = data?.total
   const meanSec = total && total.connected > 0 ? total.talkSec / total.connected : null
+  /*
+    «Gaplashgan» means it: an operator with a connected call. The operator arm
+    also holds everyone whose every dial failed, and the unknown-employee
+    bucket (key '', a call that reached nobody's line) — they keep their rows,
+    zeroes and all, in the table below, and stay out of this count.
+  */
+  const talked = (data?.operators ?? []).filter((o) => o.connected > 0 && o.key !== '')
   const hours = hourPoints(data?.hours ?? [])
   const days = dayPoints(data?.days ?? [])
   const manyDays = days.length > 1
@@ -158,9 +165,9 @@ export function CallActivity({
         <StatTile
           status={status}
           label="Gaplashgan operatorlar"
-          value={data ? data.operators.length : null}
+          value={data ? talked.length : null}
           unit="count"
-          hint={data ? `${formatNumber(data.teams.length)} ta komandadan` : undefined}
+          hint={data ? `${formatNumber(new Set(talked.map((o) => o.team)).size)} ta komandadan` : undefined}
         />
       </div>
 

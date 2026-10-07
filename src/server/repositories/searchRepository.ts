@@ -48,6 +48,18 @@ export interface SearchDealRow {
   readonly createdAt: Date
   readonly stageName: string
   readonly employeeName: string | null
+  /**
+   * Whether the deal ever arrived in Тасдиклаш (C4:NEW) — the confirmation
+   * queue's cohort is made of exactly those, so only such a deal can be found
+   * there by its own id. A База twin or a Регистрация lead never arrives.
+   */
+  readonly queued: boolean
+  /**
+   * Whether ANY deal of the deal's customer ever arrived there — what a link
+   * by the customer's phone can find. False for a customer whose every deal is
+   * a lead that never reached the queue, and for a deal with no customer.
+   */
+  readonly customerQueued: boolean
 }
 
 export interface SearchCustomerRow {
@@ -188,6 +200,8 @@ export class SearchRepository {
         created_at: Date
         stage_name: string
         employee_name: string | null
+        queued: boolean
+        customer_queued: boolean
       }[]
     >(
       `
@@ -199,12 +213,37 @@ export class SearchRepository {
         d."orderCode" AS order_code,
         d."title" AS title,
         cust."name" AS customer_name,
-        COALESCE(cust."phone", cust."phones"[1]) AS customer_phone,
+        /*
+          A blank first number is no number. The sync stores PHONE[0] as the
+          portal sent it, '' included, and COALESCE keeps '' — a link carrying
+          q= then opened the whole year's queue unfiltered.
+        */
+        COALESCE(NULLIF(btrim(cust."phone"), ''), cust."phones"[1]) AS customer_phone,
         d."amountMinor"::text AS amount_minor,
         d."currency" AS currency,
         d."createdAtSource" AS created_at,
         st."name" AS stage_name,
-        e."fullName" AS employee_name
+        e."fullName" AS employee_name,
+        /*
+          An arrival in Тасдиклаш, as the queue's cohort reads one. At most a
+          hundred hits, each probed on (dealId, enteredAt).
+        */
+        EXISTS (
+          SELECT 1 FROM "deal_stage_history" sh
+            JOIN "deal_stage" ss ON ss."id" = sh."stageId"
+           WHERE sh."dealId" = d."id" AND ss."confirmationSignal" = 'CONFIRM_NEW'
+        ) AS queued,
+        /*
+          The same arrival for any deal of the customer: what the queue can
+          show for a link by phone. Probed on (customerId), then on
+          (dealId, enteredAt), and it stops at the first arrival it meets.
+        */
+        EXISTS (
+          SELECT 1 FROM "deal" cd
+            JOIN "deal_stage_history" ch ON ch."dealId" = cd."id"
+            JOIN "deal_stage" cs ON cs."id" = ch."stageId"
+           WHERE cd."customerId" = d."customerId" AND cs."confirmationSignal" = 'CONFIRM_NEW'
+        ) AS customer_queued
       FROM hits h
       JOIN "deal" d ON d."id" = h."id"
       JOIN "deal_stage" st ON st."id" = d."stageId"
@@ -229,6 +268,8 @@ export class SearchRepository {
       createdAt: r.created_at,
       stageName: r.stage_name,
       employeeName: r.employee_name,
+      queued: r.queued,
+      customerQueued: r.customer_queued,
     }))
   }
 
@@ -263,7 +304,8 @@ export class SearchRepository {
       SELECT
         c."id" AS customer_id,
         c."name" AS name,
-        COALESCE(c."phone", c."phones"[1]) AS phone,
+        -- A blank first number falls through, as on the deal hits: q= is no search.
+        COALESCE(NULLIF(btrim(c."phone"), ''), c."phones"[1]) AS phone,
         count(d."id")::bigint AS orders,
         max(d."createdAtSource") AS last_order_at
       FROM hits h

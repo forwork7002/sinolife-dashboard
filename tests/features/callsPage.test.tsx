@@ -133,6 +133,35 @@ describe('«Qoʻngʻiroqlar»', () => {
     expect(when).toContain('oxirgi yozilgan qoʻngʻiroq: 16-sen, 11:48')
   })
 
+  /*
+    The tile read `operators.length`: everyone with a call leg, connected or
+    not, plus the bucket of calls that reached nobody's line — an operator
+    whose every dial failed, for example, counted as one «who talked». Its
+    hint read `teams.length`, every team any of those rows sat in.
+  */
+  it('counts as «Gaplashgan» only operators with a connected call, and their teams', () => {
+    // The calls that reached nobody's line: no employee, so no department — the server's NO_TEAM.
+    const unknown = row('', { label: 'Nomaʼlum xodim', team: 'Boʻlimsiz', calls: 9, connected: 4, talkSec: 300 })
+    const data = {
+      ...activity(false),
+      operators: [...OPERATORS, unknown],
+      // The team arm the server emits for those rows: «Baza», whose one operator never connected, and «Boʻlimsiz» too.
+      teams: [
+        row('Sevinch', { calls: 140, connected: 52, talkSec: 11_545 }),
+        row('Boʻlimsiz', { calls: 9, connected: 4, talkSec: 300 }),
+        row('Baza', { calls: 3 }),
+      ],
+    }
+    render(<CallActivity data={data} period={TODAY} status="ready" />)
+
+    const tile = screen.getByText('Gaplashgan operatorlar').closest('.card')! as HTMLElement
+    expect(tile.querySelector('.figure')?.textContent).toBe('1')
+    // Only Sevinch's operator talked; three teams had a call leg.
+    expect(within(tile).getByText('1 ta komandadan')).toBeTruthy()
+    // The table still lists every row, the one that reached nobody included.
+    expect(screen.getByRole('rowheader', { name: /Karimov Aziz/ })).toBeTruthy()
+  })
+
   it('names the data floor only when the window reached below it', () => {
     const { rerender } = render(
       <CallActivity data={activity(true)} period={TODAY} status="ready" />,

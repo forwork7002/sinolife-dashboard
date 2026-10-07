@@ -15,6 +15,7 @@ import { bitrixDealUrl } from '@/features/target/targetApi'
 import { apiGet } from '@/lib/api'
 import {
   formatCompactUzs,
+  formatDate,
   formatDateShort,
   formatDateTime,
   formatFullUzs,
@@ -159,6 +160,7 @@ export function SverkaBody({
           clean={totals?.clean ?? 0}
           fakt1={fakt1Orders}
           pending={totals?.pending.orders ?? 0}
+          beforeFloor={totals?.fakt1.beforeFloor.orders ?? 0}
           flagged={flaggedTotal}
         />
       </div>
@@ -375,13 +377,26 @@ function tsvCell(value: string): string {
 function FreshLine({ data }: { data: SverkaOverviewDto | undefined }) {
   if (!data) return <div className="h-4" />
   const { lastSuccessAt, lastError } = data.moysklad
+  const before = data.totals.beforeFloor
   return (
     <div className="flex flex-col gap-1">
       <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
         MoySklad: {formatNumber(data.moysklad.orders)} ta buyurtma
         {lastSuccessAt ? ` · oxirgi tekshiruv ${formatDateTime(lastSuccessAt)}` : ''} · davrda Tasdiqlashga tushgan{' '}
-        {formatNumber(data.totals.cohortOrders)} ta bitim solishtirildi.
+        {formatNumber(data.totals.cohortOrders - before.orders)} ta bitim solishtirildi.
       </p>
+      {/*
+        A window reaching back past MoySklad's first order: those deals are in
+        the FAKT figures and in no comparison. Said here, or every tile's gap
+        reads as a difference nobody can find.
+      */}
+      {before.orders > 0 && (
+        <p className="text-xs" style={{ color: 'var(--status-warning)' }}>
+          MoySklad buyurtmalari {formatDate(data.moysklad.since)} dan boshlanadi — undan oldin Tasdiqlashga tushgan{' '}
+          {formatNumber(before.orders)} ta bitim ({formatFullUzs(before.amount)} soʻm) MoySkladʼda yoʻq. Ular FAKT
+          raqamlarida bor, lekin solishtirilmadi va mahsulot hamda ROP jadvallariga kirmadi.
+        </p>
+      )}
       {/* A revoked token or a MoySklad outage leaves the figures standing; say they are stale. */}
       {lastError && (
         <p className="text-xs font-medium" role="status" style={{ color: 'var(--status-critical)' }}>
@@ -417,9 +432,17 @@ function PairTile({
       </Card>
     )
   }
-  const diffAmount = pair.moysklad.amount - pair.bitrix.amount
-  const diffOrders = pair.moysklad.orders - pair.bitrix.orders
-  const equal = Math.abs(diffAmount) < 1 && diffOrders === 0
+  /*
+    Deals queued before MoySklad's first order stay in Bitrix24's figure —
+    it is Savdo dinamikasi's — and leave the verdict: the gap is over the
+    deals MoySklad could have held. When those are all there is, nothing was
+    compared, and that is not «mos».
+  */
+  const before = pair.beforeFloor
+  const diffAmount = pair.moysklad.amount - (pair.bitrix.amount - before.amount)
+  const diffOrders = pair.moysklad.orders - (pair.bitrix.orders - before.orders)
+  const uncompared = before.orders > 0 && before.orders === pair.bitrix.orders && pair.moysklad.orders === 0
+  const equal = !uncompared && Math.abs(diffAmount) < 1 && diffOrders === 0
   const waiting =
     !equal && pending !== undefined && pending.orders > 0 &&
     diffOrders === -pending.orders && Math.abs(diffAmount + pending.amount) < 1
@@ -439,11 +462,17 @@ function PairTile({
         className="mt-auto flex items-baseline justify-between gap-2 border-t pt-2 text-xs font-medium tabular-nums"
         style={{
           borderColor: 'var(--grid)',
-          color: equal ? 'var(--status-good)' : waiting ? 'var(--status-warning)' : 'var(--status-critical)',
+          color: uncompared
+            ? 'var(--ink-muted)'
+            : equal
+              ? 'var(--status-good)'
+              : waiting
+                ? 'var(--status-warning)'
+                : 'var(--status-critical)',
         }}
       >
-        <span>{equal ? '✓ mos' : waiting ? 'Omborga tayyorlanmoqda' : 'Farq'}</span>
-        {!equal && (
+        <span>{uncompared ? 'Solishtirilmadi' : equal ? '✓ mos' : waiting ? 'Omborga tayyorlanmoqda' : 'Farq'}</span>
+        {!equal && !uncompared && (
           <span className="text-right">
             {signed(diffOrders)} ta · {signedUzs(diffAmount)}
           </span>
@@ -452,6 +481,12 @@ function PairTile({
       {!equal && !waiting && pending !== undefined && pending.orders > 0 && (
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           shundan {formatNumber(pending.orders)} tasi hali omborga tayyorlanmoqda ({formatFullUzs(pending.amount)} soʻm)
+        </p>
+      )}
+      {before.orders > 0 && (
+        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          Bitrix24 dagi {formatNumber(before.orders)} tasi ({formatFullUzs(before.amount)} soʻm) MoySklad boshlanishidan
+          oldin tushgan — solishtirilmadi
         </p>
       )}
     </Card>
@@ -481,12 +516,15 @@ function MatchTile({
   clean,
   fakt1,
   pending,
+  beforeFloor,
   flagged,
 }: {
   status: Status
   clean: number
   fakt1: number
   pending: number
+  /** FAKT 1 orders queued before MoySklad's first order — never in it, so out of the share. */
+  beforeFloor: number
   flagged: number
 }) {
   if (status === 'loading') {
@@ -496,8 +534,8 @@ function MatchTile({
       </Card>
     )
   }
-  // Orders still being packed have no MoySklad order yet — neither clean nor wrong.
-  const compared = fakt1 - pending
+  // Orders still being packed have no MoySklad order yet, and orders older than MoySklad never will — neither clean nor wrong.
+  const compared = fakt1 - pending - beforeFloor
   const share = compared > 0 ? (clean / compared) * 100 : null
   const tone =
     share === null

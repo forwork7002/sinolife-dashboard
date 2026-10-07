@@ -107,4 +107,52 @@ describe('SverkaService.overview', () => {
     expect(missing.diffAmount).toBeNull()
     expect(missing.productDiff).toEqual([])
   })
+
+  it('compares nothing for an order queued before MoySklad held any, and says how much that left out', async () => {
+    const may = deal({
+      dealId: 'd-may',
+      externalId: '880001',
+      queuedAt: new Date('2026-05-10T07:00:00Z'),
+      delivered: true,
+      logisticsRole: 'DELIVERED',
+      stageExternalId: 'C6:WON',
+      stageName: 'Доставлен',
+    })
+    // Refused at confirmation in May: no MoySklad order would ever exist, so it is not «before» MoySklad either.
+    const refused = deal({
+      dealId: 'd-may-refused',
+      externalId: '880002',
+      queuedAt: new Date('2026-05-11T07:00:00Z'),
+      fakt1: false,
+      outcome: 'REJECTED',
+      logisticsRole: 'CANCELLED_EARLY',
+      stageExternalId: 'C12:UC_1OM8B2',
+      stageName: 'Тасдикланмаган',
+    })
+    const svc = service(
+      [deal({}), may, refused],
+      [order({ sumMinor: som(1_600_000), items: [collagen] })],
+      new Map([['d1', [collagen]]]),
+    )
+    const year = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      now: new Date('2026-10-06T09:00:00+05:00'),
+      customStart: new Date('2026-01-01T00:00:00+05:00'),
+      customEnd: new Date('2026-12-31T00:00:00+05:00'),
+    })
+    const out = await svc.overview(year)
+
+    expect(out.lines).toEqual([])
+    expect(out.issueCounts.MISSING_IN_MS).toBe(0)
+    expect(out.issueAmounts.MISSING_IN_MS).toBe(0)
+    // FAKT 1 keeps the May order — the figure is Savdo dinamikasi's — and names it as uncompared.
+    expect(out.totals.fakt1.bitrix).toEqual({ orders: 2, amount: 3_200_000 })
+    expect(out.totals.fakt1.beforeFloor).toEqual({ orders: 1, amount: 1_600_000 })
+    expect(out.totals.fakt2.beforeFloor).toEqual({ orders: 1, amount: 1_600_000 })
+    // The refusal is in the cohort and out of the set-aside count the page says is «in the FAKT figures».
+    expect(out.totals.cohortOrders).toBe(3)
+    expect(out.totals.beforeFloor).toEqual({ orders: 1, amount: 1_600_000 })
+    expect(out.totals.clean).toBe(1)
+    expect(out.moysklad.since).toBe('2026-06-14T19:00:00.000Z')
+  })
 })

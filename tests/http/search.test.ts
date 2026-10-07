@@ -35,6 +35,8 @@ const FOUND: SearchResults = {
       createdAt: new Date('2026-08-31T04:09:00.000Z'),
       stageName: 'Тасдиклаш · Заказ тасдиклаш',
       employeeName: 'Quvondiqova Gulmira',
+      queued: true,
+      customerQueued: true,
     },
   ],
   customers: [
@@ -161,6 +163,84 @@ describe('where a result takes you', () => {
     expect(deal.href).toContain('q=925842')
   })
 
+  /*
+    THE QUEUE CAN ONLY FIND WHAT ARRIVED IN IT. A phone lists every deal of the
+    customer, newest first — the База twin made after delivery, a fresh
+    Регистрация lead — and their own ids opened an empty board for the row
+    just listed. The customer's phone finds the family there.
+  */
+  it('opens a deal that never reached the queue by its customer’s phone', async () => {
+    const twin = {
+      ...FOUND.deals[0]!,
+      dealId: 'd2',
+      bitrixId: '1010043',
+      orderCode: 'bx10043',
+      stageName: 'База · Новый',
+      queued: false,
+    }
+    const lead = { ...twin, dealId: 'd3', bitrixId: '1012001', orderCode: null, stageName: 'Регистрация · Новый лид' }
+    const dto = await serviceReturning({ ...FOUND, deals: [twin, lead] }).search(
+      principal(),
+      scopeOf(principal()),
+      '998901234567',
+      'UZS',
+    )
+    const [twinHit, leadHit] = dto.groups.find((g) => g.key === 'deals')!.items
+
+    expect(twinHit!.href).toContain(`q=${encodeURIComponent('+998901234567')}`)
+    expect(leadHit!.href).toContain(`q=${encodeURIComponent('+998901234567')}`)
+    expect(twinHit!.href).not.toContain('q=1010043')
+    // The customer's delivered order IS in the queue, so neither row is marked.
+    expect(twinHit!.hint).not.toContain('Tasdiqlashga tushmagan')
+    expect(leadHit!.hint).not.toContain('Tasdiqlashga tushmagan')
+  })
+
+  /*
+    A NUMBER THE QUEUE NEVER SAW. The usual fresh lead: its customer has no
+    deal that ever arrived in Тасдиклаш, so even the phone opens an empty board.
+    The row stays — a phone search is also how somebody checks whether a number
+    is already a lead — and says so before it is opened.
+  */
+  it('marks a deal whose customer never reached the queue', async () => {
+    const lead = {
+      ...FOUND.deals[0]!,
+      dealId: 'd5',
+      bitrixId: '1012001',
+      orderCode: null,
+      stageName: 'Регистрация · Новый лид',
+      queued: false,
+      customerQueued: false,
+    }
+    // No customer at all, and queued itself: `customerQueued` is false there and the row is still reachable.
+    const orphan = { ...FOUND.deals[0]!, dealId: 'd6', customerName: null, customerPhone: null, queued: true, customerQueued: false }
+    const dto = await serviceReturning({ ...FOUND, deals: [FOUND.deals[0]!, lead, orphan] }).search(
+      principal(),
+      scopeOf(principal()),
+      '998901234567',
+      'UZS',
+    )
+    const [queuedHit, leadHit, orphanHit] = dto.groups.find((g) => g.key === 'deals')!.items
+
+    expect(leadHit!.hint).toBe('ID 1012001 · +998901234567 · Регистрация · Новый лид · Quvondiqova Gulmira · Tasdiqlashga tushmagan')
+    expect(queuedHit!.hint).not.toContain('Tasdiqlashga tushmagan')
+    expect(orphanHit!.hint).not.toContain('Tasdiqlashga tushmagan')
+  })
+
+  it('falls back to the order code, then the id, for such a deal with no phone', async () => {
+    const twin = { ...FOUND.deals[0]!, customerPhone: null, orderCode: 'bx10043', queued: false }
+    const bare = { ...twin, dealId: 'd4', orderCode: null }
+    const dto = await serviceReturning({ ...FOUND, deals: [twin, bare] }).search(
+      principal(),
+      scopeOf(principal()),
+      '925842',
+      'UZS',
+    )
+    const [byCode, byId] = dto.groups.find((g) => g.key === 'deals')!.items
+
+    expect(byCode!.href).toContain('q=bx10043')
+    expect(byId!.href).toContain('q=925842')
+  })
+
   it('carries a wide window, or the row just listed would not be there', async () => {
     // An order found by its id is usually an old one. Landing on a screen
     // showing today would say "not found" about the row that was clicked.
@@ -197,6 +277,8 @@ describe('where a result takes you', () => {
     expect(product.href).toContain('/margin?')
     // The NAME, not the id: Yalpi marja narrows its table on what it prints.
     expect(product.href).toContain(`q=${encodeURIComponent(FOUND.products[0]!.name)}`)
+    // With no preset the screen opened on «Bugun», where a product nobody sold today is «not found».
+    expect(product.href).toContain('preset=this_year')
   })
 
   it('never sends anyone to a filter the destination does not apply', async () => {

@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import { SverkaBody } from '@/features/sverka/SverkaPage'
 import type { SverkaIssue, SverkaLineDto, SverkaOverviewDto } from '@/features/sverka/sverkaApi'
+import { formatDate } from '@/lib/format'
 
 /**
  * «Sverka»'s difference list, rendered from a fixture — the page cannot be seen
@@ -96,7 +97,9 @@ const missing: SverkaLineDto = {
   otherOrders: [],
 }
 
-const pair = { bitrix: { orders: 2, amount: 3_200_000 }, moysklad: { orders: 1, amount: 1_800_000 } }
+const none = { orders: 0, amount: 0 }
+
+const pair = { bitrix: { orders: 2, amount: 3_200_000 }, moysklad: { orders: 1, amount: 1_800_000 }, beforeFloor: none }
 
 const data: SverkaOverviewDto = {
   totals: {
@@ -107,6 +110,7 @@ const data: SverkaOverviewDto = {
     pending: { orders: 0, amount: 0 },
     clean: 0,
     cohortOrders: 2,
+    beforeFloor: none,
   },
   issueCounts: { ...zeroes(), SUM: 1, PRODUCTS: 1, REGION: 1, MISSING_IN_MS: 1 },
   issueAmounts: { ...zeroes(), SUM: 200_000, PRODUCTS: 1_600_000, REGION: 1_600_000, MISSING_IN_MS: 1_600_000 },
@@ -116,7 +120,7 @@ const data: SverkaOverviewDto = {
   linesTruncated: false,
   products: [],
   teams: [],
-  moysklad: { orders: 10, lastSuccessAt: '2026-10-06T05:46:00.000Z', lastError: null },
+  moysklad: { orders: 10, since: '2026-06-14T19:00:00.000Z', lastSuccessAt: '2026-10-06T05:46:00.000Z', lastError: null },
 }
 
 describe('SverkaBody — the difference list', () => {
@@ -145,5 +149,58 @@ describe('SverkaBody — the difference list', () => {
     expect(seller.textContent).toContain('✓ mos')
     expect(within(panel).getByText('Mahsulotlar — yonma-yon')).toBeTruthy()
     expect(within(panel).getByText('bx1071484-old')).toBeTruthy()
+  })
+})
+
+/*
+  «Yil 2026»: MoySklad starts on 15.06, so the January–June orders are in
+  Bitrix24's FAKT figures and in no comparison. Before the floor they made the
+  tiles red and «Toʻliq mos» collapse.
+*/
+describe('SverkaBody — a window reaching back past MoySklad', () => {
+  const old = { orders: 2, amount: 3_200_000 }
+  const year: SverkaOverviewDto = {
+    ...data,
+    totals: {
+      ...data.totals,
+      // One comparable order, matched; two older than MoySklad.
+      fakt1: { bitrix: { orders: 3, amount: 4_800_000 }, moysklad: { orders: 1, amount: 1_600_000 }, beforeFloor: old },
+      // Every delivered order is older than MoySklad: nothing to compare.
+      fakt2: { bitrix: old, moysklad: none, beforeFloor: old },
+      clean: 1,
+      cohortOrders: 3,
+      beforeFloor: old,
+    },
+    issueCounts: zeroes(),
+    issueAmounts: zeroes(),
+    lines: [],
+    flaggedCount: 0,
+  }
+
+  const tile = (label: string) => screen.getByRole('heading', { name: label }).closest('.card')!
+
+  it('says from when MoySklad holds orders and how much of the window was left out', () => {
+    render(<SverkaBody data={year} status="ready" />)
+    const since = formatDate('2026-06-14T19:00:00.000Z')
+    const note = screen.getByText(new RegExp(`MoySklad buyurtmalari ${since} dan boshlanadi`)).textContent
+    expect(note).toContain('2 ta bitim (3,200,000 soʻm) MoySkladʼda yoʻq')
+    // The tiles keep them; the product and ROP tables, which only compare, do not.
+    expect(note).toContain('mahsulot hamda ROP jadvallariga kirmadi')
+    expect(screen.getByText(/davrda Tasdiqlashga tushgan 1 ta bitim solishtirildi/)).toBeTruthy()
+  })
+
+  it('keeps Bitrix24\'s whole figure on the tile and judges only what MoySklad could hold', () => {
+    render(<SverkaBody data={year} status="ready" />)
+    const fakt1 = tile('FAKT 1 — buyurtmalar')
+    expect(fakt1.textContent).toContain('4,800,000')
+    expect(fakt1.textContent).toContain('✓ mos')
+    expect(fakt1.textContent).toContain('Bitrix24 dagi 2 tasi (3,200,000 soʻm) MoySklad boshlanishidan oldin tushgan')
+    expect(tile('FAKT 2 — yetkazilgan').textContent).toContain('Solishtirilmadi')
+    expect(tile('FAKT 2 — yetkazilgan').textContent).not.toContain('✓ mos')
+  })
+
+  it('takes the older orders out of «Toʻliq mos», as it does the ones still packing', () => {
+    render(<SverkaBody data={year} status="ready" />)
+    expect(screen.getByText(/boʻlishi kerak boʻlgan 1 ta FAKT 1 buyurtmadan 1 tasi/)).toBeTruthy()
   })
 })

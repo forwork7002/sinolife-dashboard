@@ -30,6 +30,8 @@ export interface SverkaSideDto {
 export interface SverkaPairDto {
   readonly bitrix: SverkaSideDto
   readonly moysklad: SverkaSideDto
+  /** The part of `bitrix` queued before MoySklad's first order and holding none — not compared. */
+  readonly beforeFloor: SverkaSideDto
 }
 
 export interface SverkaItemDto {
@@ -121,6 +123,8 @@ export interface SverkaOverviewDto {
     readonly pending: SverkaSideDto
     readonly clean: number
     readonly cohortOrders: number
+    /** Every FAKT 1 / FAKT 2 cohort deal queued before MoySklad's first order and holding none. */
+    readonly beforeFloor: SverkaSideDto
   }
   readonly issueCounts: Readonly<Record<SverkaIssue, number>>
   /** Soʻm at stake per issue — the gap for SUM, the order's money for the rest. */
@@ -133,6 +137,8 @@ export interface SverkaOverviewDto {
   readonly teams: readonly SverkaTeamDto[]
   readonly moysklad: {
     readonly orders: number
+    /** The day MoySklad's orders are taken to begin (the server's `MOYSKLAD_DATA_FLOOR`; its first order is on or before it). */
+    readonly since: string
     readonly lastSuccessAt: string | null
     readonly lastError: { readonly message: string; readonly at: string } | null
   }
