@@ -21,7 +21,6 @@ import {
   MAX_FAILED_SIGN_INS,
   MAX_LOCK_MS,
   applyFailure,
-  isLocked,
   lockDurationMs,
   lockMinutes,
   lockoutKey,
@@ -151,7 +150,7 @@ describe('applyFailure', () => {
   })
 })
 
-describe('isLocked / remainingLockMs', () => {
+describe('remainingLockMs', () => {
   const locked: LockoutState = {
     failedCount: 5,
     lockedUntil: new Date(T0.getTime() + 15 * MINUTE),
@@ -159,27 +158,23 @@ describe('isLocked / remainingLockMs', () => {
   }
 
   it('treats a missing record as free to sign in', () => {
-    expect(isLocked(null, T0)).toBe(false)
     expect(remainingLockMs(null, T0)).toBe(0)
   })
 
   it('treats counted-but-unlocked as free to sign in', () => {
-    expect(isLocked({ failedCount: 4, lockedUntil: null, lastFailedAt: T0 }, T0)).toBe(false)
+    expect(remainingLockMs({ failedCount: 4, lockedUntil: null, lastFailedAt: T0 }, T0)).toBe(0)
   })
 
   it('refuses while the lock is live and reports what is left', () => {
     const fiveMinutesIn = new Date(T0.getTime() + 5 * MINUTE)
-    expect(isLocked(locked, fiveMinutesIn)).toBe(true)
     expect(remainingLockMs(locked, fiveMinutesIn)).toBe(10 * MINUTE)
   })
 
   it('lets go the instant the lock expires', () => {
     const atExpiry = new Date(locked.lockedUntil!.getTime())
-    expect(isLocked(locked, atExpiry)).toBe(false)
     expect(remainingLockMs(locked, atExpiry)).toBe(0)
 
     const longAfter = new Date(locked.lockedUntil!.getTime() + FAILURE_DECAY_MS)
-    expect(isLocked(locked, longAfter)).toBe(false)
     expect(remainingLockMs(locked, longAfter)).toBe(0)
   })
 })

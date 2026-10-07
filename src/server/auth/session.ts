@@ -125,29 +125,17 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
 }
 
 /**
- * Resolve the caller and assert a permission, or throw.
+ * Assert a permission on a principal already resolved.
+ *
+ * `getHandler` resolves first, widens for the endpoint's section
+ * (`widenForSection`), and only then asks — so a narrowed account given
+ * «Butun kompaniya» on a screen passes that screen's `analytics:read:all`.
  *
  * An array means ANY-OF. Analytics endpoints are reachable with either
  * `analytics:read:all` or `analytics:read:own` — access is the same question
  * for both, and how much data comes back is decided separately by
  * `dealScopeFor`. Collapsing the two into one permission would lose that
  * distinction; requiring both would lock salespeople out of their own numbers.
- */
-export async function requirePermission(
-  request: Request,
-  permission: Permission | readonly Permission[],
-): Promise<Principal> {
-  const principal = await requirePrincipal(request)
-  assertPermission(principal, permission)
-  return principal
-}
-
-/**
- * Assert a permission on a principal already resolved.
- *
- * `getHandler` resolves first, widens for the endpoint's section
- * (`widenForSection`), and only then asks — so a narrowed account given
- * «Butun kompaniya» on a screen passes that screen's `analytics:read:all`.
  */
 export function assertPermission(
   principal: Principal,

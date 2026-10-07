@@ -38,7 +38,7 @@ export const authClient = createAuthClient({
   plugins: [twoFactorClient(), usernameClient()],
 })
 
-export const { signIn, signOut, useSession, twoFactor } = authClient
+export const { signOut, useSession } = authClient
 
 export interface SessionUser {
   readonly id: string

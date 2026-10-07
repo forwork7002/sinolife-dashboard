@@ -95,11 +95,6 @@ export function lockDurationMs(failedCount: number): number {
   return Math.min(BASE_LOCK_MS * factor, MAX_LOCK_MS)
 }
 
-/** Is this state locked right now? */
-export function isLocked(state: LockoutState | null, now: Date): boolean {
-  return state?.lockedUntil != null && state.lockedUntil.getTime() > now.getTime()
-}
-
 /** Milliseconds left on the lock, or 0 if it is not locked. */
 export function remainingLockMs(state: LockoutState | null, now: Date): number {
   const until = state?.lockedUntil
