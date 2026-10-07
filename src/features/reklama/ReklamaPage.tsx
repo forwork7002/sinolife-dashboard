@@ -19,7 +19,7 @@ import { DmSection } from './DmSection'
 import { FormSection } from './FormSection'
 import { QualitySection } from './QualitySection'
 import type { ReklamaOverviewDto } from './reklamaApi'
-import { type Status, UsdTile } from './reklamaUi'
+import type { Status } from './reklamaUi'
 import { SideSection } from './SideSection'
 import { TargetologDaySection } from './TargetologDaySection'
 
@@ -133,8 +133,9 @@ function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; 
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <UsdTile
+        <StatTile
           status={status}
+          unit="usd"
           label="Jami reklama sarfi"
           value={spend?.totalUsd ?? null}
           hint={
@@ -152,10 +153,11 @@ function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; 
                   : `Meta, ${brand} reklama byudjeti`
           }
         />
-        <UsdTile status={status} label="Lid-forma sarfi" value={spend?.formUsd ?? null} hint="«Отчёт Т»" />
-        <UsdTile status={status} label="DM sarfi" value={spend?.dmUsd ?? null} hint="«DM», vakansiyasiz" />
-        <UsdTile
+        <StatTile status={status} unit="usd" label="Lid-forma sarfi" value={spend?.formUsd ?? null} hint="«Отчёт Т»" />
+        <StatTile status={status} unit="usd" label="DM sarfi" value={spend?.dmUsd ?? null} hint="«DM», vakansiyasiz" />
+        <StatTile
           status={status}
+          unit="usd"
           label="DM kval narxi"
           value={data?.dm.total.costPerQualifiedUsd ?? null}
           hint={
