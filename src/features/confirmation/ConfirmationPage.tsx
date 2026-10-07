@@ -1048,7 +1048,7 @@ export function ConfirmationPage() {
         >
           <OutcomeTile
             Glyph={backlog ? ClockGlyph : undefined}
-            label={backlog ? 'ҲОЗИР КУТИЛМОҚДА' : 'ЖАМИ'}
+            label={backlog ? 'Ҳозир кутилмоқда' : 'Жами'}
             status={tileStatus}
             count={totals?.orders ?? null}
             amount={totals?.amount ?? null}
@@ -2050,7 +2050,7 @@ export function OutcomeTile({
       type="button"
       onClick={onSelect}
       aria-pressed={active}
-      className="focusable card flex h-full flex-col px-3.5 py-2 text-left transition-colors hover:bg-[var(--grid)]"
+      className="focusable card card-button flex h-full flex-col px-3.5 py-2 text-left transition-colors"
       style={active ? { borderColor: color, boxShadow: `inset 0 0 0 1px ${color}` } : undefined}
     >
       {/*
@@ -2089,10 +2089,9 @@ export function OutcomeTile({
             <Glyph size={12} />
           </span>
         )}
-        <span
-          className="truncate text-[10.5px] font-medium tracking-wide uppercase"
-          style={{ color: 'var(--ink-muted)' }}
-        >
+        {/* Sentence case, the stat-tile label voice: the uppercase-tracked
+            micro-label is retired outside table headers. */}
+        <span className="truncate text-[12px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
           {label}
         </span>
       </div>
