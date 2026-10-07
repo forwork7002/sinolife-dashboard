@@ -5,6 +5,7 @@ import { useState } from 'react'
 
 import { ErrorState, statusOf } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
+import { Callout } from '@/components/ui/Callout'
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { SegmentedControl } from '@/components/ui/Controls'
@@ -416,25 +417,9 @@ export function MarginPage() {
         with the catalogue on a day nobody sold anything.
       */}
       {data && data.revenue.amount > 0 && data.coverage < 99 && (
-        <div
-          className="rounded-[var(--radius-panel)] border px-4 py-3 text-xs"
-          style={{
-            /*
-              A rule down the edge, not a wash across the panel.
-
-              8% of a saturated amber mixed into a near-black surface is a
-              muddy brown at 1.12:1 — it neither reads as a warning nor stays
-              out of the way. A full-strength bar on the leading edge is
-              unambiguous at any surface lightness, and the panel itself keeps
-              the ordinary card colour.
-            */
-            background: 'var(--surface-raised)',
-            borderColor: 'var(--border)',
-            borderInlineStartWidth: 3,
-            borderInlineStartColor: 'var(--status-warning)',
-            color: 'var(--ink-secondary)',
-          }}
-        >
+        // The house Callout — a rule down the edge, not a wash across the
+        // panel; this banner is where that recipe was measured (see Callout).
+        <Callout>
           <strong style={{ color: 'var(--ink-primary)' }}>
             Marja tushumning {formatPercent(data.coverage)} qismi boʻyicha hisoblandi.
           </strong>{' '}
@@ -444,7 +429,7 @@ export function MarginPage() {
           <div className="mt-2 max-w-md">
             <Meter value={data.coverage} tone="neutral" label="Qamrov" />
           </div>
-        </div>
+        </Callout>
       )}
 
       {/*
