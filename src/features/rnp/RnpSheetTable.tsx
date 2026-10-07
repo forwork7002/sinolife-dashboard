@@ -80,19 +80,24 @@ import { useDragScroll } from './useDragScroll'
  * the days cannot show through it.
  *
  * PERFORMANCE. ~370 lines × ~36 cells. Each line is memoised on its line
- * object and its row object, both stable for one payload, so nothing but a
- * refetch redraws a line; the «scrolled sideways» divider is a data attribute
- * on the box (see `markScrolledX`), not React state, so the first sideways
- * scroll does not redraw thirteen thousand cells.
+ * object and its row object, both stable for one payload, and keyed by its
+ * place in the payload (`lineKey`): a refetch redraws a line, a brand or ROP
+ * cut only the lines it brings in (and one whose gap above it changed); the
+ * «scrolled sideways» divider is a data attribute on the box (see
+ * `markScrolledX`), not React state, so the first sideways scroll does not
+ * redraw thirteen thousand cells.
  */
 export function RnpSheetTable({
   lines,
+  allLines = lines,
   blocks,
   days,
   today,
   editCostsFor = null,
 }: {
   lines: readonly RnpLine[]
+  /** The payload's lines before the brand and ROP cuts — a line's place in them is its key (`lineKey`). Default: `lines`. */
+  allLines?: readonly RnpLine[]
   blocks: readonly RnpBlockDto[]
   days: readonly string[]
   today: string
@@ -101,6 +106,7 @@ export function RnpSheetTable({
 }) {
   // Built once per payload: every value line looks its figures up here.
   const rows = useMemo(() => rowsByKey(blocks), [blocks])
+  const ids = useMemo(() => new Map(allLines.map((line, i) => [line, i])), [allLines])
   const width = useMemo(
     () => `calc(${[widthCss('label'), ...SUMMARY.map((c) => widthCss(c.key))].join(' + ')} + ${days.length} * ${widthCss('day')})`,
     [days.length],
@@ -141,8 +147,8 @@ export function RnpSheetTable({
             const row = line.kind === 'value' && line.key !== null ? (rows.get(line.key) ?? null) : null
             return (
               <Line
-                // The lines are one payload's, in a fixed order: the index is their identity.
-                key={i}
+                // Its place in the payload, not on the page: the brand and ROP cuts filter and reorder.
+                key={lineKey(lines, i, ids)}
                 line={line}
                 row={row}
                 gap={i > 0 ? gapBefore(line, lines[i - 1]!) : null}
@@ -248,6 +254,26 @@ function rowsByKey(blocks: readonly RnpBlockDto[]): Map<string, RnpRowDto> {
   const out = new Map<string, RnpRowDto>()
   for (const block of blocks) for (const row of block.rows) if (!out.has(row.key)) out.set(row.key, row)
   return out
+}
+
+/*
+  A LINE'S KEY IS ITS PLACE IN THE PAYLOAD, NOT ON THE PAGE (2026-10-06).
+  The brand switch filters the sheet and moves the brand's P&L to the top
+  (`brandLines`), and «ROP» cuts it to one team (`ropLines`), so the n-th
+  line on the page is another line after every switch. Keyed by that index,
+  every line the cut kept was handed another line's props, missed its memo
+  and redrew — the whole ~13 000-cell sheet per click. Keyed by its payload
+  position it keeps its props and its memo; only the lines a cut brings in,
+  or whose gap above it changes, are drawn. A heading `ropLines` adds is in
+  no payload: it takes the key of the line it heads, marked, so two headings
+  never share one.
+*/
+function lineKey(lines: readonly RnpLine[], i: number, ids: ReadonlyMap<RnpLine, number>): string {
+  const id = ids.get(lines[i]!)
+  if (id !== undefined) return String(id)
+  const next = lines[i + 1]
+  const headed = next === undefined ? undefined : ids.get(next)
+  return headed === undefined ? `at:${i}` : `before:${headed}`
 }
 
 /**

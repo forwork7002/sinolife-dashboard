@@ -51,6 +51,42 @@ describe('staleWhileRevalidate', () => {
     expect(await memo.get('k', build)).toBe(3) // too old: built in the open
   })
 
+  it('a reader past the hard limit shares the rebuild already on its way — never a second build beside it (2026-10-06)', async () => {
+    let now = 0
+    let builds = 0
+    let release!: (value: number) => void
+    const memo = staleWhileRevalidate<number>(4 * 60_000, () => now, 30 * 60_000) // monthCache's ttl and hard limit
+    const build = () => (++builds === 2 ? new Promise<number>((resolve) => (release = resolve)) : Promise.resolve(builds))
+    expect(await memo.get('k', build)).toBe(1)
+    now = 27 * 60_000
+    expect(await memo.get('k', build)).toBe(1) // stale: handed back, rebuilt behind the reader
+    now = 30 * 60_000 + 1
+    const late = memo.get('k', build)
+    await flush()
+    expect(builds).toBe(2)
+    release(2)
+    expect(await late).toBe(2)
+    expect(builds).toBe(2)
+  })
+
+  it('a reader past the hard limit whose shared rebuild fails builds in the open, once', async () => {
+    let now = 0
+    let builds = 0
+    let fail!: (error: Error) => void
+    const memo = staleWhileRevalidate<number>(4 * 60_000, () => now, 30 * 60_000, () => undefined)
+    expect(await memo.get('k', () => Promise.resolve(++builds))).toBe(1)
+    now = 27 * 60_000
+    await memo.get('k', () => {
+      builds++
+      return new Promise<number>((_, reject) => (fail = reject))
+    })
+    now = 30 * 60_000 + 1
+    const late = memo.get('k', () => Promise.resolve(++builds))
+    fail(new Error('canceling statement due to statement timeout'))
+    expect(await late).toBe(3)
+    expect(builds).toBe(3)
+  })
+
   it('keeps the old answer when a rebuild fails, and forgets a first build that failed', async () => {
     let now = 0
     const memo = staleWhileRevalidate<number>(1_000, () => now)
@@ -130,6 +166,7 @@ describe('staleWhileRevalidate', () => {
 
 const { RnpService } = await import('@/server/services/rnpService')
 const { logger } = await import('@/server/logging/logger')
+const { OFF_HOURS } = await import('@/server/services/rnpWarmer')
 
 const TZ = 'Asia/Tashkent'
 /** 10:00 in Tashkent, 2 October 2026. */
@@ -137,16 +174,29 @@ const T0 = Date.parse('2026-10-02T05:00:00Z')
 
 /**
  * The service over fakes that answer nothing; `scan` stands for a month's
- * scans — told the month, it may hold the build open or fail it.
+ * scans — told the month, it may hold the build open or fail it. `Service`:
+ * another copy of the class, as another bundle loads it; `registrationDays`
+ * hears every Регистрация read, the closed days' and today's.
  */
-function serviceOver(scan: (month: string) => Promise<void>) {
+function serviceOver(
+  scan: (month: string) => Promise<void>,
+  {
+    Service = RnpService,
+    usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) },
+    registrationDays = async () => [],
+  }: {
+    Service?: typeof RnpService
+    usd?: { forDays: (days: readonly string[]) => Promise<number[]> }
+    registrationDays?: (from: string, to: string) => Promise<never[]>
+  } = {},
+) {
   const none = async () => []
   const repository = {
     leadDays: async (from: string) => {
       await scan(from.slice(0, 7))
       return []
     },
-    registrationDays: none,
+    registrationDays,
     registrarKvalDays: none,
     callDays: none,
     warehouseDays: none,
@@ -155,8 +205,7 @@ function serviceOver(scan: (month: string) => Promise<void>) {
     manualCosts: none,
     manualHeadcount: none,
   }
-  const usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) }
-  return new RnpService({ rnpTeamDays: none } as never, repository as never, { campaignDays: none } as never, usd)
+  return new Service({ rnpTeamDays: none } as never, repository as never, { campaignDays: none } as never, usd)
 }
 
 const read = (service: ReturnType<typeof serviceOver>, month: string) =>
@@ -244,6 +293,68 @@ describe('RnpService — the month memo (2026-10-02)', () => {
     // From the 8th the month that ended is left to its readers.
     await service.warm(new Date('2027-05-08T05:00:00Z'), TZ)
     expect(scans.slice(3)).toEqual(['2027-05'])
+  })
+
+  it('warm(): working hours only — at 03:00 in Tashkent it builds nothing and asks the bank nothing (2026-10-06)', async () => {
+    const scans: string[] = []
+    const asked: string[] = []
+    const service = serviceOver(async (month) => void scans.push(month), {
+      usd: {
+        forDays: async (days: readonly string[]) => {
+          asked.push(days[0]!.slice(0, 7))
+          return days.map(() => 12_000)
+        },
+      },
+    })
+    // Each says so — `OFF_HOURS` — so the warmer logs a skip rather than «rnp warmed» with 0 ms.
+    expect(await service.warm(new Date('2027-09-14T22:00:00Z'), TZ)).toBe(OFF_HOURS) // 03:00 on the 15th
+    expect(await service.warm(new Date('2027-09-15T18:00:00Z'), TZ)).toBe(OFF_HOURS) // 23:00
+    expect([scans, asked]).toEqual([[], []])
+    expect(await service.warm(new Date('2027-09-15T02:00:00Z'), TZ)).toBeUndefined() // 07:00, the first tick of the day
+    expect([scans, asked]).toEqual([['2027-09'], ['2027-09']])
+  })
+})
+
+/*
+  The warmer runs in `instrumentation.ts`'s bundle and /rnp in the route's,
+  each with its own copy of this module (Turbopack's build, 2026-10-06): the
+  memos are the process's, so the route is served what the warmer built.
+*/
+describe('RnpService — one memo per process, whichever bundle reads it (2026-10-06)', () => {
+  afterEach(() => {
+    movedNow = null
+  })
+
+  it('serves a second copy of the module, at once and with no scan, the months the first copy warmed — and its Регистрация history', async () => {
+    const tenOnTheFifth = Date.parse('2027-08-05T05:00:00Z') // 10:00 in Tashkent, in the month's first week
+    movedNow = tenOnTheFifth
+    const warmed: string[] = []
+    await serviceOver(async (month) => void warmed.push(month)).warm(new Date(Date.now()), TZ)
+    expect(warmed).toEqual(['2027-08', '2027-07']) // the month (`monthCache`), then the one that ended (`pastMonthCache`)
+
+    vi.resetModules()
+    const copy = await import('@/server/services/rnpService')
+    expect(copy.RnpService).not.toBe(RnpService) // a second module instance, as the route's bundle has
+    const scanned: string[] = []
+    const registrationReads: string[] = []
+    const route = serviceOver(async (month) => void scanned.push(month), {
+      Service: copy.RnpService,
+      registrationDays: async (from, to) => {
+        registrationReads.push(`${from}|${to}`)
+        return []
+      },
+    })
+    expect(await servedAtOnce(read(route, '2027-08'))).toBe(true)
+    expect(await servedAtOnce(read(route, '2027-07'))).toBe(true)
+    expect(scanned).toEqual([])
+
+    // Five minutes on, the month is past its TTL: the route's copy rebuilds it behind its reader, and
+    // the closed days' Регистрация (`registrationHistory`, half an hour) is the warmer's read, not a new one.
+    movedNow = tenOnTheFifth + 5 * 60_000
+    await read(route, '2027-08')
+    await flush()
+    expect(scanned).toEqual(['2027-08'])
+    expect(registrationReads).toEqual(['2027-08-05|2027-08-05']) // today's own read, live as ever
   })
 })
 

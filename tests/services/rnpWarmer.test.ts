@@ -1,11 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_URL ??= 'postgresql://test@127.0.0.1:5432/test'
 process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { RNP_WARM_EVERY_MS, firstWarmPending, startRnpWarmer, startWarmer } = await import('@/server/services/rnpWarmer')
+const { OFF_HOURS, RNP_WARM_EVERY_MS, WARM_HOURS, firstWarmPending, startRnpWarmer, startWarmer, withinHours } = await import(
+  '@/server/services/rnpWarmer'
+)
 const { logger } = await import('@/server/logging/logger')
 
 function fakeTimers() {
@@ -106,5 +108,48 @@ describe('startRnpWarmer', () => {
     finishLeads()
     await leadsFirst
     expect(firstWarmPending()).toBe(false)
+  })
+})
+
+/*
+  A night tick builds nothing (`WARM_HOURS`), and said so as «rnp warmed»
+  with 0 ms every four minutes until the morning — the log 2026-10-02 had
+  taken away. It is a skip now, at debug, and the first-build flag clears.
+*/
+describe('startWarmer — a tick outside working hours (2026-10-06)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('logs a skip at debug, not «warmed», and still lets /api/health stop waiting', async () => {
+    const info = vi.spyOn(logger, 'info').mockImplementation(() => undefined)
+    const debug = vi.spyOn(logger, 'debug').mockImplementation(() => undefined)
+    const { timers } = fakeTimers()
+    const tick = startRnpWarmer(async () => OFF_HOURS, timers)
+    await tick()
+    expect(debug).toHaveBeenCalledWith('rnp warm skipped — outside working hours')
+    expect(info).not.toHaveBeenCalled()
+    expect(firstWarmPending()).toBe(false)
+  })
+})
+
+describe('withinHours — the warmers’ working day (2026-10-06)', () => {
+  it('opens at 07:00 and closes at 23:00 in Tashkent, whatever the server’s own zone', () => {
+    const at = (iso: string) => withinHours(new Date(iso), 'Asia/Tashkent', WARM_HOURS)
+    expect(at('2026-10-06T01:59:59Z')).toBe(false) // 06:59:59
+    expect(at('2026-10-06T02:00:00Z')).toBe(true) // 07:00
+    expect(at('2026-10-06T17:59:59Z')).toBe(true) // 22:59:59
+    expect(at('2026-10-06T18:00:00Z')).toBe(false) // 23:00
+    expect(at('2026-10-06T21:00:00Z')).toBe(false) // 02:00
+  })
+
+  it('opens a window that crosses midnight, rather than never', () => {
+    const at = (iso: string) => withinHours(new Date(iso), 'Asia/Tashkent', [22, 6])
+    expect(at('2026-10-06T16:59:59Z')).toBe(false) // 21:59:59
+    expect(at('2026-10-06T17:00:00Z')).toBe(true) // 22:00
+    expect(at('2026-10-06T21:00:00Z')).toBe(true) // 02:00
+    expect(at('2026-10-07T00:59:59Z')).toBe(true) // 05:59:59
+    expect(at('2026-10-07T01:00:00Z')).toBe(false) // 06:00
+    expect(withinHours(new Date('2026-10-06T05:00:00Z'), 'Asia/Tashkent', [7, 7])).toBe(false)
   })
 })

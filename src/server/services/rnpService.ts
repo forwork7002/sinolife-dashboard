@@ -32,6 +32,7 @@ import { productOfLine } from '@/server/domain/roistat/roistatCuts'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
 import { adBudgetProduct } from '@/server/integrations/meta/accounts'
 import { logger } from '@/server/logging/logger'
+import { processWide } from '@/server/processWide'
 import { InsightsRepository, type RnpTeamDayRow } from '@/server/repositories/insightsRepository'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import type {
@@ -43,7 +44,7 @@ import type {
   RnpTeam,
   RnpWarehouseDayRow,
 } from '@/server/repositories/rnpRepository'
-import { RNP_WARM_EVERY_MS } from './rnpWarmer'
+import { OFF_HOURS, RNP_WARM_EVERY_MS, WARM_HOURS, type WarmOutcome, withinHours } from './rnpWarmer'
 
 /** Every day of a `YYYY-MM` month, as `YYYY-MM-DD`. */
 export function monthDays(month: string): string[] {
@@ -107,8 +108,23 @@ interface MonthRows {
   statement timeout — the «RNP juda sekin ochilayapti» the client reported.
   The warmer alone keeps the current month at most one tick old.
 */
-const monthCache = staleWhileRevalidate<MonthRows>(RNP_WARM_EVERY_MS, Date.now, 30 * 60_000, warnRebuild)
-const pastMonthCache = staleWhileRevalidate<MonthRows>(30 * 60_000, Date.now, Infinity, warnRebuild)
+/*
+  ON `globalThis`, NOT MODULE VARIABLES (2026-10-06, `processWide`).
+  `instrumentation.ts` and the route handlers are separate bundles in one
+  process, and each loads its own copy of this module (`rnpWarmer.ts` says
+  the same of its flag). As module variables the warmer rebuilt, every four
+  minutes, a memo no route read, while /rnp's own copy was refreshed only by
+  its readers: cold after each deploy (17–38 s) and after every quiet half
+  hour. Whichever copy loads first makes each memo, and the other finds it.
+  Under `next dev` a reloaded module finds them too, so a TTL edited there
+  needs a server restart.
+*/
+const monthCache = processWide('sinolife.rnp.monthCache', () =>
+  staleWhileRevalidate<MonthRows>(RNP_WARM_EVERY_MS, Date.now, 30 * 60_000, warnRebuild),
+)
+const pastMonthCache = processWide('sinolife.rnp.pastMonthCache', () =>
+  staleWhileRevalidate<MonthRows>(30 * 60_000, Date.now, Infinity, warnRebuild),
+)
 
 function warnRebuild(key: string, err: unknown): void {
   logger.warn({ err, key }, 'rnp rebuild failed; serving the previous answer')
@@ -129,7 +145,9 @@ function warnRebuild(key: string, err: unknown): void {
 const REGISTRATION_HISTORY_MS = 30 * 60_000
 /* Cold, beside the other reads, the scan ran past 20 s on 2026-09-30; see `registrationDays`. */
 const REGISTRATION_HISTORY_TIMEOUT_MS = 60_000
-const registrationHistory = staleWhileRevalidate<RnpRegistrationDayRow[]>(REGISTRATION_HISTORY_MS, Date.now, Infinity, warnRebuild)
+const registrationHistory = processWide('sinolife.rnp.registrationHistory', () =>
+  staleWhileRevalidate<RnpRegistrationDayRow[]>(REGISTRATION_HISTORY_MS, Date.now, Infinity, warnRebuild),
+)
 
 /**
  * A memo that, once its answer is older than `ttlMs`, still returns it at
@@ -159,8 +177,13 @@ export function staleWhileRevalidate<T>(
   const memo = {
     get(key: string, build: () => Promise<T>): Promise<T> {
       const found = entries.get(key)
-      // Too old to show even while rebuilding: drop it and build in the open.
+      // Too old to show even while rebuilding: drop it and build in the open…
       const hit = found && clock() - found.at >= maxStaleMs ? undefined : found
+      if (found && !hit && found.rebuilding) {
+        // …unless its rebuild is already on the way: wait for that one, never a second full build beside it (2026-10-06).
+        const again = () => memo.get(key, build)
+        return found.rebuilding.then(again, again)
+      }
       if (!hit) {
         const value = build()
         const entry: Entry = { at: clock(), value, rebuilding: null }
@@ -259,8 +282,13 @@ export class RnpService {
    * month that just ended is built too, once — after the current one, never
    * beside it (two cold months at once would fill the pool) — so its first
    * reader after a deploy or on the 1st does not wait; readers keep it fresh.
+   *
+   * Working hours only (`WARM_HOURS`, 2026-10-06): at night it answers
+   * `OFF_HOURS` at once — no build, no bank — so the warmer logs a skip, not
+   * a build, and its tick still resolves.
    */
-  async warm(now: Date, timeZone: string): Promise<void> {
+  async warm(now: Date, timeZone: string): Promise<WarmOutcome> {
+    if (!withinHours(now, timeZone, WARM_HOURS)) return OFF_HOURS
     const today = zonedDateKey(now, timeZone)
     const month = today.slice(0, 7)
     const days = monthDays(month)

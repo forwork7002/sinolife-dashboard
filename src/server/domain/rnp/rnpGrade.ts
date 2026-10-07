@@ -11,7 +11,8 @@
  * A bound belongs to the grade above it: 20 000 000 exactly is a 3. The
  * client wrote Zextra's 4 as «45–60 M» after «25–40 M»; the gap is closed at
  * 40 M. A day with no FAKT 1 (a day off) has no grade — it is not a 2 — and
- * the month is the mean of the days that have one.
+ * the month is the mean of the FINISHED days that have one: today's is drawn,
+ * not averaged (2026-10-06, `rnpSheet.ts`).
  *
  * Pure: no framework, no database.
  */
