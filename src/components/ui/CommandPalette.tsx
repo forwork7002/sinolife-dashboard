@@ -174,7 +174,7 @@ function PaletteDialog({
    */
   const { sections, flat } = useMemo(() => {
     const needle = normalize(query.trim())
-    const sections: { label: string; rows: { item: CommandItem; index: number }[] }[] = []
+    const sections: { label: string; stale: boolean; rows: { item: CommandItem; index: number }[] }[] = []
     const flat: CommandItem[] = []
 
     for (const group of groups) {
@@ -194,7 +194,7 @@ function PaletteDialog({
         rows.push({ item, index: flat.length })
         flat.push(item)
       }
-      if (rows.length > 0) sections.push({ label: group.label, rows })
+      if (rows.length > 0) sections.push({ label: group.label, stale: group.stale === true, rows })
     }
 
     return { sections, flat }
@@ -376,6 +376,12 @@ function PaletteDialog({
                   style={{ color: 'var(--ink-muted)' }}
                 >
                   {section.label}
+                  {/*
+                    Dimmed rows above a list that is not empty: the «Qidirilmoqda…»
+                    of an empty list never shows, and the glyph's pulse is easy
+                    to miss. The heading says what the dimming means.
+                  */}
+                  {section.stale && busy && ' · qidirilmoqda…'}
                 </p>
                 {section.rows.map(({ item, index }) => {
                   // A stale row (index -1) is drawn, dimmed, and answers nothing.
@@ -400,8 +406,8 @@ function PaletteDialog({
                       onClick={() => {
                         if (live) run(item)
                       }}
-                      className={`flex h-10 items-center gap-2.5 rounded-lg px-2.5 ${live ? 'cursor-pointer' : ''}`}
-                      style={{ background: isActive ? 'var(--grid)' : 'transparent', opacity: live ? undefined : 0.5 }}
+                      className={`flex h-10 items-center gap-2.5 rounded-lg px-2.5 ${live ? 'cursor-pointer' : 'opacity-50'}`}
+                      style={{ background: isActive ? 'var(--grid)' : 'transparent' }}
                     >
                       {item.icon && (
                         <span

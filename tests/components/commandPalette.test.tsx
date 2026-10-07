@@ -22,8 +22,8 @@ afterEach(cleanup)
 
 const box = () => screen.getByRole('combobox')
 
-function open(groups: readonly CommandGroup[]) {
-  render(<CommandPalette open onClose={() => {}} groups={groups} busy />)
+function open(groups: readonly CommandGroup[], busy = true) {
+  render(<CommandPalette open onClose={() => {}} groups={groups} busy={busy} />)
 }
 
 describe('a stale group', () => {
@@ -40,6 +40,7 @@ describe('a stale group', () => {
 
     const row = screen.getByRole('option', { name: /Dilnoza/ })
     expect(row.getAttribute('aria-disabled')).toBe('true')
+    expect(row.className).toContain('opacity-50')
     // The kept rows fill the list: no «Qidirilmoqda…» over them.
     expect(screen.queryByText('Qidirilmoqda…')).toBeNull()
 
@@ -47,6 +48,25 @@ describe('a stale group', () => {
     fireEvent.click(row)
     expect(opened).not.toHaveBeenCalled()
     expect(screen.getByText('0 ta')).toBeTruthy()
+  })
+
+  /*
+    The list is not empty, so its «Qidirilmoqda…» never shows; the heading
+    over the dimmed rows says why they are dimmed — only while a lookup runs.
+  */
+  it('says on its heading that the next lookup is running', () => {
+    const groups: CommandGroup[] = [
+      { label: 'Buyurtmalar', prefiltered: true, stale: true, items: [{ id: 'old', label: 'Dilnoza', onSelect: () => {} }] },
+      { label: 'Boʻlimlar', items: [{ id: '/sverka', label: 'Sverka', onSelect: () => {} }] },
+    ]
+    open(groups)
+    expect(screen.getByText('Buyurtmalar · qidirilmoqda…')).toBeTruthy()
+    expect(screen.getByText('Boʻlimlar')).toBeTruthy()
+    cleanup()
+
+    open(groups, false)
+    expect(screen.getByText('Buyurtmalar')).toBeTruthy()
+    expect(screen.queryByText(/qidirilmoqda/)).toBeNull()
   })
 
   it('leaves the live rows walkable, and Enter runs the first of them', () => {
