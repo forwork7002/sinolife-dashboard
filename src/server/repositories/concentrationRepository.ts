@@ -49,12 +49,6 @@ export interface CustomerRevenueBreakdown {
   readonly totalMinor: bigint
 }
 
-/** One group of a revenue cut. `label: null` = the field was left empty. */
-export interface GroupRevenueRow {
-  readonly label: string | null
-  readonly revenueMinor: bigint
-}
-
 export interface RepeatStats {
   /** First-to-second-purchase interval percentiles, over pairs completed in the period. */
   readonly medianDays: number | null
@@ -117,42 +111,6 @@ export class ConcentrationRepository {
     }
 
     return { revenuesMinor, nullCustomerMinor, totalMinor }
-  }
-
-  /** Won revenue per acquisition source. One HHI cut. */
-  async revenueBySource(period: Period): Promise<GroupRevenueRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      { label: string | null; revenue: MoneyText }[]
-    >(
-      `
-      SELECT d."sourceId" AS label, sum(d."amountMinor")::text AS revenue
-      FROM "deal" d
-      WHERE d."countsAsRevenue" AND d."status" = 'WON'
-        AND d."closedAt" >= $1 AND d."closedAt" < $2
-      GROUP BY 1
-      `,
-      period.start,
-      period.end,
-    )
-    return rows.map((r) => ({ label: r.label, revenueMinor: money(r.revenue) }))
-  }
-
-  /** The same cut by the deal's region field. */
-  async revenueByRegion(period: Period): Promise<GroupRevenueRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<
-      { label: string | null; revenue: MoneyText }[]
-    >(
-      `
-      SELECT d."region" AS label, sum(d."amountMinor")::text AS revenue
-      FROM "deal" d
-      WHERE d."countsAsRevenue" AND d."status" = 'WON'
-        AND d."closedAt" >= $1 AND d."closedAt" < $2
-      GROUP BY 1
-      `,
-      period.start,
-      period.end,
-    )
-    return rows.map((r) => ({ label: r.label, revenueMinor: money(r.revenue) }))
   }
 
   /**

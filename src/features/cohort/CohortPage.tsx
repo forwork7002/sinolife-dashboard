@@ -1,10 +1,10 @@
 'use client'
 
-import { useMemo, useState, type ReactNode } from 'react'
+import dynamic from 'next/dynamic'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { CategoryBarList } from '@/components/charts/CategoryBarList'
-import { CustomerFlowChart } from '@/components/charts/CustomerFlowChart'
 import { CohortHeatmap, type CohortMatrixRow, type CohortView } from '@/components/charts/Heatmap'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
@@ -154,7 +154,45 @@ function toMatrixRow(row: CohortDto): CohortMatrixRow {
   }
 }
 
+/**
+ * The new-vs-returning chart is loaded on its own, not with the page.
+ *
+ * It is the only Recharts on this screen, and a static import put the library
+ * — ~380 KB unparsed, ~110 KB over the wire, most of what this route downloads
+ * — in the SYNCHRONOUS entry set, all of it parsed before hydration and so
+ * before the first `/api/v1` request left. The matrix, which opens the page,
+ * waited on a charting library for a chart the reader has to scroll to. The
+ * reason `sales/SalesPage.tsx` gives, and the treatment every other chart in
+ * the product already has.
+ *
+ * `ssr: false` forfeits nothing — `ResponsiveContainer` measures the DOM in an
+ * effect and renders an empty box on the server either way — and the fallback
+ * is the SAME `ChartSkeleton height={280}` the slot shows while the query is
+ * in flight, so a late chunk is not a second visible state and nothing below
+ * it moves.
+ */
+const CustomerFlowChart = dynamic(
+  () => import('@/components/charts/CustomerFlowChart').then((m) => m.CustomerFlowChart),
+  { ssr: false, loading: () => <ChartSkeleton height={280} /> },
+)
+
+/**
+ * Fetch the chart's chunk DURING the three requests that have to happen anyway.
+ *
+ * Left to the render that first has data, the download would start only once
+ * `/insights/customers` answered, serialising two waits that can overlap.
+ * Fire-and-forget: a failed warm-up is not an error state — the real import
+ * runs again at render and reports its own failure there.
+ */
+function useWarmFlowChart() {
+  useEffect(() => {
+    void import('@/components/charts/CustomerFlowChart')
+  }, [])
+}
+
 export function CohortPage() {
+  useWarmFlowChart()
+
   /**
    * Which team's customers are on screen. URL-backed — see the hook.
    *
@@ -200,6 +238,19 @@ export function CohortPage() {
       apiGet<CohortSummaryDto>('/insights/cohorts', { months: 3, include: 'rops' }, signal),
     enabled: picking,
     staleTime: 5 * 60_000,
+    /*
+      NO POLLING, said out loud — the app-wide default is a 120 s timer.
+
+      Left unset, the first reach for the picker started that timer, and
+      `picking` never resets, so from then on every open tab re-ran the
+      attribution form of the slowest statement in the product every two
+      minutes — two and a half times the matrix's own cadence — for a list of
+      team names that changes when a department is renamed. `staleTime` alone
+      could not stop it: the timer does not consult staleness (see the matrix
+      read below). A focus or a remount past the five minutes still refreshes
+      it, which is as fresh as a list of teams needs to be.
+    */
+    refetchInterval: false,
   })
 
   const query = useQuery({
@@ -634,13 +685,18 @@ export function CohortPage() {
           THE WINDOW IS THE SERVER'S. It is printed from `meta.period`, not
           from the ninety the route defaults to, so if that default is ever
           changed the sentence follows it instead of contradicting it.
+
+          AND ITS LAST DAY IS `end` LESS ONE MILLISECOND. `end` is exclusive —
+          `trailingDays` ends at tonight's midnight — so printed as it comes
+          the band named TOMORROW as its last day every day, a day past the
+          concentration caption below, which subtracts the same millisecond.
         */}
         <SectionHeader
           title="Mijozlar oqimi"
           hint={
             flowPeriod
-              ? `Buyurtma berilgan sana boʻyicha · ${formatDate(flowPeriod.start)} — ${formatDate(
-                  flowPeriod.end,
+              ? `Buyurtma berilgan sana boʻyicha · ${formatDate(flowPeriod.start)} – ${formatDate(
+                  new Date(new Date(flowPeriod.end).getTime() - 1).toISOString(),
                 )}`
               : 'Buyurtma berilgan sana boʻyicha · soʻnggi 90 kun'
           }

@@ -1,12 +1,17 @@
 /**
- * Revenue concentration: Pareto and Herfindahl–Hirschman arithmetic.
+ * Revenue concentration: Pareto arithmetic and the repurchase horizon.
  *
  * Pure and framework-free, like the rest of the domain layer. The grouping —
- * revenue per customer, per source, per region — runs in SQL
- * (`ConcentrationRepository`); every rule that turns those groups into a
- * concentration CLAIM lives here, where it can be unit tested without a
- * database: what share the top customers hold, how many customers carry 80%
- * of the money, and when a Herfindahl index counts as "concentrated".
+ * revenue per customer — runs in SQL (`ConcentrationRepository`); every rule
+ * that turns those groups into a concentration CLAIM lives here, where it can
+ * be unit tested without a database: what share the top customers hold and
+ * how many customers carry 80% of the money.
+ *
+ * THE HERFINDAHL INDEX WENT ON 2026-10-06. Its two cuts — by source and by
+ * region — were drawn as verdict chips on the channels page until 8ca99c6
+ * (2026-08-29) and read by nothing after it, while `/insights/concentration`
+ * kept paying two revenue scans per request for them. Bring them back with a
+ * reader, not before.
  *
  * Everything works on BigInt minor units and divides as late as possible, so
  * the shares of a ninety-billion-soʻm month are computed exactly and only the
@@ -104,53 +109,6 @@ export function pareto(revenuesMinor: readonly bigint[]): ParetoSummary {
     customersFor80Percent: countForCoverage(revenuesMinor),
     totalCustomers: revenuesMinor.length,
   }
-}
-
-// ---------------------------------------------------------------------------
-// Herfindahl–Hirschman index
-// ---------------------------------------------------------------------------
-
-/**
- * HHI band thresholds, in index points (a share of 100% squared = 10 000).
- *
- * These are the DOJ/FTC merger-guideline bands, which is why they are stated
- * as constants rather than invented: above 2 500 a market is "highly
- * concentrated", between 1 500 and 2 500 "moderately concentrated", below
- * 1 500 "unconcentrated" — here rendered diversified. The boundaries belong
- * to the more alarming band (exactly 2 500 reads concentrated): a threshold
- * exists to raise a hand, and a tie should not lower it.
- */
-export const HHI_CONCENTRATED_BP = 2_500
-export const HHI_MODERATE_BP = 1_500
-
-export type HhiBand = 'concentrated' | 'moderate' | 'diversified'
-
-/**
- * The Herfindahl–Hirschman index over one revenue cut, in index points.
- *
- * HHI = Σ sᵢ² where sᵢ is each group's percent share; a monopoly scores
- * 10 000, ten equal channels score 1 000. Computed as Σrᵢ²·10⁴ / T² entirely
- * in BigInt — squaring first and dividing once — because squaring a rounded
- * per-group share would compound the rounding across every group.
- *
- * Null when the cut has no revenue: an index over nothing is not "perfectly
- * diversified", it is unmeasured. Non-positive groups are excluded — a group
- * that produced no money holds no share of it.
- */
-export function hhiBp(revenuesMinor: readonly bigint[]): number | null {
-  const positive = revenuesMinor.filter((value) => value > 0n)
-  const total = sum(positive)
-  if (total <= 0n) return null
-
-  const sumOfSquares = positive.reduce((acc, value) => acc + value * value, 0n)
-  return Number((sumOfSquares * 10_000n) / (total * total))
-}
-
-/** The plain-language reading of an HHI score. See the threshold note above. */
-export function hhiBand(bp: number): HhiBand {
-  if (bp >= HHI_CONCENTRATED_BP) return 'concentrated'
-  if (bp >= HHI_MODERATE_BP) return 'moderate'
-  return 'diversified'
 }
 
 // ---------------------------------------------------------------------------

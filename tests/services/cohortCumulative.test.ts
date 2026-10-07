@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { CohortMatrix, InsightsRepository } from '@/server/repositories/insightsRepository'
-import { InsightsService } from '@/server/services/insightsService'
+import { InsightsService, resetCohortCaches } from '@/server/services/insightsService'
 
 /**
  * THE CURVE, AND THE TWO WAYS IT GOES WRONG.
@@ -74,6 +74,13 @@ const MATRIX: CohortMatrix = {
      makes it. Empty here means the same thing it means on the wire. */
   rops: [],
 }
+
+/*
+  The matrix is memoised at module level since 2026-10-06, so a case that hands
+  the service a different fixture under the same question would be served the
+  previous case's rows — the hazard `resetConfirmationRopCache` documents.
+*/
+beforeEach(resetCohortCaches)
 
 function service(matrix: CohortMatrix): InsightsService {
   const repository = {

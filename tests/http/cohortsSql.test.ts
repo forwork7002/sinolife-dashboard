@@ -349,6 +349,15 @@ describe('the team cut is absent unless it was asked for', () => {
        Logistika's per-ROP strip reads. Reversed, a seller who changes team
        drags their whole acquisition history across with them. */
     expect(scoped.indexOf('operatorTeamSource')).toBeLessThan(scoped.indexOf('departmentId'))
+    /* And the fallback's department is the OPERATOR's — the person who sold
+       the order — before the deal's assignee, the resolution Logistika's
+       classified CTE joins on. That reaches an order that names its operator
+       but carries no ROP team stamp: read off the assignee alone, one sitting
+       on back office filed its customer under «(ROP yoʻq)». An order from
+       before the snapshot (May 2026) names no operator, so it still falls
+       back to the assignee, here and on Logistika alike. */
+    expect(scoped).toContain('COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id')
+    expect(scoped).not.toContain('d."employeeId" AS employee_id')
   })
 
   it('cuts the cohort at its source, so nothing downstream can fall out of step', async () => {

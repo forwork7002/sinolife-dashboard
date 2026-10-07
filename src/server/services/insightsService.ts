@@ -72,25 +72,66 @@ export function resetConfirmationRopCache(): void {
  * The «Mijozlar oqimi» band's three reads, each memoised on its own clock.
  *
  * `customerFlow` is the expensive one — measured against production,
- * 370-1478 ms warm and up to 8 s cold — so it gets the dashboard's own
- * refetch cadence (60 s, `providers.tsx`): a shorter TTL would buy no
- * freshness (nobody asks again before then) and only add misses, and a
- * longer one would sit stale in front of a screen that already knows to
- * re-ask every minute.
+ * 370-1478 ms warm and up to 8 s cold. ITS TTL IS THE PAGE'S OWN POLL, FIVE
+ * MINUTES (`CohortPage` asks every 5 min), and it was 60 s until 2026-10-06:
+ * justified as «the dashboard's own refetch cadence», which this screen
+ * never used. Below the poll a solo reader missed on every single request —
+ * the case `ttlCache`'s own note calls worse than useless — and paid the
+ * build in front of the screen each time.
  *
  * `sourceRepeatRates` and `customerStates` take no period and no scope and
- * move only a few times a day — 5 minutes, matching the cohort read beside
- * them on the same screen.
+ * move only a few times a day — the same five minutes, matching the cohort
+ * read beside them on the same screen.
+ *
+ * ALL THREE ARE `LIVE_CACHE`: past the TTL the old answer is handed out while
+ * ONE rebuild runs behind it, so the poll that finds an entry expired never
+ * waits for the build. A solo reader still costs one build per poll; what the
+ * memo saves is every other tab and every remount inside the window.
  */
 const customerFlowCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerFlow']>>>(
-  60_000,
+  5 * 60_000,
+  LIVE_CACHE,
 )
 const sourceRatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['sourceRepeatRates']>>>(
   5 * 60_000,
+  LIVE_CACHE,
 )
 const customerStatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerStates']>>>(
   5 * 60_000,
+  LIVE_CACHE,
 )
+
+/**
+ * The cohort matrix and the База card, memoised for the page's own five
+ * minutes — `ttlCache`'s header names this endpoint as one of the reasons the
+ * memo exists, and until 2026-10-06 it had none.
+ *
+ * Both reads walk the whole history and take no period: `cohorts` groups every
+ * won revenue deal by customer, `retentionStages` counts distinct customers
+ * over the whole База pipeline. Every reader asks the same question, so a tab
+ * that remounts, a second tab, or a second manager on the screen paid the
+ * slowest statement in the product again for a matrix in which a cell can move
+ * once a day.
+ *
+ * TWO MEMOS, because the База card is not cut with the matrix: one
+ * `retentionStages` build serves the company view and every team cut alike.
+ * NO SCOPE AND NO CURRENCY IN EITHER KEY — the route is `analytics:read:all`
+ * and refuses a narrowed account (cohort is COMPANY_WIDE), and the currency is
+ * applied after the memo by `money()`, which tags without converting.
+ */
+const cohortMatrixCache = ttlCache<Awaited<ReturnType<InsightsRepository['cohorts']>>>(
+  5 * 60_000,
+  LIVE_CACHE,
+)
+const retentionStagesCache = ttlCache<
+  Awaited<ReturnType<InsightsRepository['retentionStages']>>
+>(5 * 60_000, LIVE_CACHE)
+
+/** Test seam for the two memos above, same hazard as `resetConfirmationRopCache`. */
+export function resetCohortCaches(): void {
+  cohortMatrixCache.clear()
+  retentionStagesCache.clear()
+}
 
 /**
  * The call screen's one statement, on the dashboard's own refetch cadence:
@@ -699,9 +740,14 @@ export interface LogisticsDto {
     /** FAKT 1 orders that never reached a hub or a carrier. */
     readonly unroutedOrders: number
     /**
-     * Refused, and then delivered anyway — how much «Отказ» overstates the
-     * loss. Decided against the LAST refusal, so a parcel that was delivered,
-     * bounced and then refused is not reported as a recovery.
+     * Refused, and then delivered anyway — refusals that recovered, and NOT a
+     * part of «Отказ»: the columns are the CURRENT stage, and an order whose
+     * last delivery outlived its last refusal cannot be standing in a refusal
+     * stage. Taking it off Отказ would understate the loss. Which column it IS
+     * in is not fixed: Успешно while it stays on Доставлено, wherever it went
+     * once moved on (`unbucketedOrders` for another funnel). Decided against
+     * the LAST refusal, so a parcel that was delivered, bounced and then
+     * refused is not reported as a recovery.
      */
     readonly revivedOrders: number
     readonly revived: MoneyDto
@@ -1119,9 +1165,20 @@ export class InsightsService {
     // centrally and not by the team that first sold to the customer. Cutting
     // it by acquiring team would print a partition of a different population
     // under the same heading. The screen says which blocks the cut reaches.
+    //
+    // THE MATRIX KEY IS JSON, NOT `keyPart`. `rop` is a free string off the
+    // query, and `keyPart` hands a string back as it is — so a request for
+    // `?rop=-` would have shared the company view's entry (`keyPart(null)` is
+    // '-') and served every reader an empty matrix for ten minutes. A JSON
+    // array cannot confuse a team named anything with the absence of one.
+    // Undefined and null are one question (the repository cuts only on a
+    // string), so both are written as null.
+    const matrixKey = JSON.stringify([months, options.rop ?? null, options.includeRops === true])
     const [matrix, base] = await Promise.all([
-      this.repository.cohorts({ months, rop: options.rop, includeRops: options.includeRops }),
-      this.repository.retentionStages(),
+      cohortMatrixCache.get(matrixKey, () =>
+        this.repository.cohorts({ months, rop: options.rop, includeRops: options.includeRops }),
+      ),
+      retentionStagesCache.get('stages', () => this.repository.retentionStages()),
     ])
 
     const rows = matrix.rows

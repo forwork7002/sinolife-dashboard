@@ -800,7 +800,7 @@ export interface LogisticsDto {
     readonly unroutedOrders: number
     /** Expected 0. Non-zero is a `countsAsRevenue` double-count announcing itself. */
     readonly offRevenueOrders: number
-    /** Refused, then delivered anyway — how much «Отказ» overstates the loss. */
+    /** Refused, then delivered anyway — outside «Отказ» (its current stage is no refusal), never taken off the loss. */
     readonly revivedOrders: number
     readonly revived: MoneyDto
     readonly medianDays: number | null
@@ -1489,24 +1489,6 @@ export interface ConcentrationParetoDto {
   readonly nullCustomerSharePercent: number | null
 }
 
-export type HhiBand = 'concentrated' | 'moderate' | 'diversified'
-
-export interface HhiCutDto {
-  /** Herfindahl–Hirschman index, 0-10000. Null when the cut has no revenue. */
-  readonly hhi: number | null
-  /** >=2500 concentrated, >=1500 moderate, else diversified. */
-  readonly band: HhiBand | null
-  /** Groups with revenue that entered the index. */
-  readonly groups: number
-  /** Revenue share of the null (unset) group, excluded from the index. */
-  readonly nullSharePercent: number | null
-}
-
-export interface ConcentrationHhiDto {
-  readonly bySource: HhiCutDto
-  readonly byRegion: HhiCutDto
-}
-
 export interface ConcentrationRepeatDto {
   /** First → second purchase interval, days, over pairs completed in the period. */
   readonly medianDaysBetweenFirstAndSecond: number | null
@@ -1530,7 +1512,6 @@ export interface ConcentrationRepeatDto {
 
 export interface ConcentrationDto {
   readonly pareto: ConcentrationParetoDto
-  readonly hhi: ConcentrationHhiDto
   readonly repeat: ConcentrationRepeatDto
 }
 

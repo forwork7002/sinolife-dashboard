@@ -29,10 +29,22 @@ import { t } from '@/lib/messages'
 export function MarginPage() {
   const { filters, apiParams } = useDashboardFilters()
 
+  /*
+    THE SEARCH TERM NEVER REACHES THE REQUEST OR THE KEY.
+
+    The endpoint takes a period and nothing else, and the box below narrows the
+    table in the browser — but `apiParams` carries `q`, so every committed
+    search term was a new cache key: a fresh whole-window aggregate for an
+    identical payload, and the page dimmed under the placeholder while it ran.
+    Stripped here rather than in the shared hook, which every other screen
+    reads on its own terms.
+  */
+  const { q: _search, ...marginParams } = apiParams
+
   const query = useQuery({
-    queryKey: ['margin', apiParams],
+    queryKey: ['margin', marginParams],
     queryFn: ({ signal }) =>
-      apiGet<MarginDto>('/insights/margin', apiParams, signal),
+      apiGet<MarginDto>('/insights/margin', marginParams, signal),
   })
 
   /** One derivation, so no tile can disagree with its own page. */
@@ -82,7 +94,14 @@ export function MarginPage() {
     if (key === 'revenue') return row.revenue.amount
     if (key === 'gross') return row.gross?.amount ?? null
     if (key === 'margin') return row.margin
-    if (key === 'discount') return row.discount.amount - row.overList.amount
+    /*
+      THE GIVEAWAY ALONE, never the giveaway less the markup. The cell leads
+      with `discount` and prints `overList` under it as a separate fact,
+      because the repository splits the two by sign so they are never netted;
+      a sort on the difference put a 2 mln giveaway above a 10 mln one that
+      also sold 9 mln over list, under a column whose cells say otherwise.
+    */
+    if (key === 'discount') return row.discount.amount
     return null
   }
 

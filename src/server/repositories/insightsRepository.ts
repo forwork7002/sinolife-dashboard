@@ -459,9 +459,12 @@ export interface LogisticsCut {
   readonly agedMinor: bigint
   readonly medianWaitingDays: number | null
   /**
-   * Refused, and then delivered anyway — how much the «Отказ» column
-   * overstates the loss. Decided against the LAST refusal, so a parcel that
-   * was delivered, bounced and then refused is not reported as a recovery.
+   * Refused, and then delivered anyway — refusals that recovered, and NOT a
+   * part of the «Отказ» column: `bucket` is the CURRENT stage, and an order
+   * whose last delivery outlived its last refusal cannot be standing in a
+   * refusal stage (Успешно while it stays on Доставлено, wherever it went
+   * once moved on). Decided against the LAST refusal, so a parcel that was
+   * delivered, bounced and then refused is not reported as a recovery.
    */
   readonly revivedOrders: number
   readonly revivedMinor: bigint
@@ -1328,9 +1331,22 @@ export class InsightsRepository {
              \`Организация сотрудника\` at the moment of sale and never rewrites
              it, which is the whole reason this cut can be trusted across a
              seller changing team — the same field and the same fallback
-             Logistika's per-ROP strip reads. */
+             Logistika's per-ROP strip reads.
+
+             THE FALLBACK IS THE OPERATOR WHO SOLD IT, NOT THE DEAL'S HOLDER
+             TODAY, for the reason the classified CTE gives: the portal moves
+             a deal to back office while it is processed, so ASSIGNED_BY_ID
+             drifts (556 July orders once sat on the head of Операцион). That
+             decides one kind of order only: one that names its operator but
+             whose team stamp is empty or names a unit with no «(ROP)». Read
+             off the holder, such an order sitting on back office filed its
+             customer under «(ROP yoʻq)» while Logistika named the operator's
+             team. IT DOES NOT REACH THE OLD COHORTS. The portal began writing
+             both snapshot fields in May 2026, so an earlier order names no
+             operator, the COALESCE lands on the holder exactly as it did
+             before, and Logistika's classified CTE resolves it the same way. */
           d."operatorTeamSource" AS team_source,
-          d."employeeId" AS employee_id,`
+          COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id,`
               : ''
           }
           (
@@ -2860,9 +2876,12 @@ export class InsightsRepository {
         /*
           «QAYTARIB OLINDI» — refused, and then delivered anyway.
 
-          Bounds how much the Отказ column overstates the loss. Both sides
-          come from CTEs already scanned; see refused_at for why the last
-          refusal and not the first.
+          A recovery, and NOT a part of the Отказ column: bucket is the
+          CURRENT stage, and a delivery after the last refusal means the
+          order cannot be standing in a refusal stage now. Which column it
+          is in is not fixed: Успешно while it stays on Доставлено, wherever
+          it went once moved on. Both sides come from CTEs already scanned;
+          see refused_at for why the last refusal and not the first.
         */
         (dv.last_delivered_at IS NOT NULL
          AND rf.refused_at IS NOT NULL
