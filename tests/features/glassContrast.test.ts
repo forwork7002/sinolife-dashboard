@@ -251,7 +251,9 @@ describe('the rest of what glass puts text on', () => {
     The hero's bloom is the page accent over the glass card, so it lands on
     the backdrop's light as well: at the 16% it had on an opaque card, dark
     critical read 3.71 on a cyan page over the blue pool. Every pool accent,
-    every sample.
+    every sample. All three of `.card-hero`'s layers, in its order: the bloom
+    over the `--glass-card-top` sheen over the card — the bloom's peak is the
+    card's top-left corner, which the sheen covers too.
   */
   it('keeps muted and status text at 4.5:1 on the hero bloom at its peak, for every pool accent', () => {
     for (const theme of THEMES) {
@@ -259,7 +261,9 @@ describe('the rest of what glass puts text on', () => {
       for (const slot of ACCENT_POOL) {
         const accent = { rgb: opaque(theme, `--series-${slot}`), alpha: bloom }
         for (const ink of ['--ink-muted', ...STATUS]) {
-          const { ratio, at } = worst(theme, ink, (ground) => over(accent, over(paint(token(theme, '--glass-card')), ground)))
+          const { ratio, at } = worst(theme, ink, (ground) =>
+            over(accent, over(paint(token(theme, '--glass-card-top')), over(paint(token(theme, '--glass-card')), ground))),
+          )
           expect(ratio, `${theme} ${ink} on slot ${slot} over ${at}`).toBeGreaterThanOrEqual(4.5)
         }
       }
