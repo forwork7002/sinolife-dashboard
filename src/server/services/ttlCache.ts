@@ -29,9 +29,23 @@
  *     disclosure — one account served another's rows, which is the worst
  *     thing this module could cause. The rule was once simply "only memoise
  *     answers that carry no scope", because the two boards it was written for
- *     were company-wide by construction. Both have narrowed since: the header
- *     bell and the sellers board each read `ctx.scope` now, and each puts
- *     `keyPart(restrictToEmployeeIds)` in its key and says so in place.
+ *     were company-wide by construction. Scoped memos exist now, and they take
+ *     one of two shapes — never a third:
+ *
+ *       - THE SCOPE IS IN THE KEY. The pulse puts
+ *         `keyPart(restrictToEmployeeIds)` in its key, so each scope builds
+ *         and is served its own answer.
+ *       - THE MEMOISED VALUE CARRIES NO SCOPE, and the reader's scope is
+ *         applied after the memo. The header bell reads `ctx.scope`, yet its
+ *         key's scope part is always «-»: it memoises the whole company's
+ *         waiting orders (`alertsService.cachedBacklog`, a window whose scope
+ *         can only be `null`) and cuts each reader's count from those rows per
+ *         request (`alertsService.countFor`). That is safe because nothing in
+ *         the stored value differs between two accounts — not because the
+ *         bell is unscoped. Storing a SCOPED value under «-» is the bug.
+ *
+ *     (The sellers board is neither: it is company-wide for every caller by
+ *     decision and drops the scope before the SQL, so its key has none.)
  *
  *     What makes that safe is not the key alone but WHERE the value comes
  *     from. Scope is spread LAST over the caller's query in every route here,
