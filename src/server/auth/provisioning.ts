@@ -132,3 +132,29 @@ export async function setPassword(userId: string, password: string): Promise<voi
   const ctx = await auth.$context
   await ctx.internalAdapter.updatePassword(userId, await ctx.password.hash(password))
 }
+
+/**
+ * Hash a password with better-auth's own function — the one sign-in verifies
+ * against — without writing it. For callers that write the credential inside
+ * their own transaction (`updateUser`), so a password never changes unless
+ * everything else in the same edit does.
+ */
+export async function hashPassword(password: string): Promise<string> {
+  const ctx = await auth.$context
+  return ctx.password.hash(password)
+}
+
+/**
+ * The credential row `setPassword` rewrites, as better-auth's
+ * `internalAdapter.updatePassword` selects it (db/internal-adapter.mjs):
+ * userId, provider, the local issuer and accountId = userId. Restated so a
+ * transactional write hits exactly the row the library would.
+ */
+export function credentialWhere(userId: string) {
+  return {
+    userId,
+    providerId: 'credential',
+    issuer: createLocalAccountIssuer('credential'),
+    accountId: userId,
+  } as const
+}

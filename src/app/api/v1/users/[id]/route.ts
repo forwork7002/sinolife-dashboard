@@ -55,6 +55,7 @@ export const PATCH = mutationHandler(ACCESS, updateSchema, async (ctx) => ({
     targetIdFrom(ctx.request),
     ctx.body,
     auditContext(ctx.request),
+    ctx.principal.sessionId ?? null,
   ),
 }))
 

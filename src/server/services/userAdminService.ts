@@ -27,7 +27,7 @@ import { SECTION_IDS, type SectionValue, wideSectionsToStore } from '@/lib/secti
 import { prisma } from '@/server/db/prisma'
 import type { DataScopeValue, RoleValue } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
-import { provisionUser, setPassword } from '@/server/auth/provisioning'
+import { credentialWhere, hashPassword, provisionUser } from '@/server/auth/provisioning'
 import {
   type DepartmentHead,
   type HeadlessUnit,
@@ -380,14 +380,18 @@ async function assertScopeIsUsable(
  * Named here rather than caught afterwards because the caller can act on it:
  * the answer is "edit that account", and this says whose it is.
  */
-async function assertEmployeeIsFree(employeeId: string | null): Promise<void> {
+async function assertEmployeeIsFree(
+  employeeId: string | null,
+  /** The account being edited: already holding this employee is no clash. */
+  exceptUserId?: string,
+): Promise<void> {
   if (!employeeId) return
 
   const taken = await prisma.user.findUnique({
     where: { employeeId },
-    select: { name: true, username: true, displayUsername: true },
+    select: { id: true, name: true, username: true, displayUsername: true },
   })
-  if (!taken) return
+  if (!taken || taken.id === exceptUserId) return
 
   const login = taken.displayUsername ?? taken.username
   throw ApiError.validation('Bu xodimga allaqachon hisob ochilgan.', [
@@ -511,6 +515,8 @@ export async function updateUser(
   targetId: string,
   input: UpdateInput,
   audit: { ip: string | null; userAgent: string | null },
+  /** The editor's own session — kept when they reset their own password here. */
+  actorSessionId: string | null = null,
 ): Promise<UserRow> {
   const before = await prisma.user.findUnique({ where: { id: targetId }, select: SELECT })
   if (!before) throw ApiError.notFound('Bunday hisob topilmadi.')
@@ -589,10 +595,41 @@ export async function updateUser(
     input.employeeId !== undefined ? input.employeeId : before.employeeId,
   )
 
+  /*
+    ONE EMPLOYEE, ONE LOGIN — checked here too, before anything is written.
+    The edit form sends `employeeId` on every save from a picker that does not
+    mark who already has a login; the clash used to surface as an untranslated
+    P2002 from the row update below, a 500 — AFTER the password had already
+    been changed, with no audit row. See `assertEmployeeIsFree`.
+  */
+  if (input.employeeId !== undefined && input.employeeId !== before.employeeId) {
+    await assertEmployeeIsFree(input.employeeId, targetId)
+  }
+
+  /*
+    Hashed now, WRITTEN in the transaction below. The password used to be set
+    first, through better-auth's adapter, outside any transaction — so a row
+    update that then failed left a changed password, unchanged role and scope,
+    and no `passwordChanged` in the audit log.
+  */
+  let passwordHash: string | undefined
   if (input.password !== undefined) {
     assertPassword(input.password, input.username ?? before.username ?? before.email, input.name ?? before.name)
-    await setPassword(targetId, input.password)
+    passwordHash = await hashPassword(input.password)
   }
+
+  /*
+    A RESET PASSWORD OR A DEACTIVATION ENDS THE ACCOUNT'S SESSIONS.
+
+    An administrator resets a password because they believe somebody else has
+    it; deactivates because the person must stop. Neither used to touch the
+    `session` table, so the old cookie kept working (better-auth's `updateAge`
+    even kept rolling it), and reactivating an account revived every session it
+    had. Deleting the rows is what makes the change real — `requirePrincipal`
+    reads the session from the database, not the cookie cache. The editor's own
+    session survives a reset of their own password, as on /account.
+  */
+  const revokeSessions = input.password !== undefined || input.isActive === false
 
   /*
     The wide ticks are judged against the account AFTER the patch, and only
@@ -612,61 +649,100 @@ export async function updateUser(
     input.dataScope ?? before.dataScope,
   )
 
-  const after = await prisma.user.update({
-    where: { id: targetId },
-    data: {
-      ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.username !== undefined
-        ? {
-            username: input.username.trim().toLowerCase(),
-            displayUsername: input.username.trim(),
-          }
-        : {}),
-      ...(nextEmail !== undefined ? { email: nextEmail } : {}),
-      ...(input.role !== undefined ? { role: input.role } : {}),
-      ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
-      ...(input.sections !== undefined ? { sections: nextSections } : {}),
-      ...(touchesScope ? { wideSections: nextWide } : {}),
-      ...(input.dataScope !== undefined ? { dataScope: input.dataScope } : {}),
-      ...(input.employeeId !== undefined ? { employeeId: input.employeeId } : {}),
-    },
-    select: SELECT,
-  })
+  /*
+    EVERY WRITE OF THE EDIT IN ONE TRANSACTION — the row, the credential, the
+    sessions and the audit entry stand or fall together.
+  */
+  const after = await prisma.$transaction(
+    async (tx) => {
+      const saved = await tx.user.update({
+        where: { id: targetId },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.username !== undefined
+            ? {
+                username: input.username.trim().toLowerCase(),
+                displayUsername: input.username.trim(),
+              }
+            : {}),
+          ...(nextEmail !== undefined ? { email: nextEmail } : {}),
+          ...(input.role !== undefined ? { role: input.role } : {}),
+          ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+          ...(input.sections !== undefined ? { sections: nextSections } : {}),
+          ...(touchesScope ? { wideSections: nextWide } : {}),
+          ...(input.dataScope !== undefined ? { dataScope: input.dataScope } : {}),
+          ...(input.employeeId !== undefined ? { employeeId: input.employeeId } : {}),
+        },
+        select: SELECT,
+      })
 
-  await prisma.auditLog.create({
-    data: {
-      actorUserId,
-      action: 'user.update',
-      entity: 'user',
-      entityId: targetId,
-      changes: {
-        before: {
-          name: before.name,
-          username: before.username,
-          role: before.role,
-          isActive: before.isActive,
-          sections: before.sections,
-          wideSections: before.wideSections,
-          dataScope: before.dataScope,
-          employeeId: before.employeeId,
+      if (passwordHash !== undefined) {
+        const { count } = await tx.account.updateMany({
+          where: credentialWhere(targetId),
+          data: { password: passwordHash },
+        })
+        // Nothing to rewrite means nothing changed — say so rather than audit a
+        // password change that did not happen.
+        if (count === 0) {
+          throw ApiError.validation('Bu hisobda parol bilan kirish yoʻq.', [
+            { path: 'password', message: 'Parol oʻrnatilmadi.' },
+          ])
+        }
+      }
+
+      const revoked = revokeSessions
+        ? (
+            await tx.session.deleteMany({
+              where: {
+                userId: targetId,
+                ...(isSelf && actorSessionId ? { NOT: { id: actorSessionId } } : {}),
+              },
+            })
+          ).count
+        : 0
+
+      await tx.auditLog.create({
+        data: {
+          actorUserId,
+          action: 'user.update',
+          entity: 'user',
+          entityId: targetId,
+          changes: {
+            before: {
+              name: before.name,
+              username: before.username,
+              role: before.role,
+              isActive: before.isActive,
+              sections: before.sections,
+              wideSections: before.wideSections,
+              dataScope: before.dataScope,
+              employeeId: before.employeeId,
+            },
+            after: {
+              name: saved.name,
+              username: saved.username,
+              role: saved.role,
+              isActive: saved.isActive,
+              sections: saved.sections,
+              wideSections: saved.wideSections,
+              dataScope: saved.dataScope,
+              employeeId: saved.employeeId,
+            },
+            // Recorded as a fact, never as a value.
+            passwordChanged: input.password !== undefined,
+            sessionsRevoked: revoked,
+          },
+          ipAddress: audit.ip,
+          userAgent: audit.userAgent,
         },
-        after: {
-          name: after.name,
-          username: after.username,
-          role: after.role,
-          isActive: after.isActive,
-          sections: after.sections,
-          wideSections: after.wideSections,
-          dataScope: after.dataScope,
-          employeeId: after.employeeId,
-        },
-        // Recorded as a fact, never as a value.
-        passwordChanged: input.password !== undefined,
-      },
-      ipAddress: audit.ip,
-      userAgent: audit.userAgent,
+      })
+
+      return saved
     },
-  })
+    // Wait for a connection as the pool does (prisma.ts), rather than
+    // Prisma's 2 s / 5 s interactive defaults on a busy one-core database.
+    { maxWait: 20_000, timeout: 20_000 },
+  )
 
   return toRow(after)
 }
