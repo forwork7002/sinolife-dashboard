@@ -330,6 +330,15 @@ period presets lost the solid-ink active block SegmentedControl retired.
 `BrandSwitch`, SegmentedControl's twin with a colour dot, wears the same well
 and chip — the two share a filter row on every main screen.
 
+**A chip's lit top and shadow are a class, never an inline `boxShadow`** —
+`shadow-[var(--glass-highlight),var(--shadow-card)]` on a chosen segment,
+`shadow-[var(--glass-highlight)]` on a raised trigger. The focus ring is a
+box-shadow too, and an inline one (`none` included) beats every stylesheet
+rule: until 2026-10-07 every segment, the period control and the MultiSelect
+trigger showed a keyboard reader no focus. A Tailwind utility is layered, so
+the unlayered `.focusable:focus-visible` wins it
+(`tests/components/controlFocusRing.test.tsx`).
+
 ---
 
 ## The signature layer — "Tungi rasadxona"
