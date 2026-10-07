@@ -1,8 +1,9 @@
 /**
  * The Roistat snapshot — the one row of it anything still reads.
  *
- * `scripts/importRoistat.ts` copies the client's published Roistat page into
- * `marketing_daily` / `marketing_snapshot`. The screen that read the ledger was
+ * `scripts/importRoistat.ts` reads the client's published Roistat page and,
+ * since 2026-10-07, writes only `marketing_snapshot` (`marketing_daily` is
+ * kept, no longer written or read). The screen that read the ledger was
  * deleted on 2026-09-30; what is left is «Target tahlili» borrowing the
  * snapshot's UZS/USD rate for ROAS. Nothing here joins a Bitrix24 table, and
  * there must never be a foreign key between the two sides (see the Marketing

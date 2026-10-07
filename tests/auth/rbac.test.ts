@@ -1,18 +1,27 @@
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import {
   PERMISSIONS,
+  type Permission,
   type Principal,
   can,
   canSeeSection,
-  canViewEmployee,
-  permissionsFor,
   rowScopeFor,
   scopeNeedsTeam,
   wideSectionsFor,
   widenForSection,
 } from '@/server/auth/rbac'
 import { defaultSectionsFor, wideSectionsToStore } from '@/lib/sections'
+import type { DataScopeValue, RoleValue } from '@/server/domain/types'
+
+/** Every permission an account with this role and scope would hold. */
+function permissionsFor(role: RoleValue, dataScope: DataScopeValue = 'ALL'): readonly Permission[] {
+  const probe: Principal = { userId: '', role, isActive: true, employeeId: null, dataScope, sections: [] }
+  return PERMISSIONS.filter((permission) => can(probe, permission))
+}
 
 /*
   Fixtures across BOTH axes, because the two are independent now.
@@ -59,8 +68,7 @@ describe('the permission matrix', () => {
     // that saw the company was one that could also administer it.
     for (const principal of [manager, sales]) {
       expect(can(principal, 'analytics:read:all')).toBe(true)
-      expect(can(principal, 'deals:read:all')).toBe(true)
-      expect(can(principal, 'finance:read')).toBe(true)
+      expect(can(principal, 'kpi:read:all')).toBe(true)
     }
   })
 
@@ -68,15 +76,14 @@ describe('the permission matrix', () => {
     // Withholding them would let an endpoint that asks only for `:own` reject
     // an administrator. Scoping is unaffected — it keys off `dataScope`.
     expect(can(admin, 'analytics:read:own')).toBe(true)
-    expect(can(manager, 'deals:read:own')).toBe(true)
+    expect(can(manager, 'kpi:read:own')).toBe(true)
   })
 
   it('withholds the :all reads from an OWN-scoped account', () => {
     expect(can(scoped, 'analytics:read:own')).toBe(true)
-    expect(can(scoped, 'deals:read:own')).toBe(true)
+    expect(can(scoped, 'kpi:read:own')).toBe(true)
     expect(can(scoped, 'analytics:read:all')).toBe(false)
-    expect(can(scoped, 'deals:read:all')).toBe(false)
-    expect(can(scoped, 'finance:read')).toBe(false)
+    expect(can(scoped, 'kpi:read:all')).toBe(false)
   })
 
   it('lets the role decide changes, and only changes', () => {
@@ -87,13 +94,7 @@ describe('the permission matrix', () => {
 
     for (const principal of [manager, sales, scoped]) {
       expect(can(principal, 'users:manage')).toBe(false)
-      expect(can(principal, 'sync:run')).toBe(false)
     }
-  })
-
-  it('does not let a read-only account look an employee up in detail', () => {
-    expect(can(sales, 'employees:read:detail')).toBe(false)
-    expect(can(manager, 'employees:read:detail')).toBe(true)
   })
 
   it('still lets every account see the leaderboard', () => {
@@ -240,54 +241,6 @@ describe('team scoping', () => {
   })
 })
 
-describe('employee detail visibility', () => {
-  it('lets a manager view anyone', () => {
-    expect(canViewEmployee(manager, 'emp-9')).toBe(true)
-  })
-
-  it('lets a read-only account view only its own linked employee', () => {
-    expect(canViewEmployee(scoped, 'emp-1')).toBe(true)
-    expect(canViewEmployee(scoped, 'emp-2')).toBe(false)
-  })
-
-  it('does not let a deactivated manager view anyone', () => {
-    expect(canViewEmployee({ ...manager, isActive: false }, 'emp-9')).toBe(false)
-  })
-
-  it('lets a ROP open the cards on the board they were given', () => {
-    // Otherwise the team board a ROP is allowed to read links to fifteen
-    // refusals — the drill-down is how the row is used.
-    const scope = rowScopeFor(team, ['emp-2', 'emp-3'])
-    expect(canViewEmployee(team, 'emp-2', scope)).toBe(true)
-    expect(canViewEmployee(team, 'emp-9', scope)).toBe(false)
-  })
-
-  it('does NOT let a narrowed MANAGER outrank their own scope', () => {
-    /*
-      The scope has to be asked BEFORE the role. `employees:read:detail` is a
-      role permission every MANAGER holds unconditionally, and MANAGER is the
-      plausible configuration for a ROP — it is the role that carries
-      `kpi:manage`, and the ROPs own the KPI plans. Asking for the permission
-      first meant a ROP scoped to one team could open any card in the company.
-    */
-    const ropManager: Principal = { ...manager, dataScope: 'TEAM', employeeId: 'emp-1' }
-    const scope = rowScopeFor(ropManager, ['emp-2'])
-
-    expect(canViewEmployee(ropManager, 'emp-2', scope)).toBe(true)
-    expect(canViewEmployee(ropManager, 'emp-9', scope)).toBe(false)
-    // Their own card, always.
-    expect(canViewEmployee(ropManager, 'emp-1', scope)).toBe(true)
-  })
-
-  it('fails closed when a caller forgets to pass the scope', () => {
-    // "We were not told" reads as "nothing but themselves", never as "anyone".
-    const ropManager: Principal = { ...manager, dataScope: 'TEAM', employeeId: 'emp-1' }
-    expect(canViewEmployee(ropManager, 'emp-9')).toBe(false)
-    // A company-wide manager is unchanged: null scope, role decides.
-    expect(canViewEmployee(manager, 'emp-9')).toBe(true)
-  })
-})
-
 /*
   PER-SECTION SCOPE (2026-10-05). A ROP reads «Tasdiqlash» for their own team
   and «RNP» for the whole company: the endpoint behind a wide screen sees an
@@ -373,5 +326,32 @@ describe('wideSectionsToStore', () => {
 
   it('drops a wide tick whose section was unticked', () => {
     expect(wideSectionsToStore(['rnp', 'logistics'], ['logistics'], 'TEAM')).toEqual(['logistics'])
+  })
+})
+
+/*
+  NO PERMISSION NOBODY ASKS FOR. Six were removed on 2026-10-07 because their
+  endpoints went in the 2026-09-10 cull and nothing checked them since — a
+  grant that guards nothing is a rule a reviewer reasons about and no code
+  enforces. Every entry must be named by a route's ACCESS, by the shared
+  permission lists, or by the page guard / viewer.
+*/
+describe('every permission is asked for somewhere', () => {
+  function sources(dir: string): string[] {
+    return readdirSync(dir).flatMap((entry) => {
+      const path = join(dir, entry)
+      if (statSync(path).isDirectory()) return sources(path)
+      return /\.tsx?$/.test(entry) ? [readFileSync(path, 'utf8')] : []
+    })
+  }
+  const askers = [
+    ...sources(join(process.cwd(), 'src/app/api/v1')),
+    ...['src/server/http/permissions.ts', 'src/server/auth/pageGuard.ts', 'src/server/auth/viewer.ts'].map((p) =>
+      readFileSync(join(process.cwd(), p), 'utf8'),
+    ),
+  ].join('\n')
+
+  it.each(PERMISSIONS.map((p) => [p]))('%s is checked by a route, a guard or the viewer', (permission) => {
+    expect(askers).toContain(`'${permission}'`)
   })
 })

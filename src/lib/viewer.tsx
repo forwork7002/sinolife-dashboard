@@ -62,3 +62,23 @@ export function ViewerProvider({
 export function useServerViewer(): Viewer | null {
   return useContext(ViewerContext)
 }
+
+/**
+ * Which viewer the shell draws from: the fetched `/meta/filters` copy, but
+ * ONLY while it describes the account the server rendered for.
+ *
+ * The fetched copy normally wins — it is what moves your own sidebar when an
+ * administrator edits your account. But it lives in a QueryClient that
+ * outlasts any one session on the tab, and its key carries no user: an
+ * account switch that did not pass through a sign-out left the previous
+ * account's viewer cached and preferred for up to five minutes (the filters'
+ * staleTime), menu and all. So a fetched viewer for a different user is not
+ * used; the server's answer is, and `null` from the server stays fail-closed.
+ */
+export function pickViewer(
+  fetched: Viewer | null | undefined,
+  server: Viewer | null,
+): Viewer | null {
+  if (!server) return null
+  return fetched && fetched.userId === server.userId ? fetched : server
+}

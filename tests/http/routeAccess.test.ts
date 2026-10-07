@@ -10,11 +10,10 @@ import { SECTION_IDS } from '@/lib/sections'
  *
  * `getHandler` takes an `Access` with a required `section`, so TypeScript
  * already refuses a handler that omits it. What TypeScript cannot see is a
- * route that goes around the wrapper: `users/[id]` hand-rolls its response and
- * calls `requirePermission` directly, and a second could be added tomorrow by
- * copying it. (`deals/[id]` and `employees/[id]` did the same until they were
- * deleted on 2026-09-10 as endpoints no screen called.) That is exactly the
- * path by which an unguarded endpoint ships.
+ * route that goes around the wrapper and authorises by hand. `deals/[id]` and
+ * `employees/[id]` did that until they were deleted on 2026-09-10 as endpoints
+ * no screen called, and a new one could be added tomorrow the same way. That
+ * is exactly the path by which an unguarded endpoint ships.
  *
  * So this reads the files. It is a blunt instrument on purpose — it does not
  * parse, it looks for the decision being made — and its value is that the
@@ -64,9 +63,22 @@ describe('every v1 endpoint declares its access', () => {
   it.each(routes.map((r) => [r.relative, r.source] as const))(
     '%s states a section',
     (_relative, source) => {
-      const viaWrapper = /section:\s*(null|'[a-z]+'|\[)/.test(source)
-      const handRolled = /assertSection\(/.test(source)
-      expect(viaWrapper || handRolled).toBe(true)
+      expect(/section:\s*(null|'[a-z]+'|\[)/.test(source)).toBe(true)
+    },
+  )
+
+  /*
+    NO ROUTE AUTHORISES BY HAND. `requirePermission` went with its last
+    caller; a route that resolved the session itself would skip
+    `widenForSection` and the section check that getHandler / mutationHandler
+    apply, so a narrowed account would be judged differently there than on
+    every other endpoint. The wrapper is the only door.
+  */
+  it.each(routes.map((r) => [r.relative, r.source] as const))(
+    '%s authorises only through getHandler / mutationHandler',
+    (_relative, source) => {
+      expect(source).not.toMatch(/requirePermission|requirePrincipal\(|assertSection\(/)
+      expect(source).toMatch(/\b(getHandler|mutationHandler)\(/)
     },
   )
 

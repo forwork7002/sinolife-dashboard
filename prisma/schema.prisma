@@ -965,6 +965,9 @@ model Deal {
   @@index([leadDistributedOn])
   /// «Lidlar»'s «Сммщик ии» reads a «ИИ квал сана» window over every pipeline.
   @@index([aiQualifiedAt])
+  /// The worker's «ИИ обработка» re-read: AI_TRIAGE deals modified since a
+  /// time (`closedTriageDealIds`) — a sequential scan without it (2026-10-05).
+  @@index([pipelineId, updatedAtSource])
   @@map("deal")
 }
 
@@ -992,6 +995,9 @@ model DealStageHistory {
   @@unique([externalSource, externalId])
   @@index([dealId, enteredAt])
   @@index([stageId, enteredAt])
+  /// The queue cohort's `moves` reads (stageId, enteredAt ≥ $1) → dealId;
+  /// with dealId in the key the range is answered from the index alone.
+  @@index([stageId, enteredAt, dealId])
   @@map("deal_stage_history")
 }
 

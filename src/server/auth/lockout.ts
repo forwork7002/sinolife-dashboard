@@ -95,11 +95,6 @@ export function lockDurationMs(failedCount: number): number {
   return Math.min(BASE_LOCK_MS * factor, MAX_LOCK_MS)
 }
 
-/** Is this state locked right now? */
-export function isLocked(state: LockoutState | null, now: Date): boolean {
-  return state?.lockedUntil != null && state.lockedUntil.getTime() > now.getTime()
-}
-
 /** Milliseconds left on the lock, or 0 if it is not locked. */
 export function remainingLockMs(state: LockoutState | null, now: Date): number {
   const until = state?.lockedUntil
@@ -125,6 +120,57 @@ export function applyFailure(previous: LockoutState | null, now: Date): LockoutS
     failedCount,
     lockedUntil: duration > 0 ? new Date(now.getTime() + duration) : null,
     lastFailedAt: now,
+  }
+}
+
+/**
+ * THE ATTEMPT IS COUNTED BEFORE THE PASSWORD IS CHECKED.
+ *
+ * The lock used to be checked in `hooks.before` and the failure recorded in
+ * `hooks.after`, with the scrypt verification — non-blocking, on the libuv
+ * pool — in between. Every request already in flight when the count reached
+ * five had passed the check, and concurrent failures that read the same row
+ * all wrote the same count + 1. Five parallel guesses each time the per-IP
+ * limit reset bought up to twenty-five guesses before the first lock, not
+ * five. So an attempt now RESERVES a failure up front, under a lock on the
+ * key, and the after hook settles it: a wrong password keeps it, a right one
+ * clears the record, anything else (wrong origin, bad body, server error)
+ * hands it back.
+ *
+ * Every key is judged together: if ANY is locked the attempt is refused, and
+ * otherwise each takes one failure — see `signInLockoutIdentifiers` for why
+ * an attempt can carry two keys.
+ */
+export type Reservation =
+  | { readonly allowed: false; readonly remainingMs: number }
+  | { readonly allowed: true; readonly next: readonly LockoutState[] }
+
+export function reserveAttempt(
+  states: readonly (LockoutState | null)[],
+  now: Date,
+): Reservation {
+  const remainingMs = Math.max(0, ...states.map((state) => remainingLockMs(state, now)))
+  if (remainingMs > 0) return { allowed: false, remainingMs }
+  return { allowed: true, next: states.map((state) => applyFailure(state, now)) }
+}
+
+/**
+ * Hand one reserved failure back — the attempt was not a wrong password.
+ *
+ * `null` means the row can go. Below the threshold no lock is justified, so a
+ * lock the reservation armed goes with it. At or above it the lock is KEPT as
+ * written: the row cannot say which attempt armed it, and the conservative
+ * error is a lock that runs to its (at most one-hour) end for someone who has
+ * already failed five times inside a day — never a lock lifted for a guesser.
+ */
+export function refundAttempt(state: LockoutState | null): LockoutState | null {
+  if (state == null) return null
+  const failedCount = Math.max(0, state.failedCount - 1)
+  if (failedCount === 0) return null
+  return {
+    failedCount,
+    lockedUntil: failedCount >= MAX_FAILED_SIGN_INS ? state.lockedUntil : null,
+    lastFailedAt: state.lastFailedAt,
   }
 }
 
@@ -181,87 +227,148 @@ async function db() {
   return prisma
 }
 
-async function read(key: string): Promise<LockoutState | null> {
-  const prisma = await db()
-  const row = await prisma.signInLockout.findUnique({ where: { emailHash: key } })
-  if (!row) return null
+/** One transaction's view of the lockout rows. */
+export interface LockoutTx {
+  /** Serialise every other attempt on these keys until the transaction ends. */
+  lock(keys: readonly string[]): Promise<void>
+  read(key: string): Promise<LockoutState | null>
+  write(key: string, state: LockoutState): Promise<void>
+  remove(key: string): Promise<void>
+}
+
+/** Where the counters live. Postgres in production; a fake in the tests. */
+export interface LockoutStore {
+  transaction<T>(work: (tx: LockoutTx) => Promise<T>): Promise<T>
+  prune(olderThan: Date): Promise<void>
+}
+
+/**
+ * The advisory-lock namespace for sign-in keys — the TWO-int4 form.
+ *
+ * Postgres keeps the one-bigint and two-int4 advisory key spaces apart, and
+ * the sync worker holds a one-bigint lock for its whole life
+ * (`pg_try_advisory_lock` in syncWorker.ts). A sign-in key hashed into that
+ * space could, by a one-in-four-billion accident, wait on the worker forever.
+ */
+const SIGN_IN_LOCK_NAMESPACE = 0x51_4c_4f
+
+/**
+ * The transaction waits as long as the pool does for a connection. Prisma's
+ * interactive defaults (2 s to start, 5 s to finish) would turn a busy
+ * one-core database into a failed sign-in, where the rest of the app queues.
+ */
+const TRANSACTION_WAIT_MS = 20_000
+
+function prismaStore(): LockoutStore {
   return {
-    failedCount: row.failedCount,
-    lockedUntil: row.lockedUntil,
-    lastFailedAt: row.lastFailedAt,
+    async transaction(work) {
+      const prisma = await db()
+      return prisma.$transaction(
+        async (tx) =>
+          work({
+            async lock(keys) {
+              // Sorted by the caller, so two attempts on the same pair of keys
+              // take them in the same order and cannot deadlock.
+              for (const key of keys) {
+                await tx.$executeRawUnsafe(
+                  `SELECT pg_advisory_xact_lock(${SIGN_IN_LOCK_NAMESPACE}, hashtext($1))`,
+                  key,
+                )
+              }
+            },
+            async read(key) {
+              const row = await tx.signInLockout.findUnique({ where: { emailHash: key } })
+              return row
+                ? { failedCount: row.failedCount, lockedUntil: row.lockedUntil, lastFailedAt: row.lastFailedAt }
+                : null
+            },
+            async write(key, state) {
+              await tx.signInLockout.upsert({
+                where: { emailHash: key },
+                create: { emailHash: key, ...state },
+                update: { ...state },
+              })
+            },
+            async remove(key) {
+              await tx.signInLockout.deleteMany({ where: { emailHash: key } })
+            },
+          }),
+        { maxWait: TRANSACTION_WAIT_MS, timeout: TRANSACTION_WAIT_MS },
+      )
+    },
+    async prune(olderThan) {
+      const prisma = await db()
+      await prisma.signInLockout.deleteMany({ where: { lastFailedAt: { lt: olderThan } } })
+    },
   }
 }
 
-/**
- * Is this address currently locked out? Returns the remaining milliseconds, or
- * 0 when sign-in may proceed.
- *
- * Called BEFORE the password is checked, so a locked account costs an attacker
- * a lookup rather than a bcrypt verification — which also means the lockout
- * doubles as protection against using the login form as a CPU sink.
- */
-export async function checkSignInLockout(email: string, now = new Date()): Promise<number> {
-  const state = await read(lockoutKey(email))
-  return remainingLockMs(state, now)
+/** Distinct hashed keys in a fixed order — the lock order. */
+function keysOf(identifiers: readonly string[]): string[] {
+  return [...new Set(identifiers.map(lockoutKey))].sort()
 }
 
 /**
- * Count one failed sign-in.
+ * Reserve one failed attempt on every identifier, atomically. Returns the
+ * milliseconds left on a lock (the attempt is refused and nothing is
+ * written), or 0 when sign-in may proceed with the failure already counted.
  *
- * Read-then-write rather than a single atomic statement: two simultaneous
- * wrong passwords could in principle count as one. That is an acceptable loss
- * — the attacker gains at most one extra guess per race, and the alternative
- * (an atomic increment) cannot express the decay-then-escalate rule in one
- * round trip. What must not be lost is the lock itself, and `upsert` on the
- * primary key cannot lose that.
+ * Called BEFORE the password is checked, so a locked account costs an
+ * attacker a lookup rather than a scrypt verification — which also means the
+ * lockout doubles as protection against using the login form as a CPU sink.
  */
-export async function recordFailedSignIn(email: string, now = new Date()): Promise<void> {
-  const prisma = await db()
-  const key = lockoutKey(email)
-  const next = applyFailure(await read(key), now)
+export async function reserveSignInAttempt(
+  identifiers: readonly string[],
+  now = new Date(),
+  store: LockoutStore = prismaStore(),
+): Promise<number> {
+  const keys = keysOf(identifiers)
+  if (keys.length === 0) return 0
 
-  await prisma.signInLockout.upsert({
-    where: { emailHash: key },
-    create: {
-      emailHash: key,
-      failedCount: next.failedCount,
-      lockedUntil: next.lockedUntil,
-      lastFailedAt: next.lastFailedAt,
-    },
-    update: {
-      failedCount: next.failedCount,
-      lockedUntil: next.lockedUntil,
-      lastFailedAt: next.lastFailedAt,
-    },
+  const remainingMs = await store.transaction(async (tx) => {
+    await tx.lock(keys)
+    const states: (LockoutState | null)[] = []
+    for (const key of keys) states.push(await tx.read(key))
+    const decision = reserveAttempt(states, now)
+    if (!decision.allowed) return decision.remainingMs
+    for (const [i, key] of keys.entries()) await tx.write(key, decision.next[i])
+    return 0
   })
 
-  await prune(now)
+  await store.prune(new Date(now.getTime() - PRUNE_AFTER_MS))
+  return remainingMs
 }
 
 /**
- * A correct password clears the record.
+ * What the sign-in turned out to be.
  *
- * `deleteMany` rather than `delete` so the common case — someone who has never
- * failed — is not an exception to catch.
+ * `failed` — a wrong password (401): the reserved failure stands.
+ * `succeeded` — the record is cleared, as a correct password always did.
+ * `void` — anything else: the deployment misbehaving (403 origin, 500), not
+ * a guess, and charging the owner's budget for it would turn an outage into a
+ * lockout. The reservation is handed back.
  */
-export async function clearSignInFailures(email: string): Promise<void> {
-  const prisma = await db()
-  await prisma.signInLockout.deleteMany({ where: { emailHash: lockoutKey(email) } })
-}
+export type SignInOutcome = 'failed' | 'succeeded' | 'void'
 
-/**
- * Drop records that can no longer influence a decision.
- *
- * A row whose last failure is past the decay window is treated as absent
- * anyway, so keeping it only feeds the table. Deleting on write keeps this
- * off any schedule — there is no cron on this deployment to hang a cleanup
- * job from.
- */
-async function prune(now: Date): Promise<void> {
-  const prisma = await db()
-  await prisma.signInLockout.deleteMany({
-    where: {
-      lastFailedAt: { lt: new Date(now.getTime() - PRUNE_AFTER_MS) },
-    },
+export async function settleSignInAttempt(
+  identifiers: readonly string[],
+  outcome: SignInOutcome,
+  store: LockoutStore = prismaStore(),
+): Promise<void> {
+  if (outcome === 'failed') return
+  const keys = keysOf(identifiers)
+  if (keys.length === 0) return
+
+  await store.transaction(async (tx) => {
+    await tx.lock(keys)
+    for (const key of keys) {
+      if (outcome === 'succeeded') {
+        await tx.remove(key)
+        continue
+      }
+      const next = refundAttempt(await tx.read(key))
+      if (next) await tx.write(key, next)
+      else await tx.remove(key)
+    }
   })
 }

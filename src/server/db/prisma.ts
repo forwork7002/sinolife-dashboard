@@ -10,10 +10,19 @@
  * `CHANGE_ME` placeholder, so a half-configured .env fails at startup with a
  * clear message rather than as an obscure connection error later.
  *
- * HOT RELOAD
- * Next.js re-evaluates modules on every edit in development. Without the
- * global cache below, each reload would open a fresh pool and the database
- * would run out of connections after a few dozen saves.
+ * ONE POOL PER PROCESS
+ * The client is cached on `globalThis` in EVERY environment, production
+ * included. Two reasons, one mechanism:
+ *  - development: Next.js re-evaluates modules on every edit; without the
+ *    cache each reload would open a fresh pool and the database would run
+ *    out of connections after a few dozen saves;
+ *  - production: the build holds this module more than once — the API-route
+ *    bundle, the app-page bundle (requireSection / session) and the chunk
+ *    instrumentation loads for the rnp/leads warmers each carry their own
+ *    copy. A module-level `const` gave each copy its own Pool(max 8), so one
+ *    web process could hold three pools and break the per-container budget
+ *    sized below. `globalThis` is shared by every copy in the process, so
+ *    whichever bundle imports first creates the pool and the rest reuse it.
  */
 
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -89,9 +98,8 @@ const globalForPrisma = globalThis as unknown as {
   __sinolifePrisma?: PrismaClient
 }
 
-export const prisma: PrismaClient =
-  globalForPrisma.__sinolifePrisma ?? createPrismaClient()
+// Written in every environment — see ONE POOL PER PROCESS above. Gating this
+// on NODE_ENV !== 'production' is what used to give each bundle its own pool.
+globalForPrisma.__sinolifePrisma ??= createPrismaClient()
 
-if (env.NODE_ENV !== 'production') {
-  globalForPrisma.__sinolifePrisma = prisma
-}
+export const prisma: PrismaClient = globalForPrisma.__sinolifePrisma
