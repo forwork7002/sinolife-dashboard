@@ -259,8 +259,10 @@ function Conversion({ value }: { value: number | null }) {
   if (value === null) return <span style={muted}>—</span>
   return (
     <span className="inline-flex items-center justify-end gap-2">
-      <span className="hidden h-1.5 w-12 overflow-hidden rounded-full sm:inline-block" style={{ background: 'var(--grid)' }} aria-hidden>
-        <span className="block h-full rounded-full" style={{ width: `${Math.min(100, value)}%`, background: 'var(--accent)' }} />
+      {/* The sequential magnitude hue, never the page accent — on Lidlar that
+          is series-7, which is also a ROP team's colour. */}
+      <span className="hidden h-1.5 w-12 overflow-hidden rounded-full sm:inline-block" style={{ background: 'var(--track)' }} aria-hidden>
+        <span className="block h-full rounded-full" style={{ width: `${Math.min(100, value)}%`, background: 'var(--seq-450)' }} />
       </span>
       <span className="w-11">{formatPercent(value, 0)}</span>
     </span>
