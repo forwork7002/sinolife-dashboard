@@ -6,6 +6,7 @@ import { type Column, DataTable } from '@/components/ui/DataTable'
 import { ArrowDownGlyph, ArrowUpGlyph } from '@/components/ui/Icons'
 import { Select } from '@/components/ui/Select'
 import { RankBadge, StatusChip } from '@/components/ui/Stat'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { NO_VALUE, formatCents, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 import type { RoistatColumnsDto, RoistatCountersDto, RoistatDaysDto, RoistatDim } from './roistatApi'
@@ -368,9 +369,12 @@ function NameCell({
       <span className="whitespace-nowrap font-medium">
         {dayLabel(line.key)}
         {line.fresh && (
-          <span className="ml-1" title="Kun hali yopilmagan — sotuvlar keyinroq tushadi">
-            ⏳<span className="sr-only"> hali toʻliq emas</span>
-          </span>
+          // The reason rides the Tooltip (hover and tap), not a native title.
+          <Tooltip content="Kun hali yopilmagan — sotuvlar keyinroq tushadi" className="ml-1">
+            <span>
+              ⏳<span className="sr-only"> hali toʻliq emas</span>
+            </span>
+          </Tooltip>
         )}
       </span>
     )

@@ -3,6 +3,7 @@
 import { useState, type UIEvent } from 'react'
 
 import { InitialChip } from '@/components/ui/DataTable'
+import { InfoTip } from '@/components/ui/Tooltip'
 import type { StructureDto } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
 
@@ -46,7 +47,11 @@ export function StructureTable({ nodes }: { nodes: readonly StructureDto[] }) {
       align: 'right',
       hint: 'Bitrix24 shu boʻlimda koʻrsatgan faol xodimlar, rahbarsiz. Portaldagi «Подчинённые» soni.',
     },
-    { label: 'Xodim', align: 'right' },
+    {
+      label: 'Xodim',
+      align: 'right',
+      hint: 'Faol xodimlar / jami — qolgani Bitrix24 da oʻchirilgan.',
+    },
     { label: 'Oʻzida', align: 'right' },
   ]
 
@@ -72,7 +77,6 @@ export function StructureTable({ nodes }: { nodes: readonly StructureDto[] }) {
               <th
                 key={header.label || i}
                 scope="col"
-                title={header.hint}
                 /* `.thead-sticky` on the CELLS, not the row — sticky <tr>
                    rendering is still uneven across engines, while cells pin
                    everywhere and their contiguous sunken backgrounds read as
@@ -82,7 +86,12 @@ export function StructureTable({ nodes }: { nodes: readonly StructureDto[] }) {
                 }`}
                 style={{ color: 'var(--ink-muted)', borderBottom: '1px solid var(--border)' }}
               >
-                {header.label}
+                {/* The definition rides an InfoTip — hover, focus and tap —
+                    not a native title on the cell. */}
+                <span className="inline-flex items-center gap-1">
+                  {header.label}
+                  {header.hint && <InfoTip content={header.hint} label={`${header.label} — izoh`} />}
+                </span>
               </th>
             ))}
           </tr>
@@ -183,7 +192,6 @@ function Branch({ node }: { node: StructureDto }) {
         <td
           className="tabular px-3 py-1.5 text-right text-xs"
           style={{ color: 'var(--ink-primary)' }}
-          title="Bitrix24 shu boʻlimda koʻrsatgan faol xodimlar, rahbarsiz"
         >
           {formatNumber(node.subordinateCount)}
         </td>
@@ -191,9 +199,6 @@ function Branch({ node }: { node: StructureDto }) {
         <td
           className="tabular px-3 py-1.5 text-right text-xs"
           style={{ color: 'var(--ink-secondary)' }}
-          title={`${formatNumber(node.activeHeadcount)} faol · ${formatNumber(
-            node.headcount - node.activeHeadcount,
-          )} oʻchirilgan`}
         >
           {/* Active of total. A branch reading "109" was counting 34 people
               Bitrix24 had already deactivated. */}

@@ -5,6 +5,7 @@ import { type ReactNode, useState } from 'react'
 import { Card } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { StatTile } from '@/components/ui/Stat'
+import { InfoTip } from '@/components/ui/Tooltip'
 import { NO_VALUE, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
 import { isOneBrand } from '@/features/shared/BrandSwitch'
 import { PRODUCT_LABEL, PRODUCT_TONE, usd } from '@/features/target/targetTheme'
@@ -221,24 +222,39 @@ const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
  * zero that reads as «nothing came in». They are «Brendsiz»'s figures.
  */
 const unsplitNote = (what: string, prefix?: string) => (
-  <p
-    className="text-[11px] leading-snug"
-    style={muted}
-    title={`${what} hech qaysi brendga bogʻlanmaydi — faqat «Hammasi»da koʻrinadi.`}
-  >
+  <TipNote tip={`${what} hech qaysi brendga bogʻlanmaydi — faqat «Hammasi»da koʻrinadi.`}>
     {prefix ? `${prefix} · ` : ''}Brend boʻyicha ajratilmaydi
-  </p>
+  </TipNote>
 )
+
+/**
+ * A tile's quiet line, and the definition behind it in an InfoTip — hover,
+ * focus and tap. It sat in a native `title`, which a phone never opens and a
+ * keyboard never reaches, on exactly the lines that say what a figure leaves
+ * out.
+ */
+function TipNote({
+  tip,
+  className = 'text-[11px]',
+  children,
+}: {
+  tip?: string
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <p className={`leading-snug ${className}`} style={muted}>
+      {children}
+      {tip && <InfoTip content={tip} className="ml-1 align-middle" />}
+    </p>
+  )
+}
 
 /** «N kval · X%» — kval ÷ new leads, as «Квал %» above; a dash when the channel had no new lead. */
 const kvalHint = (t: ChannelTileDto) =>
   `${formatNumber(t.qualified)} kval · ${t.qualifiedPercent === null ? NO_VALUE : formatPercent(t.qualifiedPercent)}`
 
-const note = (text: string, title?: string) => (
-  <p className="text-[11px] leading-snug" style={muted} title={title}>
-    {text}
-  </p>
-)
+const note = (text: string, tip?: string) => <TipNote tip={tip}>{text}</TipNote>
 
 /**
  * «shundan N dubl», quietly — the client, 2026-10-03: a duplicate is counted
@@ -256,13 +272,12 @@ const dublNote = (t: ChannelTileDto | undefined) => {
  */
 const aiElsewhereNote = (n: number) =>
   n > 0 ? (
-    <p
-      className="text-[10px] leading-snug"
-      style={muted}
-      title="«ИИ квал сана» shu davrda, lekin bitim Регистрацияdan oʻtib ketgan (Первичный отдел, Доставка …) — avval sanalgan lidning takrori; hech qaysi kartaga va «Jami»ga kirmaydi"
+    <TipNote
+      className="text-[10px]"
+      tip="«ИИ квал сана» shu davrda, lekin bitim Регистрацияdan oʻtib ketgan (Первичный отдел, Доставка …) — avval sanalgan lidning takrori; hech qaysi kartaga va «Jami»ga kirmaydi"
     >
       +{formatNumber(n)} dubl · Первичный / Доставка · sanalmagan
-    </p>
+    </TipNote>
   ) : null
 
 /**
@@ -273,12 +288,12 @@ const aiElsewhereNote = (n: number) =>
  */
 const inboundCallsNote = (n: number | null) =>
   n === null ? null : (
-    <p
-      className="text-xs font-semibold leading-snug tabular-nums"
-      title="Telefoniyadagi barcha kiruvchi qoʻngʻiroqlar shu davrda (har bir qoʻngʻiroq, takrorlari bilan). Toʻliq hisobot — «Qoʻngʻiroqlar» boʻlimida."
-      data-testid="inbound-calls-note"
-    >
+    <p className="text-xs font-semibold leading-snug tabular-nums" data-testid="inbound-calls-note">
       📞 {formatNumber(n)} kiruvchi qoʻngʻiroq
+      <InfoTip
+        content="Telefoniyadagi barcha kiruvchi qoʻngʻiroqlar shu davrda (har bir qoʻngʻiroq, takrorlari bilan). Toʻliq hisobot — «Qoʻngʻiroqlar» boʻlimida."
+        className="ml-1 align-middle"
+      />
     </p>
   )
 

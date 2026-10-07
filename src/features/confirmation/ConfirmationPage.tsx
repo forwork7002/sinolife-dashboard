@@ -220,15 +220,26 @@ const QUEUE_COLUMNS: Column<ConfirmationOrderDto>[] = [
     //
     // Дата создания rides along in the tooltip. It is still worth reaching —
     // it is the field an operator sees first in Bitrix — but it decides
-    // nothing on this board any more.
+    // nothing on this board any more. The Tooltip primitive, not a native
+    // title, so a tap reaches it too; no tab stop of its own, because
+    // twenty-five more on the densest table in the product would cost a
+    // keyboard reader far more than this secondary date is worth.
+    //
+    // On the DATE alone, not the whole cell: the 🔁 under it carries a tip of
+    // its own, and one pointer must not open two.
     render: (row) => (
-      <div
-        className="whitespace-nowrap"
-        title={`Яратилган: ${tashkentDate(row.createdAt)} ${tashkentTime(row.createdAt)}`}
-      >
-        <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
-          {tashkentDate(row.queuedAt ?? row.createdAt)}
-        </span>
+      <div className="whitespace-nowrap">
+        <Tooltip
+          content={
+            <span className="tabular">
+              Яратилган: {tashkentDate(row.createdAt)} {tashkentTime(row.createdAt)}
+            </span>
+          }
+        >
+          <span className="tabular" style={{ color: 'var(--ink-primary)' }}>
+            {tashkentDate(row.queuedAt ?? row.createdAt)}
+          </span>
+        </Tooltip>
         <span
           className="tabular flex items-center gap-1 text-[11px]"
           style={{ color: 'var(--ink-muted)' }}

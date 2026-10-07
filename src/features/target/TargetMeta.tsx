@@ -3,6 +3,7 @@
 import { Card } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { SectionHeader } from '@/components/ui/Stat'
+import { Tooltip } from '@/components/ui/Tooltip'
 import { formatDate, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
 
 import type { MetaBlockDto, MetaOwnerDto, MetaTargetologDto } from './targetApi'
@@ -104,7 +105,8 @@ const OWNER_COLUMNS: readonly Column<MetaOwnerDto>[] = [
     header: 'Xarajat',
     align: 'right',
     numeric: true,
-    render: (row) => <span title={usd(row.spendUsd, true)}>{usd(row.spendUsd)}</span>,
+    // To the cent in the cell itself: a native title carrying the exact figure never opens on a phone.
+    render: (row) => usd(row.spendUsd, true),
   },
   {
     key: 'leads',
@@ -194,12 +196,12 @@ function TargetologCards({
               </p>
             </div>
             <div className="shrink-0 text-right">
-              <p
-                className="display tabular text-[24px] leading-tight font-semibold"
-                style={{ color: 'var(--ink-primary)' }}
-                title={usd(p.spendUsd, true)}
-              >
-                {usd(p.spendUsd)}
+              <p className="display tabular text-[24px] leading-tight font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                <Tooltip content={<span className="tabular">{usd(p.spendUsd, true)}</span>}>
+                  <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">
+                    {usd(p.spendUsd)}
+                  </span>
+                </Tooltip>
               </p>
               <p className="text-[11px]" style={muted}>
                 sarf · jamining {formatPercent(total > 0 ? (p.spendUsd / total) * 100 : null)}
