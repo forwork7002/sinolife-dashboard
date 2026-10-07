@@ -1298,11 +1298,16 @@ export interface SellerBoardTotalsDto {
   readonly lostAfterConfirm: MoneyDto
   readonly conversionPercent: number | null
   /**
-   * Null under a brand slice or a source filter, with `sellersInBonus`: the
-   * ladder pays on a seller's WHOLE FAKT 2 and is not linear, so it cannot be
-   * cut deal by deal.
+   * Not stated under a brand slice or a source filter, with `sellersInBonus`
+   * null: the ladder pays on a seller's WHOLE FAKT 2 and is not linear, so it
+   * cannot be cut deal by deal. For one release «not stated» arrives as money
+   * with a null `amount` rather than `null` (the server's `unstatedBonusFund`,
+   * a deploy-skew shim), and `null` after it — read `bonusPayable?.amount`.
    */
-  readonly bonusPayable: MoneyDto | null
+  readonly bonusPayable:
+    | MoneyDto
+    | { readonly amountMinor: null; readonly currency: string; readonly amount: null }
+    | null
   readonly sellersInBonus: number | null
 }
 

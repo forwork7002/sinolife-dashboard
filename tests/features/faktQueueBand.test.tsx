@@ -256,4 +256,26 @@ describe('the bonus fund', () => {
     expect(tile.textContent).toContain('brend va manba boʻyicha ajratilmaydi — bonus jami FAKT 2 dan')
     expect(screen.queryByText(/darajani oldi/)).toBeNull()
   })
+
+  it('reads the one-release shim — money with a null amount — as no fund too', () => {
+    /*
+      For one release the server states «no fund» as `{ amount: null, … }`
+      rather than `null`, so a tab on the previous bundle (which reads
+      `bonusPayable.amount` unguarded) survives the deploy. This client must
+      draw the same dash and the same reason for it.
+    */
+    const shimmed = {
+      ...LIVE,
+      totals: {
+        ...LIVE.totals,
+        bonusPayable: { amountMinor: null, currency: 'UZS', amount: null },
+        sellersInBonus: null,
+      },
+    } as SellerBoardDto
+    render(<QueueBand data={shimmed} status="ready" />)
+
+    const tile = screen.getByText('Bonus jamgʻarmasi').closest('.card')!
+    expect(tile.querySelector('.figure')?.textContent).toBe('—')
+    expect(tile.textContent).toContain('brend va manba boʻyicha ajratilmaydi — bonus jami FAKT 2 dan')
+  })
 })

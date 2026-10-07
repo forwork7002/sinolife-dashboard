@@ -231,11 +231,19 @@ export interface SellerBoardTotalsDto {
   /**
    * Total bonus the tiers would pay on today's standings.
    *
-   * NULL UNDER A BRAND SLICE OR A SOURCE FILTER, with `sellersInBonus`: the
-   * ladder pays on a seller's WHOLE FAKT 2 and is not linear, so it cannot be
-   * cut deal by deal — see `slicesSellerFakt2`.
+   * NOT STATED UNDER A BRAND SLICE OR A SOURCE FILTER, with `sellersInBonus`
+   * null: the ladder pays on a seller's WHOLE FAKT 2 and is not linear, so it
+   * cannot be cut deal by deal — see `slicesSellerFakt2`.
+   *
+   * «Not stated» travels as `unstatedBonusFund`, not as `null`, for ONE
+   * RELEASE — the second deploy-skew shim beside `wonDelta`, removed with it.
+   * The bundle from before the slice rule reads `totals.bonusPayable.amount`
+   * unguarded, so a bare `null` would throw on the first poll of every tab
+   * left open on a brand or «Manba» filter and land it on the global error
+   * page; an object with a null `amount` draws «—» there instead. The current
+   * client reads `bonusPayable?.amount ?? null`, which takes either shape.
    */
-  readonly bonusPayable: MoneyDto | null
+  readonly bonusPayable: MoneyDto | UnstatedMoneyDto
   readonly sellersInBonus: number | null
   /**
    * A DEPLOY-SKEW SHIM FOR ONE RELEASE, always `no_data` (2026-10-06).
@@ -246,9 +254,20 @@ export interface SellerBoardTotalsDto {
    * field, its first poll after the deploy throws and lands on the global error
    * page, which a retry cannot leave. `no_data` draws a muted «maʼlumot yoʻq»
    * there instead. The current client never reads it, so it is NOT mirrored in
-   * `src/lib/api.ts`. Delete it in the release after this one.
+   * `src/lib/api.ts`.
+   *
+   * REMOVAL: in the first release after the one that ships it, together with
+   * `unstatedBonusFund` (whose `bonusPayable` then goes back to `null`).
+   * `grep -rn 'DEPLOY-SKEW SHIM' src` finds both.
    */
   readonly wonDelta: { readonly kind: 'no_data' }
+}
+
+/** `MoneyDto`'s shape with nothing in it — see `bonusPayable` and `unstatedBonusFund`. */
+export interface UnstatedMoneyDto {
+  readonly amountMinor: null
+  readonly currency: string
+  readonly amount: null
 }
 
 /**
@@ -828,7 +847,9 @@ export class SellerBoardService {
           another read 0 under each.
         */
         bonusPayable:
-          bonusMinor === null ? null : toMoneyDto(money(sum(bonusMinor, (b) => b), ctx.currency)),
+          bonusMinor === null
+            ? unstatedBonusFund(ctx.currency)
+            : toMoneyDto(money(sum(bonusMinor, (b) => b), ctx.currency)),
         sellersInBonus: bonusMinor === null ? null : bonusMinor.filter((b) => b > 0n).length,
         // For a tab on the previous bundle only — see `SellerBoardTotalsDto.wonDelta`.
         wonDelta: { kind: 'no_data' },
@@ -1231,6 +1252,16 @@ function boardFilters(ctx: AnalyticsContext): SellerBoardFilters {
  */
 function slicesSellerFakt2(filters: SellerBoardFilters): boolean {
   return filters.brand !== undefined || (filters.sourceIds?.length ?? 0) > 0
+}
+
+/**
+ * DEPLOY-SKEW SHIM (2026-10-06), removed with `wonDelta`: the fund a sliced
+ * board does not state, shaped like money so the previous bundle's unguarded
+ * `bonusPayable.amount` reads null («—») instead of throwing. Exported for
+ * the test that pins the shape; return `null` again once the shim goes.
+ */
+export function unstatedBonusFund(currency: string): UnstatedMoneyDto {
+  return { amountMinor: null, currency, amount: null }
 }
 
 /**

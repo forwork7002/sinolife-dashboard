@@ -393,7 +393,12 @@ describe('the bonus fund under the brand switch', () => {
     for (const brand of ['Collagen', 'Zextra', 'none'] as const) {
       const { totals } = await boardFor(brand)
 
-      expect(totals.bonusPayable).toBeNull()
+      /*
+        Money with nothing in it, not `null`, for one release: a tab still on
+        the previous bundle reads `bonusPayable.amount` unguarded, and a bare
+        null would throw it onto the global error page (`unstatedBonusFund`).
+      */
+      expect(totals.bonusPayable).toEqual({ amountMinor: null, currency: 'UZS', amount: null })
       expect(totals.sellersInBonus).toBeNull()
     }
   })
@@ -438,7 +443,7 @@ describe('the bonus fund under the other filters', () => {
   it('states no fund under a source filter, which cuts a seller’s FAKT 2 as a brand does', async () => {
     const { totals } = await boardWith({ sourceIds: ['instagram'] })
 
-    expect(totals.bonusPayable).toBeNull()
+    expect(totals.bonusPayable).toEqual({ amountMinor: null, currency: 'UZS', amount: null })
     expect(totals.sellersInBonus).toBeNull()
   })
 
