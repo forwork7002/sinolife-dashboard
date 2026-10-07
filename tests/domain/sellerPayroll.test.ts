@@ -5,6 +5,7 @@ import {
   MONTH_TIERS,
   PERCENT_BP,
   WEEK_TIERS,
+  ropPayroll,
   sellerPayroll,
 } from '@/server/domain/payroll/sellerPayroll'
 import {
@@ -372,5 +373,27 @@ describe('the comparison window', () => {
     const previous = payrollWeekPeriod('2026-10-05', TZ)
     const compared = comparablePayrollPeriod(current, previous, new Date('2026-10-05T06:00:00Z'))
     expect(iso(compared.end)).toBe(iso(compared.start))
+  })
+})
+
+describe('ropPayroll — «ROPlar guruhi FAKT 2 dan 2% + 2 mln oklad» (2026-10-07)', () => {
+  it('pays 2% of the team FAKT 2 plus the 2 000 000 oklad on the month', () => {
+    const pay = ropPayroll({ basisMinor: mln(120), scheme: 'month' })
+    expect(pay.percentMinor).toBe(mln(2.4))
+    expect(pay.fixedMinor).toBe(mln(2))
+    expect(pay.totalMinor).toBe(mln(4.4))
+  })
+
+  it('pays the 2% alone on a half and on a week — the oklad is monthly', () => {
+    for (const scheme of ['half', 'week'] as const) {
+      const pay = ropPayroll({ basisMinor: mln(50), scheme })
+      expect(pay.percentMinor).toBe(mln(1))
+      expect(pay.fixedMinor).toBe(0n)
+      expect(pay.totalMinor).toBe(mln(1))
+    }
+  })
+
+  it('still pays the monthly oklad when the team delivered nothing', () => {
+    expect(ropPayroll({ basisMinor: 0n, scheme: 'month' }).totalMinor).toBe(mln(2))
   })
 })

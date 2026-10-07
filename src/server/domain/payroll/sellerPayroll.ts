@@ -149,6 +149,27 @@ function percentOf(basisMinor: bigint, bp: bigint): bigint {
   return (basisMinor * bp + 5_000n) / 10_000n
 }
 
+/**
+ * A ROP's pay — the client, 2026-10-07: «ROPlar guruhi FAKT 2 dan 2% + 2 mln
+ * oklad». 2% of the whole team's FAKT 2 on every tab; the 2 000 000 oklad is
+ * monthly and is added on the month only (the client chose «hamma tabda 2%»).
+ */
+export const ROP_PERCENT_BP = 200n
+export const ROP_MONTH_OKLAD_MINOR = 200_000_000n
+
+export interface RopPayBreakdown {
+  readonly percentMinor: bigint
+  readonly fixedMinor: bigint
+  readonly totalMinor: bigint
+}
+
+/** One ROP's pay for one period, off their team's FAKT 2. Pure. */
+export function ropPayroll({ basisMinor, scheme }: PayrollInput): RopPayBreakdown {
+  const percentMinor = percentOf(basisMinor, ROP_PERCENT_BP)
+  const fixedMinor = scheme === 'month' ? ROP_MONTH_OKLAD_MINOR : 0n
+  return { percentMinor, fixedMinor, totalMinor: percentMinor + fixedMinor }
+}
+
 /** One seller's pay for one period. Pure. */
 export function sellerPayroll({ basisMinor, scheme }: PayrollInput): PayrollBreakdown {
   const tiers = tiersFor(scheme)

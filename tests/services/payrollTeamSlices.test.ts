@@ -50,6 +50,7 @@ function slice(employeeId: string, rop: string, fakt2Mln: number, day: number): 
 describe('payroll over per-team slices', () => {
   it('pays a seller who moved team once, on their whole FAKT 2', async () => {
     const insights = {
+      ropHeadNames: async () => new Map<string, string>(),
       deliveredSellerRows: async () => [
         slice('moved', 'Sevinchxon', 30, 10),
         slice('other', 'Lola', 45, 20),
@@ -75,6 +76,7 @@ describe('payroll over per-team slices', () => {
 
   it('pays a week off the weekly table, with the rate on every row', async () => {
     const insights = {
+      ropHeadNames: async () => new Map<string, string>(),
       deliveredSellerRows: async () => [
         slice('a', 'Lola', 34.9, 29),
         slice('b', 'Lola', 12, 29),
@@ -97,6 +99,52 @@ describe('payroll over per-team slices', () => {
   })
 })
 
+describe('ROP pay (2026-10-07)', () => {
+  it('pays each ROP 2% of the team FAKT 2, the oklad on the month only, and names the head', async () => {
+    const insights = {
+      ropHeadNames: async () => new Map([['Lola', 'Lola Karimova']]),
+      deliveredSellerRows: async () => [
+        slice('a', 'Lola', 60, 10),
+        slice('b', 'Lola', 40, 12),
+        { ...slice('c', 'x', 10, 12), rop: null },
+      ],
+    } as unknown as InsightsRepository
+    const service = new PayrollService(insights)
+    const now = new Date('2026-10-05T06:00:00Z')
+    const month = payrollPeriod('2026-09', 'full', 'Asia/Tashkent')
+    const monthDto = await service.sellers(
+      month,
+      comparablePayrollPeriod(month, payrollPeriod('2026-08', 'full', 'Asia/Tashkent'), now),
+      'full',
+      'UZS',
+      now,
+    )
+    const lola = monthDto.teams.find((team) => team.rop === 'Lola')!
+    expect(lola.ropPay).toEqual(
+      expect.objectContaining({ head: 'Lola Karimova' }),
+    )
+    expect(lola.ropPay!.percent.amount).toBe(2_000_000)
+    expect(lola.ropPay!.fixed.amount).toBe(2_000_000)
+    expect(lola.ropPay!.total.amount).toBe(4_000_000)
+    expect(monthDto.teams.find((team) => team.rop === null)!.ropPay).toBeNull()
+    expect(monthDto.ropTotals.rops).toBe(1)
+    expect(monthDto.ropTotals.total.amount).toBe(4_000_000)
+
+    resetPayrollCache()
+    const half = payrollPeriod('2026-09', 'first', 'Asia/Tashkent')
+    const halfDto = await service.sellers(
+      half,
+      comparablePayrollPeriod(half, payrollPeriod('2026-08', 'first', 'Asia/Tashkent'), now),
+      'first',
+      'UZS',
+      now,
+    )
+    const halfLola = halfDto.teams.find((team) => team.rop === 'Lola')!
+    expect(halfLola.ropPay!.fixed.amount).toBe(0)
+    expect(halfLola.ropPay!.total.amount).toBe(2_000_000)
+  })
+})
+
 /**
  * «KIM QANCHAGA OʻSGAN» (2026-10-05): the comparison window is read through
  * the same query, paid by the same table, and summed per ROP under the label
@@ -116,6 +164,7 @@ describe('payroll growth and ROP cards', () => {
     const previous = comparablePayrollPeriod(period, payrollPeriod(monthBefore, 'first', TZ), now)
     const service = (current: ConfirmationSellerRatingRow[], then: ConfirmationSellerRatingRow[]) =>
       new PayrollService({
+        ropHeadNames: async () => new Map<string, string>(),
         deliveredSellerRows: async (window: { start: Date }) =>
           window.start.getTime() === period.start.getTime() ? current : then,
       } as unknown as InsightsRepository)
@@ -223,6 +272,7 @@ describe('payroll growth and ROP cards', () => {
     const whole = comparablePayrollPeriod(period, payrollPeriod('2025-07', 'first', TZ_), now)
     const cut = comparablePayrollPeriod(period, payrollPeriod('2025-07', 'first', TZ_), new Date('2025-08-05T06:00:00Z'))
     const service = new PayrollService({
+      ropHeadNames: async () => new Map<string, string>(),
       deliveredSellerRows: async (window: { start: Date; end: Date }) =>
         window.start.getTime() === period.start.getTime()
           ? [slice('a', 'Lola', 10, 10)]
@@ -237,6 +287,7 @@ describe('payroll growth and ROP cards', () => {
   it('does not ask for a comparison window that is empty', async () => {
     let calls = 0
     const insights = {
+      ropHeadNames: async () => new Map<string, string>(),
       deliveredSellerRows: async () => {
         calls += 1
         return [slice('a', 'Lola', 1, 10)]
@@ -263,6 +314,7 @@ describe('the payroll memo across polls', () => {
     const TZ = 'Asia/Tashkent'
     const asked: string[] = []
     const insights = {
+      ropHeadNames: async () => new Map<string, string>(),
       deliveredSellerRows: async (window: { start: Date; end: Date }) => {
         asked.push(`${window.start.toISOString()}|${window.end.toISOString()}`)
         return [slice('a', 'Lola', 20, 10)]
@@ -314,6 +366,7 @@ describe('the payroll a poll is served', () => {
     const TZ = 'Asia/Tashkent'
     let reads = 0
     const insights = {
+      ropHeadNames: async () => new Map<string, string>(),
       deliveredSellerRows: async () => {
         // Every read finds one more million delivered than the read before it.
         reads += 1

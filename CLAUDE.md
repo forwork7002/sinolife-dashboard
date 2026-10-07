@@ -1859,6 +1859,14 @@ Per-screen traps worth knowing before you touch one:
   previous sellers by the label they wore THEN. Both windows count money
   delivered inside them, so mid-period growth is like for like (the
   «oʻsish past koʻrinadi» note went with the queue basis).
+  **ROP PAY AND THE WORKING — 2026-10-07** («ROPlar guruhi FAKT 2 dan 2% + 2
+  mln oklad … aniq va tushunarli jadval»). `ropPayroll`: 2% of the team's
+  FAKT 2 on EVERY tab, + 2 000 000 oklad on «Oylik» only (the user's choice).
+  `teams[].ropPay` (head = the «(ROP)» unit's `headId`, `ropHeadNames`;
+  several units under one label list every head) and `ropTotals`, kept APART
+  from the sellers' fund. A team with no seller paid now gets no ROP row. The
+  page prints «ROP lar maoshi» under the hero and a «Hisob» column per seller
+  («52 340 000 × 8% + 500 000 =») beside JAMI; the copy carries both.
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
 - **Struktura** — **no money and no reporting window, and both are load-bearing

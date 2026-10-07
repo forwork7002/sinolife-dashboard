@@ -298,6 +298,16 @@ export function PayrollPage() {
                 )}
               </p>
 
+              {data && data.ropTotals.total.amount > 0 && (
+                <p className="tabular mt-1 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                  + ROP lar {formatFullUzs(data.ropTotals.total.amount)} ={' '}
+                  <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                    {formatFullUzs(data.totals.total.amount + data.ropTotals.total.amount)} soʻm
+                  </span>{' '}
+                  hammasi boʻlib
+                </p>
+              )}
+
               {totals && totals.total.amount > 0 && (
                 <div className="mt-4 max-w-[380px]">
                   <div
@@ -329,7 +339,7 @@ export function PayrollPage() {
               )}
             </div>
 
-            <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:pt-1">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4 lg:grid-cols-2 lg:pt-1 xl:grid-cols-4">
               <Figure
                 term="FAKT 2 · Успешно"
                 loading={heroStatus === 'loading'}
@@ -353,6 +363,12 @@ export function PayrollPage() {
                 swatch="var(--series-4)"
                 delta={compared ? data?.deltas.fixed : undefined}
               />
+              <Figure
+                term="ROP lar maoshi"
+                loading={heroStatus === 'loading'}
+                value={data ? formatFullUzs(data.ropTotals.total.amount) : NO_VALUE}
+                note={data ? `${formatNumber(data.ropTotals.rops)} ta ROP` : undefined}
+              />
             </dl>
           </div>
         )}
@@ -370,6 +386,15 @@ export function PayrollPage() {
           </p>
         )}
       </section>
+
+      {data && data.ropTotals.rops > 0 && (
+        <ChartCard
+          title="ROP lar maoshi"
+          hint={`Har bir ROP: jamoa FAKT 2 × 2%${scheme === 'month' ? ' + 2 000 000 oklad' : ''}.`}
+        >
+          <RopPayTable teams={teams} totals={data.ropTotals} scheme={scheme} />
+        </ChartCard>
+      )}
 
       {/*
         THE TWO PICTURES OF «WHO GREW», above the cards they summarise: per ROP,
@@ -425,7 +450,7 @@ export function PayrollPage() {
             onRetry={retry}
             emptyTitle="Maʼlumot yoʻq"
             emptyBody="Bu davrda yetkazib berilgan buyurtma topilmadi."
-            minWidth={940}
+            minWidth={1210}
             maxHeight="none"
           />
         )}
@@ -622,6 +647,7 @@ function CopyButton({
       'Foiz %',
       'Foiz',
       words.fixed,
+      'Hisob',
       'JAMI',
       'Oʻtgan davr FAKT 2',
       'Oʻtgan davr JAMI',
@@ -643,12 +669,31 @@ function CopyButton({
         row.percentRate,
         row.percent.amount,
         row.fixed.amount,
+        tsvCell(sellerFormula(row)),
         row.total.amount,
         row.previous?.fakt2.amount ?? '',
         row.previous?.total.amount ?? '',
       ].join('\t'),
     )
-    const text = [tsvCell(title), header, ...body].join('\n')
+    const rops = teams.filter((team) => team.ropPay)
+    const ropBlock = rops.length
+      ? [
+          '',
+          ['ROP', 'Jamoa', 'Jamoa FAKT 2', '2%', 'Oklad', 'Hisob', 'JAMI'].join('\t'),
+          ...rops.map((team) =>
+            [
+              tsvCell(team.ropPay!.head ?? team.rop ?? NO_ROP),
+              tsvCell(team.rop ?? NO_ROP),
+              team.fakt2.amount,
+              team.ropPay!.percent.amount,
+              team.ropPay!.fixed.amount,
+              tsvCell(ropFormula(team)),
+              team.ropPay!.total.amount,
+            ].join('\t'),
+          ),
+        ]
+      : []
+    const text = [tsvCell(title), header, ...body, ...ropBlock].join('\n')
 
     try {
       await navigator.clipboard.writeText(text)
@@ -896,6 +941,25 @@ function payrollColumns(scheme: Scheme, compared: boolean): Column<PayrollLine>[
         ),
     },
     {
+      key: 'formula',
+      header: 'Hisob',
+      align: 'right',
+      numeric: true,
+      width: '270px',
+      /*
+        THE WORKING IN ONE LINE (2026-10-07, «aniq va tushunarli hisob-kitob»):
+        the seller's own sum, written the way the client's documents write it,
+        so anybody can redo it on a calculator and land on JAMI beside it.
+      */
+      render: (line) => (
+        <span className="tabular text-[11.5px] whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>
+          {line.kind === 'total'
+            ? `${formatFullUzs(line.row.percent.amount)} + ${formatFullUzs(line.row.fixed.amount)} =`
+            : sellerFormula(line.row)}
+        </span>
+      ),
+    },
+    {
       key: 'total',
       header: 'JAMI',
       align: 'right',
@@ -934,6 +998,148 @@ function payrollColumns(scheme: Scheme, compared: boolean): Column<PayrollLine>[
         ),
     },
   ]
+}
+
+/**
+ * «52 340 000 × 8% + 500 000 =» — one seller's pay as the documents write it.
+ * Read off the server's own rate and fixed part, never re-decided here.
+ */
+function sellerFormula(row: PayrollSellerDto): string {
+  if (row.percentRate === 0) return `${formatFullUzs(row.fakt2.amount)} — 15 mln gacha, toʻlanmaydi =`
+  const base = `${formatFullUzs(row.fakt2.amount)} × ${formatNumber(row.percentRate)}%`
+  return row.fixed.amount > 0 ? `${base} + ${formatFullUzs(row.fixed.amount)} =` : `${base} =`
+}
+
+/** «120 000 000 × 2% + 2 000 000 =» — a ROP's pay, the same way. */
+function ropFormula(team: PayrollTeamDto): string {
+  const pay = team.ropPay
+  if (!pay) return ''
+  const base = `${formatFullUzs(team.fakt2.amount)} × 2%`
+  return pay.fixed.amount > 0 ? `${base} + ${formatFullUzs(pay.fixed.amount)} =` : `${base} =`
+}
+
+// ---------------------------------------------------------------------------
+// The ROPs' own pay
+// ---------------------------------------------------------------------------
+
+type RopLine = { readonly kind: 'rop'; readonly team: PayrollTeamDto } | { readonly kind: 'total' }
+
+/**
+ * ROP lar maoshi — the client, 2026-10-07: «ROPlar guruhi FAKT 2 dan 2% + 2 mln
+ * oklad». One row per team that was paid this period, its head named, the sum
+ * written out; the footer is the server's `ropTotals`, never summed here.
+ */
+function RopPayTable({
+  teams,
+  totals,
+  scheme,
+}: {
+  teams: readonly PayrollTeamDto[]
+  totals: PayrollDto['ropTotals']
+  scheme: Scheme
+}) {
+  const rows: RopLine[] = [
+    ...teams.filter((team) => team.ropPay).map((team): RopLine => ({ kind: 'rop', team })),
+    { kind: 'total' },
+  ]
+  const columns: Column<RopLine>[] = [
+    {
+      key: 'rop',
+      header: 'ROP',
+      rowHeader: true,
+      width: '230px',
+      render: (line) =>
+        line.kind === 'total' ? (
+          <span className="eyebrow" style={{ color: 'var(--ink-primary)' }}>
+            ЖАМИ · {formatNumber(totals.rops)} ta ROP
+          </span>
+        ) : (
+          <span className="block min-w-0">
+            <span className="block truncate font-semibold" style={{ color: 'var(--ink-primary)' }}>
+              {line.team.ropPay?.head ?? line.team.rop}
+            </span>
+            <span className="block text-[10px] leading-tight" style={{ color: 'var(--ink-muted)' }}>
+              {line.team.rop} jamoasi · {formatNumber(line.team.sellers)} ta sotuvchi
+            </span>
+          </span>
+        ),
+    },
+    {
+      key: 'fakt2',
+      header: 'Jamoa FAKT 2',
+      align: 'right',
+      numeric: true,
+      width: '140px',
+      render: (line) =>
+        line.kind === 'total' ? NO_VALUE : formatFullUzs(line.team.fakt2.amount),
+    },
+    {
+      key: 'percent',
+      header: '2% — foiz',
+      align: 'right',
+      numeric: true,
+      width: '120px',
+      render: (line) =>
+        formatFullUzs(line.kind === 'total' ? totals.percent.amount : line.team.ropPay!.percent.amount),
+    },
+    {
+      key: 'fixed',
+      header: 'Oklad',
+      align: 'right',
+      numeric: true,
+      width: '110px',
+      render: (line) => {
+        const amount = line.kind === 'total' ? totals.fixed.amount : line.team.ropPay!.fixed.amount
+        return amount > 0 ? formatFullUzs(amount) : NO_VALUE
+      },
+    },
+    {
+      key: 'formula',
+      header: 'Hisob',
+      align: 'right',
+      numeric: true,
+      width: '260px',
+      render: (line) => (
+        <span className="tabular text-[11.5px] whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>
+          {line.kind === 'total'
+            ? `${formatFullUzs(totals.percent.amount)} + ${formatFullUzs(totals.fixed.amount)} =`
+            : ropFormula(line.team)}
+        </span>
+      ),
+    },
+    {
+      key: 'total',
+      header: 'JAMI',
+      align: 'right',
+      numeric: true,
+      width: '125px',
+      render: (line) => (
+        <span className="tabular text-[13px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
+          {formatFullUzs(line.kind === 'total' ? totals.total.amount : line.team.ropPay!.total.amount)}
+        </span>
+      ),
+    },
+  ]
+  return (
+    <>
+      <DataTable<RopLine>
+        columns={columns}
+        rows={rows}
+        rowKey={(line) => (line.kind === 'total' ? TOTAL_ROW_KEY : (line.team.rop ?? NO_ROP))}
+        status="ready"
+        emptyTitle=""
+        emptyBody=""
+        minWidth={985}
+        maxHeight="none"
+        stickyColumns={1}
+      />
+      <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+        {scheme === 'month'
+          ? 'ROP: jamoasidagi sotuvchilar FAKT 2 yigʻindisining 2% i + 2 000 000 soʻm oylik oklad.'
+          : 'ROP: jamoasidagi sotuvchilar FAKT 2 yigʻindisining 2% i. 2 000 000 soʻm oklad faqat «Oylik» tabida qoʻshiladi.'}
+      </p>
+    </>
+  )
 }
 
 /**

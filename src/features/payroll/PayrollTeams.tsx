@@ -442,6 +442,12 @@ export function RopCards<Line>({
                   {formatNumber(team.sellers)} ta sotuvchi · FAKT 2 {formatCompactUzs(team.fakt2.amount)}
                   {team.previous && ` · oldin ${formatCompactUzs(team.previous.fakt2.amount)}`}
                 </span>
+                {team.ropPay && (
+                  <span className="tabular block text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
+                    ROP{team.ropPay.head ? ` ${team.ropPay.head}` : ''} maoshi:{' '}
+                    {formatFullUzs(team.ropPay.total.amount)} soʻm
+                  </span>
+                )}
               </span>
               {/*
                 A tap on the pill opens its tooltip; it must not also fold the card.
@@ -479,7 +485,7 @@ export function RopCards<Line>({
                   status="ready"
                   emptyTitle=""
                   emptyBody=""
-                  minWidth={940}
+                  minWidth={1210}
                   /* Every seller of the team at once: a payroll hides nobody behind a scrollbar. */
                   maxHeight="none"
                   stickyColumns={1}

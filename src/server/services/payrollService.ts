@@ -35,6 +35,7 @@ import type { Period } from '@/server/domain/period/period'
 import type { PayrollHalfValue } from '@/server/domain/period/period'
 import {
   type PayrollSchemeValue,
+  ropPayroll,
   sellerPayroll,
 } from '@/server/domain/payroll/sellerPayroll'
 import type {
@@ -109,6 +110,17 @@ export interface PayrollTeamDto {
   } | null
   readonly fakt2Delta: DeltaDto
   readonly totalDelta: DeltaDto
+  /**
+   * The ROP's own pay off this team's FAKT 2 (`ropPayroll`): 2% on every tab,
+   * + 2 000 000 oklad on the month. Null for «ROP yoʻq» and for a team with
+   * nobody paid now. `head` is the unit's head in Bitrix24, null if unnamed.
+   */
+  readonly ropPay: {
+    readonly head: string | null
+    readonly percent: MoneyDto
+    readonly fixed: MoneyDto
+    readonly total: MoneyDto
+  } | null
 }
 
 export interface PayrollDto {
@@ -130,6 +142,13 @@ export interface PayrollDto {
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
     /** The payroll fund for the period — what the office pays out in soʻm. */
+    readonly total: MoneyDto
+  }
+  /** Σ `teams[].ropPay` — the ROPs' pay, kept apart from the sellers' fund. */
+  readonly ropTotals: {
+    readonly rops: number
+    readonly percent: MoneyDto
+    readonly fixed: MoneyDto
     readonly total: MoneyDto
   }
   /** Per ROP, the biggest fund first and «ROP yoʻq» last. Σ = `totals`. */
@@ -193,6 +212,9 @@ const payrollCache = ttlCache<PayrollDto>(120_000)
  */
 const rowsCache = ttlCache<ConfirmationSellerRatingRow[]>(120_000, LIVE_CACHE)
 
+/** Who heads each ROP team. Changes with the three-hourly reference pass. */
+const headsCache = ttlCache<Map<string, string>>(600_000)
+
 /**
  * Test seam: both memos are module state, shared by every case in a worker —
  * the hazard `resetSellerBoardCache` describes.
@@ -200,6 +222,7 @@ const rowsCache = ttlCache<ConfirmationSellerRatingRow[]>(120_000, LIVE_CACHE)
 export function resetPayrollCache(): void {
   payrollCache.clear()
   rowsCache.clear()
+  headsCache.clear()
 }
 
 export class PayrollService {
@@ -279,11 +302,12 @@ export class PayrollService {
       Both windows at once, through the same query. An empty comparison
       window (a period that has not started) is not asked for at all.
     */
-    const [rows, previousRows] = await Promise.all([
+    const [rows, previousRows, heads] = await Promise.all([
       this.rows(period),
       previousPeriod.end.getTime() > previousPeriod.start.getTime()
         ? this.rows(previousPeriod)
         : Promise.resolve([] as ConfirmationSellerRatingRow[]),
+      headsCache.get('heads', () => this.insights.ropHeadNames()),
     ])
 
     /*
@@ -396,6 +420,8 @@ export class PayrollService {
     }
 
     const printed = new Set(rows.map((row) => row.employeeId))
+    const teams = teamsOf(sellers, previousPay, cash, delta, scheme, heads)
+    const paidRops = teams.flatMap((team) => (team.ropPay ? [team.ropPay] : []))
 
     return {
       scheme,
@@ -408,7 +434,13 @@ export class PayrollService {
         fixed: cash(current.fixed),
         total: cash(current.total),
       },
-      teams: teamsOf(sellers, previousPay, cash, delta),
+      teams,
+      ropTotals: {
+        rops: paidRops.length,
+        percent: cash(paidRops.reduce((acc, pay) => acc + minor(pay.percent), 0n)),
+        fixed: cash(paidRops.reduce((acc, pay) => acc + minor(pay.fixed), 0n)),
+        total: cash(paidRops.reduce((acc, pay) => acc + minor(pay.total), 0n)),
+      },
       previous: {
         sellers: previousPay.length,
         gone: [...previousById.keys()].filter((id) => !printed.has(id)).length,
@@ -440,6 +472,8 @@ function teamsOf(
   }[],
   cash: (minor: bigint) => MoneyDto,
   delta: (current: bigint, previous: bigint | null) => DeltaDto,
+  scheme: PayrollSchemeValue,
+  heads: ReadonlyMap<string, string>,
 ): PayrollTeamDto[] {
   const minor = (value: MoneyDto) => BigInt(value.amountMinor)
 
@@ -479,6 +513,7 @@ function teamsOf(
   return [...now.entries()]
     .map(([rop, team]): PayrollTeamDto => {
       const before = then.get(rop) ?? null
+      const pay = rop !== null && team.sellers > 0 ? ropPayroll({ basisMinor: team.fakt2, scheme }) : null
       return {
         rop,
         sellers: team.sellers,
@@ -491,6 +526,12 @@ function teamsOf(
           : null,
         fakt2Delta: delta(team.fakt2, before?.fakt2 ?? null),
         totalDelta: delta(team.total, before?.total ?? null),
+        ropPay: pay && {
+          head: (rop !== null && heads.get(rop)) || null,
+          percent: cash(pay.percentMinor),
+          fixed: cash(pay.fixedMinor),
+          total: cash(pay.totalMinor),
+        },
       }
     })
     .sort(

@@ -5155,6 +5155,24 @@ export class InsightsRepository {
   }
 
   /**
+   * Who heads each ROP team, keyed by the same label `deliveredSellerRows`
+   * prints (`ropNameSql` over the unit's name), so payroll can name the person
+   * the team's 2% is paid to. A label several active units share lists every
+   * distinct head, comma-joined, rather than picking one of them.
+   */
+  async ropHeadNames(): Promise<Map<string, string>> {
+    const rop = InsightsRepository.ropNameSql('d."name"')
+    const rows = await this.prisma.$queryRawUnsafe<{ rop: string; heads: string }[]>(`
+      SELECT ${rop} AS rop, string_agg(DISTINCT e."fullName", ', ') AS heads
+        FROM "department" d
+        JOIN "employee" e ON e."id" = d."headId"
+       WHERE d."isActive" AND ${rop} IS NOT NULL
+       GROUP BY 1
+    `)
+    return new Map(rows.map((r) => [r.rop, r.heads]))
+  }
+
+  /**
    * The FAKT 1 / FAKT 2 series behind the hero chart on Savdo dinamikasi.
    *
    * Isolated from the query for the same reason `ratingSql` is: it has to be

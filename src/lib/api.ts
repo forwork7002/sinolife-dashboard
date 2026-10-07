@@ -720,6 +720,13 @@ export interface PayrollTeamDto {
   } | null
   readonly fakt2Delta: DeltaDto
   readonly totalDelta: DeltaDto
+  /** The ROP's pay: 2% of the team's FAKT 2, + 2 000 000 oklad on the month. Null for «ROP yoʻq». */
+  readonly ropPay: {
+    readonly head: string | null
+    readonly percent: MoneyDto
+    readonly fixed: MoneyDto
+    readonly total: MoneyDto
+  } | null
 }
 
 export interface PayrollDto {
@@ -730,6 +737,13 @@ export interface PayrollDto {
   readonly totals: {
     readonly sellers: number
     readonly fakt2: MoneyDto
+    readonly percent: MoneyDto
+    readonly fixed: MoneyDto
+    readonly total: MoneyDto
+  }
+  /** Σ `teams[].ropPay` — the ROPs' pay, apart from the sellers' fund. */
+  readonly ropTotals: {
+    readonly rops: number
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
     readonly total: MoneyDto
