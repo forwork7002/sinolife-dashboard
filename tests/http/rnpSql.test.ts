@@ -80,10 +80,25 @@ describe('RnpRepository statements', () => {
 
   it('reads the window\'s deals once: the form aliases come from the rows the first arm counts', () => {
     const sql = bare(RnpRepository.registrationDaysSql())
-    // `reg` and the closedAt arm — no third pass for the aliases.
-    expect(sql.match(/FROM "deal"/g)).toHaveLength(2)
+    // `reg`, the closedAt arm and the one day before the window for the replay's running max — no pass for the aliases.
+    expect(sql.match(/FROM "deal"/g)).toHaveLength(3)
+    expect(sql).toMatch(/FROM "deal" pd[\s\S]*pd\."createdAtSource" >= [\s\S]* - interval '1 day' AND pd\."createdAtSource" < /)
     expect(sql).toContain('reg AS MATERIALIZED (')
     expect(sql).toContain(`FROM (SELECT r.sd, r.title FROM reg r WHERE r.role = 'LEAD') fd`)
+  })
+
+  it('leaves a late «Qayta zayavka» copy out of the leads and the duplicates, never out of the kval', () => {
+    // 05.10.2026 18:00–20:00: 1 071 deals for form acts filled days earlier, measured on the portal.
+    const sql = bare(RnpRepository.registrationDaysSql())
+    expect(sql).toContain(`substring(d."metadata"->'utm'->>'SOURCE_DESCRIPTION' from '^Qayta zayavka \\(forma akt #([0-9]+)\\)')::bigint AS act`)
+    expect(sql).toMatch(/max\(r\.act\) OVER \(ORDER BY r\.created, r\.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING\)/)
+    expect(sql).toMatch(/WHERE r\.role = 'LEAD' AND r\.act IS NOT NULL/)
+    expect(sql).toMatch(/WHERE q\.act < GREATEST\(q\.before, \(/)
+    expect(sql).toContain(`count(*) FILTER (WHERE r.role = 'LEAD' AND rp.id IS NULL AND NOT COALESCE(r.stage, '')`)
+    expect(sql).toContain(`count(*) FILTER (WHERE r.role = 'LEAD' AND rp.id IS NULL AND COALESCE(r.stage, '')`)
+    expect(sql).toContain('LEFT JOIN replayed rp ON rp.id = r.id')
+    // The kval arm reads "deal" directly and knows nothing of the replay.
+    expect(sql.slice(sql.indexOf('UNION ALL'))).not.toContain('replayed')
   })
 
   it('spells the duplicate stage\'s case out rather than trusting the locale', () => {

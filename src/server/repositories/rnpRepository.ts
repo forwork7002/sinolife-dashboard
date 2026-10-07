@@ -34,7 +34,7 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
-import { dealFormTitleSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, sourceDescriptionSql } from './leadFormSql'
+import { dealFormTitleSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, sourceDescriptionSql } from './leadFormSql'
 import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
 
 /** Deals handed to one ROP on one day. `rop` null: not handed to a ROP team. */
@@ -51,7 +51,7 @@ export interface RnpRegistrationDayRow {
   readonly formTitle: string | null
   /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
   readonly productLine: string | null
-  /** Регистрация deals created, «Дубликат (лид)» excluded (the red «Дубликат» is a lead). */
+  /** Регистрация deals created, «Дубликат (лид)» and late «Qayta zayavka» copies excluded (the red «Дубликат» is a lead). */
   readonly leads: number
   readonly duplicates: number
   /** «Сделка успешна», by the day it was closed. */
@@ -273,10 +273,28 @@ export class RnpRepository {
       repeat lead's form costs no second pass over the month — this is the
       scan that runs 7–10 s cold on production.
     */
+    /*
+      A LATE «QAYTA ZAYAVKA» IS NOT A LEAD OF THE DAY IT WAS OPENED
+      (`replayActSql`): 05.10.2026 18:00–20:00 the portal's robot opened 1 071
+      Регистрация deals for form fills of earlier days, and «Жами лид сони»
+      read 2 309 where the day had ~1 150. Live, the robot opens deals in act
+      order, so a deal whose act is below one opened before it is a late copy.
+      The running maximum starts from the day before the window, so a window
+      that opens inside such a burst does not take its first copy for live.
+      It is left out of the leads and the duplicates alike; its kval still
+      counts on the day it closed — the registrar did work it.
+    */
+    const priorAct = `(
+          SELECT max(${replayActSql(sourceDescriptionSql('pd'))})
+          FROM "deal" pd
+          JOIN "pipeline" pp ON pp."id" = pd."pipelineId" AND pp."role" = 'LEAD'
+          WHERE pd."createdAtSource" >= ${lo} - interval '1 day' AND pd."createdAtSource" < ${lo}
+        )`
     return `
       WITH reg AS MATERIALIZED (
-        SELECT d."createdAtSource" AS created, p."role"::text AS role, st."name" AS stage,
+        SELECT d."id" AS id, d."createdAtSource" AS created, p."role"::text AS role, st."name" AS stage,
                s."externalId" AS source_id, d."title" AS title, ${sourceDescriptionSql('d')} AS sd,
+               ${replayActSql(sourceDescriptionSql('d'))} AS act,
                NULLIF(btrim(d."productLine"), '') AS product_line
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" IN ('LEAD', 'AI_TRIAGE')
@@ -285,17 +303,28 @@ export class RnpRepository {
         WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
       ),
       ${formAliasOverSql(`(SELECT r.sd, r.title FROM reg r WHERE r.role = 'LEAD') fd`)},
+      replayed AS (
+        SELECT q.id
+        FROM (
+          SELECT r.id, r.act,
+                 max(r.act) OVER (ORDER BY r.created, r.id ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS before
+          FROM reg r
+          WHERE r.role = 'LEAD' AND r.act IS NOT NULL
+        ) q
+        WHERE q.act < GREATEST(q.before, ${priorAct})
+      ),
       arms AS (
         SELECT ${day('r.created')} AS day,
                r.source_id,
                ${leadFormTitleSql('r.title', 'r.sd', 'r.source_id', 'fa.title')} AS form_title,
                r.product_line,
-               count(*) FILTER (WHERE r.role = 'LEAD' AND NOT ${duplicate}) AS leads,
-               count(*) FILTER (WHERE r.role = 'LEAD' AND ${duplicate}) AS duplicates,
+               count(*) FILTER (WHERE r.role = 'LEAD' AND rp.id IS NULL AND NOT ${duplicate}) AS leads,
+               count(*) FILTER (WHERE r.role = 'LEAD' AND rp.id IS NULL AND ${duplicate}) AS duplicates,
                0::bigint AS qualified,
                count(*) FILTER (WHERE r.role = 'AI_TRIAGE') AS ai
         FROM reg r
         LEFT JOIN form_alias fa ON fa.sd = r.sd
+        LEFT JOIN replayed rp ON rp.id = r.id
         GROUP BY 1, 2, 3, 4
         UNION ALL
         SELECT ${day('d."closedAt"')} AS day,
