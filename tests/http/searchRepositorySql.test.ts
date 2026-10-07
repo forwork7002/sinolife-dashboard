@@ -36,12 +36,15 @@ function repositoryCapturing(calls: Call[]): SearchRepository {
   return new SearchRepository(prisma)
 }
 
+/** Where the queue window the deal links open begins: 1 January 2026, 00:00 Tashkent. */
+const YEAR = new Date('2025-12-31T19:00:00.000Z')
+
 const stripped = (sql: string) => sql.replace(/--[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
 
 describe('a number', () => {
   it('reads ids, codes and phones — never titles, names or reference tables', async () => {
     const calls: Call[] = []
-    await repositoryCapturing(calls).search('+998 90 123 45 67', null)
+    await repositoryCapturing(calls).search('+998 90 123 45 67', null, YEAR)
 
     const sql = calls.map((c) => stripped(c.sql))
     expect(calls).toHaveLength(2)
@@ -71,11 +74,11 @@ describe('a number', () => {
 
   it('looks a deal up by its exact id, and a term that is not an id matches no deal', async () => {
     const calls: Call[] = []
-    await repositoryCapturing(calls).search('925842', null)
+    await repositoryCapturing(calls).search('925842', null, YEAR)
     expect(calls[0]?.params[0]).toBe('925842')
 
     calls.length = 0
-    await repositoryCapturing(calls).search('Dilnoza', null)
+    await repositoryCapturing(calls).search('Dilnoza', null, YEAR)
     expect(calls[0]?.sql).not.toContain('"externalId" =')
   })
 })
@@ -83,7 +86,7 @@ describe('a number', () => {
 describe('text', () => {
   it('reads names, codes and titles — never a phone column', async () => {
     const calls: Call[] = []
-    await repositoryCapturing(calls).search('Dilnoza', null)
+    await repositoryCapturing(calls).search('Dilnoza', null, YEAR)
 
     const sql = calls.map((c) => stripped(c.sql))
     expect(calls).toHaveLength(3)
@@ -106,7 +109,7 @@ describe('text', () => {
 
   it('escapes the characters ILIKE would read as wildcards', async () => {
     const calls: Call[] = []
-    await repositoryCapturing(calls).search('100%_x', null)
+    await repositoryCapturing(calls).search('100%_x', null, YEAR)
     expect(calls[0]?.params).toContain('%100\\%\\_x%')
   })
 })
@@ -116,7 +119,7 @@ describe('a term not worth a round trip', () => {
     const calls: Call[] = []
     const repository = repositoryCapturing(calls)
     for (const term of ['', 'di', '998', '9989']) {
-      const results = await repository.search(term, null)
+      const results = await repository.search(term, null, YEAR)
       expect(results.deals).toEqual([])
       expect(results.customers).toEqual([])
       expect(results.employees).toEqual([])
@@ -126,22 +129,33 @@ describe('a term not worth a round trip', () => {
 })
 
 describe('the deal hits', () => {
+  /*
+    Both count only arrivals inside the window the link opens: a deal or a
+    customer queued only last year has nothing on this year's board, and was
+    linked to it unmarked. The bound is the statement's last parameter, as
+    the term's arity puts it.
+  */
   it('say whether each deal arrived in Тасдиклаш, which is what the queue can find it by', async () => {
-    for (const term of ['925842', 'Dilnoza']) {
+    for (const [term, since] of [['925842', '$4'], ['Dilnoza', '$3']] as const) {
       const calls: Call[] = []
-      await repositoryCapturing(calls).search(term, null)
+      await repositoryCapturing(calls).search(term, null, YEAR)
       expect(stripped(calls[0]!.sql)).toMatch(
-        /EXISTS \(\s*SELECT 1 FROM "deal_stage_history"[\s\S]*"confirmationSignal" = 'CONFIRM_NEW'\s*\) AS queued/,
+        new RegExp(
+          `EXISTS \\(\\s*SELECT 1 FROM "deal_stage_history"[\\s\\S]*"confirmationSignal" = 'CONFIRM_NEW'\\s*AND sh\\."enteredAt" >= \\${since}\\s*\\) AS queued`,
+        ),
       )
+      expect(calls[0]!.params.at(-1)).toBe(YEAR)
     }
   })
 
   it('say whether ANY deal of the customer arrived there — what a link by phone can find', async () => {
-    for (const term of ['925842', 'Dilnoza']) {
+    for (const [term, since] of [['925842', '$4'], ['Dilnoza', '$3']] as const) {
       const calls: Call[] = []
-      await repositoryCapturing(calls).search(term, null)
+      await repositoryCapturing(calls).search(term, null, YEAR)
       expect(stripped(calls[0]!.sql)).toMatch(
-        /EXISTS \(\s*SELECT 1 FROM "deal" cd[\s\S]*cd\."customerId" = d\."customerId"[\s\S]*"confirmationSignal" = 'CONFIRM_NEW'\s*\) AS customer_queued/,
+        new RegExp(
+          `EXISTS \\(\\s*SELECT 1 FROM "deal" cd[\\s\\S]*cd\\."customerId" = d\\."customerId"[\\s\\S]*"confirmationSignal" = 'CONFIRM_NEW'\\s*AND ch\\."enteredAt" >= \\${since}\\s*\\) AS customer_queued`,
+        ),
       )
     }
   })
@@ -155,7 +169,7 @@ describe('a blank first number', () => {
   */
   it('falls through to the next number on the deal hits and the customers alike', async () => {
     const calls: Call[] = []
-    await repositoryCapturing(calls).search('Dilnoza', null)
+    await repositoryCapturing(calls).search('Dilnoza', null, YEAR)
     const [deals, customers] = calls.map((c) => stripped(c.sql))
 
     expect(deals).toContain(`COALESCE(NULLIF(btrim(cust."phone"), ''), cust."phones"[1]) AS customer_phone`)
@@ -166,7 +180,7 @@ describe('a blank first number', () => {
 describe('scope', () => {
   it('reaches every row-bearing statement as the joined employee list', async () => {
     const calls: Call[] = []
-    await repositoryCapturing(calls).search('Dilnoza', ['e1', 'e2'])
+    await repositoryCapturing(calls).search('Dilnoza', ['e1', 'e2'], YEAR)
     const [deals, customers] = calls
     expect(deals?.params).toContain('e1,e2')
     expect(customers?.params).toContain('e1,e2')

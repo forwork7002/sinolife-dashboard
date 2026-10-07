@@ -23,6 +23,7 @@ import { toMoneyDto, money, type MoneyDto } from '@/server/domain/money/money'
 import type { Principal } from '@/server/auth/rbac'
 import { canSeeSection, type RowScope } from '@/server/auth/rbac'
 import type { SearchDealRow, SearchRepository } from '@/server/repositories/searchRepository'
+import { resolvePeriod } from '@/server/domain/period/period'
 import { classifySearchTerm } from '@/lib/searchTerm'
 
 export interface SearchHitDto {
@@ -48,8 +49,12 @@ export interface SearchDto {
   readonly tooShort: boolean
 }
 
-/** Wide enough to hold an order somebody is asking about by id. */
-const WINDOW = 'preset=this_year'
+/**
+ * Wide enough to hold an order somebody is asking about by id. Resolved too,
+ * as the instant `queued` / `customerQueued` are measured from.
+ */
+const WINDOW_PRESET = 'this_year'
+const WINDOW = `preset=${WINDOW_PRESET}`
 
 /**
  * What the confirmation queue is asked for, to show this deal's order.
@@ -67,7 +72,8 @@ const WINDOW = 'preset=this_year'
  * is last, as before.
  *
  * A CUSTOMER THE QUEUE NEVER SAW has nothing there for any link to find — the
- * usual fresh lead, whose every deal is still in Регистрация. Its row stays,
+ * usual fresh lead, whose every deal is still in Регистрация. Nor has one it
+ * saw only before `WINDOW` began: both flags count this year's arrivals alone. Its row stays,
  * because a phone search is also how somebody checks whether a number is
  * already a lead, and says so (`notQueuedHint`) before it is opened.
  */
@@ -76,10 +82,15 @@ function queueTerm(d: SearchDealRow): string {
   return d.customerPhone ?? d.orderCode ?? d.bitrixId ?? d.title
 }
 
-/** What a deal row adds to its hint when the queue holds nothing of its customer. */
+/**
+ * What a deal row adds to its hint when the queue's window holds nothing of
+ * its customer. «Bu yil», because both flags count only this year's arrivals —
+ * the window the link opens — and a customer last queued in December did
+ * arrive, just not where the link looks.
+ */
 function notQueuedHint(d: SearchDealRow): string | null {
   // `queued` too: a deal with no customer can be queued itself, and `customerQueued` is then false.
-  return d.queued || d.customerQueued ? null : 'Tasdiqlashga tushmagan'
+  return d.queued || d.customerQueued ? null : 'Bu yil Tasdiqlashga tushmagan'
 }
 
 export class SearchService {
@@ -90,10 +101,13 @@ export class SearchService {
     scope: RowScope,
     term: string,
     currency: string,
+    clock: { readonly timeZone: string; readonly now: Date },
   ): Promise<SearchDto> {
     const query = term.trim()
 
-    const results = await this.repository.search(query, scope.restrictToEmployeeIds)
+    // The queue links below open `WINDOW`; a deal is «queued» only if it arrived inside it.
+    const queuedSince = resolvePeriod(WINDOW_PRESET, clock).start
+    const results = await this.repository.search(query, scope.restrictToEmployeeIds, queuedSince)
     const allow = (section: SectionValue) => canSeeSection(principal, section)
 
     const groups: SearchGroupDto[] = []

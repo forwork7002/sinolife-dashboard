@@ -49,15 +49,18 @@ export interface SearchDealRow {
   readonly stageName: string
   readonly employeeName: string | null
   /**
-   * Whether the deal ever arrived in Тасдиклаш (C4:NEW) — the confirmation
-   * queue's cohort is made of exactly those, so only such a deal can be found
-   * there by its own id. A База twin or a Регистрация lead never arrives.
+   * Whether the deal arrived in Тасдиклаш (C4:NEW) on or after the search's
+   * `queuedSince` — the confirmation queue's cohort is made of exactly those,
+   * so only such a deal can be found there by its own id in the window the
+   * link opens. A База twin or a Регистрация lead never arrives; a deal that
+   * arrived only last year is outside that window.
    */
   readonly queued: boolean
   /**
-   * Whether ANY deal of the deal's customer ever arrived there — what a link
-   * by the customer's phone can find. False for a customer whose every deal is
-   * a lead that never reached the queue, and for a deal with no customer.
+   * Whether ANY deal of the deal's customer arrived there since the same
+   * instant — what a link by the customer's phone can find. False for a
+   * customer whose every deal is a lead that never reached the queue, for one
+   * whose last arrival was before the window, and for a deal with no customer.
    */
   readonly customerQueued: boolean
 }
@@ -108,10 +111,13 @@ export class SearchRepository {
    * @param restrictToEmployeeIds The caller's authorisation scope, applied in
    *   SQL. An account that may only read its own team's deals must not be able
    *   to confirm somebody else's customer exists by typing their number.
+   * @param queuedSince Where the window a deal hit's link opens on the queue
+   *   begins: `queued` / `customerQueued` count only arrivals since then.
    */
   async search(
     term: string,
-    restrictToEmployeeIds?: readonly string[] | null,
+    restrictToEmployeeIds: readonly string[] | null | undefined,
+    queuedSince: Date,
   ): Promise<SearchResults> {
     const what = classifySearchTerm(term)
     if (what.status !== 'ok') return EMPTY
@@ -124,21 +130,26 @@ export class SearchRepository {
 
     if (what.kind === 'number') {
       const [deals, customers] = await Promise.all([
-        this.deals(what, like, mine),
+        this.deals(what, like, mine, queuedSince),
         this.customers(what, like, mine),
       ])
       return { ...EMPTY, deals, customers }
     }
 
     const [deals, customers, named] = await Promise.all([
-      this.deals(what, like, mine),
+      this.deals(what, like, mine, queuedSince),
       this.customers(what, like, mine),
       this.named(like),
     ])
     return { deals, customers, ...named }
   }
 
-  private async deals(what: SearchTerm, like: string, mine: string | null): Promise<SearchDealRow[]> {
+  private async deals(
+    what: SearchTerm,
+    like: string,
+    mine: string | null,
+    queuedSince: Date,
+  ): Promise<SearchDealRow[]> {
     /*
       A NUMBER is a deal id, an order code or a phone. The id arm is exact:
       anything looser on an id is noise — 9258 is not a prefix of 925842 in any
@@ -185,7 +196,8 @@ export class SearchRepository {
           WHERE c."name" ILIKE $1 LIMIT ${PER_ARM})`
 
     const scope = what.kind === 'number' ? '$3' : '$2'
-    const params = what.kind === 'number' ? [what.needle, like, mine] : [like, mine]
+    const since = what.kind === 'number' ? '$4' : '$3'
+    const params = what.kind === 'number' ? [what.needle, like, mine, queuedSince] : [like, mine, queuedSince]
 
     const rows = await this.prisma.$queryRawUnsafe<
       {
@@ -225,24 +237,30 @@ export class SearchRepository {
         st."name" AS stage_name,
         e."fullName" AS employee_name,
         /*
-          An arrival in Тасдиклаш, as the queue's cohort reads one. At most a
-          hundred hits, each probed on (dealId, enteredAt).
+          An arrival in Тасдиклаш, as the queue's cohort reads one, inside the
+          window the link opens. The cohort takes a deal's LATEST arrival, and
+          any arrival since the window began makes the latest one fall in it
+          too. At most a hundred hits, each probed on (dealId, enteredAt).
         */
         EXISTS (
           SELECT 1 FROM "deal_stage_history" sh
             JOIN "deal_stage" ss ON ss."id" = sh."stageId"
            WHERE sh."dealId" = d."id" AND ss."confirmationSignal" = 'CONFIRM_NEW'
+             AND sh."enteredAt" >= ${since}
         ) AS queued,
         /*
           The same arrival for any deal of the customer: what the queue can
           show for a link by phone. Probed on (customerId), then on
           (dealId, enteredAt), and it stops at the first arrival it meets.
+          Bounded the same way: a customer queued only last year has nothing
+          on the board the phone link opens.
         */
         EXISTS (
           SELECT 1 FROM "deal" cd
             JOIN "deal_stage_history" ch ON ch."dealId" = cd."id"
             JOIN "deal_stage" cs ON cs."id" = ch."stageId"
            WHERE cd."customerId" = d."customerId" AND cs."confirmationSignal" = 'CONFIRM_NEW'
+             AND ch."enteredAt" >= ${since}
         ) AS customer_queued
       FROM hits h
       JOIN "deal" d ON d."id" = h."id"

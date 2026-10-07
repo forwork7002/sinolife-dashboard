@@ -55,13 +55,19 @@ const FOUND: SearchResults = {
   sources: [{ id: 's1', name: 'Instagram', detail: null, departmentId: null }],
 }
 
+/** 7 October 2026, noon in Tashkent. */
+const CLOCK = { timeZone: 'Asia/Tashkent', now: new Date('2026-10-07T07:00:00.000Z') }
+
 function serviceReturning(
   results: SearchResults,
-  capture?: { scope?: readonly string[] | null },
+  capture?: { scope?: readonly string[] | null; queuedSince?: Date },
 ) {
   const repository = {
-    search: async (_term: string, restrictToEmployeeIds?: readonly string[] | null) => {
-      if (capture) capture.scope = restrictToEmployeeIds
+    search: async (_term: string, restrictToEmployeeIds: readonly string[] | null | undefined, queuedSince: Date) => {
+      if (capture) {
+        capture.scope = restrictToEmployeeIds
+        capture.queuedSince = queuedSince
+      }
       return results
     },
   } as unknown as SearchRepository
@@ -88,7 +94,7 @@ function principal(overrides: Partial<Principal> = {}): Principal {
 
 describe('what the search is allowed to return', () => {
   it('shows an account everything it holds the screens for', async () => {
-    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS', CLOCK)
 
     expect(dto.groups.map((g) => g.key)).toEqual([
       'deals',
@@ -107,6 +113,7 @@ describe('what the search is allowed to return', () => {
       scopeOf(principal({ sections: ['logistics'] })),
       'dilnoza',
       'UZS',
+      CLOCK,
     )
 
     expect(dto.groups).toEqual([])
@@ -118,6 +125,7 @@ describe('what the search is allowed to return', () => {
       scopeOf(principal({ sections: ['confirmation'] })),
       'dilnoza',
       'UZS',
+      CLOCK,
     )
 
     expect(dto.groups.map((g) => g.key)).toEqual(['deals', 'customers'])
@@ -130,6 +138,7 @@ describe('what the search is allowed to return', () => {
       scopeOf(principal({ dataScope: 'OWN', employeeId: 'emp-7' })),
       'dilnoza',
       'UZS',
+      CLOCK,
     )
 
     expect(capture.scope).toEqual(['emp-7'])
@@ -137,9 +146,21 @@ describe('what the search is allowed to return', () => {
 
   it('leaves a company-wide account unscoped', async () => {
     const capture: { scope?: readonly string[] | null } = {}
-    await serviceReturning(FOUND, capture).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS')
+    await serviceReturning(FOUND, capture).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS', CLOCK)
 
     expect(capture.scope).toBeNull()
+  })
+
+  /*
+    The deal links open the queue on «Yil»; `queued` and `customerQueued` are
+    asked about the same window, from its first instant in Tashkent — a
+    customer queued only last December is not on that board.
+  */
+  it('asks whether a deal was queued since the window its link opens began', async () => {
+    const capture: { queuedSince?: Date } = {}
+    await serviceReturning(FOUND, capture).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS', CLOCK)
+
+    expect(capture.queuedSince?.toISOString()).toBe('2025-12-31T19:00:00.000Z')
   })
 
   it('drops a group that matched nothing rather than rendering an empty heading', async () => {
@@ -148,6 +169,7 @@ describe('what the search is allowed to return', () => {
       scopeOf(principal()),
       'zextra',
       'UZS',
+      CLOCK,
     )
 
     expect(dto.groups.map((g) => g.key)).toEqual(['products'])
@@ -156,7 +178,7 @@ describe('what the search is allowed to return', () => {
 
 describe('where a result takes you', () => {
   it('opens an order in the queue, by the id the queue searches on', async () => {
-    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), '925842', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), '925842', 'UZS', CLOCK)
     const deal = dto.groups.find((g) => g.key === 'deals')!.items[0]
 
     expect(deal.href).toContain('/confirmation?')
@@ -184,6 +206,7 @@ describe('where a result takes you', () => {
       scopeOf(principal()),
       '998901234567',
       'UZS',
+      CLOCK,
     )
     const [twinHit, leadHit] = dto.groups.find((g) => g.key === 'deals')!.items
 
@@ -191,8 +214,8 @@ describe('where a result takes you', () => {
     expect(leadHit!.href).toContain(`q=${encodeURIComponent('+998901234567')}`)
     expect(twinHit!.href).not.toContain('q=1010043')
     // The customer's delivered order IS in the queue, so neither row is marked.
-    expect(twinHit!.hint).not.toContain('Tasdiqlashga tushmagan')
-    expect(leadHit!.hint).not.toContain('Tasdiqlashga tushmagan')
+    expect(twinHit!.hint).not.toContain('Bu yil Tasdiqlashga tushmagan')
+    expect(leadHit!.hint).not.toContain('Bu yil Tasdiqlashga tushmagan')
   })
 
   /*
@@ -218,12 +241,13 @@ describe('where a result takes you', () => {
       scopeOf(principal()),
       '998901234567',
       'UZS',
+      CLOCK,
     )
     const [queuedHit, leadHit, orphanHit] = dto.groups.find((g) => g.key === 'deals')!.items
 
-    expect(leadHit!.hint).toBe('ID 1012001 · +998901234567 · Регистрация · Новый лид · Quvondiqova Gulmira · Tasdiqlashga tushmagan')
-    expect(queuedHit!.hint).not.toContain('Tasdiqlashga tushmagan')
-    expect(orphanHit!.hint).not.toContain('Tasdiqlashga tushmagan')
+    expect(leadHit!.hint).toBe('ID 1012001 · +998901234567 · Регистрация · Новый лид · Quvondiqova Gulmira · Bu yil Tasdiqlashga tushmagan')
+    expect(queuedHit!.hint).not.toContain('Bu yil Tasdiqlashga tushmagan')
+    expect(orphanHit!.hint).not.toContain('Bu yil Tasdiqlashga tushmagan')
   })
 
   it('falls back to the order code, then the id, for such a deal with no phone', async () => {
@@ -234,6 +258,7 @@ describe('where a result takes you', () => {
       scopeOf(principal()),
       '925842',
       'UZS',
+      CLOCK,
     )
     const [byCode, byId] = dto.groups.find((g) => g.key === 'deals')!.items
 
@@ -244,7 +269,7 @@ describe('where a result takes you', () => {
   it('carries a wide window, or the row just listed would not be there', async () => {
     // An order found by its id is usually an old one. Landing on a screen
     // showing today would say "not found" about the row that was clicked.
-    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), '925842', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), '925842', 'UZS', CLOCK)
 
     for (const group of dto.groups) {
       for (const item of group.items) {
@@ -255,7 +280,7 @@ describe('where a result takes you', () => {
 
   it('finds a customer by their number rather than their name', async () => {
     // A name repeats across people; a number does not.
-    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'dilnoza', 'UZS', CLOCK)
     const customer = dto.groups.find((g) => g.key === 'customers')!.items[0]
 
     expect(customer.href).toContain(encodeURIComponent('+998901234567'))
@@ -271,7 +296,7 @@ describe('where a result takes you', () => {
     every layer, which is why it is pinned here rather than left to review.
   */
   it('sends a product to the one screen that itemises by product', async () => {
-    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'collagen', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'collagen', 'UZS', CLOCK)
     const product = dto.groups.find((g) => g.key === 'products')!.items[0]!
 
     expect(product.href).toContain('/margin?')
@@ -282,7 +307,7 @@ describe('where a result takes you', () => {
   })
 
   it('never sends anyone to a filter the destination does not apply', async () => {
-    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'collagen', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'collagen', 'UZS', CLOCK)
 
     for (const group of dto.groups) {
       for (const item of group.items) {
@@ -300,7 +325,7 @@ describe('where a result takes you', () => {
       READER's chain — so typing an operator's name to find out who runs them
       drew the supervisor's own department, the one answer they already had.
     */
-    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'gulmira', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), 'gulmira', 'UZS', CLOCK)
     const person = dto.groups.find((g) => g.key === 'employees')!.items[0]!
 
     expect(person.href).toBe('/structure?dep=dep-7')
@@ -311,14 +336,14 @@ describe('where a result takes you', () => {
       ...FOUND,
       employees: [{ id: 'e2', name: 'Yangi Xodim', detail: null, departmentId: null }],
     }
-    const dto = await serviceReturning(unfiled).search(principal(), scopeOf(principal()), 'yangi', 'UZS')
+    const dto = await serviceReturning(unfiled).search(principal(), scopeOf(principal()), 'yangi', 'UZS', CLOCK)
     const person = dto.groups.find((g) => g.key === 'employees')!.items[0]!
 
     expect(person.href).toBe('/structure')
   })
 
   it('carries the order amount so a row can be told from its namesakes', async () => {
-    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), '925842', 'UZS')
+    const dto = await serviceReturning(FOUND).search(principal(), scopeOf(principal()), '925842', 'UZS', CLOCK)
     const deal = dto.groups.find((g) => g.key === 'deals')!.items[0]
 
     expect(deal.amount?.amount).toBe(1_600_000)
@@ -327,14 +352,14 @@ describe('where a result takes you', () => {
 
 describe('a term too short to look up', () => {
   it('says so, rather than reporting that nothing matched', async () => {
-    const dto = await serviceReturning(EMPTY).search(principal(), scopeOf(principal()), 'di', 'UZS')
+    const dto = await serviceReturning(EMPTY).search(principal(), scopeOf(principal()), 'di', 'UZS', CLOCK)
 
     expect(dto.tooShort).toBe(true)
     expect(dto.groups).toEqual([])
   })
 
   it('does not call an empty box too short', async () => {
-    const dto = await serviceReturning(EMPTY).search(principal(), scopeOf(principal()), '', 'UZS')
+    const dto = await serviceReturning(EMPTY).search(principal(), scopeOf(principal()), '', 'UZS', CLOCK)
 
     expect(dto.tooShort).toBe(false)
   })
