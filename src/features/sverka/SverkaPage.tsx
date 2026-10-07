@@ -388,13 +388,17 @@ function FreshLine({ data }: { data: SverkaOverviewDto | undefined }) {
       {/*
         A window reaching back past MoySklad's first order: those deals are in
         the FAKT figures and in no comparison. Said here, or every tile's gap
-        reads as a difference nobody can find.
+        reads as a difference nobody can find. Worded as an assumption, not a
+        fact: the floor was read off a pass ordered by `updated` and is only
+        «on or before» (`MOYSKLAD_DATA_FLOOR`) — until production's
+        min(moment) confirms it, a miss just before it hides among these.
       */}
       {before.orders > 0 && (
         <p className="text-xs" style={{ color: 'var(--status-warning)' }}>
-          MoySklad buyurtmalari {formatDate(data.moysklad.since)} dan boshlanadi — undan oldin Tasdiqlashga tushgan{' '}
-          {formatNumber(before.orders)} ta bitim ({formatFullUzs(before.amount)} soʻm) MoySkladʼda yoʻq. Ular FAKT
-          raqamlarida bor, lekin solishtirilmadi va mahsulot hamda ROP jadvallariga kirmadi.
+          {formatDate(data.moysklad.since)} dan oldingi buyurtmalar MoySkladʼga yuklanmagan deb hisoblanadi — undan
+          oldin Tasdiqlashga tushgan {formatNumber(before.orders)} ta bitim ({formatFullUzs(before.amount)} soʻm)
+          MoySkladʼda yoʻq. Ular FAKT raqamlarida bor, lekin solishtirilmadi va mahsulot hamda ROP jadvallariga
+          kirmadi.
         </p>
       )}
       {/* A revoked token or a MoySklad outage leaves the figures standing; say they are stale. */}

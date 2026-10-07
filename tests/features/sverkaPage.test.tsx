@@ -179,10 +179,14 @@ describe('SverkaBody — a window reaching back past MoySklad', () => {
 
   const tile = (label: string) => screen.getByRole('heading', { name: label }).closest('.card')!
 
-  it('says from when MoySklad holds orders and how much of the window was left out', () => {
+  it('says from when MoySklad is taken to hold orders and how much of the window was left out', () => {
     render(<SverkaBody data={year} status="ready" />)
     const since = formatDate('2026-06-14T19:00:00.000Z')
-    const note = screen.getByText(new RegExp(`MoySklad buyurtmalari ${since} dan boshlanadi`)).textContent
+    // An assumption, worded as one: the floor is only «on or before» until production's min(moment) is read.
+    const note = screen.getByText(
+      new RegExp(`${since} dan oldingi buyurtmalar MoySkladʼga yuklanmagan deb hisoblanadi`),
+    ).textContent
+    expect(note).not.toContain('boshlanadi')
     expect(note).toContain('2 ta bitim (3,200,000 soʻm) MoySkladʼda yoʻq')
     // The tiles keep them; the product and ROP tables, which only compare, do not.
     expect(note).toContain('mahsulot hamda ROP jadvallariga kirmadi')
