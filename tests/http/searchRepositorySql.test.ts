@@ -65,7 +65,7 @@ describe('a number', () => {
 
   it('compares the digits alone, so punctuation in the box still finds the row', async () => {
     const calls: Call[] = []
-    await repositoryCapturing(calls).search('+998 (90) 123-45-67', null)
+    await repositoryCapturing(calls).search('+998 (90) 123-45-67', null, YEAR)
 
     for (const call of calls) {
       expect(call.params).toContain('%998901234567%')
