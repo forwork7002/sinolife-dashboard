@@ -745,3 +745,63 @@ describe('RnpPage — the sheet', () => {
     })
   })
 })
+
+describe('«ROP otchet» (moved here from «Lidlar», 2026-10-07)', () => {
+  const money = (som: number) => ({ amountMinor: String(som * 100), currency: 'UZS', amount: som })
+  const cells = (leads: number, fakt1: number) => ({
+    leads,
+    plan: money(leads * 500_000),
+    fakt1: money(fakt1),
+    deviation: money(leads * 500_000 - fakt1),
+    fakt1Orders: 1,
+    conversionPercent: leads > 0 ? 100 / leads : null,
+    fakt2: money(0),
+    fakt2Orders: 0,
+    connectedCalls: 0,
+    talkSec: 0,
+  })
+  const report = {
+    day: '2026-10-07',
+    groups: [
+      {
+        rop: 'Asliddin',
+        sellers: [{ employeeId: 'e2', fullName: 'Sardor Davlatov', isHead: false, onRoster: true, ...cells(12, 4_800_000) }],
+        total: cells(12, 4_800_000),
+      },
+    ],
+    total: cells(12, 4_800_000),
+  }
+
+  it('is the second tab: the report on its own day, and the sheet is not asked for while it is open', async () => {
+    const asked: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        asked.push(new URL(url, 'http://x').pathname)
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: String(url).includes('/registration/report') ? report : fixture,
+            meta: { dataSource: 'DEMO', generatedAt: '2026-10-07T06:00:00.000Z' },
+          }),
+        }
+      }),
+    )
+    await draw()
+    const tabs = within(screen.getByRole('group', { name: 'Qaysi jadval' }))
+    expect(tabs.getByRole('button', { name: 'RNP jadvali' }).getAttribute('aria-pressed')).toBe('true')
+    expect(asked.some((p) => p.endsWith('/registration/report'))).toBe(false)
+
+    const sheetReads = asked.length
+    fireEvent.click(tabs.getByRole('button', { name: 'ROP otchet' }))
+    await waitFor(() => expect(screen.getByText('Sardor Davlatov')).toBeTruthy())
+    expect(screen.queryByRole('region', { name: 'RNP jadvali' })).toBeNull()
+    // The sheet's month and ROP controls belong to the sheet.
+    expect(within(screen.getByTestId('page-toolbar')).queryByText('Oy')).toBeNull()
+    expect(asked.slice(sheetReads).every((p) => p.endsWith('/registration/report'))).toBe(true)
+
+    fireEvent.click(tabs.getByRole('button', { name: 'RNP jadvali' }))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'RNP jadvali' })).toBeTruthy())
+  })
+})

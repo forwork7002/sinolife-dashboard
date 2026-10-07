@@ -5,8 +5,11 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useS
 
 import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
+import { SegmentedControl } from '@/components/ui/Controls'
 import { Select } from '@/components/ui/Select'
 import { useCohortRop } from '@/features/cohort/useCohortRop'
+import { today } from '@/features/leads/LeadSplitCards'
+import { RopReport } from '@/features/leads/RopReport'
 import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -53,8 +56,19 @@ import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
  * «Hammasi · Collagen · Zextra · Brendsiz» CUTS IT TO ONE SLICE (2026-10-05;
  * «Brendsiz» 2026-10-06) the same way, in the browser (`brandLines`):
  * `?brand=`, and the ROP list offers only that slice's teams.
+ *
+ * «ROP otchet» IS THE SECOND TAB (2026-10-07, moved here from «Lidlar» — the
+ * user: «rnp jadvaliga ROP otchetni koʻchiramiz … shu boʻlimchani ham olib»):
+ * the client's group sheet for one day (`RopReport`), on its own day, under
+ * the brand switch only. Nothing on a hidden tab asks: the sheet's request
+ * waits while «ROP otchet» is open, and the other way round.
  */
+type Tab = 'sheet' | 'rop'
+
 export function RnpPage() {
+  const [tab, setTab] = useState<Tab>('sheet')
+  // «ROP otchet»'s day — its own, kept across a trip to the sheet and back.
+  const [day, setDay] = useState(today)
   const current = useCurrentMonth()
   const { month, setMonth } = useRnpMonth(current)
   // What the month box holds while it is not yet a month the sheet can show (`rnpMonthIn`).
@@ -69,6 +83,7 @@ export function RnpPage() {
     queryKey: ['rnp-overview', { month }],
     queryFn: ({ signal }) => apiGet<RnpOverviewDto>('/rnp/overview', { month }, signal),
     placeholderData: keepPreviousData,
+    enabled: tab === 'sheet',
   })
 
   const data = overview.data?.data
@@ -112,97 +127,117 @@ export function RnpPage() {
       title={t.modules.rnp.title}
       description={t.modules.rnp.lead}
       accent="var(--series-7)"
-      meta={overview.data?.meta}
-      stale={overview.isPlaceholderData}
+      meta={tab === 'sheet' ? overview.data?.meta : undefined}
+      stale={tab === 'sheet' && overview.isPlaceholderData}
       period={false}
-      fill
+      fill={tab === 'sheet'}
+      // Beside the title, as on «Lidlar»: nothing before them changes with the tab.
+      actions={
+        <SegmentedControl<Tab>
+          ariaLabel="Qaysi jadval"
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: 'sheet', label: 'RNP jadvali' },
+            { value: 'rop', label: 'ROP otchet' },
+          ]}
+        />
+      }
       toolbar={
-        <>
+        tab === 'rop' ? (
           <DashboardBrandSwitch />
-          <label className="flex items-center gap-2 text-xs" style={muted}>
-            Oy
-            <input
-              type="month"
-              value={draft ?? month}
-              min={RNP_FIRST_MONTH}
-              max={current}
-              onChange={(e) => {
-                // Only a whole month the sheet can show is requested. Anything else — a year half typed,
-                // or text where Firefox and Safari draw no picker — stays in the box until it is one.
-                const next = rnpMonthIn(e.target.value, current)
-                setDraft(next === null ? e.target.value : null)
-                if (next !== null) setMonth(next)
-              }}
-              onBlur={() => setDraft(null)}
-              className="focusable h-11 rounded-[var(--radius-panel-sm)] border px-2 text-xs sm:h-8"
-              style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
-            />
-          </label>
-          <label className="flex items-center gap-2 text-xs" style={muted}>
-            ROP
-            <Select
-              value={chosen?.rop ?? ''}
-              onChange={(e) => setRop(e.target.value === '' ? null : e.target.value)}
-              disabled={teams.length === 0}
-              height="touch"
-              className="max-w-[14rem]"
-            >
-              <option value="">Barchasi</option>
-              {teams.map((t) => (
-                <option key={t.rop} value={t.rop}>
-                  {t.label}
-                </option>
-              ))}
-            </Select>
-          </label>
-          {data && (
-            <SheetFacts
-              data={data}
-              onToday={() => {
-                const box = scope.current?.querySelector<HTMLElement>('[data-rnp-grid]')
-                if (box) scrollToToday(box)
-              }}
-            />
-          )}
-        </>
+        ) : (
+          <>
+            <DashboardBrandSwitch />
+            <label className="flex items-center gap-2 text-xs" style={muted}>
+              Oy
+              <input
+                type="month"
+                value={draft ?? month}
+                min={RNP_FIRST_MONTH}
+                max={current}
+                onChange={(e) => {
+                  // Only a whole month the sheet can show is requested. Anything else — a year half typed,
+                  // or text where Firefox and Safari draw no picker — stays in the box until it is one.
+                  const next = rnpMonthIn(e.target.value, current)
+                  setDraft(next === null ? e.target.value : null)
+                  if (next !== null) setMonth(next)
+                }}
+                onBlur={() => setDraft(null)}
+                className="focusable h-11 rounded-[var(--radius-panel-sm)] border px-2 text-xs sm:h-8"
+                style={{ background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs" style={muted}>
+              ROP
+              <Select
+                value={chosen?.rop ?? ''}
+                onChange={(e) => setRop(e.target.value === '' ? null : e.target.value)}
+                disabled={teams.length === 0}
+                height="touch"
+                className="max-w-[14rem]"
+              >
+                <option value="">Barchasi</option>
+                {teams.map((t) => (
+                  <option key={t.rop} value={t.rop}>
+                    {t.label}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            {data && (
+              <SheetFacts
+                data={data}
+                onToday={() => {
+                  const box = scope.current?.querySelector<HTMLElement>('[data-rnp-grid]')
+                  if (box) scrollToToday(box)
+                }}
+              />
+            )}
+          </>
+        )
       }
     >
-      {/* The grid reads its column widths from here (`RnpColumnScope`). */}
-      <RnpColumnScope ref={scope} minWidths={minWidths} className="flex h-full min-h-0 flex-col">
-        {status === 'error' ? (
-          <Card className="p-5">
-            <ErrorState
-              message={overview.error instanceof Error ? overview.error.message : undefined}
-              onRetry={() => void overview.refetch()}
-            />
-          </Card>
-        ) : status === 'loading' || !data ? (
-          <Card className="p-5">
-            <LoadingSkeleton rows={10} />
-          </Card>
-        ) : data.blocks.length === 0 ? (
-          <Card className="p-5">
-            <EmptyState title="Bu oy uchun jadval yoʻq" body="Bu oy uchun jadval hali yigʻilmagan — boshqa oyni tanlang." />
-          </Card>
-        ) : (
-          // On a phone the header strip wraps to four lines and would leave the grid a
-          // letterbox; there the card is nearly a screen tall and the page scrolls the
-          // header away first (the confirmation board's floor, for the same reason).
-          <Card as="div" className="min-h-[320px] min-w-0 flex-1 overflow-hidden p-0 max-sm:min-h-[calc(100dvh-5rem)]">
-            <RnpSheetTable
-              lines={lines}
-              // The uncut sheet: a line keeps its key through the brand and ROP cuts.
-              allLines={data.lines}
-              blocks={data.blocks}
-              days={data.days}
-              today={data.today}
-              // The P&L's typed cost lines are the one thing on the sheet an editor types in place.
-              editCostsFor={data.canEditPlans ? data.month : null}
-              editHeadcount={editHeadcount}
-            />
-          </Card>
-        )}
-      </RnpColumnScope>
+      {tab === 'rop' ? (
+        <RopReport day={day} onDay={setDay} />
+      ) : (
+        // The grid reads its column widths from here (`RnpColumnScope`).
+        <RnpColumnScope ref={scope} minWidths={minWidths} className="flex h-full min-h-0 flex-col">
+          {status === 'error' ? (
+            <Card className="p-5">
+              <ErrorState
+                message={overview.error instanceof Error ? overview.error.message : undefined}
+                onRetry={() => void overview.refetch()}
+              />
+            </Card>
+          ) : status === 'loading' || !data ? (
+            <Card className="p-5">
+              <LoadingSkeleton rows={10} />
+            </Card>
+          ) : data.blocks.length === 0 ? (
+            <Card className="p-5">
+              <EmptyState title="Bu oy uchun jadval yoʻq" body="Bu oy uchun jadval hali yigʻilmagan — boshqa oyni tanlang." />
+            </Card>
+          ) : (
+            // On a phone the header strip wraps to four lines and would leave the grid a
+            // letterbox; there the card is nearly a screen tall and the page scrolls the
+            // header away first (the confirmation board's floor, for the same reason).
+            <Card as="div" className="min-h-[320px] min-w-0 flex-1 overflow-hidden p-0 max-sm:min-h-[calc(100dvh-5rem)]">
+              <RnpSheetTable
+                lines={lines}
+                // The uncut sheet: a line keeps its key through the brand and ROP cuts.
+                allLines={data.lines}
+                blocks={data.blocks}
+                days={data.days}
+                today={data.today}
+                // The P&L's typed cost lines are the one thing on the sheet an editor types in place.
+                editCostsFor={data.canEditPlans ? data.month : null}
+                editHeadcount={editHeadcount}
+              />
+            </Card>
+          )}
+        </RnpColumnScope>
+      )}
     </PageShell>
   )
 }

@@ -68,7 +68,8 @@ const CHANNEL_LABEL: Readonly<Record<LeadChannel, string>> = {
  * Where the one-day ROP cards sit among the period's blocks (2026-10-02, the
  * client's placement when «Registratsiya» folded in here): the split under
  * the channel tiles, the seven-day grid above «Targetologlar». («ROP otchet»
- * sat below it until it got its own tab the same day.) `LeadsPage` builds
+ * sat below it until it got its own tab the same day; it is on «RNP jadvali»
+ * since 2026-10-07.) `LeadsPage` builds
  * them; this section only places them.
  */
 export interface LeadSourcesSlots {

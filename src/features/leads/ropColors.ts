@@ -1,6 +1,7 @@
 /**
- * The ROP teams' colours on «Lidlar»'s day cards: the split's bars and grid and
- * «ROP otchet» read the same list, so a team is one colour on the page.
+ * The ROP teams' colours on «Lidlar»'s day cards: the split's bars and grid
+ * read the same list, so a team is one colour on the page. «ROP otchet» (on
+ * «RNP jadvali» since 2026-10-07) takes its slots in its own order.
  *
  * Nine teams against seven usable series slots (--series-8 sits on
  * --status-critical): the last two are mixes, picked by eye in both themes to

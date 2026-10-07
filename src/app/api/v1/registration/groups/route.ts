@@ -6,7 +6,7 @@ import { overviewQuerySchema } from '../schema'
 
 export const dynamic = 'force-dynamic'
 
-/** COMPANY-WIDE, like «ROP otchet» beside it: every team's sellers and their money side by side. */
+/** COMPANY-WIDE, like «ROP otchet» (now on «RNP jadvali»): every team's sellers and their money side by side. */
 const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
 
 /** «Guruhlar» — the first of the month to `day`, every ROP team seller by seller. See groupPlan.ts. */

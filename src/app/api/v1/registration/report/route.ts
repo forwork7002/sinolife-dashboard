@@ -7,11 +7,12 @@ import { overviewQuerySchema } from '../schema'
 export const dynamic = 'force-dynamic'
 
 /**
- * COMPANY-WIDE, like the split beside it: every ROP team's sellers and their
- * money side by side. A ROP given TEAM scope is refused rather than handed
- * the other teams.
+ * COMPANY-WIDE: every ROP team's sellers and their money side by side. A ROP
+ * given TEAM scope is refused rather than handed the other teams (an account
+ * holding «RNP jadvali» company-wide reads it, as it reads every team's block).
+ * Section `rnp` since 2026-10-07, when «ROP otchet» moved there from «Lidlar».
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'rnp' } as const
 
 /** «ROP otchet» — one day, every ROP team seller by seller. See ropReport.ts. */
 export const GET = getHandler(ACCESS, overviewQuerySchema, async (ctx) => {

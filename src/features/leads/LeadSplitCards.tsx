@@ -31,7 +31,7 @@ import { ROP_COLORS, ropInk } from './ropColors'
  * `server/domain/registration/leadSplit.ts`.
  *
  * ONE DAY, NOT THE PAGE'S PERIOD. The split is set per day, so these cards and
- * «ROP otchet» share their own day (`DayPicker`, held by `LeadsPage`); the
+ * «Guruhlar» share their own day (`DayPicker`, held by `LeadsPage`); the
  * rest of «Lid manbalari» stays on the dashboard period. Both cards read one
  * query (`useLeadSplit`), so they cannot disagree.
  */
@@ -61,7 +61,7 @@ const pctOfBp = (bp: number) => bp / 100
 /** The API's first day; the arrows and the picker stop there rather than earn a 400. */
 const FIRST_DAY = '2025-01-01'
 
-/** ‹ day › and «Bugun» — the one control the day cards and «ROP otchet» share. */
+/** ‹ day › and «Bugun» — the day control of the day cards, «Guruhlar» and «ROP otchet». */
 export function DayPicker({ day, onChange }: { day: string; onChange: (day: string) => void }) {
   const goTo = (next: string) => {
     if (next >= FIRST_DAY) onChange(next)
@@ -127,7 +127,7 @@ export function LeadSplitCard({ day, onDay }: { day: string; onDay: (day: string
   return (
     <ChartCard
       title={`Lidlar qanday boʻlinadi${data ? ` · ${formatDate(data.day)}` : ''}`}
-      hint="Bir kunlik: yuqorida — administrator belgilagan reja (yangi lidlardan), pastda — ROPʼlar haqiqatda olgani (jami tarqatilgandan). «Olgan lid» — Bitrix24: «Лид таркатилган сана» shu kun va «РОП (Первичка)» shu ROP. Kun «ROP otchet» bilan umumiy."
+      hint="Bir kunlik: yuqorida — administrator belgilagan reja (yangi lidlardan), pastda — ROPʼlar haqiqatda olgani (jami tarqatilgandan). «Olgan lid» — Bitrix24: «Лид таркатилган сана» shu kun va «РОП (Первичка)» shu ROP. Kun «Guruhlar» bilan umumiy."
     >
       {/* Under the title rather than beside it: a phone keeps the title on one line. */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">

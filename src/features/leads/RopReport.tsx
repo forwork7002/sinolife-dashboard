@@ -13,9 +13,9 @@ import { ROP_COLORS } from './ropColors'
 import type { RopReportCellsDto, RopReportDto, RopReportGroupDto } from './leadSplitApi'
 
 /**
- * «ROP otchet» — the client's group sheet for the chosen day (on «Lidlar»
- * since 2026-10-02, its own tab there; its day is shared with the split
- * cards on «Lid manbalari»): every ROP team,
+ * «ROP otchet» — the client's group sheet for the chosen day (a tab of
+ * «RNP jadvali» since 2026-10-07, on its own day; a tab of «Lidlar» on
+ * 2026-10-02–07, sharing the split cards' day): every ROP team,
  * seller by seller, with the team's «Umumiy» under it and the company's at the
  * foot. Asked for on 2026-10-01 in place of the split table, «Лид руч» left
  * out. The definitions are in `server/domain/registration/ropReport.ts`.
@@ -43,7 +43,18 @@ function groupColor(rop: string | null, index: number, colors: ReadonlyMap<strin
 
 const som = (m: MoneyDto) => formatFullUzs(m.amount)
 
-export function RopReport({ day, onDay, colors }: { day: string; onDay: (day: string) => void; colors: ReadonlyMap<string, string> }) {
+/** No split on the page («RNP jadvali»): every team takes its slot in the report's own order. */
+const NO_SPLIT_COLORS: ReadonlyMap<string, string> = new Map()
+
+export function RopReport({
+  day,
+  onDay,
+  colors = NO_SPLIT_COLORS,
+}: {
+  day: string
+  onDay: (day: string) => void
+  colors?: ReadonlyMap<string, string>
+}) {
   const { apiParams } = useDashboardFilters()
   const params = apiParams.brand !== undefined ? { day, brand: apiParams.brand } : { day }
   const report = useQuery({

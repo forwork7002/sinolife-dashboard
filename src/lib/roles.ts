@@ -53,7 +53,7 @@ const ALL_ROUTES = [
   '/sellers',
   '/margin',
   '/marketing',
-  // Leads by source, the lead cohort, the day's split among the ROPs and «ROP otchet». ADMIN and MANAGER
+  // Leads by source, the lead cohort, the day's split among the ROPs and «Guruhlar». ADMIN and MANAGER
   // only by default, and the endpoints refuse any account that is not
   // company-wide.
   '/leads',
