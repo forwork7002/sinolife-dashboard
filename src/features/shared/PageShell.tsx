@@ -142,7 +142,7 @@ export function PageShell({
    * such rather than appearing to follow something it cannot see.
    */
   accent?: string
-  /** `false` takes the «developed by Yusuf» corner mark off every card on the page. */
+  /** `false` leaves off the page's one «developed by Yusuf» mark (see `.dev-mark`). */
   devMark?: boolean
   actions?: ReactNode
   /**
@@ -426,7 +426,7 @@ export function PageShell({
       periodAware={period}
     >
       <div
-        className={`page-container ${devMark ? '' : 'no-dev-mark'} ${fill ? 'flex h-full min-h-0 flex-col gap-4' : 'space-y-4'}`}
+        className={`page-container ${fill ? 'flex h-full min-h-0 flex-col gap-4' : 'space-y-4'}`}
         style={{
           ...(accent ? ({ '--accent': accent } as React.CSSProperties) : undefined),
           // A dimmed page is data awaiting replacement; opacity is cheap to
@@ -531,6 +531,14 @@ export function PageShell({
 
             {controlsAlign !== 'end' && controls}
           </div>
+
+          {/* The author's mark: in the 16px gap under the header, so it sits just
+              above the first card's top-right border and takes no height. */}
+          {devMark && (
+            <span className="dev-mark absolute right-3.5 -bottom-[13px]" aria-hidden="true">
+              developed by Yusuf
+            </span>
+          )}
         </div>
 
         {/* The body takes what the header left, and its own children size

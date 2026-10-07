@@ -4,46 +4,35 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * «developed by Yusuf» in the top-right corner of every hero band, table card
- * and titled chart card.
+ * «developed by Yusuf» — ONCE per page, over the first card's top-right border.
  *
- * One ::after rule draws it. `.brackets` — on most hero bands — used to own
- * both pseudos for its two corners; it now paints both from ::before, and a
- * second `.brackets::after` would overwrite the mark on every hero. Pinned
- * here because nothing in TypeScript can see a pseudo's content.
+ * PageShell draws it; it used to be a ::after on every card and a page
+ * carried two or three (the client: «ikkita boʻlmasin bitta yetadi»). Pinned
+ * so a per-card rule does not come back, and so the pages the client named
+ * keep their exceptions.
  */
 
-const CSS = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(
-  /\/\*[\s\S]*?\*\//g,
-  '',
-)
-
-const TARGETS = ':is(.card-hero, .card:has(table), .card:has(> header)):not(.no-dev-mark, .no-dev-mark *)'
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
+const CSS = read('src/app/globals.css').replace(/\/\*[\s\S]*?\*\//g, '')
 
 describe('developer mark', () => {
-  it('is drawn on hero, table and chart cards', () => {
-    expect(CSS).toContain(`${TARGETS}::after {\n  content: "developed by Yusuf" / "";`)
+  it('is drawn once, by PageShell, under the header', () => {
+    const shell = read('src/features/shared/PageShell.tsx')
+    expect(shell).toContain('{devMark && (')
+    expect(shell.match(/className="dev-mark /g)).toHaveLength(1)
   })
 
-  it('is off where the client said so, and moved where the corner is taken', () => {
+  it('is no longer a pseudo on every card', () => {
+    expect(CSS).not.toContain('developed by Yusuf')
+    expect(CSS).toContain('.dev-mark {')
+  })
+
+  it('is off where the client said so, and beside the paging on Tasdiqlash', () => {
     for (const page of ['sellers/SellersPage', 'roistat/RoistatPage', 'target/TargetPage', 'reklama/ReklamaPage']) {
       expect(read(`src/features/${page}.tsx`)).toContain('devMark={false}')
     }
     const confirmation = read('src/features/confirmation/ConfirmationPage.tsx')
-    expect(confirmation).toContain('card-hero brackets no-dev-mark')
+    expect(confirmation).toContain('devMark={false}')
     expect(confirmation).toContain('aside={<DevMark')
-    const rnp = read('src/features/rnp/RnpPage.tsx')
-    expect(rnp).toContain('<DevMark />')
-    expect(rnp).toContain('className="no-dev-mark')
-  })
-
-  it('makes those cards its containing block under the utilities layer', () => {
-    expect(CSS).toMatch(/@layer components \{\s*:is\(\.card-hero, \.card:has\(table\), \.card:has\(> header\)\) \{\s*position: relative;/)
-  })
-
-  it('leaves ::after free on the bracketed hero bands', () => {
-    expect(CSS).toContain('.brackets::before {')
-    expect(CSS).not.toMatch(/\.brackets::after/)
   })
 })

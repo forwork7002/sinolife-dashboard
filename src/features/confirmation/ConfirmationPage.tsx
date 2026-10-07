@@ -775,6 +775,8 @@ export function ConfirmationPage() {
   return (
     <PageShell
       title={t.modules.confirmation.title}
+      // The mark sits beside the paging instead (the client, 2026-10-07).
+      devMark={false}
       /*
         NOTHING UNDER THE TITLE, IN ANY MODE — `null`, which is the same
         statement `meta={undefined}` a few props below already makes.
@@ -1121,7 +1123,7 @@ export function ConfirmationPage() {
         */}
         {!statsOpen && (
           <Card
-            className="card-hero brackets no-dev-mark flex min-h-[746px] flex-1 flex-col px-4 py-4"
+            className="card-hero brackets flex min-h-[746px] flex-1 flex-col px-4 py-4"
             style={{ opacity: rowsStale ? 0.7 : 1, transition: 'opacity 150ms var(--ease-out)' }}
             aria-busy={rowsStale || undefined}
           >
