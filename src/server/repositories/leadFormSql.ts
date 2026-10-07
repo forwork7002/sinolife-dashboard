@@ -33,6 +33,23 @@ export function sourceDescriptionSql(deal: string): string {
 }
 
 /**
+ * A «QAYTA ZAYAVKA» DEAL'S FORM ACT NUMBER — null on any other deal.
+ *
+ * Since 2026-10-05 16:20 the portal's robot opens a Регистрация deal for a
+ * returning contact's form fill, described «Qayta zayavka (forma akt #N)
+ * Заполнена CRM-форма "<form>"». It polls about once a minute, so the act
+ * numbers rise with the deals' creation (~50 a minute). That evening, 18:00–
+ * 20:00, it also opened 1 071 deals for acts filled days earlier (#4660500
+ * on): forms that never reached the portal as deals when they were filled,
+ * all landing on 05.10 and doubling that day's leads. A deal whose act is
+ * lower than one already opened before it is such a late copy — not a lead
+ * of the day it was opened (`RnpRepository.registrationDaysSql`).
+ */
+export function replayActSql(sd: string): string {
+  return `substring(${sd} from '^Qayta zayavka \\(forma akt #([0-9]+)\\)')::bigint`
+}
+
+/**
  * The `form_alias` CTE (without `WITH`) over `rows` — a relation aliased
  * `fd` with an `sd` and a `title` column, Регистрация deals only: each
  * unambiguous short name of a form.

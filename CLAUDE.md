@@ -575,6 +575,16 @@ Per-screen traps worth knowing before you touch one:
   in «Тушган лид»), the same as «Дубль лидлар» on /leads (`isLeadDuplicate`).
   Matched `~ '[Дд]убл[^(]*\([[:space:]]*[Лл]ид'`, never `~*`: Cyrillic case
   folding follows the ctype, and under a C locale every duplicate was a lead.
+  **A LATE «QAYTA ZAYAVKA» IS NOT A LEAD OF ITS DAY** (2026-10-07, the
+  client: «Жами лид сонлари хато»). Since 05.10 16:20 a portal robot opens a
+  Регистрация deal for a returning contact's form fill («Qayta zayavka (forma
+  akt #N) …» in SOURCE_DESCRIPTION), in act order, about once a minute; at
+  18:00–20:00 that day it also opened 1 071 deals for acts filled days
+  earlier and row 47 read 2 309 (portal-measured: 2 298 → 1 238). A deal whose
+  act is below one opened before it (running max, seeded from the day before
+  the window) is left out of leads and duplicates (`replayActSql`); a live
+  re-fill counts — it is a lead that arrived that day. Its kval still counts.
+  /leads «Жами лидлар» does NOT apply this rule yet.
   Compared with production on 2026-09-28: FAKT 1 to the soʻm on 27 of 27
   days, handed-out leads per team per day, registration and calls all match
   the portal. **The screen once timed out there** (registration 7–10 s, the

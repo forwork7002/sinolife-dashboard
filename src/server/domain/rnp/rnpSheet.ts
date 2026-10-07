@@ -1095,7 +1095,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     team: null,
     sheet: sh(47, 'Регистрация'),
     rows: [
-      additive(clock, { key: 'reg:leads', label: 'Тушган лид (Регистрация)', unit: 'count', ...derived(div(plan('', 'reg_qualified'), plan('', 'reg_qualified_pct'), 100)), hint: 'Регистрация voronkasida yaratilgan bitimlar, «Дубликат (лид)» bosqichidagilarsiz. Reja — jadvaldagidek: квал rejasi ÷ квал % rejasi.', sheet: sh(47, 'Количество лид') }, reg.leads),
+      additive(clock, { key: 'reg:leads', label: 'Тушган лид (Регистрация)', unit: 'count', ...derived(div(plan('', 'reg_qualified'), plan('', 'reg_qualified_pct'), 100)), hint: 'Регистрация voronkasida yaratilgan bitimlar, «Дубликат (лид)» bosqichidagilarsiz. Portal roboti kunlar oʻtib ochgan eski forma arizalari («Qayta zayavka», 05.10 kechqurun 1 071 ta) oʻsha kunning lidi emas — sanalmaydi; real vaqtdagi qayta ariza sanaladi. Reja — jadvaldagidek: квал rejasi ÷ квал % rejasi.', sheet: sh(47, 'Количество лид') }, reg.leads),
       additive(clock, { key: 'reg:duplicates', label: 'Дубликат', unit: 'count', better: 'down', hint: '«Дубликат (лид)» bosqichi; qizil «Дубликат» bunga kirmaydi.' }, reg.duplicates),
       additive(clock, { key: 'reg:ai', label: 'ИИ обработка мурожаатлари', unit: 'count', hint: '«ИИ обработка» voronkasida ochilgan suhbatlar.' }, reg.ai),
       additive(clock, { key: 'reg:qualified', label: 'Квал лид — жами (Сделка успешна)', unit: 'count', tone: 'total', hint: 'Registrator «Сделка успешна» ga oʻtkazgan lidlar — yopilgan kuni boʻyicha. Collagen + Zextra.' }, reg.qualified),
