@@ -51,11 +51,11 @@ export function SideCard({ side }: { side: readonly SideColumnDto[] }) {
   const sum = (values: readonly number[]) => values.reduce((a, b) => a + b, 0)
   const totals = side.map((c) => c.totalUsd)
   return (
-    /* As wide as its columns, like a targetolog's card; a phone scrolls the table inside it. */
-    <Card className="w-max max-w-[calc(100vw-2.5rem)] shrink-0 snap-start self-start overflow-hidden p-0">
+    /* As wide as its columns and as tall as its neighbours, like a targetolog's card; a phone scrolls the table inside it. */
+    <Card className="w-max max-w-[calc(100vw-2.5rem)] shrink-0 snap-start overflow-hidden p-0">
       <h3
         className="px-3 py-2 text-sm font-semibold"
-        style={{ background: TITLE_TINT, color: 'var(--ink-primary)' }}
+        style={{ background: TITLE_TINT, color: 'var(--ink-primary)', boxShadow: 'inset 0 3px 0 var(--accent)' }}
         title="Meta sarfi. Hech bir brendga kirmaydi, DM jadvaliga ham qoʻshilmaydi."
       >
         HR · Kosmetika

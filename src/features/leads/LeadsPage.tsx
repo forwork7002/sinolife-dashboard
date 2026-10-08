@@ -10,6 +10,7 @@ import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import type { Status } from '@/features/reklama/reklamaUi'
+import { TargetologDaySection } from '@/features/reklama/TargetologDaySection'
 import { apiGet } from '@/lib/api'
 import { t } from '@/lib/messages'
 
@@ -23,7 +24,7 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  * «Lidlar» — everything about a lead once Bitrix24 has it, in one section.
  *
  * Asked for on 2026-09-25 («yangi bir boʻlim ochamiz lidlar deb, oʻsha yerga
- * koʻchiramiz lid kogortasini ham … Sotuv ROP ni ham»). Two tabs, each on
+ * koʻchiramiz lid kogortasini ham … Sotuv ROP ni ham»). Four tabs, each on
  * its own clock:
  *
  *   «Lid manbalari» — every Регистрация lead by source, the lead forms per
@@ -35,6 +36,11 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  *     500 000 a lead, Факт-1 and the debt, from the first of the same day's
  *     month. Its own tab from the start (2026-10-02); it held the «безквал /
  *     квал» group report until 2026-10-03.
+ *   «Targetologlar» — the client's per-targetolog day sheet
+ *     (`TargetologDaySection`, with the hand-typed «Telegram» card and
+ *     «HR · Kosmetika»), moved here from «Reklama samarasi» on 2026-10-08
+ *     (the user: «shu joyini olib lidlar bo'limiga o'tkazamiz … tugma orqali
+ *     kiriladigan»). The dashboard period and brand, one request of its own.
  *
  * «Sotuv · ROP» was removed on 2026-10-01 at the user's request. «ROP otchet»
  * (a tab here since 2026-10-02) moved to «RNP jadvali» on 2026-10-07.
@@ -52,10 +58,10 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  * tab is open; the cohort tab fetches inside its own section, «Guruhlar»
  * asks `/registration/groups`.
  */
-type Tab = 'sources' | 'cohort' | 'groups'
+type Tab = 'sources' | 'cohort' | 'groups' | 'targetologs'
 
 export function LeadsPage() {
-  const { apiParams } = useDashboardFilters()
+  const { apiParams, filters } = useDashboardFilters()
   const [tab, setTab] = useState<Tab>('sources')
   // The ROP cards' day — one, so the split, the grid and «Guruhlar» always show the same day.
   const [day, setDay] = useState(today)
@@ -88,7 +94,7 @@ export function LeadsPage() {
       accent="var(--series-7)"
       meta={tab === 'sources' ? overview.data?.meta : undefined}
       stale={tab === 'sources' && overview.isPlaceholderData}
-      period={tab === 'sources'}
+      period={tab === 'sources' || tab === 'targetologs'}
       /*
         THE TABS SIT BESIDE THE TITLE, not in the filter row — as Struktura's
         view switch does. In the row they came after the period control, which
@@ -110,6 +116,7 @@ export function LeadsPage() {
                 { value: 'sources', label: 'Lid manbalari' },
                 { value: 'cohort', label: 'Lid kogortasi' },
                 { value: 'groups', label: 'Guruhlar' },
+                { value: 'targetologs', label: 'Targetologlar' },
               ]}
             />
           </div>
@@ -123,6 +130,8 @@ export function LeadsPage() {
       <div className="flex min-w-0 flex-col gap-6">
         {tab === 'cohort' ? (
           <LeadCohortSection />
+        ) : tab === 'targetologs' ? (
+          <TargetologDaySection params={params} brand={filters.brand} />
         ) : tab === 'groups' ? (
           <GroupPlanCard day={day} onDay={setDay} />
         ) : status === 'error' ? (

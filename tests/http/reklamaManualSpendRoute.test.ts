@@ -33,10 +33,18 @@ describe('POST /reklama/manual-spend — the body', () => {
   })
 })
 
+describe('GET /reklama/targetologs — the gate', () => {
+  it('is «Lidlar»\'s since the strip moved there (2026-10-08), and says who may type', async () => {
+    const source = await import('node:fs').then((fs) => fs.readFileSync('src/app/api/v1/reklama/targetologs/route.ts', 'utf8'))
+    expect(source).toContain("{ permission: 'analytics:read:all', section: 'leads' }")
+    expect(source).toContain("can(ctx.principal, 'kpi:manage') && !ctx.principal.widened")
+  })
+})
+
 describe('POST /reklama/manual-spend — the gate', () => {
-  it('asks for kpi:manage inside the marketing gate, refuses a day after today, and saves cents', async () => {
+  it('asks for kpi:manage inside the leads gate, refuses a day after today, and saves cents', async () => {
     const source = await import('node:fs').then((fs) => fs.readFileSync('src/app/api/v1/reklama/manual-spend/route.ts', 'utf8'))
-    expect(source).toContain("{ permission: 'analytics:read:all', section: 'marketing' }")
+    expect(source).toContain("{ permission: 'analytics:read:all', section: 'leads' }")
     expect(source).toContain("can(ctx.principal, 'kpi:manage')")
     expect(source).toContain('c.day > today')
     expect(source).toContain('usdToCents(c.value)')

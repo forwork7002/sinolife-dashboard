@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { FormDayDto, FormOwnerDto } from '@/features/leads/leadSourcesApi'
+import type { SideColumnDto } from '@/features/reklama/reklamaApi'
 
 /**
  * «TARGETOLOGLAR · KUNLIK» UNDER THE BRAND SWITCH (2026-10-06).
@@ -18,12 +19,18 @@ import type { FormDayDto, FormOwnerDto } from '@/features/leads/leadSourcesApi'
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: () => {}, push: () => {} }),
-  usePathname: () => '/marketing',
+  usePathname: () => '/leads',
   useSearchParams: () => new URLSearchParams(window.location.search),
 }))
 
+// The tabs ride the shell's `actions`: drawn here so a test can press «Targetologlar».
 vi.mock('@/features/shared/PageShell', () => ({
-  PageShell: ({ children }: { children?: unknown }) => <div>{children as React.ReactNode}</div>,
+  PageShell: ({ children, actions }: { children?: unknown; actions?: unknown }) => (
+    <div>
+      {actions as React.ReactNode}
+      {children as React.ReactNode}
+    </div>
+  ),
 }))
 
 window.matchMedia = ((query: string) => ({
@@ -90,6 +97,8 @@ const OWNERS = [
 
 // The cards with no form money (`forms.expenseOwners`): none, unless a test hands some.
 let expenseOwners: FormOwnerDto[] = []
+// «HR · Kosmetika» (`side`), the strip's last card: none, unless a test hands some.
+let side: SideColumnDto[] = []
 
 const requests: { path: string; params: Record<string, unknown> }[] = []
 
@@ -99,28 +108,38 @@ vi.mock('@/lib/api', async (importOriginal) => {
     ...actual,
     apiGet: (path: string, params: Record<string, unknown>) => {
       requests.push({ path, params })
-      // The ad sheets stay loading: this file is about the targetolog cards.
-      if (path === '/reklama/overview') return new Promise(() => {})
+      // «Lid manbalari» stays loading: this file is about the targetolog cards.
+      if (path !== '/reklama/targetologs') return new Promise(() => {})
       return Promise.resolve({
-        data: { forms: { owners: OWNERS, expenseOwners, days: [], spendUsd: 20, metaLeads: 0, outcome: OWNERS[0]!.outcome }, importedAt: null },
+        data: {
+          forms: { owners: OWNERS, expenseOwners, days: [], spendUsd: 20, metaLeads: 0, outcome: OWNERS[0]!.outcome },
+          importedAt: null,
+          manual: [],
+          side,
+          canEdit: false,
+          today: '2026-10-07',
+        },
         meta: {},
       })
     },
   }
 })
 
-const { ReklamaPage } = await import('@/features/reklama/ReklamaPage')
+const { LeadsPage } = await import('@/features/leads/LeadsPage')
 const { TargetologDaySection } = await import('@/features/reklama/TargetologDaySection')
 
+/** «Lidlar» on its «Targetologlar» tab — where the strip lives since 2026-10-08. */
 function mount(search: string) {
-  window.history.replaceState(null, '', `/marketing${search}`)
+  window.history.replaceState(null, '', `/leads${search}`)
   requests.length = 0
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <ReklamaPage />
+      <LeadsPage />
     </QueryClientProvider>,
   )
+  // The page's tabs, not «Lid manbalari»'s own «Targetologlar» table switch.
+  fireEvent.click(within(screen.getByRole('group', { name: 'Qaysi jadvallar' })).getByRole('button', { name: 'Targetologlar' }))
 }
 
 const cardTitles = () => screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent ?? '')
@@ -166,18 +185,22 @@ describe('«Targetologlar · kunlik» — a card with no form money (2026-10-07)
 })
 
 describe('«Targetologlar · kunlik» — «HR · Kosmetika» as the strip\'s last card (2026-10-07)', () => {
-  const side = [
-    { key: 'hr' as const, name: 'HR', totalUsd: 9.12, days: [{ date: '2026-10-06', spendUsd: 9.12 }] },
-    { key: 'kosmetika' as const, name: 'Kosmetika', totalUsd: 0, days: [{ date: '2026-10-06', spendUsd: 0 }] },
-  ]
   const draw = (brand: 'all' | 'none' | 'Collagen') => {
+    // The strip's own request carries the side table since 2026-10-08 (no second request on «Lidlar»).
+    side = [
+      { key: 'hr', name: 'HR', totalUsd: 9.12, days: [{ date: '2026-10-06', spendUsd: 9.12 }] },
+      { key: 'kosmetika', name: 'Kosmetika', totalUsd: 0, days: [{ date: '2026-10-06', spendUsd: 0 }] },
+    ]
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
-        <TargetologDaySection params={{ preset: 'yesterday' }} brand={brand} side={side} />
+        <TargetologDaySection params={{ preset: 'yesterday' }} brand={brand} />
       </QueryClientProvider>,
     )
   }
+  afterEach(() => {
+    side = []
+  })
 
   it('closes the strip, after the targetologs, under «Hammasi» and «Brendsiz»', async () => {
     for (const brand of ['all', 'none'] as const) {

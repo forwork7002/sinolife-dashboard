@@ -20,7 +20,6 @@ import { FormSection } from './FormSection'
 import { QualitySection } from './QualitySection'
 import type { ReklamaOverviewDto } from './reklamaApi'
 import type { Status } from './reklamaUi'
-import { TargetologDaySection } from './TargetologDaySection'
 
 /**
  * «Reklama samarasi» — the client's own ad sheets, without anybody typing them.
@@ -33,8 +32,9 @@ import { TargetologDaySection } from './TargetologDaySection'
  *
  * THE TWO OTHER TABS MOVED ON 2026-09-25 to their own section, «Lidlar»
  * (`features/leads`): «Sotuv · ROP» (removed 2026-10-01) and «Lid
- * kogortasi». This page is the Meta side alone now, and one request —
- * plus «Targetologlar · kunlik» (2026-10-05), which asks for its own.
+ * kogortasi». «Targetologlar · kunlik» (here from 2026-10-05) followed them
+ * on 2026-10-08 as a tab of «Lidlar» (the user: «shu joyini olib lidlar
+ * bo'limiga o'tkazamiz»). This page is the Meta side alone, one request.
  *
  * Every ad table is built from the same Meta rows and the same lead scan, so
  * the tiles, the page totals and the day rows sum to each other.
@@ -85,9 +85,6 @@ export function ReklamaPage() {
         ) : (
           <>
             <Tiles data={data} status={status} brand={brand} />
-            {/* The client's per-targetolog day sheet, full width so the targetologs stand side by side. */}
-            {/* «HR · Kosmetika» rides as the strip's last card: the money nobody's targetolog card carries. */}
-            <TargetologDaySection params={overviewParams} brand={brand} side={data?.side} />
             <DmSection dm={data?.dm} status={status} />
             <FormSection form={data?.form} status={status} />
             <QualitySection quality={data?.quality} status={status} />

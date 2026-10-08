@@ -67,7 +67,7 @@ import type {
 } from '@/server/repositories/leadSourcesRepository'
 import type { CampaignDayRow, ReklamaRepository } from '@/server/repositories/reklamaRepository'
 
-import { calendarDays } from './reklamaService'
+import { type SideColumnDto, calendarDays, sideColumnsOf } from './reklamaService'
 import { leadBrand } from './rnpService'
 import { OFF_HOURS, WARM_HOURS, type WarmOutcome, withinHours } from './rnpWarmer'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
@@ -1076,7 +1076,13 @@ export class LeadSourcesService {
     period: Period,
     timeZone: string,
     brand: BrandFilter = 'all',
-  ): Promise<Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'> & { readonly manual: readonly ManualSpendDto[] }> {
+  ): Promise<
+    Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'> & {
+      readonly manual: readonly ManualSpendDto[]
+      /** «HR · Kosmetika», the strip's last card — the hiring and Kosmetika money, narrowed as the cards' money is. */
+      readonly side: readonly SideColumnDto[]
+    }
+  > {
     const window = periodWindow(period, timeZone)
     const [registration, campaigns, importedAt, typed] = await Promise.all([
       this.registrationDays(period),
@@ -1105,7 +1111,10 @@ export class LeadSourcesService {
       above are built from, so the two agree to the lead.
     */
     const telegram = telegramLeads(registration, brand)
-    return { forms, importedAt: imported, manual: manualSpendBlocks(calendarDays(window.from, window.to), typed, brand, { telegram }) }
+    const days = calendarDays(window.from, window.to)
+    // The side table's money narrowed as `ofBrand` narrows Meta money: hiring is no brand's, so one brand has none.
+    const side = sideColumnsOf(brand === 'all' ? campaigns : campaigns.filter((row) => brandMatches(brand, adBudgetProduct(row))), days)
+    return { forms, importedAt: imported, manual: manualSpendBlocks(days, typed, brand, { telegram }), side }
   }
 
   /** Save the hand-typed ad money of «Targetologlar · kunlik» (`POST /reklama/manual-spend`). */

@@ -991,10 +991,39 @@ describe('telegramLeads — the «Telegram» card\'s Bitrix лид / кв лид
       ['Zextra', 390.6, 2, 2],
     ])
     expect(all.manual[1]!.days[0]).toEqual({ date: '2026-09-18', spendUsd: 390.6, leads: 2, success: 2 })
+    // «HR · Kosmetika» rides the same answer since the strip moved to «Lidlar» (2026-10-08): always both columns.
+    expect(all.side.map((c) => [c.key, c.totalUsd, c.days.length])).toEqual([
+      ['hr', 0, 2],
+      ['kosmetika', 0, 2],
+    ])
     const zextra = await service.targetologForms(period, 'Asia/Tashkent', 'Zextra')
     expect(zextra.manual.map((m) => m.product)).toEqual(['Zextra'])
     const collagen = await service.targetologForms(period, 'Asia/Tashkent', 'Collagen')
     expect(collagen.manual.map((m) => [m.product, m.leads])).toEqual([['Collagen', 0]])
     expect((await service.targetologForms(period, 'Asia/Tashkent', 'none')).manual).toEqual([])
+  })
+
+  it('carries «HR · Kosmetika» narrowed as the cards\' money is: hiring is no brand\'s', async () => {
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-09-18T00:00:00Z'),
+      customEnd: new Date('2026-09-18T00:00:00Z'),
+    })
+    const service = new LeadSourcesService(
+      { registrationDays: async () => [] } as never,
+      {
+        campaignDays: async () => [campaign({ campaignName: 'EX - Sinolife (vakansiya) - DM - 23.04', objective: 'OUTCOME_ENGAGEMENT', spendMicroUsd: 9_120_000n })],
+        campaignsImportedAt: async () => null,
+        manualSpend: async () => [],
+      } as never,
+      {} as never,
+    )
+    const hr = async (brand?: 'Collagen' | 'Zextra' | 'none') => (await service.targetologForms(period, 'Asia/Tashkent', brand)).side[0]!.totalUsd
+    expect(await hr()).toBe(9.12)
+    expect(await hr('none')).toBe(9.12)
+    expect(await hr('Collagen')).toBe(0)
+    expect(await hr('Zextra')).toBe(0)
   })
 })

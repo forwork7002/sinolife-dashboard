@@ -10,11 +10,11 @@ import { manualSpendBodySchema } from './schema'
 export const dynamic = 'force-dynamic'
 
 /**
- * Who may type the «Telegram» card's days on «Targetologlar · kunlik» — the
- * same two conditions as RNP's typed cells: `analytics:read:all` at the gate
- * of «Reklama samarasi», `kpi:manage` inside.
+ * Who may type the «Telegram» card's days on «Targetologlar · kunlik» (a tab
+ * of «Lidlar») — the same two conditions as RNP's typed cells:
+ * `analytics:read:all` at the section's gate, `kpi:manage` inside.
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'marketing' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
 
 /** Save the hand-typed ad money (Telegram) of «Targetologlar · kunlik». */
 export const POST = mutationHandler(ACCESS, manualSpendBodySchema, async (ctx) => {

@@ -51,6 +51,8 @@ type Params = Readonly<Record<string, string | number>>
 type Data = Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'> & {
   /** The hand-typed channels (Telegram) of the brands the switch admits — the sheet's block beside the targetologs'. */
   readonly manual: readonly ManualSpendDto[]
+  /** «HR · Kosmetika», the strip's last card: the hiring and Kosmetika money, HR then Kosmetika. */
+  readonly side: readonly SideColumnDto[]
   /** Whether this account may type them (`kpi:manage`, not on a widened read). */
   readonly canEdit: boolean
   /** Today in the app's zone: no field opens on a later day. */
@@ -115,16 +117,7 @@ const columnTint = (c: Column) => (c === 'Meta лид' ? LEAD_TINT : c === 'Jami
 const BRAND_NOTE =
   ' Brend tanlanganda Jami $ — faqat shu tanlovning puli. Vakansiya puli hech bir brendniki emas: Collagen va Zextra da HR $ boʻsh, u «Brendsiz» va «Hammasi» da koʻrinadi; hammasi bir joyda — oxirgi «HR · Kosmetika» kartasida.'
 
-export function TargetologDaySection({
-  params,
-  brand,
-  side,
-}: {
-  params: Params
-  brand: DashboardBrand
-  /** «HR · Kosmetika» (`/reklama/overview`'s `side`), the strip's last card. */
-  side?: readonly SideColumnDto[] | undefined
-}) {
+export function TargetologDaySection({ params, brand }: { params: Params; brand: DashboardBrand }) {
   const query = useQuery({
     queryKey: ['reklama-targetologs', params],
     queryFn: ({ signal }) => apiGet<Data>('/reklama/targetologs', params, signal),
@@ -155,6 +148,7 @@ export function TargetologDaySection({
     .filter((o) => brand !== 'all' || o.product === product)
     .sort((a, b) => b.spendUsd - a.spendUsd || b.totalUsd - a.totalUsd)
   // No brand's money: drawn under «Hammasi» and «Brendsiz» only, and only when there is some.
+  const side = query.data?.data.side
   const sideShown = (brand === 'all' || brand === 'none') && hasSideSpend(side) ? side : null
   // The picked product's Telegram card under «Hammasi»; under one brand the server already narrowed it.
   const manualShown = manual.filter((m) => brand !== 'all' || m.product === product)
@@ -221,9 +215,10 @@ function OwnerSheet({ owner }: { owner: FormOwnerDto }) {
   return (
     /* As wide as its columns, never wider than a phone: there the table scrolls inside the card. */
     <Card className="w-max max-w-[calc(100vw-2.5rem)] shrink-0 snap-start overflow-hidden p-0">
+      {/* The product's colour as a 3px rule over every card of the strip — the targetologs', Telegram's, HR's — so they read as one family. */}
       <h3
         className="px-3 py-2 text-sm font-semibold"
-        style={{ background: `color-mix(in oklab, ${tone} 28%, var(--surface-raised))`, color: 'var(--ink-primary)' }}
+        style={{ background: `color-mix(in oklab, ${tone} 28%, var(--surface-raised))`, color: 'var(--ink-primary)', boxShadow: `inset 0 3px 0 ${tone}` }}
         title={[...owner.accounts, ...owner.forms].join(', ') || undefined}
       >
         {owner.targetolog}

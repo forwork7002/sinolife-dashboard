@@ -149,5 +149,4 @@ export interface ReklamaOverviewDto {
   readonly form: FormBlockDto
   readonly quality: QualityBlockDto
   readonly campaigns: readonly CampaignDto[]
-  readonly side: readonly SideColumnDto[]
 }

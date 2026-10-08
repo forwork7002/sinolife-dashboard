@@ -229,8 +229,6 @@ export interface ReklamaOverviewDto {
   readonly quality: QualityBlockDto
   /** Every campaign that spent in the window, biggest first. */
   readonly campaigns: readonly CampaignDto[]
-  /** HR, then Kosmetika — always both, so the side table never changes shape. */
-  readonly side: readonly SideColumnDto[]
 }
 
 // ---------------------------------------------------------------------------
@@ -451,15 +449,11 @@ export function reklamaOverview(input: {
     days: Map<string, FormAcc>
   }
   const owners = new Map<string, OwnerAcc>()
-  const side: Record<SideColumn, Map<string, bigint>> = { hr: new Map(), kosmetika: new Map() }
 
   for (const row of input.campaignRows) {
     const channel = campaignChannel(row.objective, row.campaignName, row.accountId)
     split[channel] += row.spendMicroUsd
     const owner = ownerOf(row.accountId, row.accountName)
-
-    const column = sideColumn(channel, row.accountId)
-    if (column !== null) side[column].set(row.date, (side[column].get(row.date) ?? 0n) + row.spendMicroUsd)
 
     if (channel === 'dm') {
       const page =
@@ -675,16 +669,31 @@ export function reklamaOverview(input: {
         .sort((a, b) => b.leads - a.leads || a.stage.localeCompare(b.stage, 'ru')),
     },
     campaigns,
-    side: (Object.keys(SIDE_NAMES) as SideColumn[]).map((key) => {
-      const byDay = side[key]
-      return {
-        key,
-        name: SIDE_NAMES[key],
-        totalUsd: usd(days.reduce((n, date) => n + (byDay.get(date) ?? 0n), 0n)),
-        days: days.map((date) => ({ date, spendUsd: usd(byDay.get(date) ?? 0n) })),
-      }
-    }),
   }
+}
+
+/**
+ * The «HR · Kosmetika» side table from the campaign rows: HR, then Kosmetika,
+ * always both (so it never changes shape), each the window's total and a row
+ * a day. Since 2026-10-08 read by «Targetologlar · kunlik» alone
+ * (`LeadSourcesService.targetologForms`), whose strip carries the table as
+ * its last card; «Reklama samarasi» no longer draws it.
+ */
+export function sideColumnsOf(rows: readonly CampaignDayRow[], days: readonly string[]): SideColumnDto[] {
+  const side: Record<SideColumn, Map<string, bigint>> = { hr: new Map(), kosmetika: new Map() }
+  for (const row of rows) {
+    const column = sideColumn(campaignChannel(row.objective, row.campaignName, row.accountId), row.accountId)
+    if (column !== null) side[column].set(row.date, (side[column].get(row.date) ?? 0n) + row.spendMicroUsd)
+  }
+  return (Object.keys(SIDE_NAMES) as SideColumn[]).map((key) => {
+    const byDay = side[key]
+    return {
+      key,
+      name: SIDE_NAMES[key],
+      totalUsd: usd(days.reduce((n, date) => n + (byDay.get(date) ?? 0n), 0n)),
+      days: days.map((date) => ({ date, spendUsd: usd(byDay.get(date) ?? 0n) })),
+    }
+  })
 }
 
 /**

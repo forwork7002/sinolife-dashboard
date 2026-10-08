@@ -18,7 +18,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { calendarDays, reklamaOverview, ReklamaService, targetDm } = await import('@/server/services/reklamaService')
+const { calendarDays, reklamaOverview, ReklamaService, sideColumnsOf, targetDm } = await import('@/server/services/reklamaService')
 const { ReklamaRepository } = await import('@/server/repositories/reklamaRepository')
 
 const PAGES = [
@@ -220,9 +220,7 @@ describe('reklamaOverview', () => {
   })
 
   it('builds the side table — HR from every hiring campaign, Kosmetika from its own account', () => {
-    const out = build(
-      [],
-      [
+    const rows = [
         campaign({ campaignName: 'EX - Sinolife (vakansiya) - DM - 23.04', spendMicroUsd: 10_770_000n }),
         campaign({
           date: '2026-08-02',
@@ -248,9 +246,10 @@ describe('reklamaOverview', () => {
           spendMicroUsd: 2_000_000n,
         }),
         campaign({ spendMicroUsd: 50_000_000n }),
-      ],
-    )
-    expect(out.side).toEqual([
+    ]
+    const out = build([], rows)
+    // The table itself rides «Targetologlar · kunlik»'s answer since 2026-10-08 (`sideColumnsOf`), off the same rows.
+    expect(sideColumnsOf(rows, ['2026-08-01', '2026-08-02'])).toEqual([
       {
         key: 'hr',
         name: 'HR',

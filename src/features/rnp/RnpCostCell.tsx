@@ -248,6 +248,7 @@ export function TypedField({
   label,
   value,
   last = false,
+  compact = false,
   save: send,
   invalidate,
 }: {
@@ -255,6 +256,13 @@ export function TypedField({
   label: string
   value: number | null
   last?: boolean
+  /**
+   * The field as one more cell of a dense sheet («Targetologlar · kunlik»'s
+   * cards, 2026-10-08): the row's height, no box until the pointer or focus
+   * is on it — only a hairline under the figure says it is typed here.
+   * `last` is not read in this mode: the cards have no wider last column.
+   */
+  compact?: boolean
   save: (value: number | null) => Promise<unknown>
   invalidate: QueryKey
 }) {
@@ -372,12 +380,20 @@ export function TypedField({
         }}
         placeholder="—"
         // The figure's right edge where a computed one's is: the cell's 2px and these 10px are their `px-3` (18px: the last day's `pr-5`).
-        className={`tabular block h-8 w-full min-w-0 rounded-[5px] py-1 pl-2 text-right ${last ? 'pr-[18px]' : 'pr-2.5'} outline-none transition-[opacity,box-shadow] placeholder:text-[var(--ink-muted)] ${pending ? 'opacity-60' : ''}`}
+        className={`tabular block w-full min-w-0 text-right outline-none transition-[opacity,box-shadow] placeholder:text-[var(--ink-muted)] ${
+          compact ? 'h-[27px] rounded-[4px] px-2 py-0 hover:[box-shadow:inset_0_0_0_1px_var(--border-strong)]' : `h-8 rounded-[5px] py-1 pl-2 ${last ? 'pr-[18px]' : 'pr-2.5'}`
+        } ${pending ? 'opacity-60' : ''}`}
         style={{
-          background: wrong ? 'color-mix(in oklab, var(--status-critical) 12%, var(--surface-raised))' : 'var(--surface-raised)',
+          background: wrong ? 'color-mix(in oklab, var(--status-critical) 12%, var(--surface-raised))' : compact ? 'transparent' : 'var(--surface-raised)',
           color: 'var(--ink-primary)',
           // The focus ring from state: an inline shadow outranks any `focus:` class, so one never showed.
-          boxShadow: wrong ? 'inset 0 0 0 2px var(--status-critical)' : focused ? 'inset 0 0 0 2px var(--accent)' : 'inset 0 0 0 1px var(--border-strong)',
+          boxShadow: wrong
+            ? 'inset 0 0 0 2px var(--status-critical)'
+            : focused
+              ? 'inset 0 0 0 2px var(--accent)'
+              : compact
+                ? undefined
+                : 'inset 0 0 0 1px var(--border-strong)',
           cursor: pending ? 'progress' : 'text',
         }}
       />

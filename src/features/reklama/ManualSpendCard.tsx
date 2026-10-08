@@ -29,10 +29,12 @@ import { muted } from './reklamaUi'
  * has any typed money, or for whoever may type it.
  */
 
-/** The same tints as the targetologs' cards, so the strip reads as one sheet. */
+/** The same tints as the targetologs' cards, so the strip reads as one sheet: the money column green, as their «Jami $». */
 const HEAD_TINT = 'color-mix(in oklab, var(--accent) 10%, var(--surface-raised))'
 const TOTAL_TINT = 'color-mix(in oklab, var(--status-good) 14%, var(--surface-raised))'
-const LEAD_TINT = 'color-mix(in oklab, var(--status-warning) 16%, transparent)'
+const SUM_TINT = 'color-mix(in oklab, var(--status-good) 10%, transparent)'
+/** A typed day's cell: the hairline under the figure is what says «yoziladi» — no box, the row's height. */
+const TYPED_TINT = 'color-mix(in oklab, var(--accent) 7%, transparent)'
 
 const COLUMNS = ['$', 'Bitrix лид', 'лид $', '%', 'кв лид', 'кв лид $'] as const
 type Column = (typeof COLUMNS)[number]
@@ -63,11 +65,11 @@ export function ManualSpendCard({ block, canEdit, today }: { block: ManualSpendD
   }
   const total = { spendUsd: block.totalUsd, leads: block.leads, success: block.success }
   return (
-    /* As wide as its columns, like the targetologs' cards; a phone scrolls the table inside it. */
-    <Card className="w-max max-w-[calc(100vw-2.5rem)] shrink-0 snap-start self-start overflow-hidden p-0">
+    /* As wide as its columns and as tall as its neighbours, like the targetologs' cards; a phone scrolls the table inside it. */
+    <Card className="w-max max-w-[calc(100vw-2.5rem)] shrink-0 snap-start overflow-hidden p-0">
       <h3
         className="px-3 py-2 text-sm font-semibold"
-        style={{ background: `color-mix(in oklab, ${tone} 28%, var(--surface-raised))`, color: 'var(--ink-primary)' }}
+        style={{ background: `color-mix(in oklab, ${tone} 28%, var(--surface-raised))`, color: 'var(--ink-primary)', boxShadow: `inset 0 3px 0 ${tone}` }}
         title={HINT[block.channel]}
       >
         {block.name}
@@ -114,6 +116,7 @@ export function ManualSpendCard({ block, canEdit, today }: { block: ManualSpendD
                     canEdit && day.date <= today ? (
                       <TypedField
                         spec={MONEY_USD}
+                        compact
                         label={`${block.name} · ${PRODUCT_LABEL[block.product]}, ${dayLabel(day.date)}`}
                         value={day.spendUsd}
                         save={(value) => saveDay(day.date, value)}
@@ -131,7 +134,7 @@ export function ManualSpendCard({ block, canEdit, today }: { block: ManualSpendD
   )
 }
 
-const columnTint = (c: Column) => (c === 'Bitrix лид' ? LEAD_TINT : undefined)
+const columnTint = (c: Column) => (c === '$' ? SUM_TINT : undefined)
 
 /**
  * The row's figures, derived as the targetologs' cards derive theirs: the
@@ -164,13 +167,13 @@ function Figures({
     <>
       {COLUMNS.map((c) =>
         c === '$' && field !== undefined ? (
-          <td key={c} className={`relative min-w-[6.5rem] ${border} p-0.5`}>
+          <td key={c} className={`relative min-w-[6rem] ${border} p-0`} style={{ background: TYPED_TINT, boxShadow: 'inset 0 -1px 0 var(--border-strong)' }}>
             {field}
           </td>
         ) : (
           <td
             key={c}
-            className={`px-2 py-1 text-right whitespace-nowrap ${strong ? 'font-semibold' : ''} ${border}`}
+            className={`px-2 py-1 text-right whitespace-nowrap ${strong || c === '$' ? 'font-semibold' : ''} ${border}`}
             style={{ background: columnTint(c), ...(value[c] === null ? muted : null) }}
           >
             {value[c] ?? '—'}
