@@ -101,7 +101,7 @@ export const targetService = new TargetService(targetRepository, marketingReposi
   from Meta's campaign grain and the Регистрация leads. See reklamaService.ts.
 */
 const reklamaRepository = new ReklamaRepository(prisma)
-export const reklamaService = new ReklamaService(reklamaRepository, insightsRepository)
+export const reklamaService = new ReklamaService(reklamaRepository)
 /*
   «Lid manbalari» (the first tab of «Lidlar») — every Регистрация lead by
   source, the lead forms per targetolog against Meta's lead count (Meta rows

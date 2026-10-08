@@ -84,34 +84,31 @@ describe('CampaignSection — the portal\'s columns per campaign', () => {
     lowQuality: 2,
     duplicate: 1,
     open: 5,
-    fakt1PrimaryUzs: 12_500_000,
-    fakt1BaseUzs: 3_000_000,
-    fakt2PrimaryUzs: 7_250_000,
     costPerQualifiedUsd: 5,
   }
   const rows = [
     campaign({ id: '1', name: 'Traffic', channel: 'other', spendUsd: 50 }),
     campaign({ id: '2', name: 'Cheap form', spendUsd: 30, metaLeads: 20, crm }),
-    campaign({ id: '3', name: 'Dear form', spendUsd: 20, metaLeads: 9, crm: { ...crm, matched: 9, fakt1PrimaryUzs: 20_000_000, fakt1BaseUzs: 0 } }),
+    campaign({ id: '3', name: 'Dear form', spendUsd: 20, metaLeads: 9, crm: { ...crm, matched: 9, open: 2 } }),
   ]
 
-  it('draws «Barcha manbalar»\'s outcomes and FAKT by the selling team', () => {
+  it('draws «Barcha manbalar»\'s outcomes, and no FAKT column', () => {
     render(<CampaignSection campaigns={rows} status="ready" />)
     const heads = screen.getAllByRole('columnheader').map((th) => th.textContent ?? '')
-    for (const h of ['Lid', 'Kval', 'Kval %', 'Kval narxi', 'Недозвон', 'Sifatsiz', 'Dubl', 'Jarayonda', 'FAKT 1 · Первичка', 'FAKT 1 · База', 'FAKT 2 · Первичка']) {
+    for (const h of ['Lid', 'Kval', 'Kval %', 'Kval narxi', 'Недозвон', 'Sifatsiz', 'Dubl', 'Jarayonda']) {
       expect(heads.some((text) => text.startsWith(h))).toBe(true)
     }
+    expect(heads.some((text) => text.includes('FAKT'))).toBe(false)
     const cheap = screen.getAllByRole('row').find((tr) => tr.textContent?.includes('Cheap form'))!
     expect(cheap.textContent).toContain('Meta 20 tadan')
-    for (const figure of ['12,500,000', '3,000,000', '7,250,000']) expect(cheap.textContent).toContain(figure)
   })
 
-  it('sorts by a FAKT column, the campaign with no lead read last either way', () => {
+  it('sorts by a portal column, the campaign with no lead read last either way', () => {
     render(<CampaignSection campaigns={rows} status="ready" />)
-    const header = screen.getByRole('button', { name: /FAKT 1 · Первичка/ })
-    fireEvent.click(header)
-    expect(order()).toEqual(['Dear form', 'Cheap form', 'Traffic'])
+    const header = screen.getByRole('button', { name: /Jarayonda/ })
     fireEvent.click(header)
     expect(order()).toEqual(['Cheap form', 'Dear form', 'Traffic'])
+    fireEvent.click(header)
+    expect(order()).toEqual(['Dear form', 'Cheap form', 'Traffic'])
   })
 })

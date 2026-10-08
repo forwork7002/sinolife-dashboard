@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 
 import { type Column, DataTable } from '@/components/ui/DataTable'
 import { SectionHeader } from '@/components/ui/Stat'
-import { formatDate, formatFullUzs, formatNumber } from '@/lib/format'
+import { formatDate, formatNumber } from '@/lib/format'
 import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
 
 import type { CampaignChannel, CampaignDto } from './reklamaApi'
@@ -42,9 +42,6 @@ type SortKey =
   | 'lowQuality'
   | 'duplicate'
   | 'open'
-  | 'fakt1Primary'
-  | 'fakt1Base'
-  | 'fakt2Primary'
   | 'ctr'
   | 'last'
 
@@ -59,9 +56,6 @@ const SORTERS: Readonly<Record<SortKey, (c: CampaignDto) => number | string | nu
   lowQuality: (c) => c.crm?.lowQuality ?? null,
   duplicate: (c) => c.crm?.duplicate ?? null,
   open: (c) => c.crm?.open ?? null,
-  fakt1Primary: (c) => c.crm?.fakt1PrimaryUzs ?? null,
-  fakt1Base: (c) => c.crm?.fakt1BaseUzs ?? null,
-  fakt2Primary: (c) => c.crm?.fakt2PrimaryUzs ?? null,
   qualPct: (c) => c.crm?.qualifiedPercent ?? null,
   cpq: (c) => c.crm?.costPerQualifiedUsd ?? null,
   ctr: (c) => c.ctrPercent,
@@ -115,7 +109,7 @@ export function CampaignSection({
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Kampaniyalar · Meta"
-        hint="Davrda pul sarflagan har bir kampaniya: kimniki, qaysi kanal, natija va bitta natija narxi. Natija — lid-formada Meta lidi (narxi — CPL), DMda murojaat. Lid va undan keyingi ustunlar — kampaniyaning Meta lidi telefon boʻyicha Bitrix24 bitimiga ulangani: Kval — «Сделка успешна», qolganlari — bitim hozir turgan bosqich («Barcha manbalar»dagidek); kval narxi = sarf ÷ kval. FAKT — shu davrda kelgan lidlarning buyurtmalari (navbatga keyinroq tushgani ham), sotgan jamoa boʻyicha: База — БАЗА jamoalari, Первичка — qolganlari."
+        hint="Davrda pul sarflagan har bir kampaniya: kimniki, qaysi kanal, natija va bitta natija narxi. Natija — lid-formada Meta lidi (narxi — CPL), DMda murojaat. Lid va undan keyingi ustunlar — kampaniyaning Meta lidi telefon boʻyicha Bitrix24 bitimiga ulangani: Kval — «Сделка успешна», qolganlari — bitim hozir turgan bosqich («Barcha manbalar»dagidek); kval narxi = sarf ÷ kval."
       />
       <TableCard
         title={`Kampaniyalar — ${formatNumber(rows.length)} ta`}
@@ -140,7 +134,7 @@ export function CampaignSection({
           rowKey={(c) => c.id}
           status={status}
           emptyTitle="Bu davrda kampaniya sarfi yoʻq"
-          minWidth={2360}
+          minWidth={1900}
           maxHeight="70dvh"
           stickyColumns={1}
           sort={sort}
@@ -156,14 +150,6 @@ export function CampaignSection({
 
 /** A portal figure of a campaign: «—» with no lead read (`crm` null) and for a zero, as `count` draws every zero here. */
 const crmCount = (value: number | undefined) => (value === undefined ? <span style={muted}>—</span> : count(value))
-
-/** The same, in whole soʻm. */
-const crmUzs = (value: number | null | undefined) =>
-  value === undefined || value === null || value === 0 ? (
-    <span style={muted}>—</span>
-  ) : (
-    <span className="whitespace-nowrap font-medium">{formatFullUzs(value)}</span>
-  )
 
 const columns: readonly Column<CampaignDto>[] = [
   {
@@ -248,9 +234,6 @@ const columns: readonly Column<CampaignDto>[] = [
   { key: 'lowQuality', sortKey: 'lowQuality', header: 'Sifatsiz', align: 'right', numeric: true, render: (c) => crmCount(c.crm?.lowQuality) },
   { key: 'duplicate', sortKey: 'duplicate', header: 'Dubl', align: 'right', numeric: true, render: (c) => crmCount(c.crm?.duplicate) },
   { key: 'open', sortKey: 'open', header: 'Jarayonda', align: 'right', numeric: true, render: (c) => crmCount(c.crm?.open) },
-  { key: 'fakt1Primary', sortKey: 'fakt1Primary', header: 'FAKT 1 · Первичка', align: 'right', numeric: true, render: (c) => crmUzs(c.crm?.fakt1PrimaryUzs) },
-  { key: 'fakt1Base', sortKey: 'fakt1Base', header: 'FAKT 1 · База', align: 'right', numeric: true, render: (c) => crmUzs(c.crm?.fakt1BaseUzs) },
-  { key: 'fakt2Primary', sortKey: 'fakt2Primary', header: 'FAKT 2 · Первичка', align: 'right', numeric: true, render: (c) => crmUzs(c.crm?.fakt2PrimaryUzs) },
   { key: 'clicks', header: 'Klik', align: 'right', numeric: true, render: (c) => count(c.clicks) },
   { key: 'ctr', sortKey: 'ctr', header: 'CTR', align: 'right', numeric: true, render: (c) => pct(c.ctrPercent) },
   { key: 'days', header: 'Faol kun', align: 'right', numeric: true, render: (c) => count(c.activeDays) },
