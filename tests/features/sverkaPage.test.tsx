@@ -105,6 +105,7 @@ const data: SverkaOverviewDto = {
   totals: {
     fakt1: pair,
     fakt2: pair,
+    kassa: { banked: { orders: 1, amount: 1_200_000 }, awaiting: { orders: 1, amount: 600_000 }, payed: none },
     transit: pair,
     returned: pair,
     pending: { orders: 0, amount: 0 },
@@ -157,6 +158,29 @@ describe('SverkaBody — the difference list', () => {
   Bitrix24's FAKT figures and in no comparison. Before the floor they made the
   tiles red and «Toʻliq mos» collapse.
 */
+describe('SverkaBody — the «Kassa» tile', () => {
+  const tile = () => screen.getByRole('heading', { name: 'Kassa — pul tushgan' }).closest('div')!.parentElement!
+
+  it('sets the delivered money against what MoySklad calls «Касса» and names the remainder', () => {
+    render(<SverkaBody data={data} status="ready" />)
+    const card = within(tile())
+    expect(card.getByText('Kerak · FAKT 2')).toBeTruthy()
+    expect(card.getByText('Kassaga tushmagan')).toBeTruthy()
+    // 3 200 000 owed, 1 200 000 in the cash desk.
+    expect(card.getByText(/1 ta · 2,000,000 soʻm/)).toBeTruthy()
+    expect(card.getByText(/«Успешно» \(kassa kutilmoqda\): 1 ta, 600,000 soʻm/)).toBeTruthy()
+    expect(card.queryByText(/toʻlov yozilgan/)).toBeNull()
+  })
+
+  it('says so when every delivered soʻm is in the cash desk', () => {
+    const all = { ...data, totals: { ...data.totals, kassa: { banked: pair.bitrix, awaiting: none, payed: pair.bitrix } } }
+    render(<SverkaBody data={all} status="ready" />)
+    const card = within(tile())
+    expect(card.getByText('toʻliq tushgan')).toBeTruthy()
+    expect(card.getByText(/toʻlov yozilgan: 2 ta buyurtma/)).toBeTruthy()
+  })
+})
+
 describe('SverkaBody — a window reaching back past MoySklad', () => {
   const old = { orders: 2, amount: 3_200_000 }
   const year: SverkaOverviewDto = {

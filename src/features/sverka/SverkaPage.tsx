@@ -141,7 +141,7 @@ export function SverkaBody({
         <DevMark className="absolute right-3.5 -bottom-[13px]" />
       </div>
 
-      <div className="stagger grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="stagger grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <PairTile
           status={status}
           label="FAKT 1 — buyurtmalar"
@@ -155,6 +155,7 @@ export function SverkaBody({
           pair={totals?.fakt2}
           hint="Bitrix24 «Доставлено» · MoySklad «Успешно» + «Касса»"
         />
+        <KassaTile status={status} fakt2={totals?.fakt2} kassa={totals?.kassa} />
         <PairTile status={status} label="Yoʻlda" pair={totals?.transit} hint="Yoʻlda va pochtada · MoySklad «В пути»" />
         <PairTile
           status={status}
@@ -499,6 +500,82 @@ function PairTile({
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           Bitrix24 dagi {formatNumber(before.orders)} tasi ({formatFullUzs(before.amount)} soʻm) MoySklad boshlanishidan
           oldin tushgan — solishtirilmadi
+        </p>
+      )}
+    </Card>
+  )
+}
+
+/**
+ * «Kassa» — how much of the delivered money has reached the cash desk.
+ *
+ * WHAT IS OWED IS FAKT 2: a delivered order is money the cash desk should
+ * receive. WHAT ARRIVED is MoySklad's «Касса» status — Bitrix24 keeps no
+ * payment sum, so the second row has no Bitrix24 twin. The remainder is
+ * amber, never red: money on its way from a courier is waiting, not wrong.
+ */
+function KassaTile({
+  status,
+  fakt2,
+  kassa,
+}: {
+  status: Status
+  fakt2: SverkaPairDto | undefined
+  kassa: SverkaOverviewDto['totals']['kassa'] | undefined
+}) {
+  if (status === 'loading' || !fakt2 || !kassa) {
+    return (
+      <Card className="p-4">
+        <LoadingSkeleton rows={3} />
+      </Card>
+    )
+  }
+  // As on the pair tiles: a deal older than MoySklad is in FAKT 2 and cannot be in its cash desk.
+  const owedAmount = fakt2.bitrix.amount - fakt2.beforeFloor.amount
+  const owedOrders = fakt2.bitrix.orders - fakt2.beforeFloor.orders
+  const leftAmount = owedAmount - kassa.banked.amount
+  const leftOrders = owedOrders - kassa.banked.orders
+  const share = owedAmount > 0 ? (kassa.banked.amount / owedAmount) * 100 : null
+  const full = owedOrders > 0 && leftAmount < 1 && leftOrders <= 0
+  return (
+    <Card className="flex flex-col gap-2 p-4">
+      <div>
+        <h3 className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>
+          Kassa — pul tushgan
+        </h3>
+        <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          Yetkazilgan buyurtmalar puli · MoySklad «Касса» holati
+        </p>
+      </div>
+      <SideRow name="Kerak · FAKT 2" orders={owedOrders} amount={owedAmount} />
+      <SideRow name="Kassada" orders={kassa.banked.orders} amount={kassa.banked.amount} />
+      <div
+        className="mt-auto flex items-baseline justify-between gap-2 border-t pt-2 text-xs font-medium tabular-nums"
+        style={{
+          borderColor: 'var(--grid)',
+          color: owedOrders === 0 ? 'var(--ink-muted)' : full ? 'var(--status-good)' : 'var(--status-warning)',
+        }}
+      >
+        <span className="inline-flex items-center gap-1">
+          {full && <CheckCircleGlyph />}
+          {owedOrders === 0 ? 'Yetkazilgan buyurtma yoʻq' : full ? 'toʻliq tushgan' : 'Kassaga tushmagan'}
+        </span>
+        {owedOrders > 0 && !full && (
+          <span className="text-right">
+            {formatNumber(leftOrders)} ta · {formatFullUzs(leftAmount)} soʻm
+          </span>
+        )}
+      </div>
+      {share !== null && (
+        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          Kassaga {formatPercent(share)} tushgan
+          {kassa.awaiting.orders > 0 &&
+            ` · MoySkladʼda «Успешно» (kassa kutilmoqda): ${formatNumber(kassa.awaiting.orders)} ta, ${formatFullUzs(kassa.awaiting.amount)} soʻm`}
+        </p>
+      )}
+      {kassa.payed.orders > 0 && (
+        <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+          MoySkladʼda toʻlov yozilgan: {formatNumber(kassa.payed.orders)} ta buyurtma, {formatFullUzs(kassa.payed.amount)} soʻm
         </p>
       )}
     </Card>

@@ -118,6 +118,12 @@ export interface SverkaOverviewDto {
   readonly totals: {
     readonly fakt1: SverkaPairDto
     readonly fakt2: SverkaPairDto
+    /** `fakt2.moysklad` split by MoySklad's «Касса» status; `payed` — delivered orders with a recorded payment. */
+    readonly kassa: {
+      readonly banked: SverkaSideDto
+      readonly awaiting: SverkaSideDto
+      readonly payed: SverkaSideDto
+    }
     readonly transit: SverkaPairDto
     readonly returned: SverkaPairDto
     readonly pending: SverkaSideDto

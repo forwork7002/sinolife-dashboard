@@ -386,6 +386,21 @@ describe('sverkaTotals', () => {
     expect(totals.transit.moysklad.orders).toBe(1)
   })
 
+  it('splits FAKT 2\'s MoySklad side into «Касса» and what is still awaited, adding up to it', () => {
+    const delivered = { delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' } as const
+    const totals = sverkaTotals([
+      compareDeal(bitrix({ externalId: '1', ...delivered }), [moysklad({ stateName: 'Касса', payedMinor: 160_000_000n })]),
+      compareDeal(bitrix({ externalId: '2', ...delivered }), [moysklad({ stateName: 'Успешно', sumMinor: 100_000_000n })]),
+      // On its way: no part of the cash desk's figure, whatever was prepaid.
+      compareDeal(bitrix({ externalId: '3' }), [moysklad({ payedMinor: 50_000_000n })]),
+    ])
+    expect(totals.kassa.banked).toEqual({ orders: 1, amountMinor: 160_000_000n })
+    expect(totals.kassa.awaiting).toEqual({ orders: 1, amountMinor: 100_000_000n })
+    expect(totals.kassa.payed).toEqual({ orders: 1, amountMinor: 160_000_000n })
+    expect(totals.kassa.banked.amountMinor + totals.kassa.awaiting.amountMinor).toBe(totals.fakt2.moysklad.amountMinor)
+    expect(totals.kassa.banked.orders + totals.kassa.awaiting.orders).toBe(totals.fakt2.moysklad.orders)
+  })
+
   it('ignores orphan lines — they have no Bitrix24 side', () => {
     expect(sverkaTotals([orphanLine(null, 'NO_DEAL', [moysklad()])]).fakt1.moysklad.orders).toBe(0)
   })

@@ -167,6 +167,16 @@ export interface SverkaOverviewDto {
   readonly totals: {
     readonly fakt1: SverkaPairDto
     readonly fakt2: SverkaPairDto
+    /**
+     * `fakt2.moysklad` split by MoySklad's «Касса» status: `banked` (in the
+     * cash desk) + `awaiting` (delivered, not «Касса» yet) add up to it.
+     * `payed` is the delivered orders carrying a recorded payment, and that money.
+     */
+    readonly kassa: {
+      readonly banked: SverkaSideDto
+      readonly awaiting: SverkaSideDto
+      readonly payed: SverkaSideDto
+    }
     readonly transit: SverkaPairDto
     readonly returned: SverkaPairDto
     /** FAKT 1 deals whose MoySklad order is still being made. */
@@ -284,6 +294,8 @@ function stakeOf(line: SverkaLine, issue: SverkaIssue): bigint {
   return amountOf(line)
 }
 
+const side = (t: { orders: number; amountMinor: bigint }): SverkaSideDto => ({ orders: t.orders, amount: som(t.amountMinor) })
+
 const pair = (p: SverkaPair): SverkaPairDto => ({
   bitrix: { orders: p.bitrix.orders, amount: som(p.bitrix.amountMinor) },
   moysklad: { orders: p.moysklad.orders, amount: som(p.moysklad.amountMinor) },
@@ -397,6 +409,11 @@ export class SverkaService {
       totals: {
         fakt1: pair(totals.fakt1),
         fakt2: pair(totals.fakt2),
+        kassa: {
+          banked: side(totals.kassa.banked),
+          awaiting: side(totals.kassa.awaiting),
+          payed: side(totals.kassa.payed),
+        },
         transit: pair(totals.transit),
         returned: pair(totals.returned),
         pending: { orders: totals.pending.orders, amount: som(totals.pending.amountMinor) },

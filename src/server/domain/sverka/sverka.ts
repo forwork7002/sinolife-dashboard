@@ -90,6 +90,17 @@ export function moyskladPhase(state: string | null): SverkaPhase {
 }
 
 /**
+ * «Касса» — the one MoySklad status that says the order's money has reached
+ * the cash desk. Bitrix24 keeps no payment sum at all (payment is a stage
+ * NAME there), so this status is the only per-order «kassa» either system has.
+ */
+export const KASSA_STATE = 'Касса'
+
+export function inKassa(state: string | null): boolean {
+  return state?.trim() === KASSA_STATE
+}
+
+/**
  * A Bitrix24 stage's logistics role, folded the same way — READ ONLY IN THE
  * DELIVERY FUNNELS (Доставка C6, Ecommerce C14). Hubs, carriers and the
  * chasing stages are all «В пути» to the warehouse — deal 1071642 stood in
@@ -470,11 +481,26 @@ const add = (t: SideTotal, amount: bigint) => {
   t.amountMinor += amount
 }
 
+/**
+ * FAKT 2's MoySklad side, split by where the money stands. `banked` +
+ * `awaiting` is `fakt2.moysklad` to the soʻm — the same lines, the same sums.
+ */
+export interface SverkaKassa {
+  /** Delivered and «Касса»: the money is in the cash desk. */
+  readonly banked: SideTotal
+  /** Delivered («Успешно») and not «Касса» yet. */
+  readonly awaiting: SideTotal
+  /** Delivered orders MoySklad has a payment recorded against (`payedSum` > 0), and that money. */
+  readonly payed: SideTotal
+}
+
 export interface SverkaTotals {
   /** FAKT 1 against the MoySklad orders of those same deals. */
   readonly fakt1: SverkaPair
   /** FAKT 2 against the cohort deals MoySklad calls Успешно / Касса. */
   readonly fakt2: SverkaPair
+  /** What of `fakt2.moysklad` has reached the cash desk. */
+  readonly kassa: SverkaKassa
   /** On the way, in each system's own words. */
   readonly transit: SverkaPair
   /** Refused or returned, in each system's own words. */
@@ -497,6 +523,7 @@ export function sverkaTotals(lines: readonly SverkaLine[]): SverkaTotals {
   const fakt2 = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
   const transit = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
   const returned = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
+  const kassa = { banked: zero(), awaiting: zero(), payed: zero() }
   const pending = zero()
   const beforeFloor = zero()
   let clean = 0
@@ -515,7 +542,11 @@ export function sverkaTotals(lines: readonly SverkaLine[]): SverkaTotals {
 
     if (line.beforeFloor) add(beforeFloor, bx.amountMinor)
     if (bx.delivered) addBitrix(fakt2)
-    if (ms && msPhase === 'DELIVERED') add(fakt2.moysklad, ms.sumMinor)
+    if (ms && msPhase === 'DELIVERED') {
+      add(fakt2.moysklad, ms.sumMinor)
+      add(inKassa(ms.stateName) ? kassa.banked : kassa.awaiting, ms.sumMinor)
+      if (ms.payedMinor > 0n) add(kassa.payed, ms.payedMinor)
+    }
 
     if (!bx.fakt1) continue
     addBitrix(fakt1)
@@ -527,7 +558,7 @@ export function sverkaTotals(lines: readonly SverkaLine[]): SverkaTotals {
     if (ms && msPhase === 'RETURNED') add(returned.moysklad, ms.sumMinor)
     if (ms && line.issues.length === 0) clean += 1
   }
-  return { fakt1, fakt2, transit, returned, pending, clean, beforeFloor }
+  return { fakt1, fakt2, kassa, transit, returned, pending, clean, beforeFloor }
 }
 
 export interface ProductRow {
