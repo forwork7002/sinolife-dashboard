@@ -7,7 +7,7 @@ process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const envState = {
   BITRIX24_APP_TOKEN: 'tok123' as string | undefined,
-  BITRIX24_WEBHOOK_URL: 'https://obey.bitrix24.kz/rest/1/x/',
+  BITRIX24_WEBHOOK_URL: 'https://obey.bitrix24.kz/rest/1/x/' as string | undefined,
   LOG_LEVEL: 'error',
   NODE_ENV: 'test',
 }
@@ -68,6 +68,17 @@ describe('POST /api/bitrix24/events', () => {
     expect(recorded).toEqual([])
   })
 
+  it('skips the domain check when no portal URL is configured (demo), the token still decides', async () => {
+    envState.BITRIX24_WEBHOOK_URL = undefined
+    try {
+      expect((await post(form({ 'auth[domain]': 'other.bitrix24.kz' }))).status).toBe(200)
+      expect(recorded).toHaveLength(1)
+      expect((await post(form({ 'auth[application_token]': 'nope' }))).status).toBe(401)
+    } finally {
+      envState.BITRIX24_WEBHOOK_URL = 'https://obey.bitrix24.kz/rest/1/x/'
+    }
+  })
+
   it('answers 200 but drops an event about another entity', async () => {
     const res = await post(form({ event: 'ONCRMCONTACTUPDATE' }))
     expect(res.status).toBe(200)
@@ -83,5 +94,39 @@ describe('POST /api/bitrix24/events', () => {
   it('refuses an oversized body', async () => {
     expect((await post('a'.repeat(20_000))).status).toBe(413)
     expect((await post(form(), { 'content-length': '999999' })).status).toBe(413)
+  })
+})
+
+describe('POST /api/bitrix24/events, body bound', () => {
+  it('cuts off a chunked body past the cap before reading it whole', async () => {
+    let pulled = 0
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1
+        if (pulled > 1000) controller.close()
+        else controller.enqueue(new TextEncoder().encode('a'.repeat(1024)))
+      },
+    })
+    const res = await POST(
+      new Request('http://localhost/api/bitrix24/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: stream,
+        // @ts-expect-error — Node's fetch needs this for a streaming body
+        duplex: 'half',
+      }),
+    )
+    expect(res.status).toBe(413)
+    // 16 KiB cap → at most 17 chunks pulled, not a thousand.
+    expect(pulled).toBeLessThan(30)
+  })
+})
+
+describe('POST /api/bitrix24/events when the queue cannot be written', () => {
+  it('answers 503, not 500', async () => {
+    const { crmEventRepository } = await import('@/server/services/container')
+    const spy = vi.spyOn(crmEventRepository, 'record').mockRejectedValueOnce(new Error('db down'))
+    expect((await post(form())).status).toBe(503)
+    spy.mockRestore()
   })
 })

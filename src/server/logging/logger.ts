@@ -35,6 +35,8 @@ export const logger: Logger = pino({
       '*.authorization',
       'headers.authorization',
       'headers.cookie',
+      'applicationToken',
+      '*.applicationToken',
       'webhookUrl',
       '*.webhookUrl',
       'BITRIX24_WEBHOOK_URL',

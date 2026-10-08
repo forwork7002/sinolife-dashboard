@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyCrmEvents, type PendingCrmEvent } from '@/server/integrations/crm/sync/crmEvents'
+import { applyCrmEvents, type PendingCrmEvent, takeDistinct } from '@/server/integrations/crm/sync/crmEvents'
 
 /**
  * The portal's outgoing events, applied between ticks. The worker deletes
@@ -12,7 +12,7 @@ import { applyCrmEvents, type PendingCrmEvent } from '@/server/integrations/crm/
 type Deal = { id: string; title: string }
 
 let seq = 0
-const ev = (event: string, externalId: string): PendingCrmEvent => ({ id: ++seq, event, externalId })
+const ev = (event: string, externalId: string): PendingCrmEvent => ({ id: ++seq, event, externalId, receivedAt: new Date() })
 
 function harness(live: readonly string[]) {
   const fetched: string[][] = []
@@ -45,7 +45,7 @@ function harness(live: readonly string[]) {
 describe('applyCrmEvents', () => {
   it('does nothing with no events', async () => {
     const h = harness(['1'])
-    expect(await h.run([])).toEqual({ events: 0, checked: 0, written: 0, skipped: 0, deleted: 0, held: 0 })
+    expect(await h.run([])).toEqual({ events: 0, checked: 0, written: 0, skipped: 0, failed: 0, deleted: 0, held: 0 })
     expect(h.fetched).toEqual([])
   })
 
@@ -114,15 +114,36 @@ describe('applyCrmEvents', () => {
     expect(deleted).toEqual([])
   })
 
-  it('throws when the upsert failed outright', async () => {
-    await expect(
-      applyCrmEvents<Deal>(
-        [ev('ONCRMDEALUPDATE', '1')],
-        async () => [{ id: '1', title: 'x' }],
-        (d) => d.id,
-        async () => ({ failed: 1, skipped: 0 }),
-        async () => 0,
-      ),
-    ).rejects.toThrow('1 ta bitim yozilmadi')
+  it('counts a rejected deal and finishes — the events are not retried over it', async () => {
+    const r = await applyCrmEvents<Deal>(
+      [ev('ONCRMDEALUPDATE', '1'), ev('ONCRMDEALUPDATE', '2')],
+      async () => [{ id: '1', title: 'x' }, { id: '2', title: 'y' }],
+      (d) => d.id,
+      async () => ({ failed: 1, skipped: 0 }),
+      async () => 0,
+    )
+    expect(r).toMatchObject({ checked: 2, written: 1, failed: 1, deleted: 0 })
+  })
+})
+
+describe('confirmedGoneLimit / takeDistinct', () => {
+  it('holds a flood of DELETE events too — 100 or 10%, whichever is more', async () => {
+    const h = harness([])
+    const r = await h.run(Array.from({ length: 101 }, (_, i) => ev('ONCRMDEALDELETE', String(i))))
+    expect(h.deleted).toEqual([])
+    expect(r).toMatchObject({ checked: 101, deleted: 0, held: 101 })
+
+    const h2 = harness([])
+    const r2 = await h2.run(Array.from({ length: 100 }, (_, i) => ev('ONCRMDEALDELETE', String(i))))
+    expect(h2.deleted[0]).toHaveLength(100)
+    expect(r2).toMatchObject({ deleted: 100, held: 0 })
+  })
+
+  it('takes the oldest events up to N distinct deals, keeping every event of a taken deal', () => {
+    const events = [ev('ONCRMDEALADD', '1'), ev('ONCRMDEALUPDATE', '2'), ev('ONCRMDEALUPDATE', '1'), ev('ONCRMDEALUPDATE', '3')]
+    const taken = takeDistinct(events, 2)
+    expect(taken.map((e) => e.externalId)).toEqual(['1', '2', '1'])
+    expect(takeDistinct(events, 10)).toHaveLength(4)
+    expect(takeDistinct([], 10)).toEqual([])
   })
 })

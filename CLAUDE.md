@@ -2414,6 +2414,23 @@ mixed `100vh` against a shell sized in `100dvh`.
   together. It throws — deleting
   nothing — on a refused or missing command, on a row it did not ask for (an
   ignored ID filter), and when more than `goneLimit` deals look gone at once.
+- **THE PORTAL NOW TELLS US — 2026-10-08** («Bitrix24ʼda oʻchirilsa srazi
+  tasdiqlash navbatida oʻchirilishi kerak»). Every check above goes and asks;
+  a Bitrix24 OUTGOING webhook (`ONCRMDEALADD/UPDATE/DELETE`) POSTs to
+  `/api/bitrix24/events` (`bitrix24/outgoingEvent.ts`), which checks the
+  application token (`BITRIX24_APP_TOKEN`, constant-time) and the portal
+  domain and queues one `crm_event` row per (deal, event). The worker drains
+  the queue every `SYNC_EVENTS_DRAIN_SEC` (10 s) INSIDE its end-of-tick wait
+  (`sync/crmEvents.ts`): named deals are re-read by id and written through
+  the ordinary upsert; deals the portal no longer returns are deleted — the
+  ones it said it DELETED up to `confirmedGoneLimit` (100 / 10%), unreturned
+  ADD/UPDATE ones up to `goneLimit`, the rest «held» for the nightly walk. At
+  most 100 distinct deals (two invocations) per drain; a FLOOD (more pending
+  than that — a robot mass-edit) applies only its DELETE events and leaves
+  the updates to the tick's `>=DATE_MODIFY` pass. A rejected upsert does not
+  keep its events pending (one bad deal would be re-read every 10 s for
+  ever); rows older than an hour that still failed are let go. Without the
+  token the endpoint answers 404 and the sync is polling only, as before.
 - **THE REFERENCE PASS AND THE SWEEP RUN ON THE WALL CLOCK, NOT THE TICK
   COUNTER — 2026-09-17** (`sync/schedule.ts`). `tick` restarts at zero in every
   process, so every deploy re-ran the reference pass (sixteen a day against

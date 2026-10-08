@@ -144,7 +144,10 @@ envs:
     type: SECRET
     value: CHANGE_ME
 
-  # The outgoing webhook's application token — see .env.example. Optional.
+  # The outgoing webhook's application token — see .env.example. Optional:
+  # EMPTY, not CHANGE_ME, because empty means «no outgoing webhook» (the
+  # endpoint answers 404) while any other value would make Bitrix24's events
+  # fail 401 until the real token is set in the console.
   - key: BITRIX24_APP_TOKEN
     scope: RUN_TIME
     type: SECRET
@@ -203,6 +206,12 @@ envs:
   - key: SYNC_SWEEP_EVERY
     scope: RUN_TIME
     value: "720"
+
+  # Seconds between drains of the portal's outgoing events (crm_event) inside
+  # the worker's wait — scripts/syncWorker.ts EVENTS_DRAIN_MS. 0 switches it off.
+  - key: SYNC_EVENTS_DRAIN_SEC
+    scope: RUN_TIME
+    value: "10"
 
   # The single administrator account, created by the post-deploy job.
   - key: ADMIN_NAME

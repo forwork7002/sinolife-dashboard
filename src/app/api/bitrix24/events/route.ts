@@ -39,6 +39,32 @@ export const dynamic = 'force-dynamic'
 /** Bitrix24 sends a few hundred bytes; anything past this is not the portal. */
 const MAX_BODY_BYTES = 16 * 1024
 
+/**
+ * The body, or null once it passes `max` bytes — BEFORE the token is checked,
+ * so a caller without the token cannot make the server buffer more than this.
+ * A declared Content-Length past the cap is refused without reading at all;
+ * a chunked or lying one is cut off at the cap while it streams.
+ */
+async function readBounded(request: Request, max: number): Promise<string | null> {
+  const declared = Number(request.headers.get('content-length') ?? 0)
+  if (declared > max) return null
+  if (request.body === null) return ''
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > max) {
+      await reader.cancel().catch(() => undefined)
+      return null
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
 function reply(status: number, body: Record<string, unknown>): NextResponse {
   return NextResponse.json(body, { status, headers: { 'cache-control': 'no-store' } })
 }
@@ -47,10 +73,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   const expected = env.BITRIX24_APP_TOKEN
   if (!expected) return reply(404, { error: 'not configured' })
 
-  const length = Number(request.headers.get('content-length') ?? 0)
-  if (length > MAX_BODY_BYTES) return reply(413, { error: 'too large' })
-  const body = await request.text()
-  if (body.length > MAX_BODY_BYTES) return reply(413, { error: 'too large' })
+  const body = await readBounded(request, MAX_BODY_BYTES)
+  if (body === null) return reply(413, { error: 'too large' })
 
   const event = parseOutgoingDealEvent(body)
   // The token is checked FIRST on whatever carried one, so an unauthenticated
@@ -69,6 +93,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     return reply(401, { error: 'unauthorized' })
   }
 
-  await crmEventRepository.record('BITRIX24', event.event, event.externalId)
+  try {
+    await crmEventRepository.record('BITRIX24', event.event, event.externalId)
+  } catch (error) {
+    // 503, not 500: Bitrix24 retries either, but a database that is down is
+    // an outage to name, not a bug in this handler.
+    log.error({ err: error, event: event.event, externalId: event.externalId }, 'bitrix24 event not queued')
+    return reply(503, { error: 'unavailable' })
+  }
   return reply(200, { ok: true })
 }

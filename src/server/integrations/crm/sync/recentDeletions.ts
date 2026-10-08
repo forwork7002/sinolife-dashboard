@@ -101,14 +101,25 @@ export async function sweepRecentConfirmations(
   const gone = goneDeals(candidates, live)
   if (gone.length === 0) return { checked: candidates.length, deleted: 0 }
 
-  // Cascades to deal_item, payment and deal_stage_history, as the full sweep's
-  // delete does.
-  const deleted = await prisma.$executeRawUnsafe(
+  const deleted = await deleteDealsByExternalId(prisma, source, gone)
+  return { checked: candidates.length, deleted }
+}
+
+/**
+ * The deletion the by-id checks make, by portal id. Cascades to deal_item,
+ * payment and deal_stage_history, as the full sweep's delete does.
+ */
+export async function deleteDealsByExternalId(
+  prisma: PrismaClient,
+  source: ExternalSourceValue,
+  externalIds: readonly string[],
+): Promise<number> {
+  if (externalIds.length === 0) return 0
+  return prisma.$executeRawUnsafe(
     `DELETE FROM "deal"
       WHERE "externalSource" = $1::"ExternalSource"
         AND "externalId" = ANY($2::text[])`,
     source,
-    gone,
+    externalIds,
   )
-  return { checked: candidates.length, deleted }
 }
