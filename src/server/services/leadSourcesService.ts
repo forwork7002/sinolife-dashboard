@@ -902,7 +902,7 @@ const scanCache = processWide('sinolife.leads.scanCache', () => ttlCache<WindowS
   KEPT WARM (2026-10-06, «Lidlar juda sekin ochilayapti»). The memos above
   hand out an answer up to seven minutes old at once, but a window nobody
   read for longer — the first look of the morning, after a quiet spell, after
-  every deploy — was built in front of its reader: six scans, the FAKT 1
+  every deploy — was built in front of its reader: five scans, the FAKT 1
   phone match alone 4.4 s on average on a month. `warm` builds the windows
   the tab opens on («Bugun», the dashboard default, and «Shu oy») every
   `LEADS_WARM_EVERY_MS` from `src/instrumentation.ts`, into `overview`'s own
