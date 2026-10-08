@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { Bitrix24CrmProvider } from '@/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
-import { goneDeals, goneLimit } from '@/server/integrations/crm/sync/recentDeletions'
+import { goneDeals, goneLimit, recentCandidatesSql, sweepRecentConfirmations } from '@/server/integrations/crm/sync/recentDeletions'
 
 /**
  * The Tasdiqlash queue's recent-deletion check. The caller DELETES whatever
@@ -101,5 +101,71 @@ describe('goneDeals', () => {
     expect(goneLimit(7_000)).toBe(140)
     const candidates = range(1, 100)
     expect(goneDeals(candidates, new Set(candidates.slice(25)))).toHaveLength(25)
+  })
+})
+
+describe('sweepRecentConfirmations — the populations it asks about (2026-10-08)', () => {
+  /** A database holding `candidates` for whichever population is asked, recording the SQL and the delete. */
+  function db(candidates: string[]) {
+    const queries: string[] = []
+    const deletes: { sql: string; args: unknown[] }[] = []
+    const prisma = {
+      $queryRawUnsafe: async (sql: string) => {
+        queries.push(sql)
+        return candidates.map((externalId) => ({ externalId }))
+      },
+      $executeRawUnsafe: async (sql: string, ...args: unknown[]) => {
+        deletes.push({ sql, args })
+        return (args[1] as string[]).length
+      },
+    } as never
+    return { prisma, queries, deletes }
+  }
+
+  it('asks the queue\'s confirmation stages by default, as before', async () => {
+    const { prisma, queries, deletes } = db(['1', '2', '3'])
+    const r = await sweepRecentConfirmations(prisma, 'BITRIX24', async () => new Set(['1', '3']), new Date('2026-10-06'))
+    expect(queries[0]).toContain('"confirmationSignal" IS NOT NULL')
+    expect(r).toEqual({ checked: 3, deleted: 1 })
+    expect(deletes[0]!.args).toEqual(['BITRIX24', ['2']])
+  })
+
+  it('asks about every deal the portal opened since `since` for the «created» population — no stage needed', async () => {
+    const { prisma, queries, deletes } = db(['7', '8'])
+    const r = await sweepRecentConfirmations(prisma, 'BITRIX24', async () => new Set(['7']), new Date('2026-10-06'), 'created')
+    expect(queries[0]).toContain('"createdAtSource" >= $2')
+    expect(queries[0]).not.toContain('deal_stage_history')
+    expect(r).toEqual({ checked: 2, deleted: 1 })
+    expect(deletes[0]!.args).toEqual(['BITRIX24', ['8']])
+  })
+
+  it('deletes nothing when the portal still has every candidate, and asks nothing when there are none', async () => {
+    const quiet = db(['5'])
+    expect(await sweepRecentConfirmations(quiet.prisma, 'BITRIX24', async () => new Set(['5']), new Date(), 'created')).toEqual({ checked: 1, deleted: 0 })
+    expect(quiet.deletes).toHaveLength(0)
+    const empty = db([])
+    let asked = false
+    expect(
+      await sweepRecentConfirmations(
+        empty.prisma,
+        'BITRIX24',
+        async () => {
+          asked = true
+          return new Set()
+        },
+        new Date(),
+        'created',
+      ),
+    ).toEqual({ checked: 0, deleted: 0 })
+    expect(asked).toBe(false)
+  })
+
+  it('binds the same two parameters in both populations — source, then since', () => {
+    for (const population of ['confirmed', 'created'] as const) {
+      const sql = recentCandidatesSql(population)
+      expect(sql).toContain('$1::"ExternalSource"')
+      expect(sql).toContain('$2')
+      expect(sql).toContain('"externalId" IS NOT NULL')
+    }
   })
 })

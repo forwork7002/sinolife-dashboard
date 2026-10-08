@@ -9,12 +9,21 @@ import type { ExternalSourceValue } from '@/server/domain/types'
  * an order posted to the queue and then deleted in Bitrix24 stayed on the board
  * until the next night — reported by the client on 2026-09-24.
  *
- * This check asks the portal about the queue's recent orders ONLY: the deals
- * that moved through a confirmation stage since `since`. That is a few hundred
- * to a few thousand ids, one `crm.deal.list` invocation per fifty, instead of
- * the daily walk's ~9 300. The full sweep still runs and still covers
- * everything older.
+ * This check asks the portal about a RECENT population only — one of two:
+ *
+ *   confirmed   the queue's recent orders: deals that moved through a
+ *               confirmation stage since `since` (2026-09-24);
+ *   created     deals the portal opened since `since`, any imported pipeline
+ *               (2026-10-08: the client made a test «Сарафан маркетинг» deal in
+ *               Ecommerce, deleted it, and watched «Lidlar» count it all day —
+ *               «ichidagi ma'lumot Bitrix24 bilan bir xil bo'lsin»).
+ *
+ * Either is a few hundred to a few thousand ids, one `crm.deal.list`
+ * invocation per fifty, instead of the daily walk's ~9 300. The full sweep
+ * still runs and still covers everything older.
  */
+
+export type RecentPopulation = 'confirmed' | 'created'
 
 /**
  * The most a single check may delete before it refuses: 25 deals, or 2% of
@@ -48,30 +57,43 @@ export interface RecentDeletionResult {
   readonly deleted: number
 }
 
-export async function sweepRecentConfirmations(
-  prisma: PrismaClient,
-  source: ExternalSourceValue,
-  existing: (ids: readonly string[]) => Promise<ReadonlySet<string>>,
-  since: Date,
-): Promise<RecentDeletionResult> {
-  /*
-    The queue's population, read the way the queue reads it: a move into one
-    of the stages that carry a confirmation signal. Wider than the board's
-    cohort (which needs a C4:NEW arrival) on purpose — a deal the board does
-    not list costs one id in a fifty-id filter, and a deal it does list that
-    this missed would be the bug all over again.
-  */
-  const rows = await prisma.$queryRawUnsafe<{ externalId: string }[]>(
-    `SELECT DISTINCT d."externalId"
+/**
+ * The ids to ask about, by population.
+ *
+ * `confirmed` is the queue's population, read the way the queue reads it: a
+ * move into one of the stages that carry a confirmation signal. Wider than
+ * the board's cohort (which needs a C4:NEW arrival) on purpose — a deal the
+ * board does not list costs one id in a fifty-id filter, and a deal it does
+ * list that this missed would be the bug all over again.
+ *
+ * `created` is every deal the portal opened since `since` (`createdAtSource`,
+ * the portal's DATE_CREATE) — the deals a same-day test or mistake is made
+ * of, whatever pipeline they are in.
+ */
+export function recentCandidatesSql(population: RecentPopulation): string {
+  return population === 'confirmed'
+    ? `SELECT DISTINCT d."externalId"
        FROM "deal_stage" s
        JOIN "deal_stage_history" h ON h."stageId" = s."id" AND h."enteredAt" >= $2
        JOIN "deal" d ON d."id" = h."dealId"
       WHERE s."confirmationSignal" IS NOT NULL
         AND d."externalSource" = $1::"ExternalSource"
-        AND d."externalId" IS NOT NULL`,
-    source,
-    since,
-  )
+        AND d."externalId" IS NOT NULL`
+    : `SELECT d."externalId"
+       FROM "deal" d
+      WHERE d."createdAtSource" >= $2
+        AND d."externalSource" = $1::"ExternalSource"
+        AND d."externalId" IS NOT NULL`
+}
+
+export async function sweepRecentConfirmations(
+  prisma: PrismaClient,
+  source: ExternalSourceValue,
+  existing: (ids: readonly string[]) => Promise<ReadonlySet<string>>,
+  since: Date,
+  population: RecentPopulation = 'confirmed',
+): Promise<RecentDeletionResult> {
+  const rows = await prisma.$queryRawUnsafe<{ externalId: string }[]>(recentCandidatesSql(population), source, since)
   const candidates = rows.map((r) => r.externalId)
   if (candidates.length === 0) return { checked: 0, deleted: 0 }
 

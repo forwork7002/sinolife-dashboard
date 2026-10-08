@@ -58,7 +58,7 @@ import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncS
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
 import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backfill'
 import { relinkDealContacts } from '../src/server/integrations/crm/sync/contactRelink'
-import { sweepRecentConfirmations } from '../src/server/integrations/crm/sync/recentDeletions'
+import { type RecentPopulation, sweepRecentConfirmations } from '../src/server/integrations/crm/sync/recentDeletions'
 import { closedTriageDealIds, rereadClosedTriageDeals } from '../src/server/integrations/crm/sync/triageMoves'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
@@ -220,15 +220,21 @@ const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 1440)
  *   near   orders that moved through confirmation in the last 2 days, every
  *          5 minutes — ~250 ids, ~5 invocations, ≈ 60 an hour;
  *   wide   the last 62 days (this month and the whole of last), hourly —
- *          ~7 000 ids, ~140 invocations.
+ *          ~7 000 ids, ~140 invocations;
+ *   new    deals the portal OPENED in the last 2 days, any imported pipeline,
+ *          every 30 minutes — ~3 000 ids, ~60 invocations, ≈ 120 an hour.
+ *          2026-10-08: a test «Сарафан маркетинг» deal made and deleted the
+ *          same day stayed on «Lidlar» until the night; it was in no
+ *          confirmation stage, so the two reaches above never asked about it.
  *
- * About 200 invocations an hour together, against the ~500 of an ordinary
+ * About 320 invocations an hour together, against the ~500 of an ordinary
  * hour and the 15 000 ceiling. Minutes; 0 switches a reach off.
  */
 const RECENT_SWEEPS = [
-  { label: 'yaqin', days: 2, everyMs: Number(process.env.SYNC_RECENT_SWEEP_MIN ?? 5) * 60_000 },
-  { label: 'keng', days: 62, everyMs: Number(process.env.SYNC_WIDE_SWEEP_MIN ?? 60) * 60_000 },
-] as const
+  { label: 'yaqin', population: 'confirmed', days: 2, everyMs: Number(process.env.SYNC_RECENT_SWEEP_MIN ?? 5) * 60_000 },
+  { label: 'keng', population: 'confirmed', days: 62, everyMs: Number(process.env.SYNC_WIDE_SWEEP_MIN ?? 60) * 60_000 },
+  { label: 'yangi', population: 'created', days: 2, everyMs: Number(process.env.SYNC_CREATED_SWEEP_MIN ?? 30) * 60_000 },
+] as const satisfies readonly { label: string; population: RecentPopulation; days: number; everyMs: number }[]
 
 /**
  * «ИИ ОБРАБОТКА» DEALS THE PORTAL MOVED TO РЕГИСТРАЦИЯ — see `triageMoves.ts`.
@@ -1447,8 +1453,8 @@ async function main() {
     }
 
     /*
-      THE QUEUE'S RECENT ORDERS, CHECKED BY ID — see `RECENT_SWEEPS`. Same
-      guards as the full sweep. The clock records the ATTEMPT, so a refusal
+      THE RECENT DEALS, CHECKED BY ID — see `RECENT_SWEEPS`. Same guards as
+      the full sweep. The clock records the ATTEMPT, so a refusal
       waits out the reach's own interval rather than retrying every tick; a
       failure deletes nothing and leaves the rows for the next check.
     */
@@ -1471,6 +1477,7 @@ async function main() {
           'BITRIX24',
           (ids) => provider.existingDealIds(ids),
           new Date(reachNow.getTime() - reach.days * 86_400_000),
+          reach.population,
         )
         // Quiet when nothing was deleted: the near reach runs 288 times a day.
         if (r.deleted > 0) {

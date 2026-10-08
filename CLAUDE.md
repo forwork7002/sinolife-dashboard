@@ -2407,7 +2407,11 @@ mixed `100vh` against a shell sized in `100dvh`.
   moved through a confirmation stage recently and asks the portal about THOSE
   ids only (`existingDealIds`, one `crm.deal.list` per 50 ids): the last 2
   days every 5 minutes, the last 62 days hourly (`RECENT_SWEEPS` in
-  `syncWorker.ts`), ~200 invocations an hour together. It throws — deleting
+  `syncWorker.ts`); since 2026-10-08 a third reach asks about every deal the
+  portal OPENED in the last 2 days, any pipeline, every 30 minutes
+  (`population: 'created'` — a test «Сарафан маркетинг» deal made and deleted
+  the same day had stood on «Lidlar» all day); ~320 invocations an hour
+  together. It throws — deleting
   nothing — on a refused or missing command, on a row it did not ask for (an
   ignored ID filter), and when more than `goneLimit` deals look gone at once.
 - **THE REFERENCE PASS AND THE SWEEP RUN ON THE WALL CLOCK, NOT THE TICK
