@@ -7,13 +7,16 @@
  *   Meta     — campaign × day rows from `meta_campaign_daily`, which say which
  *              sheet each dollar belongs on (see `campaignChannel`).
  *
- * The two are never joined: a Meta row has no Bitrix24 id and a lead has no
- * campaign. They meet only on the calendar day and the page, in the service.
+ * The spend rows are never joined: a Meta row has no Bitrix24 id and a lead
+ * has no campaign. They meet only on the calendar day and the page, in the
+ * service — except `campaignLeads`, where Meta's own lead meets its deal on
+ * the phone.
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import type { Period } from '@/server/domain/period/period'
+import { leadBucket } from '@/server/domain/reklama/leadQuality'
 import type { ManualSpendChannel, ManualSpendRow } from '@/server/domain/reklama/manualSpend'
 import type { TargetProduct } from '@/server/domain/types'
 
@@ -45,6 +48,26 @@ export interface CampaignDayRow {
   readonly clicks: number
   readonly leads: number
   readonly conversations: number
+}
+
+/** One Meta campaign's lead-form leads of the window, met with the portal by phone. */
+export interface CampaignLeadRow {
+  readonly campaignId: string
+  /** Meta leads read into `meta_lead` — below Meta's own count when a form's page is closed to the token. */
+  readonly leads: number
+  /** Those found as a Регистрация deal. */
+  readonly matched: number
+  /** Those whose deal is «Сделка успешна» (WON) — the kval. */
+  readonly qualified: number
+  /**
+   * The matched deals by what became of them (`leadBucket`, the stage each
+   * sits in now) — «Barcha manbalar»'s columns. With `qualified` they sum to
+   * `matched`.
+   */
+  readonly noAnswer: number
+  readonly lowQuality: number
+  readonly duplicate: number
+  readonly open: number
 }
 
 /**
@@ -163,6 +186,87 @@ export class ReklamaRepository {
       leads: r.leads,
       conversations: r.conversations,
     }))
+  }
+
+  /**
+   * Each campaign's Meta leads filed in the period, and how many of them are a
+   * kval on the portal — the one place a Meta row and a Bitrix24 row DO meet.
+   *
+   * A deal names no campaign, so the two meet on the PHONE: the lead's
+   * numbers (`meta_lead.phoneKeys`, last nine digits) against every number of
+   * the deal's contact. A lead takes the Регистрация deal of that phone opened
+   * nearest to it, from ten minutes before (the clocks) to two days after (the
+   * portal's robot files a returning contact's form late). The nearest, not
+   * «a WON one if any»: a person who filled two campaigns' forms has two
+   * deals, and each campaign is judged by its own.
+   *
+   * Dated by the lead's own time, so the window is the spend's window. Only
+   * the Регистрация deals around the window are read, never every contact.
+   */
+  async campaignLeads(period: Period): Promise<CampaignLeadRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { campaign_id: string; stage: string | null; status: string | null; leads: bigint }[]
+    >(
+      `
+      WITH ml AS (
+        SELECT m."id", m."campaignId", m."createdTime", m."phoneKeys"
+        FROM "meta_lead" m
+        WHERE m."createdTime" >= $1 AND m."createdTime" < $2 AND m."campaignId" <> ''
+      ),
+      mk AS (
+        SELECT ml."id", ml."createdTime", unnest(ml."phoneKeys") AS key FROM ml
+      ),
+      dk AS MATERIALIZED (
+        SELECT DISTINCT d."id", d."createdAtSource" AS created, d."status"::text AS status,
+               COALESCE(ds."name", '') AS stage, k.key
+        FROM "deal" d
+        JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+        LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+        JOIN "customer" c ON c."id" = d."customerId"
+        CROSS JOIN LATERAL (
+          SELECT right(regexp_replace(ph, '[^0-9]', '', 'g'), 9) AS key
+          FROM unnest(c."phones" || ARRAY[c."phone"]) AS ph
+          WHERE length(regexp_replace(ph, '[^0-9]', '', 'g')) >= 9
+        ) k
+        WHERE d."createdAtSource" >= $1::timestamp - interval '10 minutes'
+          AND d."createdAtSource" < $2::timestamp + interval '2 days'
+      ),
+      hit AS (
+        SELECT DISTINCT ON (mk."id") mk."id", dk.status, dk.stage
+        FROM mk
+        JOIN dk ON dk.key = mk.key
+          AND dk.created >= mk."createdTime" - interval '10 minutes'
+          AND dk.created < mk."createdTime" + interval '2 days'
+        ORDER BY mk."id", abs(extract(epoch FROM dk.created - mk."createdTime")), dk."id"
+      )
+      -- One row per campaign and outcome; a lead with no deal has neither stage nor status.
+      SELECT
+        ml."campaignId" AS campaign_id,
+        hit.stage,
+        hit.status,
+        count(*)::bigint AS leads
+      FROM ml
+      LEFT JOIN hit ON hit."id" = ml."id"
+      GROUP BY 1, 2, 3
+      `,
+      period.start,
+      period.end,
+    )
+    const out = new Map<string, { -readonly [K in keyof CampaignLeadRow]: CampaignLeadRow[K] }>()
+    for (const r of rows) {
+      const row =
+        out.get(r.campaign_id) ??
+        out
+          .set(r.campaign_id, { campaignId: r.campaign_id, leads: 0, matched: 0, qualified: 0, noAnswer: 0, lowQuality: 0, duplicate: 0, open: 0 })
+          .get(r.campaign_id)!
+      const n = Number(r.leads)
+      row.leads += n
+      if (r.status === null) continue
+      row.matched += n
+      const bucket = leadBucket(r.stage ?? '', r.status)
+      row[bucket === 'success' ? 'qualified' : bucket] += n
+    }
+    return [...out.values()]
   }
 
   /** When the campaign grain was last read; null means never. */

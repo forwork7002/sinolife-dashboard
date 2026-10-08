@@ -15,6 +15,7 @@ import { Pool } from 'pg'
 import { PrismaClient } from '../src/generated/prisma/client'
 import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
+import { importMetaLeads } from '../src/server/integrations/meta/metaLeadImport'
 import { zonedDateKey } from '../src/server/domain/period/period'
 
 const url = process.env.DATABASE_URL
@@ -36,6 +37,9 @@ async function main() {
         `  ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
     )
     for (const refused of r.failed) console.warn(`  ✗ oʻqilmadi — ${refused}`)
+    const leads = await importMetaLeads(prisma, token!)
+    console.log(`  Meta lidlar: ${leads.pages} sahifa, ${leads.forms} forma, ${leads.leads} yangi lid\n`)
+    for (const refused of leads.failed) console.warn(`  ✗ forma oʻqilmadi — ${refused}`)
   } finally {
     await prisma.$disconnect()
     await pool.end()

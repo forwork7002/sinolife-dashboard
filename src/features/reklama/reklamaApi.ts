@@ -132,6 +132,23 @@ export interface CampaignDto {
   readonly ctrPercent: number | null
   readonly activeDays: number
   readonly lastActive: string | null
+  readonly crm: CampaignCrmDto | null
+}
+
+export interface CampaignCrmDto {
+  readonly leadsRead: number
+  readonly matched: number
+  readonly qualified: number
+  readonly qualifiedPercent: number | null
+  readonly noAnswer: number
+  readonly lowQuality: number
+  readonly duplicate: number
+  readonly open: number
+  /** Whole soʻm, queue cohort: FAKT 1 of the Первичка / БАЗА teams, FAKT 2 of Первичка. */
+  readonly fakt1PrimaryUzs: number
+  readonly fakt1BaseUzs: number
+  readonly fakt2PrimaryUzs: number
+  readonly costPerQualifiedUsd: number | null
 }
 
 export interface SideColumnDto {

@@ -61,6 +61,7 @@ import { relinkDealContacts } from '../src/server/integrations/crm/sync/contactR
 import { type RecentPopulation, sweepRecentConfirmations } from '../src/server/integrations/crm/sync/recentDeletions'
 import { closedTriageDealIds, rereadClosedTriageDeals } from '../src/server/integrations/crm/sync/triageMoves'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
+import { importMetaLeads } from '../src/server/integrations/meta/metaLeadImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
 import { zonedDateKey } from '../src/server/domain/period/period'
 import {
@@ -1677,6 +1678,23 @@ async function main() {
         for (const refused of r.failed) console.warn(`  ${stamp()} meta akkaunt oʻqilmadi — ${refused}`)
       } catch (error) {
         console.warn(`  ${stamp()} meta muvaffaqiyatsiz: ${(error as Error).message}`)
+      }
+
+      /*
+        The lead forms' own leads, for the campaigns' kval — after the spend,
+        in a try of its own: it is the page's budget, not the ad accounts',
+        and a token without `leads_retrieval` must not cost the spend import.
+      */
+      const leadsStarted = Date.now()
+      try {
+        const r = await importMetaLeads(prisma, META_TOKEN)
+        console.log(
+          `  ${stamp()} meta lidlar: ${r.pages} sahifa, ${r.forms} forma, ${r.leads} yangi lid` +
+            `  (${((Date.now() - leadsStarted) / 1000).toFixed(1)}s)`,
+        )
+        for (const refused of r.failed) console.warn(`  ${stamp()} meta forma oʻqilmadi — ${refused}`)
+      } catch (error) {
+        console.warn(`  ${stamp()} meta lidlar muvaffaqiyatsiz: ${(error as Error).message}`)
       }
     }
 

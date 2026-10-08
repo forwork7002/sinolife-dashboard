@@ -30,13 +30,16 @@ const CHANNEL_LABEL: Readonly<Record<CampaignChannel, string>> = {
 }
 
 type Filter = 'all' | CampaignChannel
-type SortKey = 'spend' | 'results' | 'cpr' | 'ctr' | 'last'
+type SortKey = 'spend' | 'results' | 'cpr' | 'qual' | 'qualPct' | 'cpq' | 'ctr' | 'last'
 
 /** Null where the figure does not exist — no result to price, no impression to click through. */
 const SORTERS: Readonly<Record<SortKey, (c: CampaignDto) => number | string | null>> = {
   spend: (c) => c.spendUsd,
   results: (c) => c.results,
   cpr: (c) => c.costPerResultUsd,
+  qual: (c) => c.crm?.qualified ?? null,
+  qualPct: (c) => c.crm?.qualifiedPercent ?? null,
+  cpq: (c) => c.crm?.costPerQualifiedUsd ?? null,
   ctr: (c) => c.ctrPercent,
   last: (c) => c.lastActive,
 }
@@ -80,7 +83,7 @@ export function CampaignSection({
     else {
       setSort(next)
       // A price is best low, everything else is best high.
-      setOrder(next === 'cpr' ? 'asc' : 'desc')
+      setOrder(next === 'cpr' || next === 'cpq' ? 'asc' : 'desc')
     }
   }
 
@@ -88,7 +91,7 @@ export function CampaignSection({
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Kampaniyalar · Meta"
-        hint="Davrda pul sarflagan har bir kampaniya: kimniki, qaysi kanal, natija va bitta natija narxi. Natija — lid-formada Meta lidi, DMda murojaat."
+        hint="Davrda pul sarflagan har bir kampaniya: kimniki, qaysi kanal, natija va bitta natija narxi. Natija — lid-formada Meta lidi (narxi — CPL), DMda murojaat. Kval — kampaniyaning Meta lidi telefon boʻyicha Bitrix24 bitimiga ulanib, «Сделка успешна» boʻlgani; kval narxi = sarf ÷ kval."
       />
       <TableCard
         title={`Kampaniyalar — ${formatNumber(rows.length)} ta`}
@@ -113,7 +116,7 @@ export function CampaignSection({
           rowKey={(c) => c.id}
           status={status}
           emptyTitle="Bu davrda kampaniya sarfi yoʻq"
-          minWidth={1120}
+          minWidth={1400}
           maxHeight="70dvh"
           stickyColumns={1}
           sort={sort}
@@ -158,6 +161,45 @@ const columns: readonly Column<CampaignDto>[] = [
     align: 'right',
     numeric: true,
     render: (c) => <span className="font-medium">{money(c.costPerResultUsd)}</span>,
+  },
+  {
+    key: 'qual',
+    sortKey: 'qual',
+    header: 'Kval',
+    align: 'right',
+    numeric: true,
+    render: (c) =>
+      c.crm ? (
+        <span className="flex flex-col items-end leading-tight">
+          <span className="font-medium">{formatNumber(c.crm.qualified)}</span>
+          {/* How much of Meta's count the kval was looked for in — a short read is said, not hidden. */}
+          <span
+            className="whitespace-nowrap text-[11px] font-normal"
+            style={muted}
+            title={`Meta sanagan ${formatNumber(c.metaLeads)} liddan ${formatNumber(c.crm.leadsRead)} tasi oʻqildi, ${formatNumber(c.crm.matched)} tasi Bitrix24 bitimiga ulandi`}
+          >
+            {formatNumber(c.crm.matched)} / {formatNumber(c.metaLeads)} ulandi
+          </span>
+        </span>
+      ) : (
+        <span style={muted}>—</span>
+      ),
+  },
+  {
+    key: 'qualPct',
+    sortKey: 'qualPct',
+    header: 'Kval %',
+    align: 'right',
+    numeric: true,
+    render: (c) => pct(c.crm?.qualifiedPercent ?? null),
+  },
+  {
+    key: 'cpq',
+    sortKey: 'cpq',
+    header: 'Kval narxi',
+    align: 'right',
+    numeric: true,
+    render: (c) => <span className="font-medium">{money(c.crm?.costPerQualifiedUsd ?? null)}</span>,
   },
   { key: 'clicks', header: 'Klik', align: 'right', numeric: true, render: (c) => count(c.clicks) },
   { key: 'ctr', sortKey: 'ctr', header: 'CTR', align: 'right', numeric: true, render: (c) => pct(c.ctrPercent) },

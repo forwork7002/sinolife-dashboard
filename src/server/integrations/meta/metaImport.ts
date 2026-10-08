@@ -33,7 +33,7 @@ import type { PrismaClient } from '@/generated/prisma/client'
 
 import { META_ACCOUNT_OWNERS } from './accounts'
 
-const GRAPH = 'https://graph.facebook.com/v21.0'
+export const GRAPH = 'https://graph.facebook.com/v21.0'
 
 /** Where the history starts: the sheet's first month. */
 const META_HISTORY_FROM = '2026-07-01'
@@ -69,7 +69,7 @@ interface InsightRow {
 }
 
 /** The one network call in this module — a GET, every page followed. */
-async function getAll<T>(url: string): Promise<T[]> {
+export async function getAll<T>(url: string): Promise<T[]> {
   const out: T[] = []
   let next: string | undefined = url
   while (next) {
@@ -85,7 +85,7 @@ async function getAll<T>(url: string): Promise<T[]> {
   return out
 }
 
-function query(params: Record<string, string>, token: string): string {
+export function query(params: Record<string, string>, token: string): string {
   return new URLSearchParams({ ...params, access_token: token }).toString()
 }
 

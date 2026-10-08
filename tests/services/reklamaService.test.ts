@@ -381,6 +381,38 @@ describe('reklamaOverview', () => {
     expect(out.campaigns[1]!.costPerResultUsd).toBeCloseTo(0.1, 9)
   })
 
+  it('prices a campaign\'s kval from its own Meta leads met with the portal', () => {
+    const rows = [
+      campaign({ campaignId: 'c1', objective: 'OUTCOME_LEADS', campaignName: 'Read whole', spendMicroUsd: 60_000_000n, leads: 20 }),
+      campaign({ campaignId: 'c2', objective: 'OUTCOME_LEADS', campaignName: 'Half read', spendMicroUsd: 40_000_000n, leads: 20 }),
+      campaign({ campaignId: 'c3', objective: 'OUTCOME_LEADS', campaignName: 'No kval', spendMicroUsd: 30_000_000n, leads: 5 }),
+      campaign({ campaignId: 'c4', campaignName: 'Sms-1', spendMicroUsd: 5_000_000n, conversations: 50, leads: 0 }),
+    ]
+    const out = reklamaOverview({
+      window: WINDOW,
+      pages: PAGES,
+      leadRows: [],
+      campaignRows: rows,
+      campaignLeadRows: [
+        { campaignId: 'c1', leads: 19, matched: 16, qualified: 4 },
+        // Its other form's page is closed to the token: half of Meta's 20 leads were read.
+        { campaignId: 'c2', leads: 10, matched: 9, qualified: 3 },
+        { campaignId: 'c3', leads: 5, matched: 5, qualified: 0 },
+      ],
+      importedAt: null,
+    })
+    const [whole, half, none, dm] = out.campaigns
+    expect(whole!.crm).toMatchObject({ leadsRead: 19, matched: 16, qualified: 4, qualifiedPercent: 25 })
+    expect(whole!.crm!.costPerQualifiedUsd).toBeCloseTo(15, 9)
+    // The kval is counted, never priced: 40 $ over half the leads' kval would read dearer than it is.
+    expect(half!.crm).toMatchObject({ qualified: 3, costPerQualifiedUsd: null })
+    expect(half!.crm!.qualifiedPercent).toBeCloseTo(33.333, 2)
+    // No kval is a measured 0 % with no price, not a free kval.
+    expect(none!.crm).toMatchObject({ qualified: 0, qualifiedPercent: 0, costPerQualifiedUsd: null })
+    // A DM campaign has no Meta lead to meet.
+    expect(dm!.crm).toBeNull()
+  })
+
   it('sums the lead-quality buckets to the leads, with the sheet\'s % over them', () => {
     const out = build(
       [
@@ -580,6 +612,7 @@ describe('ReklamaService.overview — collagen.sinolife, the page Sobirjon #2\'s
       campaign({ accountId: '2804901113001448', accountName: 'Collagen Sobirjon #2', campaignName: 'I.S | SMS| New strantsa', spendMicroUsd: 30_000_000n, conversations: 50 }),
     ],
     campaignsImportedAt: async () => null,
+    campaignLeads: async () => [],
   }
   const service = new ReklamaService(repository as never)
 

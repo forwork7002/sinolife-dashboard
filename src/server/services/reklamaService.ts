@@ -37,6 +37,7 @@ import {
   sideColumn,
 } from '@/server/integrations/meta/accounts'
 import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
+import { isBaseTeam } from '@/server/domain/rnp/rnpSheet'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import {
   type BrandFilter,
@@ -45,8 +46,10 @@ import {
   type TargetProductFilter,
   brandMatches,
 } from '@/server/domain/types'
+import type { CampaignFaktRow, InsightsRepository } from '@/server/repositories/insightsRepository'
 import type {
   CampaignDayRow,
+  CampaignLeadRow,
   LeadStageDayRow,
   ReklamaRepository,
 } from '@/server/repositories/reklamaRepository'
@@ -206,7 +209,46 @@ export interface CampaignDto {
   /** Days in the window the campaign spent anything. */
   readonly activeDays: number
   readonly lastActive: string | null
+  /**
+   * The campaign's own leads on the portal (`ReklamaRepository.campaignLeads`)
+   * — null on a campaign with no lead read: a DM campaign, or a form whose
+   * page the token cannot open.
+   */
+  readonly crm: CampaignCrmDto | null
 }
+
+export interface CampaignCrmDto {
+  /** Meta leads read one by one — set beside `metaLeads`, Meta's own count. */
+  readonly leadsRead: number
+  /** Of those, found as a Регистрация deal by phone. */
+  readonly matched: number
+  /** Of those, «Сделка успешна» — the kval. */
+  readonly qualified: number
+  /** qualified ÷ matched. */
+  readonly qualifiedPercent: number | null
+  /** The other matched deals by the stage each sits in now — «Barcha manbalar»'s columns; with `qualified` they sum to `matched`. */
+  readonly noAnswer: number
+  readonly lowQuality: number
+  readonly duplicate: number
+  readonly open: number
+  /**
+   * The campaign's leads' orders (`InsightsRepository.campaignFakt`), whole
+   * soʻm: FAKT 1 by the selling team — БАЗА (`isBaseTeam`) or everyone else,
+   * «Первичка» — and the Первичка teams' FAKT 2. Queue cohort, same window.
+   */
+  readonly fakt1PrimaryUzs: number
+  readonly fakt1BaseUzs: number
+  readonly fakt2PrimaryUzs: number
+  /**
+   * spend ÷ qualified — null with no kval, and when under `LEAD_COVERAGE` of
+   * Meta's leads were read: the whole spend over a part of the leads' kval
+   * would price the campaign dearer than it is.
+   */
+  readonly costPerQualifiedUsd: number | null
+}
+
+/** The share of Meta's counted leads that must be read before a campaign's kval is priced. */
+export const LEAD_COVERAGE = 0.9
 
 /**
  * A narrow side column — the client's «Навой HR» table: the month's dollars
@@ -242,6 +284,11 @@ function usd(micro: bigint): number {
 
 function perUnit(micro: bigint, count: number): number | null {
   return count > 0 ? Number(micro) / MICRO / count : null
+}
+
+/** Minor units (tiyin) to whole soʻm. */
+function soms(minor: bigint): number {
+  return Math.round(Number(minor) / 100)
 }
 
 function percent(numerator: number, denominator: number): number | null {
@@ -384,6 +431,10 @@ export function reklamaOverview(input: {
   pages: readonly { key: string; name: string; product: TargetProduct }[]
   leadRows: readonly LeadStageDayRow[]
   campaignRows: readonly CampaignDayRow[]
+  /** Per campaign, its Meta leads met with the portal; absent = none read. */
+  campaignLeadRows?: readonly CampaignLeadRow[]
+  /** Per campaign and ROP team, those leads' FAKT 1 / FAKT 2 orders; absent = none. */
+  campaignFaktRows?: readonly CampaignFaktRow[]
   importedAt: Date | null
   brand?: BrandFilter
 }): ReklamaOverviewDto {
@@ -585,12 +636,24 @@ export function reklamaOverview(input: {
       if (acc.lastActive === null || row.date > acc.lastActive) acc.lastActive = row.date
     }
   }
+  const crmOf = new Map((input.campaignLeadRows ?? []).map((row) => [row.campaignId, row]))
+  const faktOf = new Map<string, { fakt1Primary: bigint; fakt1Base: bigint; fakt2Primary: bigint }>()
+  for (const row of input.campaignFaktRows ?? []) {
+    const acc = faktOf.get(row.campaignId) ?? faktOf.set(row.campaignId, { fakt1Primary: 0n, fakt1Base: 0n, fakt2Primary: 0n }).get(row.campaignId)!
+    if (isBaseTeam(row.rop)) acc.fakt1Base += row.fakt1Minor
+    else {
+      acc.fakt1Primary += row.fakt1Minor
+      acc.fakt2Primary += row.fakt2Minor
+    }
+  }
   const campaigns: CampaignDto[] = [...byCampaign.values()]
     .filter((c) => c.total.spend > 0n)
     .sort((a, b) => Number(b.total.spend - a.total.spend))
     .map((c) => {
       const owner = ownerOf(c.row.accountId, c.row.accountName)
       const results = c.channel === 'dm' || c.channel === 'hiring' ? c.conversations : c.total.leads
+      const read = crmOf.get(c.row.campaignId)
+      const fakt = faktOf.get(c.row.campaignId)
       return {
         id: c.row.campaignId,
         name: c.row.campaignName,
@@ -608,6 +671,23 @@ export function reklamaOverview(input: {
         ctrPercent: percent(c.total.clicks, c.total.impressions),
         activeDays: c.days.size,
         lastActive: c.lastActive,
+        crm: read
+          ? {
+              leadsRead: read.leads,
+              matched: read.matched,
+              qualified: read.qualified,
+              qualifiedPercent: percent(read.qualified, read.matched),
+              noAnswer: read.noAnswer,
+              lowQuality: read.lowQuality,
+              duplicate: read.duplicate,
+              open: read.open,
+              fakt1PrimaryUzs: soms(fakt?.fakt1Primary ?? 0n),
+              fakt1BaseUzs: soms(fakt?.fakt1Base ?? 0n),
+              fakt2PrimaryUzs: soms(fakt?.fakt2Primary ?? 0n),
+              costPerQualifiedUsd:
+                read.leads >= c.total.leads * LEAD_COVERAGE ? perUnit(c.total.spend, read.qualified) : null,
+            }
+          : null,
       }
     })
 
@@ -783,9 +863,15 @@ const REKLAMA_SOURCE_IDS: readonly string[] = [...new Set([...TARGET_SOURCE_IDS,
 */
 
 const leadCache = ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE)
+/** The campaigns' kval: Meta's leads arrive hourly, the deals' stages by the minute — the lead scan's own clock. */
+const campaignLeadCache = ttlCache<CampaignLeadRow[]>(120_000, LIVE_CACHE)
+const campaignFaktCache = ttlCache<CampaignFaktRow[]>(120_000, LIVE_CACHE)
 
 export class ReklamaService {
-  constructor(private readonly repository: ReklamaRepository) {}
+  constructor(
+    private readonly repository: ReklamaRepository,
+    private readonly insights: Pick<InsightsRepository, 'campaignFakt'>,
+  ) {}
 
   async overview(period: Period, timeZone: string, brand: BrandFilter = 'all'): Promise<ReklamaOverviewDto> {
     // The cache holds both brands' leads; the switch narrows after it.
@@ -804,13 +890,15 @@ export class ReklamaService {
     }
     const key = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
 
-    const [leadRows, named, campaignRows, importedAt] = await Promise.all([
+    const [leadRows, named, campaignRows, campaignLeadRows, campaignFaktRows, importedAt] = await Promise.all([
       leadCache.get(key, () => this.repository.leadStageDays(period, REKLAMA_SOURCE_IDS)),
       this.repository.sources(REKLAMA_SOURCE_IDS),
       this.repository.campaignDays(window.from, window.to),
+      campaignLeadCache.get(key, () => this.repository.campaignLeads(period)),
+      campaignFaktCache.get(key, () => this.insights.campaignFakt(period)),
       this.repository.campaignsImportedAt(),
     ])
 
-    return { window, pages: orderedPages(named), leadRows, campaignRows, importedAt }
+    return { window, pages: orderedPages(named), leadRows, campaignRows, campaignLeadRows, campaignFaktRows, importedAt }
   }
 }

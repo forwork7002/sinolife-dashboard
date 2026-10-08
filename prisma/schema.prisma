@@ -1520,6 +1520,40 @@ model MetaAdInsightDaily {
   @@map("meta_ad_insight_daily")
 }
 
+/// One LEAD of a Meta lead form — what ties a Bitrix24 kval to the CAMPAIGN
+/// that brought it («Reklama samarasi» · «Kampaniyalar»).
+///
+/// A Регистрация deal names its form, never its campaign (0 of 615 form
+/// leads carried a UTM on 2026-10-08), and one form serves many campaigns.
+/// Meta's lead does name its campaign and ad, and carries the phone the
+/// person typed — the same phone the portal files the deal under. So the
+/// lead is kept by its phone KEY alone (the last nine digits, as
+/// «Kiruvchi qoʻngʻiroqlar» matches numbers): no name, no answers.
+///
+/// Leads never change once filed, so the table is append-only by id. Meta
+/// keeps a lead for 90 days; what was read stays here after that.
+model MetaLead {
+  /// Meta's leadgen id.
+  id          String   @id
+  pageId      String
+  formId      String
+  /// As last listed — a renamed form carries its newest name on new rows.
+  formName    String
+  /// Empty on an organic lead (the form opened without an ad).
+  campaignId  String   @default("")
+  adsetId     String   @default("")
+  adId        String   @default("")
+  /// Every phone the lead carries, each as its last nine digits.
+  phoneKeys   String[] @default([])
+  /// Meta's `created_time` — when the form was submitted.
+  createdTime DateTime
+  importedAt  DateTime @default(now())
+
+  @@index([createdTime])
+  @@index([formId, createdTime])
+  @@map("meta_lead")
+}
+
 // ---------------------------------------------------------------------------
 // Sales plans — FAKT 1 / FAKT 2 month plans are typed in on «RNP jadvali»
 //

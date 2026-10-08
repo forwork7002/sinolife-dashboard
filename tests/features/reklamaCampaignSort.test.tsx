@@ -39,6 +39,7 @@ const campaign = (o: Partial<CampaignDto> & Pick<CampaignDto, 'id' | 'name'>): C
   ctrPercent: 1,
   activeDays: 1,
   lastActive: '2026-10-05',
+  crm: null,
   ...o,
 })
 
