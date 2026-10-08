@@ -929,6 +929,7 @@ export function createSyncHandlers(
     { name: 'aiQualifiedAt', cast: 'timestamp' },
     { name: 'leadRopEmployeeId' },
     { name: 'ropKvalLidEmployeeId' },
+    { name: 'primarySellerEmployeeId' },
     { name: 'createdByEmployeeId' },
     { name: 'repeatLead' },
     { name: 'isReturnCustomer' },
@@ -1050,6 +1051,7 @@ export function createSyncHandlers(
           // the lead still counts, under «ROP koʻrsatilmagan».
           record.leadRopExternalId ? (employeeMap.get(record.leadRopExternalId) ?? null) : null,
           record.ropKvalLidExternalId ? (employeeMap.get(record.ropKvalLidExternalId) ?? null) : null,
+          record.primarySellerExternalId ? (employeeMap.get(record.primarySellerExternalId) ?? null) : null,
           record.createdByExternalId ? (employeeMap.get(record.createdByExternalId) ?? null) : null,
           record.repeatLead ?? null,
           record.isReturnCustomer ?? false,

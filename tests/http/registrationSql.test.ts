@@ -6,7 +6,6 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { RegistrationRepository } = await import('@/server/repositories/registrationRepository')
-const { RnpRepository } = await import('@/server/repositories/rnpRepository')
 
 const bare = (sql: string) => sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
 
@@ -37,11 +36,6 @@ describe('distributedDaysSql', () => {
     expect(team.slice(seller)).toContain(`p."role" IS DISTINCT FROM 'LEAD'`)
     expect(sql).toContain('LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"')
     expect(sql).toContain('LEFT JOIN "employee" a ON a."id" = d."employeeId"')
-  })
-
-  it('names the ROP exactly as «RNP jadvali» does', () => {
-    const team = (s: string) => s.slice(s.indexOf('COALESCE('), s.indexOf(') AS rop') + ') AS rop'.length).replace(/\s+/g, ' ')
-    expect(team(sql)).toBe(team(bare(RnpRepository.leadDaysSql())))
   })
 
   it('marks every deal after a contact\'s first that day as a duplicate', () => {

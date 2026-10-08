@@ -25,13 +25,10 @@ export class RegistrationRepository {
   }
 
   /**
-   * The ROP is read exactly as «RNP jadvali»'s `leadDaysSql` reads it — the
-   * team the person heads, then the team they sit in, else null — so the two
-   * screens agree on every team's leads. Except on a day the portal re-stamps
-   * old deals as handed out (26.09: 1 704): since 2026-10-02 /rnp counts only
-   * a deal created at most 30 days before, and this screen still counts them
-   * all — the bound was decided for /rnp's «Квал лид сони»; «Lidlar» was
-   * left as it was, pending its own decision.
+   * The ROP is `leadRopSql`'s — the team the person heads, then the team they
+   * sit in, else null. «RNP jadvali» read the same deals until 2026-10-08;
+   * its «Квал лид сони» is now the Регистрация kval by «Сотувчи (Первичка)»
+   * (`RnpRepository.leadDaysSql`), so the two screens differ by definition.
    *
    * NOT THE REGISTRATION DEAL. When a lead is handed out the portal stamps
    * «Лид таркатилган сана» on the Регистрация deal too (29.09: 54 of 343 deals
@@ -68,8 +65,8 @@ export class RegistrationRepository {
   }
 
   /**
-   * The ROP a handed-out deal went to — ONE rule for «Lidlar» and /rnp
-   * (`RnpRepository.leadDaysSql` reads it too), so the two never disagree:
+   * The ROP a handed-out deal went to — «Lidlar»'s and «ROP otchet»'s rule
+   * (/rnp's own until 2026-10-08, see `RnpRepository.leadDaysSql`):
    *
    * 1. «ROP KVAL LID» (`k`, from 2026-10-07): the portal's own stamp of the
    *    ROP the deal was handed to, kept when the ROP passes it on — the field

@@ -467,9 +467,9 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     buildRnpSheet(
       input({
         registration: [{ day: '2026-09-02', leads: 819, duplicates: 0, qualified: 150, aiConversations: 0 }],
-        // «Сделка успешна» by its closing day — row 48 only, never the groups.
+        // «Сделка успешна» by its closing day — row 48; the groups read `leads`, the same deals cut by team.
         registrarKval: [{ day: '2026-09-02', registrar: 'Фарангиз', qualified: 999 }],
-        // The leads handed to each ROP team that day.
+        // The kval leads given to each ROP team's sellers that day.
         leads: [
           { day: '2026-09-02', rop: 'Sevinch', leads: 57 },
           { day: '2026-09-02', rop: 'Azizbek', leads: 13 },
@@ -477,7 +477,7 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
           { day: '2026-09-02', rop: 'Shohjaxon', leads: 6 },
           // A БАЗА head's: counted, but in no group — the team is measured by calls.
           { day: '2026-09-02', rop: 'Charos', leads: 2 },
-          // Not handed to a ROP team (the Регистрация copy, the desk head): no row counts it.
+          // No seller, or one outside the ROP teams (a registrar): no row counts it.
           { day: '2026-09-02', rop: null, leads: 50 },
         ],
       }),
@@ -1202,10 +1202,13 @@ describe('buildRnpSheet — the audit fixes of 2026-10-02', () => {
     expect(row(x, 'logistics', 'lg:refused_pct').plan).toBeNull()
   })
 
-  it("says a БАЗА team's calls reach the sheet about every 3 hours, and a lead team's leads are fresh hand-outs", () => {
+  it("says a БАЗА team's calls reach the sheet about every 3 hours, and a lead team's leads are the kval deals of its sellers (2026-10-08)", () => {
     const x = buildRnpSheet(input())
     expect(row(x, 'team:Charos', 'team:Charos:reach').hint).toMatch(/har 3 soatda/)
-    expect(row(x, 'team:Sevinch', 'team:Sevinch:reach').hint).toMatch(/30 kun ichida yaratilganlari/)
+    const hint = row(x, 'team:Sevinch', 'team:Sevinch:reach').hint
+    expect(hint).toMatch(/«Сделка успешна»/)
+    expect(hint).toMatch(/«Сотувчи \(Первичка\)»/)
+    expect(hint).not.toMatch(/Лид таркатилган сана/)
   })
 
   it("says, on the projects' «Сумма факт1», how an order finds its brand — and where the rest is", () => {
@@ -1262,7 +1265,7 @@ describe('buildRnpSheet — the audit fixes of 2026-10-02', () => {
       const r = row(x, 'team:Marjona', `team:Marjona:${key}`)
       expect(r.fact).toBeNull()
       expect(r.days.every((v) => v === null)).toBe(true)
-      expect(r.hint).toContain('«РОП (Первичка)»')
+      expect(r.hint).toContain('«Сотувчи (Первичка)»')
       expect(r.hint).toContain('16.09 dan beri 1 ta lid, 54 ta ФАКТ 1 buyurtma')
     }
     // The counts beside them stay.

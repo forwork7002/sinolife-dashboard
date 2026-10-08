@@ -584,6 +584,8 @@ model Employee {
   routedLeads Deal[]     @relation("DealLeadRop")
   /// Регистрация deals handed to this person as ROP. See Deal.ropKvalLidEmployeeId.
   kvalLidDeals Deal[]    @relation("DealRopKvalLid")
+  /// Kval leads this seller was given. See Deal.primarySellerEmployeeId.
+  primarySellerDeals Deal[] @relation("DealPrimarySeller")
   /// Deals this person opened. See Deal.createdByEmployeeId.
   openedDeals Deal[]     @relation("DealCreator")
   ownerChangesFrom DealOwnerChange[] @relation("OwnerChangeFrom")
@@ -901,6 +903,10 @@ model Deal {
   /// to, stamped by the portal's business process and kept when the ROP passes
   /// the deal on. «Безквал» reads it first. Added 2026-10-07.
   ropKvalLidEmployeeId String?
+  /// UF_CRM_1789399379 «Сотувчи (Первичка)» — the seller a kval lead was given
+  /// to, on the Регистрация deal by «Сделка успешна». «RNP jadvali» counts a
+  /// ROP's kval leads by this seller's team. Added 2026-10-08.
+  primarySellerEmployeeId String?
   /// CREATED_BY_ID — who opened the deal. Differs from `employeeId` once the
   /// deal was handed to someone else: Регистрация deals are opened by the desk
   /// (Дониёр, the admin) and given to a ROP, who may pass them on to a seller
@@ -934,6 +940,7 @@ model Deal {
   operatorEmployee Employee?       @relation("DealOperator", fields: [operatorEmployeeId], references: [id], onDelete: SetNull)
   leadRop          Employee?       @relation("DealLeadRop", fields: [leadRopEmployeeId], references: [id], onDelete: SetNull)
   ropKvalLid       Employee?       @relation("DealRopKvalLid", fields: [ropKvalLidEmployeeId], references: [id], onDelete: SetNull)
+  primarySeller    Employee?       @relation("DealPrimarySeller", fields: [primarySellerEmployeeId], references: [id], onDelete: SetNull)
   createdBy        Employee?       @relation("DealCreator", fields: [createdByEmployeeId], references: [id], onDelete: SetNull)
   customer     Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
   source       SalesSource?       @relation(fields: [sourceId], references: [id], onDelete: SetNull)

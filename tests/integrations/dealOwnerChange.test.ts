@@ -130,6 +130,20 @@ describe('the deals pass', () => {
     expect(params[columns.length + at]).toBeNull()
   })
 
+  it('writes «Сотувчи (Первичка)» into its own column, null for a seller the roster does not know yet', async () => {
+    const { deals, writes } = fakes([])
+    await deals.persist([
+      { ...deal('1', '10', '0'), primarySellerExternalId: '7010' },
+      { ...deal('2', '10', '0'), primarySellerExternalId: '999' },
+    ])
+    const { sql, params } = writes[0]
+    const columns = [...sql.slice(sql.indexOf('(') + 1, sql.indexOf(')')).matchAll(/"([^"]+)"/g)].map((m) => m[1])
+    const at = columns.indexOf('primarySellerEmployeeId')
+    expect(at).toBeGreaterThan(-1)
+    expect(params[at]).toBe('azizbek')
+    expect(params[columns.length + at]).toBeNull()
+  })
+
   it('records nothing when the write fails', async () => {
     const { deals, calls } = fakes([{ id: 'd1', externalId: '1', employeeId: 'doniyor' }], true)
     await expect(deals.persist([deal('1', '7010', '0')])).rejects.toThrow('upsert failed')

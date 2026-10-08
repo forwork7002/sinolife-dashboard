@@ -102,8 +102,8 @@ export class LeadCohortRepository {
 
   /**
    * The team each ROP the window names stands for (`ropNameSql`) — the
-   * department they head (of two, the one they sit in, as `leadRopSql` and
-   * RNP's `leadDaysSql` read it — 2026-10-06 audit), else their own — for the
+   * department they head (of two, the one they sit in, as `leadRopSql` reads
+   * it — 2026-10-06 audit), else their own — for the
    * Collagen / Zextra switch, which files a lead by the team it was routed to
    * (`teamBrand`).
    */

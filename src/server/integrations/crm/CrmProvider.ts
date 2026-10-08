@@ -254,6 +254,8 @@ export interface RawDeal extends ExternalRecord {
   readonly leadRopExternalId?: string
   /** «ROP KVAL LID» — the Регистрация deal's ROP's portal user id; resolved on write. */
   readonly ropKvalLidExternalId?: string
+  /** «Сотувчи (Первичка)» — the kval lead's seller's portal user id; resolved on write. */
+  readonly primarySellerExternalId?: string
   /** CREATED_BY_ID — who opened the deal; resolved to an employee on write. */
   readonly createdByExternalId?: string
   /** «Такрор лид»; undefined is a new lead. */

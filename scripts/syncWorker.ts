@@ -60,6 +60,7 @@ import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backf
 import { relinkDealContacts } from '../src/server/integrations/crm/sync/contactRelink'
 import { sweepRecentConfirmations } from '../src/server/integrations/crm/sync/recentDeletions'
 import { closedTriageDealIds, rereadClosedTriageDeals } from '../src/server/integrations/crm/sync/triageMoves'
+import { kvalDealsWithoutSeller, rereadKvalSellers } from '../src/server/integrations/crm/sync/kvalSellers'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
 import { zonedDateKey } from '../src/server/domain/period/period'
@@ -245,6 +246,29 @@ const TRIAGE_REREADS = [
   { label: 'yaqin', days: 2 as number | null, everyMs: Number(process.env.SYNC_TRIAGE_NEAR_MIN ?? 5) * 60_000 },
   { label: 'keng', days: null, everyMs: Number(process.env.SYNC_TRIAGE_WIDE_MIN ?? 60) * 60_000 },
 ] as const
+
+/**
+ * KVAL DEALS STORED WITHOUT «СОТУВЧИ (ПЕРВИЧКА)» — see `kvalSellers.ts`.
+ * Re-read by id, hourly: the first pass after the 2026-10-08 deploy fills the
+ * deals read before the column existed (~5 800, ~116 invocations), every
+ * later one the few given to a seller the roster did not know yet. A pass
+ * that failed is tried again in `retryMs`, not in an hour: until the first
+ * one lands «RNP jadvali» reads every ROP's kval leads as 0.
+ *
+ * The last `days` only, and never before `floor` — the field's first full
+ * day (16.09.2026, Tashkent): a deal the portal names no seller on stays a
+ * candidate, 4 244 of the 4 551 kval deals of 01–15.09 are such, and a
+ * window that only grew would ask about every one of them every hour.
+ * Minutes; 0 switches it off.
+ */
+const KVAL_SELLER_REREAD = {
+  floor: new Date('2026-09-16T00:00:00+05:00'),
+  days: 31,
+  everyMs: Number(process.env.SYNC_KVAL_SELLER_MIN ?? 60) * 60_000,
+  retryMs: 5 * 60_000,
+  /** Candidates the portal names no seller on, in one pass, before the log says so. */
+  unnamedWarn: 500,
+} as const
 
 /**
  * How far back the stage history is re-read once, at startup. Default: 45 days.
@@ -913,6 +937,7 @@ async function main() {
   // In memory only: a restart costs one near and one wide check, ~150 invocations.
   const recentSweepAt = new Map<string, Date>()
   const triageRereadAt = new Map<string, Date>()
+  let kvalSellerRereadAt: Date | null = null
   try {
     const now = Date.now()
     const [reference, sweep] = await Promise.all([
@@ -1525,6 +1550,54 @@ async function main() {
         }
       } catch (error) {
         console.warn(`  ${stamp()} ИИ обработка qayta oʻqish (${reach.label}) muvaffaqiyatsiz: ${(error as Error).message}`)
+      }
+    }
+
+    /*
+      «СОТУВЧИ (ПЕРВИЧКА)» ON KVAL DEALS, RE-READ BY ID — see
+      `KVAL_SELLER_REREAD`. The guards and the write of the triage re-read
+      above; a failure changes nothing and waits its interval.
+    */
+    const kvalSellerNow = new Date()
+    if (
+      isPassDue(kvalSellerRereadAt, kvalSellerNow, KVAL_SELLER_REREAD.everyMs) &&
+      tick > 0 &&
+      calm === 0 &&
+      !provider.gate.isOpen() &&
+      !stopping
+    ) {
+      kvalSellerRereadAt = kvalSellerNow
+      try {
+        const since = new Date(
+          Math.max(KVAL_SELLER_REREAD.floor.getTime(), kvalSellerNow.getTime() - KVAL_SELLER_REREAD.days * 86_400_000),
+        )
+        const candidates = await kvalDealsWithoutSeller(prisma, 'BITRIX24', since)
+        const r = await rereadKvalSellers(
+          candidates,
+          (ids) => provider.fetchDealsByIds(ids),
+          (deals) => engine.persistRecords('DEALS', deals),
+          (deal) => deal.primarySellerExternalId !== undefined,
+        )
+        // Quiet when the portal named nobody new: this runs every hour.
+        if (r.named > 0 || r.skipped > 0) {
+          console.log(
+            `  ${stamp()} Сотувчи (Первичка): ${r.checked} квал bitim qayta oʻqildi,` +
+              ` ${r.named} tasida sotuvchi bor` +
+              (r.skipped > 0 ? `, ${r.skipped} tasi yozilmadi (bosqich/xodim hali yoʻq — keyingi safar)` : ''),
+          )
+        }
+        // The portal's robot no longer fills the field, or somebody cleared it: every ROP's kval reads low.
+        if (r.checked - r.named >= KVAL_SELLER_REREAD.unnamedWarn) {
+          console.warn(
+            `  ${stamp()} ! Сотувчи (Первичка): ${r.checked - r.named} квал bitimda portal sotuvchini koʻrsatmagan`,
+          )
+        }
+      } catch (error) {
+        // Due again in `retryMs`, whatever the interval.
+        kvalSellerRereadAt = new Date(
+          kvalSellerNow.getTime() - KVAL_SELLER_REREAD.everyMs + KVAL_SELLER_REREAD.retryMs,
+        )
+        console.warn(`  ${stamp()} Сотувчи (Первичка) qayta oʻqish muvaffaqiyatsiz: ${(error as Error).message}`)
       }
     }
 

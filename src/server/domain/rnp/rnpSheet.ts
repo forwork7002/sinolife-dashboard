@@ -177,7 +177,7 @@ export interface RnpSheetInput {
   readonly today: string
   readonly teams: readonly { readonly rop: string; readonly head: string | null }[]
   readonly fakt: readonly RnpFaktDay[]
-  /** Deals handed out per day × ROP («Лид таркатилган сана»); `rop` null: not handed to a ROP team. */
+  /** Kval leads per day × the ROP team of «Сотувчи (Первичка)» (`RnpRepository.leadDaysSql`); `rop` null: no seller, or one outside the ROP teams. */
   readonly leads: readonly { readonly day: string; readonly rop: string | null; readonly leads: number }[]
   readonly registration: readonly {
     readonly day: string
@@ -394,12 +394,11 @@ const LOGISTICS_SHEET_ROW: Readonly<Record<string, number>> = Object.freeze({
 })
 
 /**
- * «РОП (Первичка)» is filled on every handed-out lead only from 16.09.2026
- * (measured on the portal: 1–14.09 almost none, 15.09 about half). The
- * «Продажа … факт1» row itself counts EVERY day, exactly as the client's
- * portal filter does (2026-09-30: «bugun erta kech barchasi»); what stays
- * muted before this day are the rates divided by it — conversion and plan % —
- * which a handful of leads would blow up.
+ * «Сотувчи (Первичка)» is on every kval deal only from 16.09.2026 (see
+ * `UF.PRIMARY_SELLER`) — as «РОП (Первичка)», which this row read until
+ * 2026-10-08, was. The row itself counts EVERY day; what stays muted before
+ * this day are the rates divided by it — conversion and plan % — which a
+ * handful of leads would blow up.
  */
 const LEAD_ROP_RELIABLE_FROM = '2026-09-16'
 
@@ -484,8 +483,9 @@ const UNDISTRIBUTED = 'Taqsimlanmagan'
  * The sheet's registration «guruh» rows, in its order (rows 50–67), then the
  * two the client added on 2026-09-30 in place of the Zextra desk.
  *
- * A GROUP'S «квал» IS THE LEADS HANDED TO THE ROP TEAM IT IS NAMED AFTER
- * (`GROUP_TEAM` — the client's decision of 2026-10-02). It was a set of
+ * A GROUP'S «квал» IS THE KVAL LEADS OF THE ROP TEAM IT IS NAMED AFTER
+ * (`GROUP_TEAM` — the client's decision of 2026-10-02; by «Сотувчи
+ * (Первичка)» since 2026-10-08, see `RnpRepository.leadDaysSql`). It was a set of
  * registrars, typed per month in `rnp_registrar_group`; nothing could edit
  * that map once «Rejalar» was removed, the desk reshuffled from 22.09 on
  * («Sevinch guruh» read ~0 while Sevinch's team got 46–61 a day), and the
@@ -904,11 +904,12 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     ROW 48 «Жами квал сони» IS THE REGISTRARS' «Сделка успешна» (WON) BY THE
     DAY IT CLOSED, taken from the per-registrar read: the same deals as the
     registration scan's kval arm, but read with the month, where the scan's
-    closed days sit in a half-hour memo. The «guruh — квал» rows below are
-    something else — the leads handed to the ROP teams, by «Лид таркатилган
-    сана» — so they do not add up to 48 (01.10: 240 kval, 233 handed out).
-    The sheet's G48 summed its group rows; the client kept 48 on the kval
-    when the groups moved to the hand-out (2026-10-01).
+    closed days sit in a half-hour memo. Since 2026-10-08 the «guruh — квал»
+    rows below are these very deals cut by the seller's team, so with
+    «Boshqa jamoalar» and «Taqsimlanmagan» (`reg:undistributed` — in the
+    payload, not drawn) they add up to 48, as the sheet's G48 summed its
+    group rows. (From 2026-10-01 until then they were the hand-outs by «Лид
+    таркатилган сана», and did not.)
   */
   for (const r of input.registrarKval) {
     const i = at.get(r.day)
@@ -1061,14 +1062,14 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   // --- Регистрация (sheet rows 47–73) --------------------------------------
   const difference = days.map((_, i) => ropLeads[i]! - reg.qualified[i]!)
   /*
-    A GROUP'S «квал» IS THE LEADS HANDED TO ITS ROP'S TEAM (`GROUP_TEAM`, the
+    A GROUP'S «квал» IS ITS ROP'S TEAM'S KVAL LEADS (`GROUP_TEAM`, the
     client, 2026-10-02): the very series of that team's «Квал лид сони», so
     the two can never disagree, and 0 is a measurement. «Boshqa jamoalar» is
-    every other team's (Шохжахон, Маржона, Ҳаёт, Kompaniya, the БАЗА heads …):
+    every other team's (Шохжахон, Маржона, Ҳаёт, Kompaniya, the БАЗА teams …):
     the groups and it add up to «РОП ларга тарқатилди», day by day.
   */
   const groupTeams = new Set<string>(Object.values(GROUP_TEAM))
-  const handedTo = (rop: string) => grid.get(rop)?.leads ?? zeros()
+  const kvalOf = (rop: string) => grid.get(rop)?.leads ?? zeros()
   const otherTeams = total((t) => t.leads, (rop) => !groupTeams.has(rop))
   const otherNames = teamNames.filter((rop) => !groupTeams.has(rop) && sum(grid.get(rop)!.leads) > 0).map(labelOf)
   /*
@@ -1084,7 +1085,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       key: `reg:group:none:qualified:${b}`,
       label: b === 'none' ? 'Brendsiz jamoalar — квал' : 'Boshqa jamoalar — квал',
       unit: 'count',
-      hint: `Guruh qatori yoʻq ${b === 'none' ? 'brendsiz' : b} ROP jamoalariga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha: ${names.length > 0 ? names.join(', ') : 'bu oy yoʻq'}.`,
+      hint: `Guruh qatori yoʻq ${b === 'none' ? 'brendsiz' : b} ROP jamoalari sotuvchilariga berilgan квал lidlar — «Сотувчи (Первичка)» boʻyicha: ${names.length > 0 ? names.join(', ') : 'bu oy yoʻq'}.`,
     }, total((t) => t.leads, otherOf(b)))
   })
   blocks.push({
@@ -1099,15 +1100,15 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       additive(clock, { key: 'reg:duplicates', label: 'Дубликат', unit: 'count', better: 'down', hint: '«Дубликат (лид)» bosqichi; qizil «Дубликат» bunga kirmaydi.' }, reg.duplicates),
       additive(clock, { key: 'reg:ai', label: 'ИИ обработка мурожаатлари', unit: 'count', hint: '«ИИ обработка» voronkasida ochilgan suhbatlar.' }, reg.ai),
       additive(clock, { key: 'reg:qualified', label: 'Квал лид — жами (Сделка успешна)', unit: 'count', tone: 'total', hint: 'Registrator «Сделка успешна» ga oʻtkazgan lidlar — yopilgan kuni boʻyicha. Collagen + Zextra.' }, reg.qualified),
-      additive(clock, { key: 'reg:qualified_collagen', label: 'Регистрация COLLAGEN (квал)', unit: 'count', ...planned('', 'reg_qualified'), hint: 'Barcha registratorlarning kvali — «Сделка успешна», yopilgan kuni boʻyicha (Zextra registratsiyasi 2026-09-30 da olib tashlangan). Guruh qatorlari esa ROP jamoalariga tarqatilgan lidlar, shuning uchun ularning yigʻindisi bunga teng emas.', sheet: sh(48, 'Регистрация COLLAGEN') }, reg.qualified),
+      additive(clock, { key: 'reg:qualified_collagen', label: 'Регистрация COLLAGEN (квал)', unit: 'count', ...planned('', 'reg_qualified'), hint: 'Barcha registratorlarning kvali — «Сделка успешна», yopilgan kuni boʻyicha (Zextra registratsiyasi 2026-09-30 da olib tashlangan). Guruh qatorlari va «Boshqa jamoalar» — shu bitimlarning «Сотувчи (Первичка)» jamoasi boʻyicha boʻlinishi; sotuvchisi ROP jamoasida oʻtirmaydigan bitim (masalan registratorga berilgan) hech bir guruhga kirmaydi, shuning uchun ular yigʻindisi bundan biroz kam boʻlishi mumkin.', sheet: sh(48, 'Регистрация COLLAGEN') }, reg.qualified),
       ratio(clock, { key: 'reg:qualified_pct', label: '% квал лид (Collagen)', unit: 'percent', ...planned('', 'reg_qualified_pct'), sheet: sh(49, '% квал лид') }, reg.qualified, reg.leads, 100),
       ...REGISTRATION_GROUPS.map((g) =>
-        additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `${labelOf(GROUP_TEAM[g])} jamoasiga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha; ROP blokidagi «Квал лид сони» bilan bir xil.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, handedTo(GROUP_TEAM[g])),
+        additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `${labelOf(GROUP_TEAM[g])} jamoasi sotuvchilariga berilgan квал lidlar — Регистрация «Сделка успешна», «Сотувчи (Первичка)» boʻyicha; ROP blokidagi «Квал лид сони» bilan bir xil.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, kvalOf(GROUP_TEAM[g])),
       ),
-      additive(clock, { key: 'reg:group:none:qualified', label: 'Boshqa jamoalar — квал', unit: 'count', hint: `Guruh qatori yoʻq ROP jamoalariga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha: ${otherNames.length > 0 ? otherNames.join(', ') : 'bu oy yoʻq'}.` }, otherTeams),
+      additive(clock, { key: 'reg:group:none:qualified', label: 'Boshqa jamoalar — квал', unit: 'count', hint: `Guruh qatori yoʻq ROP jamoalari sotuvchilariga berilgan квал lidlar — «Сотувчи (Первичка)» boʻyicha: ${otherNames.length > 0 ? otherNames.join(', ') : 'bu oy yoʻq'}.` }, otherTeams),
       ...otherBrandRows,
-      additive(clock, { key: 'reg:distributed', label: 'РОП ларга тарқатилди', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: '«Лид таркатилган сана» shu kun va «РОП (Первичка)» ROP jamoasi boʻlgan bitimlar, shu sanadan oldingi 30 kun ichida yaratilganlari.' }, ropLeads),
-      additive(clock, { key: 'reg:undistributed', label: UNDISTRIBUTED, unit: 'count', better: 'down', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: 'Tarqatilgan sanasi bor, lekin «РОП (Первичка)» da ROP emas (masalan Регистрация boshligʻi) yoki boʻsh.' }, undistributed),
+      additive(clock, { key: 'reg:distributed', label: 'РОП ларга тарқатилди', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: 'Регистрация voronkasida shu kuni «Сделка успешна» ga oʻtgan va «Сотувчи (Первичка)» ROP jamoasi sotuvchisi boʻlgan bitimlar.' }, ropLeads),
+      additive(clock, { key: 'reg:undistributed', label: UNDISTRIBUTED, unit: 'count', better: 'down', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: '«Сделка успешна» ga oʻtgan, lekin «Сотувчи (Первичка)» boʻsh yoki ROP jamoasida oʻtirmaydi (masalan registrator).' }, undistributed),
       additive(clock, { key: 'reg:difference', label: 'Разница (РОП лид − квал лид)', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM }, difference),
     ],
   })
@@ -1138,15 +1139,15 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     const reachLabel = baseTeam ? 'Дозвон сони' : 'Квал лид сони'
     const reachHint = baseTeam
       ? 'Jamoa xodimlarining ulangan kiruvchi va chiquvchi qoʻngʻiroqlari. Qoʻngʻiroqlar Bitrix24 dan taxminan har 3 soatda olinadi — bugungi ustun va undan hisoblangan foizlar kechikishi mumkin.'
-      : 'Bitrix24: «Лид таркатилган сана» shu kun va «РОП (Первичка)» shu jamoa rahbari boʻlgan bitimlar (hamma voronkalar) — shu sanadan oldingi 30 kun ichida yaratilganlari; qayta tarqatilgan eski bitim sanalmaydi.'
+      : 'Bitrix24: Регистрация voronkasida shu kuni «Сделка успешна» ga oʻtgan va «Сотувчи (Первичка)» shu jamoa sotuvchisi boʻlgan bitimlar. Jamoa — sotuvchining portaldagi asosiy boʻlimi.'
     /*
       A RATE OVER TOO FEW LEADS IS NOT A RATE (2026-10-02; no definition
-      changes). When «РОП (Первичка)» names a lead team's ROP on FEWER leads
-      than the team sold FAKT 1 orders over the rates' days, its conversions
-      and plan % divide by leads the portal never gave it: Маржона's September
-      read 5.300 % and 16.660 % over 1 lead and 53 orders — the leads her team
-      works carry the desk head's name. Those cells say «—», and the hint says
-      why; the counts beside them stay.
+      changes). When a lead team reads FEWER leads than it sold FAKT 1 orders
+      over the rates' days, its conversions and plan % divide by leads the
+      portal never gave it: Маржона's September read 5.300 % and 16.660 % over
+      1 lead and 53 orders — «РОП (Первичка)», the field of the day, carried
+      the desk head's name. Those cells say «—», and the hint says why; the
+      counts beside them stay.
     */
     const trusted = days.findIndex((d) => d >= reachFrom)
     // The rates' own days: from `reachFrom` (none in a month before it) to today.
@@ -1159,7 +1160,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       tooFewLeads
         ? {
             ...dashed(row),
-            hint: `Bitrix24 da «РОП (Первичка)» bu jamoa ROPini yetarli lidda koʻrsatmagan: ${rateFrom > 0 ? `${dayText(rateFrom)} dan beri` : 'bu oy'} ${grouped(leadsSeen)} ta lid, ${grouped(ordersSeen)} ta ФАКТ 1 buyurtma — foiz hisoblanmaydi.`,
+            hint: `Bitrix24 da «Сотувчи (Первичка)» bu jamoa sotuvchilarini yetarli lidda koʻrsatmagan: ${rateFrom > 0 ? `${dayText(rateFrom)} dan beri` : 'bu oy'} ${grouped(leadsSeen)} ta lid, ${grouped(ordersSeen)} ta ФАКТ 1 buyurtma — foiz hisoblanmaydi.`,
           }
         : row
     /* The team's block on the sheet: its «Продажа … факт1» row; the rest follow the 13-row template (spec §2.6). */

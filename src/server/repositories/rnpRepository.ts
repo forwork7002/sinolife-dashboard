@@ -7,14 +7,10 @@
  * WHAT EACH ROW OF THE SHEET IS, measured against obey.bitrix24.kz on
  * 2026-09-28 (the client's written spec, `sentyabr_rnp_bitrix_spec.md`):
  *
- *   ROP olgan lid — a deal in Первичный отдел / Тасдиклаш / Доставка whose
- *     «Лид таркатилган сана» is the day, credited to the ROP in
- *     «РОП (Первичка)». One lead is one deal: the deal keeps its id as it
- *     moves on (21.09: 338 deals, two sharing a contact), so deals are
- *     counted, not folded. The portal's figures for 21.09 — Sevinch 38,
- *     Saidaziz 41, Maftuna 27 — are the sheet's. Filled on every deal only
- *     from 16.09; the screen says so. Only a FRESH hand-out counts (since
- *     2026-10-02): see `leadDaysSql`.
+ *   ROP kval lidi — a Регистрация deal at «Сделка успешна», on the day it
+ *     closed, credited to the ROP team of its «Сотувчи (Первичка)» (the
+ *     client's rule of 2026-10-08): see `leadDaysSql`. It was the deals
+ *     handed out by «Лид таркатилган сана» + «РОП (Первичка)» until then.
  *   Регистрация — Регистрация (role LEAD) deals by creation day, «Дубликат
  *     (лид)» apart (the red «Дубликат» is a lead); the kval lead is the registrar's «Сделка успешна» (WON),
  *     by the day it was closed. «ИИ квал» is NOT a kval: the AI hands the
@@ -34,11 +30,10 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
-import { RegistrationRepository } from './registrationRepository'
 import { dealFormTitleSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
 
-/** Deals handed to one ROP on one day. `rop` null: not handed to a ROP team. */
+/** Kval leads given to one ROP team's sellers on one day. `rop` null: no seller, or one outside the ROP teams. */
 export interface RnpLeadDayRow {
   readonly day: string
   readonly rop: string | null
@@ -161,46 +156,50 @@ export class RnpRepository {
       RnpRepository.leadDaysSql(),
       from,
       to,
+      this.tz,
     )
     return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads) }))
   }
 
   /**
-   * THE ROP COMES FROM `RegistrationRepository.leadRopSql`, the one rule
-   * «Lidlar» reads too: «ROP KVAL LID» first (the portal's stamp, from
-   * 2026-10-07), then the team «РОП (Первичка)» heads or sits in, then — when
-   * that field holds user 10 or nothing on a deal already out of Регистрация —
-   * the team of the seller it sits with. A person heading TWO ROP units counts
-   * in the one they sit in (2026-10-02). Anything else is «Taqsimlanmagan».
+   * A ROP'S KVAL LEADS ARE COUNTED BY THE SELLER (the client, 2026-10-08:
+   * «Регистрация → Сделка успешна → Сотувчи (Первичка) … sotuvchiga qarab»).
+   * The deals are the registrars' kval — Регистрация at «Сделка успешна», by
+   * the Tashkent day it closed, the very rows `registrarKvalDaysSql` counts,
+   * so the teams and «Taqsimlanmagan» add up to «Жами квал сони» — and each
+   * goes to the ROP team its «Сотувчи (Первичка)» sits in.
    *
-   * EVERY PIPELINE, as the client counts it (2026-09-30): Bitrix24's deal list
-   * filtered by «Лид таркатилган сана» and «РОП (Первичка)», nothing else — a
-   * handed-out lead now sitting in «База» or back in «Регистрация» still went
-   * to that ROP.
+   * THE SELLER'S PRIMARY UNIT, not a list of badges: the client named each
+   * ROP's sellers by floor number (Sevinch 107–119 + 199, Gulzora 120–133,
+   * Asliddin 148–154 + 207–208, Aziz 155–169 …), and every one of those 113
+   * people sat in that ROP's unit on the portal (measured 2026-10-08; 229
+   * names nobody). The unit also covers the teams the list left out — Lola
+   * 134–147 and Marjona 197 took 25 and 17 kval on 07.10 — and follows a
+   * seller who is moved or hired. Primary, never `department_member`: one
+   * unit credits a person, as everywhere else.
    *
-   * ONLY A FRESH HAND-OUT (the client's decision of 2026-10-02): a deal
-   * created at most 30 days before «Лид таркатилган сана». On 26.09 the
-   * portal re-stamped the date on 1 704 old Первичный отдел deals (June
-   * 2025–January 2026, 715 of them to Azizbek), and every one counted as a
-   * lead handed out that day: Azizbek read 752 where the client's sheet
-   * typed 37 — the fresh ones, exactly, as on 17.09 (47). The bound is
-   * `createdAtSource`, not «Лид тушган сана», which is empty before 14.09.
-   * Its five hours of zone at the 30-day edge are immaterial: a re-stamped
-   * deal is months past it. «Lidlar» counts its hand-outs without this bound
-   * (`RegistrationRepository.handedOutSql`), so the two can differ on a day
-   * like 26.09.
+   * NULL — «Taqsimlanmagan»: no seller on the deal (the field is filled from
+   * 16.09.2026; a row the sync has not re-read since 2026-10-08 — see the
+   * worker's `KVAL_SELLER_REREAD`), or a seller outside the ROP units (the
+   * Zextra desk's registrars took 4 on 07.10).
+   *
+   * It was «Лид таркатилган сана» + «РОП (Первичка)» over every pipeline
+   * (`RegistrationRepository.leadRopSql`, fresh hand-outs only) until
+   * 2026-10-08; «Lidlar» and «ROP otchet» still count that way, so their
+   * leads differ from this row by definition.
    */
   static leadDaysSql(): string {
     return `
-      SELECT
-        /* ::text — a bare DATE is built at LOCAL midnight by node-postgres. */
-        d."leadDistributedOn"::text AS day,
-        ${RegistrationRepository.leadRopSql()} AS rop,
-        count(*)::bigint AS leads
+      SELECT (d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
+             ${InsightsRepository.ropNameSql('dep."name"')} AS rop,
+             count(*)::bigint AS leads
       FROM "deal" d
-      ${RegistrationRepository.handedOutJoinsSql()}
-      WHERE d."leadDistributedOn" BETWEEN $1::date AND $2::date
-        AND d."createdAtSource" >= d."leadDistributedOn" - interval '30 days'
+      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+      LEFT JOIN "employee" s ON s."id" = d."primarySellerEmployeeId"
+      LEFT JOIN "department" dep ON dep."id" = s."departmentId" AND dep."isActive"
+      WHERE d."status" = 'WON'
+        AND d."closedAt" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
+        AND d."closedAt" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
       GROUP BY 1, 2`
   }
 
