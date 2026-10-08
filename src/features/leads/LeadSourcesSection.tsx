@@ -182,6 +182,7 @@ const TILE_LABEL: Readonly<Record<LeadTile, string>> = {
   telegram: 'Телеграм',
   aiSmm: 'Сммщик ии',
   web: 'Веб сайт',
+  sarafan: 'Сарафан',
   outbound: 'Исход',
   other: 'Boshqa',
 }
@@ -201,6 +202,7 @@ const TILES_IN_TOTAL = TILES.filter((t) => !(TILES_APART as readonly LeadTile[])
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
   aiSmm: '«ИИ квал сана» shu davrda · faqat Регистрация',
+  sarafan: 'faqat Ecommerce voronkasi · «Jami»ga kirmaydi',
   outbound: 'operatorning chiquvchi qoʻngʻirogʻi',
   other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, Сарафан маркетинг, manbasiz',
 }
@@ -211,12 +213,14 @@ const TILE_NOTE: Partial<Record<LeadTile, string>> = {
  */
 const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
   aiSmm: 'Tanlangan davr boʻyicha sanaladi. Portal «ИИ квал сана» maydonini 14.09.2026 dan toʻldiradi — undan oldingi kunlarda 0.',
+  sarafan:
+    'Ecommerce voronkasidagi «Сарафан маркетинг» manbali bitimlar: shu davrda ochilgani, kval — shu davrda «Доставлен» boʻlgani. Регистрация lidi emas, shuning uchun «Jami»ga kirmaydi; Регистрацияdagi «Сарафан маркетинг» lidlari «Boshqa»da.',
 }
 
 /**
- * Under one brand, for what carries none — the inbound calls: a dash and
- * this, never the company's figure and never a zero that reads as «nothing
- * came in». They are «Brendsiz»'s figures.
+ * Under one brand, for what carries none — «Сарафан» (Ecommerce deals) and
+ * the inbound calls: a dash and this, never the company's figure and never a
+ * zero that reads as «nothing came in». They are «Brendsiz»'s figures.
  */
 const unsplitNote = (what: string, prefix?: string) => (
   <TipNote tip={`${what} hech qaysi brendga bogʻlanmaydi — faqat «Hammasi»da koʻrinadi.`}>
@@ -344,6 +348,19 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
   const byTile = new Map<LeadTile, ChannelTileDto>(data?.tiles.rows.map((r) => [r.tile, r]))
   const total = data?.tiles.total
   const channelTile = (tile: LeadTile, extra?: ReactNode) => {
+    if (tile === 'sarafan' && data !== undefined && isOneBrand(data.brand)) {
+      return (
+        <StatTile
+          key={tile}
+          compact
+          status={status}
+          label={TILE_LABEL[tile]}
+          value={null}
+          unit="count"
+          context={unsplitNote('Ecommerce voronkasidagi «Сарафан» bitimlari')}
+        />
+      )
+    }
     const o = byTile.get(tile)
     const text = TILE_NOTE[tile]
     const dubl = dublNote(o)
@@ -374,9 +391,8 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
       <h2 id="lead-channel-tiles" className="eyebrow">
         Boshqa kanallar lidlari
       </h2>
-      {/* Six tiles on one row from xl, compact like the headline row above
-          (seven until 2026-10-08, when the client dropped «Сарафан»). */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+      {/* Seven tiles on one row from xl, compact like the headline row above. */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         {/* The total leads the row (the client's order, 2026-10-01) and wears a
             ring in the page's accent, so the eye finds the sum first. */}
         <div
@@ -421,7 +437,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
       </h3>
       {/* The row above's columns, two wide, so the card has room for its picker. */}
       <div
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7"
         role="group"
         aria-labelledby="lead-channel-apart"
         data-testid="lead-channel-apart"

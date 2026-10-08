@@ -7,10 +7,9 @@ import type { ChannelTileDto, LeadSourcesOverviewDto, LeadTile } from '@/feature
 
 /*
   «Boshqa kanallar lidlari» — the client's list of 2026-10-01: Ген лид,
-  Входящий, Телеграм, Сммщик ии, Веб сайт, and since 2026-10-02 «Исход» and
-  «Boshqa» — those two on a row of their own, outside «Jami». «Сарафан» had a
-  tile too until 2026-10-08. Kval as «Квал лидлар сони» counts it: by the day
-  it was WON, over new leads.
+  Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан, and since 2026-10-02
+  «Исход» and «Boshqa» — those two on a row of their own, outside «Jami». Kval as «Квал лидлар сони» counts
+  it: by the day it was WON, over new leads.
 
   Reduced motion, so `AnimatedNumber` prints the final figure rather than the
   frame the assertion happened to catch (the stub faktQueueBand.test.tsx uses).
@@ -42,6 +41,7 @@ const TILES: Record<LeadTile, ChannelTileDto> = {
   telegram: cells(27, 13),
   aiSmm: cells(445, 150),
   web: cells(1, 1),
+  sarafan: cells(0, 0),
   outbound: cells(2410, 0),
   other: cells(120, 10),
 }
@@ -83,9 +83,12 @@ describe('ChannelTiles', () => {
     expect(within(tile('Веб сайт')).getByText('1')).toBeTruthy()
   })
 
-  it('under one brand, says the inbound calls are not split instead of printing a figure', () => {
+  it('under one brand, says «Сарафан» and the inbound calls are not split instead of printing a figure', () => {
     render(<ChannelTiles data={{ ...data, brand: 'Zextra', inboundCalls: null } as LeadSourcesOverviewDto} status="ready" />)
 
+    const sarafan = tile('Сарафан')
+    expect(within(sarafan).getByText('Brend boʻyicha ajratilmaydi')).toBeTruthy()
+    expect(within(sarafan).queryByText('faqat Ecommerce voronkasi · «Jami»ga kirmaydi')).toBeNull()
     expect(within(tile('Входящий')).getByText('📞 qoʻngʻiroqlar · Brend boʻyicha ajratilmaydi')).toBeTruthy()
     // The brand's own channels still print their figures.
     expect(within(tile('Входящий')).getByText('473')).toBeTruthy()
@@ -107,16 +110,10 @@ describe('ChannelTiles', () => {
   })
 
   it('shows a quiet channel at 0, with a dash for its rate', () => {
-    render(<ChannelTiles data={{ ...data, tiles: { ...data.tiles, rows: data.tiles.rows.map((r) => (r.tile === 'web' ? { ...r, ...cells(0, 0) } : r)) } }} status="ready" />)
-
-    expect(within(tile('Веб сайт')).getByText('0')).toBeTruthy()
-    expect(within(tile('Веб сайт')).getByText('0 kval · —')).toBeTruthy()
-  })
-
-  it('has no «Сарафан» tile since 2026-10-08 — a Bitrix deal on that source is not wanted on the row', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
-    expect(screen.queryByText('Сарафан', { selector: 'p' })).toBeNull()
+    expect(within(tile('Сарафан')).getByText('0')).toBeTruthy()
+    expect(within(tile('Сарафан')).getByText('0 kval · —')).toBeTruthy()
   })
 
   it('prints the server’s Jami first, set apart as the total', () => {
@@ -128,7 +125,7 @@ describe('ChannelTiles', () => {
     expect(within(total).getByText('3,224')).toBeTruthy()
     // Over the new leads, as «Квал %»: 964 ÷ (3 224 − 40).
     expect(within(total).getByText('964 kval · 30.3%')).toBeTruthy()
-    expect(total.parentElement!.children).toHaveLength(6)
+    expect(total.parentElement!.children).toHaveLength(7)
   })
 
   it('says, quietly, what takes «Jami» to «Жами лидлар» (2026-10-02)', async () => {
@@ -189,10 +186,10 @@ describe('ChannelTiles', () => {
 
   it('says loading and failure on every tile rather than printing zeros', () => {
     const { unmount } = render(<ChannelTiles data={undefined} status="loading" />)
-    expect(screen.getAllByRole('status')).toHaveLength(7)
+    expect(screen.getAllByRole('status')).toHaveLength(8)
     unmount()
 
     render(<ChannelTiles data={undefined} status="error" />)
-    expect(screen.getAllByText('Olinmadi')).toHaveLength(7)
+    expect(screen.getAllByText('Olinmadi')).toHaveLength(8)
   })
 })

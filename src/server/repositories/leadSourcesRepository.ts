@@ -56,6 +56,14 @@ export interface AiQualifiedStageRow {
   readonly leads: number
 }
 
+/** The «Сарафан» tile's deals: one pipeline, its word-of-mouth sources. */
+export interface PipelineSourceCount {
+  /** Created in the window. */
+  readonly leads: number
+  /** WON in the window, by `closedAt`. */
+  readonly qualified: number
+}
+
 /** «ИИ обработка» deals — one per Instagram conversation — per day per page. */
 export interface TriageDayRow {
   readonly day: string
@@ -199,6 +207,32 @@ export class LeadSourcesRepository {
       aiQualified: r.ai_qualified,
       qualified: Number(r.qualified),
     }))
+  }
+
+  /**
+   * Deals of one pipeline on the given sources: created in the window, and
+   * WON in it by `closedAt` — the «Сарафан» tile, which the client asked on
+   * 2026-10-05 to count in Ecommerce alone. The window bounds both arms, so
+   * the scan rides the `createdAtSource` and `closedAt` predicates together.
+   */
+  async pipelineSourceCount(period: Period, pipelineExternalId: string, sourceIds: readonly string[]): Promise<PipelineSourceCount> {
+    const [row] = await this.prisma.$queryRawUnsafe<{ leads: bigint; qualified: bigint }[]>(
+      `
+      SELECT
+        count(*) FILTER (WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2)::bigint AS leads,
+        count(*) FILTER (WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2)::bigint AS qualified
+      FROM "deal" d
+      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."externalId" = $3
+      JOIN "sales_source" s ON s."id" = d."sourceId" AND s."externalId" = ANY($4::text[])
+      WHERE (d."createdAtSource" >= $1 AND d."createdAtSource" < $2)
+         OR (d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2)
+      `,
+      period.start,
+      period.end,
+      pipelineExternalId,
+      [...sourceIds],
+    )
+    return { leads: Number(row?.leads ?? 0), qualified: Number(row?.qualified ?? 0) }
   }
 
   /**

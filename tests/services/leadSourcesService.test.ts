@@ -64,6 +64,8 @@ const triage = (over: Partial<TriageDayRow>): TriageDayRow => ({
   ...over,
 })
 
+const NO_SARAFAN = { leads: 0, qualified: 0 }
+
 describe('leadSourcesOverview', () => {
   const data = leadSourcesOverview({
     window: WINDOW,
@@ -131,6 +133,8 @@ describe('leadSourcesOverview', () => {
       { registration: false, sourceId: null, formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', leads: 2 },
       { registration: false, sourceId: null, formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
     ],
+    // «Сарафан маркетинг» in Ecommerce: 3 created, 2 delivered (the client, 2026-10-05).
+    sarafan: { leads: 3, qualified: 2 },
   })
 
   it('reads the six headline figures', () => {
@@ -160,6 +164,7 @@ describe('leadSourcesOverview', () => {
       fakt1: [],
       qualified: [],
       aiQualified: [],
+      sarafan: NO_SARAFAN,
     })
     expect(d.funnel).toMatchObject({ total: 100, duplicates: 16, fresh: 84 })
     // The channel tiles read the same Дубль, so their Jami stays the headline's.
@@ -167,12 +172,12 @@ describe('leadSourcesOverview', () => {
   })
 
   it('prices nothing when nobody was qualified or nothing arrived', () => {
-    const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [] })
+    const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [], sarafan: NO_SARAFAN })
     expect(empty.funnel).toMatchObject({ total: 0, fresh: 0, qualified: 0, qualifiedPercent: null, costPerQualifiedUsd: null })
   })
 
   it('leaves the kval price unknown, not free, when no Meta spend was read', () => {
-    const noMeta = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [reg({})], triage: [], campaigns: [], fakt1: [], qualified: [{ sourceId: 'REPEAT_SALE', formTitle: null, productLine: null, aiQualified: false, qualified: 5 }], aiQualified: [] })
+    const noMeta = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [reg({})], triage: [], campaigns: [], fakt1: [], qualified: [{ sourceId: 'REPEAT_SALE', formTitle: null, productLine: null, aiQualified: false, qualified: 5 }], aiQualified: [], sarafan: NO_SARAFAN })
     expect(noMeta.funnel.costPerQualifiedUsd).toBeNull()
   })
 
@@ -207,9 +212,9 @@ describe('leadSourcesOverview', () => {
     expect(data.sources.find((s) => s.key === 'source|UC_8NZNYM')!.channel).toBe('telegram')
   })
 
-  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, and sums all but those two', () => {
+  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, and sums all but those two and «Сарафан»', () => {
     const tile = (t: string) => data.tiles.rows.find((r) => r.tile === t)!
-    expect(data.tiles.rows.map((r) => r.tile)).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'outbound', 'other'])
+    expect(data.tiles.rows.map((r) => r.tile)).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan', 'outbound', 'other'])
     // Umar's form (5) and the hand-typed «Ген лид» (2): «Ген лид» whole; kval by the day it was WON.
     expect(tile('generated')).toMatchObject({ leads: 7, fresh: 7, qualified: 3, qualifiedPercent: (3 / 7) * 100 })
     expect(tile('inbound')).toMatchObject({ leads: 3, qualified: 0, qualifiedPercent: 0 })
@@ -218,19 +223,21 @@ describe('leadSourcesOverview', () => {
     expect(tile('aiSmm')).toMatchObject({ leads: 6, fresh: 5, qualified: 1, qualifiedPercent: 20 })
     expect(data.tiles.aiElsewhere).toBe(3)
     expect(tile('web')).toMatchObject({ leads: 1, qualified: 0 })
+    // Ecommerce's «Сарафан маркетинг», not Регистрация's.
+    expect(tile('sarafan')).toMatchObject({ leads: 3, fresh: 3, qualified: 2 })
     expect(tile('outbound')).toMatchObject({ leads: 7, qualified: 1 })
     // The page's unqualified three (one a duplicate), collagen.sinolife, the Регистрация «Сарафан маркетинг» lead,
     // and the kval with no source.
     expect(tile('other')).toMatchObject({ leads: 5, fresh: 4, qualified: 1 })
     // «Jami» is the headline less «Исход» (7 · 1 kval) and «Boshqa» (5, one a duplicate · 1 kval),
-    // with «Сммщик ии» on its own date: 6 (one «Дубликат (лид)») where the window held 1.
+    // with «Сммщик ии» on its own date: 6 (one «Дубликат (лид)») where the window held 1. «Сарафан» is no Регистрация lead.
     expect(data.tiles.total).toEqual({
       leads: data.funnel.total - 12 - 1 + 6,
       fresh: data.funnel.fresh - 11 - 1 + 5,
       qualified: data.funnel.qualified - 2,
       qualifiedPercent: ((data.funnel.qualified - 2) / (data.funnel.fresh - 11 - 1 + 5)) * 100,
     })
-    const inTotal = data.tiles.rows.filter((r) => !['outbound', 'other'].includes(r.tile))
+    const inTotal = data.tiles.rows.filter((r) => !['outbound', 'other', 'sarafan'].includes(r.tile))
     expect(data.tiles.total.leads).toBe(inTotal.reduce((n, r) => n + r.leads, 0))
   })
 
@@ -242,7 +249,7 @@ describe('leadSourcesOverview', () => {
   })
 
   it('keeps the identity on an empty window', () => {
-    const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [] })
+    const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [], sarafan: NO_SARAFAN })
     expect(empty.tiles.toHeadline).toEqual({ outbound: 0, other: 0, ai: 0 })
     expect(empty.tiles.aiElsewhere).toBe(0)
     expect(empty.tiles.total.leads).toBe(empty.funnel.total)
@@ -374,6 +381,7 @@ describe('leadSourcesOverview', () => {
       fakt1: [],
       qualified: [],
       aiQualified: [],
+      sarafan: NO_SARAFAN,
     }).dm
     expect(dm.pages.some((p) => p.key === '46|NEXTBOT')).toBe(false)
     const zs = dm.pages.find((p) => p.key === 'UC_LBSZDU')!
@@ -414,6 +422,7 @@ describe('leadSourcesOverview — a targetolog\'s other expenses', () => {
     fakt1: [],
     qualified: [],
     aiQualified: [],
+    sarafan: NO_SARAFAN,
     importedAt: null,
   }).forms
 
@@ -480,6 +489,7 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
       { registration: true, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 1 },
       { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 2 },
     ],
+    sarafan: { leads: 3, qualified: 2 },
     inboundCalls: 9,
   }
   const all = leadSourcesOverview(input)
@@ -508,7 +518,9 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     expect(zextra.tiles.rows.find((r) => r.tile === 'aiSmm')!.leads).toBe(1)
   })
 
-  it('cannot split the inbound calls, and does not pretend to', () => {
+  it('cannot split «Сарафан» or the inbound calls, and does not pretend to', () => {
+    expect(all.tiles.rows.find((r) => r.tile === 'sarafan')!.leads).toBe(3)
+    expect(zextra.tiles.rows.find((r) => r.tile === 'sarafan')!.leads).toBe(0)
     expect(all.inboundCalls).toBe(9)
     expect(zextra.inboundCalls).toBeNull()
   })
@@ -526,7 +538,8 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     expect(collagen.funnel.total + zextra.funnel.total + none.funnel.total).toBe(all.funnel.total)
     expect(collagen.funnel.qualified + zextra.funnel.qualified + none.funnel.qualified).toBe(all.funnel.qualified)
     expect(collagen.funnel.spendUsd + zextra.funnel.spendUsd + none.funnel.spendUsd).toBe(all.funnel.spendUsd)
-    // The inbound calls carry no brand: they are «Brendsiz»'s, whole.
+    // «Сарафан» and the inbound calls carry no brand: they are «Brendsiz»'s, whole.
+    expect(none.tiles.rows.find((r) => r.tile === 'sarafan')!.leads).toBe(3)
     expect(none.inboundCalls).toBe(9)
   })
 })
@@ -557,6 +570,7 @@ describe('LeadSourcesService.targetologForms', () => {
           triageDays: slow ? never('triageDays') : async () => [],
           qualifiedSources: slow ? never('qualifiedSources') : async () => [],
           aiQualifiedStages: slow ? never('aiQualifiedStages') : async () => [],
+          pipelineSourceCount: slow ? never('pipelineSourceCount') : async () => NO_SARAFAN,
           inboundCallCount: slow ? never('inboundCallCount') : async () => null,
         } as never,
         { campaignDays: async () => campaigns, campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -592,6 +606,7 @@ describe('LeadSourcesService.overview — «Факт1 мижоз» never takes L
         triageDays: async () => [],
         qualifiedSources: async () => [],
         aiQualifiedStages: async () => [],
+        pipelineSourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -638,6 +653,7 @@ describe('LeadSourcesService.overview — a slow «Факт1 мижоз»', () =
         triageDays: async () => [],
         qualifiedSources: async () => [],
         aiQualifiedStages: async () => [],
+        pipelineSourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -690,6 +706,7 @@ describe('LeadSourcesService.overview — the leads and their kval from one rebu
           { sourceId: 'REPEAT_SALE', formTitle: UMAR_FORM, productLine: null, aiQualified: false, qualified: ++kvals },
         ],
         aiQualifiedStages: async () => [],
+        pipelineSourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -733,6 +750,7 @@ describe('LeadSourcesService.overview — a reader\'s cold miss (2026-10-06 revi
         triageDays: read('triageDays', []),
         qualifiedSources: read('qualifiedSources', []),
         aiQualifiedStages: read('aiQualifiedStages', []),
+        pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
         inboundCallCount: read('inboundCallCount', null),
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -741,11 +759,12 @@ describe('LeadSourcesService.overview — a reader\'s cold miss (2026-10-06 revi
 
     const answer = service.overview(period, 'Asia/Tashkent')
     await new Promise((resolve) => setTimeout(resolve, 0))
-    // Nothing has answered and every read is out — the four scans with them, where the warmer's pace shows two.
+    // Nothing has answered and every read is out — the five scans with them, where the warmer's pace shows two.
     expect([...inFlight].sort()).toEqual([
       'aiQualifiedStages',
       'inboundCallCount',
       'leadFakt1Clients',
+      'pipelineSourceCount',
       'qualifiedSources',
       'registrationDays',
       'triageDays',
@@ -769,6 +788,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
         triageDays: async () => [],
         qualifiedSources: async () => [],
         aiQualifiedStages: async () => [],
+        pipelineSourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -808,6 +828,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           triageDays: read([]),
           qualifiedSources: read([]),
           aiQualifiedStages: read([]),
+          pipelineSourceCount: read(NO_SARAFAN),
           inboundCallCount: read(null),
         } as never,
         { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -816,8 +837,8 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
       const tick = async () => {
         let done = false
         const warming = service.warm(new Date(), 'Asia/Tashkent').then(() => (done = true))
-        // Each window: registration 1 s, the four scans two at a time 2 s; then each window's FAKT 1, 1 s. 8 s in all.
-        await vi.advanceTimersByTimeAsync(7_999)
+        // Each window: registration 1 s, the five scans two at a time 3 s; then each window's FAKT 1, 1 s. 10 s in all.
+        await vi.advanceTimersByTimeAsync(9_999)
         expect(done).toBe(false)
         await vi.advanceTimersByTimeAsync(1)
         await warming
@@ -825,11 +846,11 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
       }
 
       await tick() // cold: every memo's first build
-      expect(reads).toBe(12)
+      expect(reads).toBe(14)
       // Three minutes on: every memo past its TTL and still showable — `get` would hand it out and rebuild behind.
       vi.advanceTimersByTime(180_000)
       await tick()
-      expect(reads).toBe(24)
+      expect(reads).toBe(28)
       expect(peak).toBe(2)
     })
   })
@@ -849,6 +870,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           triageDays: read('triageDays', []),
           qualifiedSources: read('qualifiedSources', []),
           aiQualifiedStages: read('aiQualifiedStages', []),
+          pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
           inboundCallCount: read('inboundCallCount', null),
         } as never,
         { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -865,6 +887,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
         'aiQualifiedStages',
         'inboundCallCount',
         'leadFakt1Clients',
+        'pipelineSourceCount',
         'qualifiedSources',
         'registrationDays',
         'triageDays',
@@ -896,13 +919,14 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           triageDays: read('triageDays', []),
           qualifiedSources: read('qualifiedSources', []),
           aiQualifiedStages: read('aiQualifiedStages', []),
+          pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
           inboundCallCount: read('inboundCallCount', null),
         } as never,
         { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
         { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
       )
     await service(warmers.LeadSourcesService).warm(now, 'Asia/Tashkent')
-    expect(reads).toHaveLength(12)
+    expect(reads).toHaveLength(14)
 
     // A second instance of the module, as the route handlers' bundle holds one.
     vi.resetModules()
