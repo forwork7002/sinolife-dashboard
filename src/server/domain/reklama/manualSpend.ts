@@ -31,23 +31,45 @@ export interface ManualSpendRow {
   readonly amountCents: number
 }
 
-/** One channel's typed dollars for one product, a row per day of the window. */
+/** The channel's Регистрация leads of one day: how many arrived, how many are kval. */
+export interface ChannelLeadsDay {
+  readonly leads: number
+  readonly success: number
+}
+
+/** The channel's leads per product per day, as the service folds them from Регистрация. */
+export type ChannelLeads = ReadonlyMap<TargetProduct, ReadonlyMap<string, ChannelLeadsDay>>
+
+/**
+ * One channel's typed dollars for one product, a row per day of the window —
+ * with the sheet's other columns: the leads the portal filed under the
+ * channel («Bitrix лид»), and their kval, from which «лид $», «%» and
+ * «кв лид $» are derived on the card as the targetologs' are.
+ */
 export interface ManualSpendDto {
   readonly key: string
   readonly channel: ManualSpendChannel
   readonly name: string
   readonly product: TargetProduct
   readonly totalUsd: number
+  readonly leads: number
+  readonly success: number
   /** `spendUsd` is null on a day nobody typed — the sheet's empty cell, not a zero. */
-  readonly days: readonly { readonly date: string; readonly spendUsd: number | null }[]
+  readonly days: readonly { readonly date: string; readonly spendUsd: number | null; readonly leads: number; readonly success: number }[]
 }
 
 /**
  * The typed rows onto the window's days: every channel × project the brand
- * switch admits, in the products' order, each with its total. Under
+ * switch admits, in the products' order, each with its total and the
+ * portal's leads of that channel (`leads`, keyed by channel). Under
  * «Brendsiz» nothing is typed by hand, so the list is empty.
  */
-export function manualSpendBlocks(days: readonly string[], rows: readonly ManualSpendRow[], brand: BrandFilter): ManualSpendDto[] {
+export function manualSpendBlocks(
+  days: readonly string[],
+  rows: readonly ManualSpendRow[],
+  brand: BrandFilter,
+  leads: Readonly<Partial<Record<ManualSpendChannel, ChannelLeads>>> = {},
+): ManualSpendDto[] {
   const at = new Map(days.map((d, i) => [d, i] as const))
   const out: ManualSpendDto[] = []
   for (const product of MANUAL_SPEND_PROJECTS) {
@@ -61,13 +83,20 @@ export function manualSpendBlocks(days: readonly string[], rows: readonly Manual
         cells[i] = (cells[i] ?? 0) + r.amountCents
         total += r.amountCents
       }
+      const byDay = leads[channel]?.get(product)
+      const dayRows = days.map((date, i) => {
+        const l = byDay?.get(date)
+        return { date, spendUsd: cells[i] === null ? null : cells[i]! / 100, leads: l?.leads ?? 0, success: l?.success ?? 0 }
+      })
       out.push({
         key: `${product}|${channel}`,
         channel,
         name: MANUAL_SPEND_NAMES[channel],
         product,
         totalUsd: total / 100,
-        days: days.map((date, i) => ({ date, spendUsd: cells[i] === null ? null : cells[i]! / 100 })),
+        leads: dayRows.reduce((n, d) => n + d.leads, 0),
+        success: dayRows.reduce((n, d) => n + d.success, 0),
+        days: dayRows,
       })
     }
   }

@@ -163,7 +163,7 @@ export function TargetologDaySection({
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Targetologlar · kunlik"
-        hint={`Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. «Telegram» kartasi — Telegram Ads sarfi, qoʻlda kiritiladi (sheetdagi Telegram bloki). Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan.${brand === 'all' ? '' : BRAND_NOTE}`}
+        hint={`Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. «Telegram» kartasi — Telegram Ads sarfi qoʻlda kiritiladi (sheetdagi Telegram bloki), Bitrix лид va кв лид — Bitrix24 ga Telegram manbasidan tushgan lidlar («Проект» yozilmagani Brendsiz, kartaga kirmaydi); bu kartada лид $ va кв лид $ = $ ÷ Bitrix лид / кв лид. Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan.${brand === 'all' ? '' : BRAND_NOTE}`}
       />
       {brand === 'all' && products.length > 1 && (
         <SlicePicker<MetaProduct>

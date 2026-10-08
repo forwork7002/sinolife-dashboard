@@ -53,7 +53,7 @@ import {
   leadTile,
 } from '@/server/domain/leads/leadSources'
 import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
-import { type ManualSpendDto, manualSpendBlocks } from '@/server/domain/reklama/manualSpend'
+import { type ChannelLeads, type ChannelLeadsDay, type ManualSpendDto, manualSpendBlocks } from '@/server/domain/reklama/manualSpend'
 import { type Period, type PeriodPreset, periodLengthInDays, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import { type BrandFilter, type TargetProduct, brandMatches } from '@/server/domain/types'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
@@ -977,6 +977,30 @@ async function atMost<const T extends readonly (() => Promise<unknown>)[]>(width
   return answers as unknown as Answers<T>
 }
 
+/**
+ * Регистрация leads the portal filed under Telegram, per brand per day, with
+ * their kval — the «Bitrix лид» and «кв лид» of the «Telegram» card, narrowed
+ * by the brand switch as `ofBrand` narrows a lead. The Telegram sources name
+ * no brand themselves and carry no form, so the brand is the deal's «Проект»
+ * alone: a Telegram lead with none is «Brendsiz» — on «Lidlar»'s Telegram
+ * tile, on neither card (the cards are a brand's, and the hint says so).
+ */
+export function telegramLeads(registration: readonly RegistrationDayRow[], brand: BrandFilter = 'all'): ChannelLeads {
+  const out = new Map<TargetProduct, Map<string, ChannelLeadsDay>>()
+  if (brand === 'none') return out
+  for (const row of registration) {
+    const form = formNameOf(row.formTitle)
+    if (leadChannel(row.sourceId, form, LEAD_SOURCE_VOCABULARY) !== 'telegram') continue
+    const product = leadBrand(row.sourceId, row.formTitle, row.productLine)
+    if (product === null || !brandMatches(brand, product)) continue
+    const days = mapGet(out, product, () => new Map<string, ChannelLeadsDay>())
+    const was = days.get(row.day) ?? { leads: 0, success: 0 }
+    const success = leadBucket(row.stage, row.status) === 'success' ? row.leads : 0
+    days.set(row.day, { leads: was.leads + row.leads, success: was.success + success })
+  }
+  return out
+}
+
 export class LeadSourcesService {
   constructor(
     private readonly repository: LeadSourcesRepository,
@@ -1072,8 +1096,16 @@ export class LeadSourcesService {
       importedAt,
       brand,
     })
-    // The sheet's «Telegram» block beside the targetologs' cards: typed by hand, no Meta row behind it.
-    return { forms, importedAt: imported, manual: manualSpendBlocks(calendarDays(window.from, window.to), typed, brand) }
+    /*
+      The sheet's «Telegram» block beside the targetologs' cards: the dollars
+      typed by hand (no Meta row behind them), the leads the portal filed
+      under Telegram (`leadChannel` = telegram — the bot, the open line, the
+      brand's own channel), each on the brand its «Проект», source or form
+      names, as «Lidlar» files every lead. Read from the SAME rows the cards
+      above are built from, so the two agree to the lead.
+    */
+    const telegram = telegramLeads(registration, brand)
+    return { forms, importedAt: imported, manual: manualSpendBlocks(calendarDays(window.from, window.to), typed, brand, { telegram }) }
   }
 
   /** Save the hand-typed ad money of «Targetologlar · kunlik» (`POST /reklama/manual-spend`). */

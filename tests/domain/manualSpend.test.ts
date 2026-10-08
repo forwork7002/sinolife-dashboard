@@ -13,9 +13,9 @@ describe('manualSpendBlocks — the sheet\'s «Telegram» block onto the window'
     expect(collagen!.days.map((d) => d.spendUsd)).toEqual([null, null, null])
     expect(zextra).toMatchObject({ key: 'Zextra|telegram', product: 'Zextra', totalUsd: 509.8 })
     expect(zextra!.days).toEqual([
-      { date: '2026-10-05', spendUsd: null },
-      { date: '2026-10-06', spendUsd: 254.9 },
-      { date: '2026-10-07', spendUsd: 254.9 },
+      { date: '2026-10-05', spendUsd: null, leads: 0, success: 0 },
+      { date: '2026-10-06', spendUsd: 254.9, leads: 0, success: 0 },
+      { date: '2026-10-07', spendUsd: 254.9, leads: 0, success: 0 },
     ])
   })
 
@@ -23,6 +23,19 @@ describe('manualSpendBlocks — the sheet\'s «Telegram» block onto the window'
     const [, zextra] = manualSpendBlocks(DAYS, [row({ day: '2026-09-09', amountCents: 39_060 })], 'all')
     expect(zextra!.totalUsd).toBe(0)
     expect(zextra!.days.every((d) => d.spendUsd === null)).toBe(true)
+  })
+
+  it('lays the channel\'s portal leads and kval on their days, and totals them', () => {
+    const leads = new Map([
+      ['Zextra', new Map([
+        ['2026-10-06', { leads: 12, success: 3 }],
+        ['2026-10-07', { leads: 5, success: 0 }],
+      ])],
+    ] as const)
+    const [collagen, zextra] = manualSpendBlocks(DAYS, [row({})], 'all', { telegram: leads })
+    expect(zextra).toMatchObject({ leads: 17, success: 3, totalUsd: 254.9 })
+    expect(zextra!.days.map((d) => [d.leads, d.success])).toEqual([[0, 0], [12, 3], [5, 0]])
+    expect(collagen).toMatchObject({ leads: 0, success: 0 })
   })
 
   it('follows the brand switch: one brand keeps its own block, «Brendsiz» none', () => {

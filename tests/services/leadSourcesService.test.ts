@@ -939,3 +939,62 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
     expect(today.funnel.total).toBe(4)
   })
 })
+
+describe('telegramLeads — the «Telegram» card\'s Bitrix лид / кв лид', () => {
+  it('counts the Регистрация leads the portal filed under Telegram, per brand per day, kval apart', async () => {
+    const { telegramLeads } = await import('@/server/services/leadSourcesService')
+    const rows = [
+      // The Telegram bot, «Проект» Zextra: a kval and an open lead on one day, a kval the next.
+      reg({ day: '2026-09-18', sourceId: 'UC_8NZNYM', source: 'Telegram bot', productLine: 'Zextra', leads: 2 }),
+      reg({ day: '2026-09-18', sourceId: 'UC_8NZNYM', source: 'Telegram bot', productLine: 'Zextra', stage: 'Недозвон', status: 'OPEN', leads: 3 }),
+      reg({ day: '2026-09-19', sourceId: '2|TELEGRAM', source: 'Открытая линия', productLine: 'Zextra', leads: 1 }),
+      // Collagen's own Telegram lead goes on Collagen.
+      reg({ day: '2026-09-18', sourceId: 'UC_Z1OF0D', source: 'Telegram', productLine: 'Collagen', leads: 4 }),
+      // Not Telegram: a form lead and a web lead, whatever their brand.
+      reg({ day: '2026-09-18', formTitle: UMAR_FORM, productLine: 'Zextra', leads: 9 }),
+      reg({ day: '2026-09-18', sourceId: 'WEB', source: 'Веб-сайт', productLine: 'Zextra', leads: 9 }),
+      // A Telegram lead with no «Проект» names no brand: «Brendsiz», on neither card.
+      reg({ day: '2026-09-18', sourceId: 'UC_8NZNYM', source: 'Telegram bot', productLine: null, leads: 7 }),
+    ]
+    const out = telegramLeads(rows)
+    expect([...out.get('Zextra')!.entries()]).toEqual([
+      ['2026-09-18', { leads: 5, success: 2 }],
+      ['2026-09-19', { leads: 1, success: 1 }],
+    ])
+    expect([...out.get('Collagen')!.entries()]).toEqual([['2026-09-18', { leads: 4, success: 4 }]])
+    // The brand switch narrows it as `ofBrand` narrows a lead; «Brendsiz» has no card to fill.
+    expect([...telegramLeads(rows, 'Collagen').keys()]).toEqual(['Collagen'])
+    expect([...telegramLeads(rows, 'Zextra').keys()]).toEqual(['Zextra'])
+    expect(telegramLeads(rows, 'none').size).toBe(0)
+  })
+
+  it('reaches the «Telegram» card through targetologForms, narrowed by the brand switch', async () => {
+    const { LeadSourcesService } = await import('@/server/services/leadSourcesService')
+    const { resolvePeriod } = await import('@/server/domain/period/period')
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-09-18T00:00:00Z'),
+      customEnd: new Date('2026-09-19T00:00:00Z'),
+    })
+    const service = new LeadSourcesService(
+      { registrationDays: async () => [reg({ day: '2026-09-18', sourceId: 'UC_8NZNYM', source: 'Telegram bot', productLine: 'Zextra', leads: 2 })] } as never,
+      {
+        campaignDays: async () => [],
+        campaignsImportedAt: async () => null,
+        manualSpend: async () => [{ day: '2026-09-18', project: 'Zextra', channel: 'telegram', amountCents: 39_060 }],
+      } as never,
+      {} as never,
+    )
+    const all = await service.targetologForms(period, 'Asia/Tashkent')
+    expect(all.manual.map((m) => [m.product, m.totalUsd, m.leads, m.success])).toEqual([
+      ['Collagen', 0, 0, 0],
+      ['Zextra', 390.6, 2, 2],
+    ])
+    expect(all.manual[1]!.days[0]).toEqual({ date: '2026-09-18', spendUsd: 390.6, leads: 2, success: 2 })
+    const zextra = await service.targetologForms(period, 'Asia/Tashkent', 'Zextra')
+    expect(zextra.manual.map((m) => m.product)).toEqual(['Zextra'])
+    const collagen = await service.targetologForms(period, 'Asia/Tashkent', 'Collagen')
+    expect(collagen.manual.map((m) => [m.product, m.leads])).toEqual([['Collagen', 0]])
+    expect((await service.targetologForms(period, 'Asia/Tashkent', 'none')).manual).toEqual([])
+  })
+})

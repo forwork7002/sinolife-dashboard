@@ -80,7 +80,10 @@ export interface ManualSpendDto {
   readonly name: string
   readonly product: TargetProduct
   readonly totalUsd: number
-  readonly days: readonly { readonly date: string; readonly spendUsd: number | null }[]
+  /** Регистрация leads the portal filed under the channel, and their kval — the sheet's «лид» and «кв лид». */
+  readonly leads: number
+  readonly success: number
+  readonly days: readonly { readonly date: string; readonly spendUsd: number | null; readonly leads: number; readonly success: number }[]
 }
 
 /** The body of `POST /reklama/manual-spend`: dollars to the cent; null clears the day. */
