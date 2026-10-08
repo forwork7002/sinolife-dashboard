@@ -2410,7 +2410,7 @@ mixed `100vh` against a shell sized in `100dvh`.
   `syncWorker.ts`); since 2026-10-08 a third reach asks about every deal the
   portal OPENED in the last 2 days, any pipeline, every 30 minutes
   (`population: 'created'` — a test «Сарафан маркетинг» deal made and deleted
-  the same day had stood on «Lidlar» all day); ~320 invocations an hour
+  the same day had stood on «Lidlar» all day); 300–400 invocations an hour
   together. It throws — deleting
   nothing — on a refused or missing command, on a row it did not ask for (an
   ignored ID filter), and when more than `goneLimit` deals look gone at once.

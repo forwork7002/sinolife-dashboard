@@ -222,12 +222,13 @@ const SWEEP_EVERY = Number(process.env.SYNC_SWEEP_EVERY ?? 1440)
  *   wide   the last 62 days (this month and the whole of last), hourly —
  *          ~7 000 ids, ~140 invocations;
  *   new    deals the portal OPENED in the last 2 days, any imported pipeline,
- *          every 30 minutes — ~3 000 ids, ~60 invocations, ≈ 120 an hour.
+ *          every 30 minutes — 3 000–5 000 ids, 60–100 invocations,
+ *          120–200 an hour.
  *          2026-10-08: a test «Сарафан маркетинг» deal made and deleted the
  *          same day stayed on «Lidlar» until the night; it was in no
  *          confirmation stage, so the two reaches above never asked about it.
  *
- * About 320 invocations an hour together, against the ~500 of an ordinary
+ * 300–400 invocations an hour together, against the ~500 of an ordinary
  * hour and the 15 000 ceiling. Minutes; 0 switches a reach off.
  */
 const RECENT_SWEEPS = [
@@ -1482,13 +1483,15 @@ async function main() {
         // Quiet when nothing was deleted: the near reach runs 288 times a day.
         if (r.deleted > 0) {
           console.log(
-            `  ${stamp()} tasdiqlash tozalash (${reach.label}): ${r.checked} bitim tekshirildi,` +
+            `  ${stamp()} ${reach.population === 'created' ? 'yangi bitimlar' : 'tasdiqlash'} tozalash (${reach.label}): ${r.checked} bitim tekshirildi,` +
               ` ${r.deleted} ta portalda oʻchirilgan — bu yerda ham oʻchirildi` +
               `  (${((Date.now() - reachStarted) / 1000).toFixed(1)}s)`,
           )
         }
       } catch (error) {
-        console.warn(`  ${stamp()} tasdiqlash tozalash (${reach.label}) muvaffaqiyatsiz: ${(error as Error).message}`)
+        console.warn(
+          `  ${stamp()} ${reach.population === 'created' ? 'yangi bitimlar' : 'tasdiqlash'} tozalash (${reach.label}) muvaffaqiyatsiz: ${(error as Error).message}`,
+        )
       }
     }
 

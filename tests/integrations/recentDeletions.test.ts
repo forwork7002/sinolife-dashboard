@@ -107,11 +107,11 @@ describe('goneDeals', () => {
 describe('sweepRecentConfirmations — the populations it asks about (2026-10-08)', () => {
   /** A database holding `candidates` for whichever population is asked, recording the SQL and the delete. */
   function db(candidates: string[]) {
-    const queries: string[] = []
+    const queries: { sql: string; args: unknown[] }[] = []
     const deletes: { sql: string; args: unknown[] }[] = []
     const prisma = {
-      $queryRawUnsafe: async (sql: string) => {
-        queries.push(sql)
+      $queryRawUnsafe: async (sql: string, ...args: unknown[]) => {
+        queries.push({ sql, args })
         return candidates.map((externalId) => ({ externalId }))
       },
       $executeRawUnsafe: async (sql: string, ...args: unknown[]) => {
@@ -124,17 +124,21 @@ describe('sweepRecentConfirmations — the populations it asks about (2026-10-08
 
   it('asks the queue\'s confirmation stages by default, as before', async () => {
     const { prisma, queries, deletes } = db(['1', '2', '3'])
-    const r = await sweepRecentConfirmations(prisma, 'BITRIX24', async () => new Set(['1', '3']), new Date('2026-10-06'))
-    expect(queries[0]).toContain('"confirmationSignal" IS NOT NULL')
+    const since = new Date('2026-10-06')
+    const r = await sweepRecentConfirmations(prisma, 'BITRIX24', async () => new Set(['1', '3']), since)
+    expect(queries[0]!.sql).toContain('"confirmationSignal" IS NOT NULL')
+    expect(queries[0]!.args).toEqual(['BITRIX24', since])
     expect(r).toEqual({ checked: 3, deleted: 1 })
     expect(deletes[0]!.args).toEqual(['BITRIX24', ['2']])
   })
 
   it('asks about every deal the portal opened since `since` for the «created» population — no stage needed', async () => {
     const { prisma, queries, deletes } = db(['7', '8'])
-    const r = await sweepRecentConfirmations(prisma, 'BITRIX24', async () => new Set(['7']), new Date('2026-10-06'), 'created')
-    expect(queries[0]).toContain('"createdAtSource" >= $2')
-    expect(queries[0]).not.toContain('deal_stage_history')
+    const since = new Date('2026-10-06')
+    const r = await sweepRecentConfirmations(prisma, 'BITRIX24', async () => new Set(['7']), since, 'created')
+    expect(queries[0]!.sql).toContain('"createdAtSource" >= $2')
+    expect(queries[0]!.sql).not.toContain('deal_stage_history')
+    expect(queries[0]!.args).toEqual(['BITRIX24', since])
     expect(r).toEqual({ checked: 2, deleted: 1 })
     expect(deletes[0]!.args).toEqual(['BITRIX24', ['8']])
   })
