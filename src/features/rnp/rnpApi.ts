@@ -109,7 +109,7 @@ export type RnpLine =
       readonly label: string
       readonly sub: string | null
       readonly tone: RnpLabelTone
-      /** The first line of a team the sheet has no block for: draw `RNP_ADDED_TEAM_NOTE` beside it. */
+      /** The first line of a team the sheet has no block for. */
       readonly added?: true
       /** Its slice on the brand switch; absent = company-wide (not shown under one slice). */
       readonly brand?: RnpLineBrand
@@ -126,7 +126,7 @@ export type RnpLine =
       readonly bold: boolean
       /** The `RnpRowDto.key` that fills it; null = Bitrix24 cannot supply this row. */
       readonly key: string | null
-      /** The first line of a team the sheet has no block for: draw `RNP_ADDED_TEAM_NOTE` beside it. */
+      /** The first line of a team the sheet has no block for. */
       readonly added?: true
       /** Its slice on the brand switch; absent = company-wide (not shown under one slice). */
       readonly brand?: RnpLineBrand
@@ -134,11 +134,7 @@ export type RnpLine =
       readonly brandOnly?: true
     }
 
-/**
- * The chip beside the first line of a team the sheet has no block for. Since
- * 2026-10-02 such a block is drawn on the sheet's own template and its first
- * line carries `added`; an older payload put this text in a heading's `sub`.
- */
+/** The note an older payload put in the heading's `sub` of a team the sheet has no block for; stripped, never drawn. */
 export const RNP_ADDED_TEAM_NOTE = 'sheetda bloki yoʻq'
 
 export interface RnpTeamDto {

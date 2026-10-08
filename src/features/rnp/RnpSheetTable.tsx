@@ -661,13 +661,10 @@ function LabelBody({
   /** The owner chip's colour; plain when null. */
   chipHue?: string | null
 }) {
-  // An added team's block says so on its first line (`added`); an older payload's heading carried the note as its sub.
-  const legacy = line.sub === RNP_ADDED_TEAM_NOTE
-  const added = legacy || line.added === true
-  const sub = legacy ? null : line.sub
+  // An older payload's heading carried the added-team note as its sub; the note is no longer drawn.
+  const sub = line.sub === RNP_ADDED_TEAM_NOTE ? null : line.sub
   const extras = (
     <>
-      {added && <AddedChip />}
       {manual && <ManualChip kind={manual} />}
       {hint && <InfoTip content={hint} label={`${line.label || line.sub || ''} — izoh`} className="-my-0.5" />}
     </>
@@ -769,18 +766,6 @@ function ManualChip({ kind }: { kind: RnpManual['kind'] }) {
       style={{ borderColor: mix('var(--accent)', 45, 'var(--border)'), color: inkOf('var(--accent)') }}
     >
       qoʻlda<span className="sr-only">, {note}</span>
-    </span>
-  )
-}
-
-/** A team the sheet has no block for: added after the sheet's own, and said so on its block's first line. */
-function AddedChip() {
-  return (
-    <span
-      className="inline-flex items-center rounded-[5px] px-1.5 text-[10.5px] leading-[17px] font-semibold tracking-normal whitespace-nowrap normal-case"
-      style={{ background: mix('var(--status-warning)', 16), color: inkOf('var(--status-warning)') }}
-    >
-      {RNP_ADDED_TEAM_NOTE}
     </span>
   )
 }

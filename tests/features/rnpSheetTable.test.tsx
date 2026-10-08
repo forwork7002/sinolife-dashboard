@@ -136,7 +136,7 @@ describe('RnpSheetTable — the sheet, row by row', () => {
       'Кол подпис tg',
       'Лола РОППродажа (первичка) факт1',
       'Сумма факт 1 сум',
-      'Kompaniya РОПsheetda bloki yoʻq',
+      'Kompaniya РОП',
       'Буюртма сони',
     ])
     expect(container.textContent).not.toContain('Лидлар (dashboard)')
@@ -196,10 +196,10 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(screen.getAllByRole('note')).toHaveLength(1)
   })
 
-  it('names a team the sheet lacks with its chip', () => {
+  it('names a team the sheet lacks without a chip', () => {
     const { container } = draw()
     const added = rowNamed(container, 'Kompaniya РОП')
-    expect(within(added).getByText('sheetda bloki yoʻq')).toBeTruthy()
+    expect(within(added).queryByText('sheetda bloki yoʻq')).toBeNull()
     // Its figures still print: nothing a team sold is dropped.
     const orders = rowNamed(container, 'Буюртма сони')
     expect([...orders.querySelectorAll('td')].map((td) => td.textContent)).toEqual(['—', '7', '—', '—', '—', '3', '4', '—'])
@@ -300,21 +300,20 @@ describe('RnpSheetTable — the sheet, row by row', () => {
     expect(rowNamed(other, 'Квал лид сони').previousElementSibling?.getAttribute('data-gap')).toBe('')
   })
 
-  it('marks an added team on its block’s first line, and still on an older payload’s heading', () => {
+  it('draws no «sheetda bloki yoʻq» note on an added team, nor on an older payload’s heading', () => {
     const { container } = draw([
       { kind: 'value', row: null, team: 'Kompaniya', label: 'План бажарилиши', sub: 'Kompaniya РОП', tone: 'team', fact: 'plan', bold: true, key: 'lids', added: true },
       { kind: 'value', row: null, team: 'Kompaniya', label: 'Квал лид сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'kompaniya' },
       ...LINES.slice(4, 5),
     ])
-    const marked = bodyRows(container).filter((tr) => tr.textContent?.includes(RNP_ADDED_TEAM_NOTE))
-    expect(marked.map((tr) => tr.dataset.line)).toEqual(['value', 'title'])
-    // The ROP's name first, the chip beside it, the sheet's label under it — like a sheet block.
-    expect(marked[0]!.querySelector('th')!.textContent).toBe(`Kompaniya РОП${RNP_ADDED_TEAM_NOTE}План бажарилиши`)
-    // Only the first line: the rest of the block reads like the sheet's.
-    expect(within(rowNamed(container, 'Квал лид сони')).queryByText(RNP_ADDED_TEAM_NOTE)).toBeNull()
-    // The old form: the note as a heading's sub, drawn as the chip and not as an owner pill.
-    expect(marked[1]!.querySelector('th')!.textContent).toBe(`Kompaniya РОП${RNP_ADDED_TEAM_NOTE}`)
-    expect(within(marked[1]!).getByText(RNP_ADDED_TEAM_NOTE).className).toContain('normal-case')
+    expect(container.textContent).not.toContain(RNP_ADDED_TEAM_NOTE)
+    // The ROP's name first, the sheet's label under it — like a sheet block.
+    expect(bodyRows(container).map((tr) => tr.querySelector('th')!.textContent)).toEqual([
+      'Kompaniya РОППлан бажарилиши',
+      'Квал лид сони',
+      // The old form: the note was a heading's sub; it is dropped, not drawn as an owner pill.
+      'Kompaniya РОП',
+    ])
   })
 
   it('says what a typed row’s chip means: a day’s soʻm on a cost line, the head count on «Ходим сони»', () => {
