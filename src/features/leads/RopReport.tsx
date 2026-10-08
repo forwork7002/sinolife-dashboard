@@ -20,7 +20,7 @@ import type { RopReportCellsDto, RopReportDto, RopReportGroupDto } from './leadS
  * foot. Asked for on 2026-10-01 in place of the split table, «Лид руч» left
  * out. The definitions are in `server/domain/registration/ropReport.ts`.
  *
- * «План» is 500 000 soʻm per lead, computed on the server (it was typed per
+ * «План» is 500 000 soʻm per kval lead, computed on the server (it was typed per
  * seller until 2026-10-02). «Отклонение» is План − Факт-1 as the client
  * writes it, marked ✅ when Факт-1 reached the plan and 🔴 when it fell short.
  */
@@ -33,7 +33,7 @@ const td = 'tabular px-3 py-2 text-right whitespace-nowrap'
 /** The pinned name column: opaque, so the figures scroll under it on a phone. */
 const pin = 'sticky left-0 z-[1] text-left'
 
-const COLUMNS = ['Лид сони', 'План', 'Факт-1 ПР', 'Отклонение', 'Транз-1', 'Конверсия', 'Факт-2 ПР', 'Транз-2', 'Дозвон', 'Длительность'] as const
+const COLUMNS = ['Квал лид сони', 'План', 'Факт-1 ПР', 'Отклонение', 'Транз-1', 'Конверсия', 'Факт-2 ПР', 'Транз-2', 'Дозвон', 'Длительность'] as const
 
 /** The split's colour for a team it has; a team it lacks takes the next unused slot, the no-team group grey. */
 function groupColor(rop: string | null, index: number, colors: ReadonlyMap<string, string>): string {
@@ -72,10 +72,10 @@ export function RopReport({
             ROP otchet{data ? ` · ${formatDate(data.day)}` : ''}
           </h2>
           <p className="mt-0.5 max-w-3xl text-xs" style={muted}>
-            Лид сони — shu kuni tarqatilgan lidlar («Лид таркатилган сана»), bitim kimda boʻlsa oʻsha sotuvchiga. Факт-1 / Факт-2 — Sotuvchilar
-            reytingidagi hisob (tasdiqlash navbatiga kelgan kun). План = 500 000 × Лид сони. Отклонение = План − Факт-1: ✅ Факт-1 rejaga yetdi,
-            🔴 kam. Конверсия = Транз-1 ÷ Лид сони. Дозвон — shu kuni ulangan qoʻngʻiroqlar, Длительность — ularning suhbat vaqti («Qoʻngʻiroqlar»
-            bilan bir xil).
+            Квал лид сони — Регистрация voronkasida shu kuni «Сделка успешна» ga oʻtgan bitimlar, «Сотувчи (Первичка)» dagi sotuvchiga (maydon
+            16.09.2026 dan toʻldirilgan). Факт-1 / Факт-2 — Sotuvchilar reytingidagi hisob (tasdiqlash navbatiga kelgan kun). План = 500 000 ×
+            Квал лид сони. Отклонение = План − Факт-1: ✅ Факт-1 rejaga yetdi, 🔴 kam. Конверсия = Транз-1 ÷ Квал лид сони. Дозвон — shu kuni
+            ulangan qoʻngʻiroqlar, Длительность — ularning suhbat vaqti («Qoʻngʻiroqlar» bilan bir xil).
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -147,7 +147,7 @@ function Group({ group, color }: { group: RopReportGroupDto; color: string }) {
               {group.rop ? `${group.rop} guruhi` : 'Jamoasiz'}
             </span>
             <span className="text-xs font-normal" style={muted}>
-              {group.rop ? `${formatNumber(group.sellers.length)} kishi` : 'ROP jamoasi koʻrsatilmagan lid va buyurtmalar'}
+              {group.rop ? `${formatNumber(group.sellers.length)} kishi` : 'ROP jamoasiga tegishli boʻlmagan kval lid va buyurtmalar'}
             </span>
           </span>
         </th>
@@ -171,8 +171,9 @@ function Group({ group, color }: { group: RopReportGroupDto; color: string }) {
                   ROP
                 </span>
               )}
-              {!s.onRoster && group.rop !== null && (
-                <span className="text-[10px] font-normal" style={muted} title="Bu jamoa roʻyxatida yoʻq — lid yoki buyurtma shu jamoa nomidan">
+              {/* With kval leads here the person sits in this unit (a seller deactivated since) — not «another unit». */}
+              {!s.onRoster && group.rop !== null && s.leads === 0 && (
+                <span className="text-[10px] font-normal" style={muted} title="Bu jamoa roʻyxatida yoʻq — buyurtma shu jamoa nomidan">
                   boshqa boʻlimdan
                 </span>
               )}

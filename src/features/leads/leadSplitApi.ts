@@ -93,7 +93,7 @@ export interface RopReportDto {
 */
 
 export interface GroupPlanCellsDto {
-  /** Usp soni — kval leads handed to the seller. */
+  /** Usp soni — the seller's kval leads. */
   readonly leads: number
   /** Reja (Avto) — 500 000 × leads. */
   readonly plan: MoneyDto

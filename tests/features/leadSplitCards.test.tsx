@@ -110,11 +110,14 @@ function reportFixture(): RopReportDto {
         sellers: [
           { employeeId: 'e1', fullName: 'Asliddin Karimberdiyev', isHead: true, onRoster: true, ...cells(2, 4_050_000, 2, 14, 3_725) },
           { employeeId: 'e2', fullName: 'Sardor Davlatov', isHead: false, onRoster: true, ...cells(12, 4_800_000, 2, 0, 0) },
+          // Off the roster: one sold an order under this team, one took kval leads in it and was deactivated since.
+          { employeeId: 'e3', fullName: 'Begona Sotuvchi', isHead: false, onRoster: false, ...cells(0, 900_000, 1, 0, 0) },
+          { employeeId: 'e4', fullName: 'Ketgan Sotuvchi', isHead: false, onRoster: false, ...cells(3, 0, 0, 0, 0) },
         ],
-        total: cells(14, 8_850_000, 4, 14, 3_725),
+        total: cells(17, 9_750_000, 5, 14, 3_725),
       },
     ],
-    total: cells(14, 8_850_000, 4, 14, 3_725),
+    total: cells(17, 9_750_000, 5, 14, 3_725),
   }
 }
 
@@ -266,6 +269,12 @@ describe('LeadSplitCards', () => {
     expect(within(head).getByText('1 soat 2 daq')).toBeTruthy()
     expect(screen.getByText('Дозвон')).toBeTruthy()
     expect(screen.getByText('Длительность')).toBeTruthy()
+    // 2026-10-08: the first column is the kval leads, by «Сотувчи (Первичка)».
+    expect(screen.getByText('Квал лид сони')).toBeTruthy()
+    expect(screen.queryByText('Лид сони')).toBeNull()
+    // «boshqa boʻlimdan» is an off-roster row with orders only — one with kval leads sits in this unit.
+    expect(within(row('Begona Sotuvchi')).getByText('boshqa boʻlimdan')).toBeTruthy()
+    expect(within(row('Ketgan Sotuvchi')).queryByText('boshqa boʻlimdan')).toBeNull()
     // The plan is computed, not typed; the sheet's «Лид руч» column is left out at the client's request.
     expect(screen.queryByRole('button', { name: 'Rejani kiritish' })).toBeNull()
     expect(screen.queryByText('Лид руч')).toBeNull()

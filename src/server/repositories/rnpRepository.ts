@@ -185,8 +185,9 @@ export class RnpRepository {
    *
    * It was «Лид таркатилган сана» + «РОП (Первичка)» over every pipeline
    * (`RegistrationRepository.leadRopSql`, fresh hand-outs only) until
-   * 2026-10-08; «Lidlar» and «ROP otchet» still count that way, so their
-   * leads differ from this row by definition.
+   * 2026-10-08; «Lidlar» still counts that way, so its leads differ from
+   * this row by definition. «ROP otchet» reads these deals seller by seller
+   * (`RegistrationRepository.sellerLeadsSql`).
    */
   static leadDaysSql(): string {
     return `

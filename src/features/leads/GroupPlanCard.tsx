@@ -49,9 +49,10 @@ export function GroupPlanCard({ day, onDay }: { day: string; onDay: (day: string
             Guruhlar{data ? ` · ${formatDate(data.from)} – ${formatDate(data.to)}` : ''}
           </h2>
           <p className="mt-0.5 max-w-3xl text-xs" style={muted}>
-            Oy boshidan tanlangan kungacha. Usp soni — sotuvchiga tarqatilgan kval lidlar («Лид таркатилган сана»). Reja (Avto) = 500 000 ×
-            Usp soni. Buyurtma summasi — Факт-1 (ROP otchetdagi kabi). Bajarilish % = Buyurtma ÷ Reja. Qarz = Buyurtma − Reja: yashil — rejadan
-            ortiq, qizil — qarz. Dostup — qarz chegarasi hali belgilanmagan, hammaga ruxsat.
+            Oy boshidan tanlangan kungacha. Usp soni — sotuvchining kval lidlari (Регистрация «Сделка успешна», «Сотувчи (Первичка)»;
+            maydon 16.09.2026 dan toʻldirilgan). Reja (Avto) = 500 000 × Usp soni. Buyurtma summasi — Факт-1 (ROP otchetdagi kabi). Bajarilish %
+            = Buyurtma ÷ Reja. Qarz = Buyurtma − Reja: yashil — rejadan ortiq, qizil — qarz. Dostup — qarz chegarasi hali belgilanmagan, hammaga
+            ruxsat.
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -68,7 +69,7 @@ export function GroupPlanCard({ day, onDay }: { day: string; onDay: (day: string
             className="rounded-[var(--radius-panel-sm)] border border-dashed px-3 py-3 text-xs"
             style={{ borderColor: 'var(--border-strong)', color: 'var(--ink-secondary)' }}
           >
-            Bu oyda hali hech kimga kval lid tarqatilmagan va buyurtma yoʻq.
+            Bu oyda hali kval lid ham, buyurtma ham yoʻq.
           </p>
         ) : (
           <PlanTable data={data} />
@@ -125,7 +126,7 @@ function Group({ group }: { group: GroupPlanGroupDto }) {
             <span className="text-xs font-normal" style={muted}>
               {group.rop
                 ? `${formatNumber(group.sellers.filter((s) => s.mayTakeLeads !== null).length)} kishi`
-                : 'ROP jamoasi koʻrsatilmagan lid va buyurtmalar'}
+                : 'ROP jamoasiga tegishli boʻlmagan kval lid va buyurtmalar'}
             </span>
           </span>
         </th>
