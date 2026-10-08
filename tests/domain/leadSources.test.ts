@@ -119,7 +119,7 @@ describe('leadChannel', () => {
   })
 
   it('files no source under two channels', () => {
-    const sets = [v.pages, v.inbound, v.outbound, v.telegram, v.smm, v.web, v.sarafan, new Set([v.generated])]
+    const sets = [v.pages, v.inbound, v.outbound, v.telegram, v.smm, v.web, new Set([v.generated])]
     const all = sets.flatMap((s) => [...s])
     expect(new Set(all).size).toBe(all.length)
   })
@@ -129,7 +129,7 @@ describe('leadTile', () => {
   const v = LEAD_SOURCE_VOCABULARY
 
   it('reads the client\'s six channels off the portal\'s sources', () => {
-    expect(LEAD_TILES).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan', 'outbound', 'other'])
+    expect(LEAD_TILES).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'outbound', 'other'])
     expect(leadTile('REPEAT_SALE', false, v)).toBe('generated') // forms and by hand alike
     expect(leadTile('CALL', false, v)).toBe('inbound')
     expect(leadTile('UC_CKXAZS', false, v)).toBe('inbound') // Входящий collagen
@@ -138,7 +138,7 @@ describe('leadTile', () => {
     expect(leadTile('2|TELEGRAM', false, v)).toBe('telegram')
     expect(leadTile('UC_Z1OF0D', false, v)).toBe('telegram') // sinolif_tg
     expect(leadTile('WEB', false, v)).toBe('web') // Веб-сайт
-    // Сарафан маркетинг: the tile reads Ecommerce since 2026-10-05, so in Регистрация it is «Boshqa».
+    // Сарафан маркетинг: no tile since 2026-10-08 (Ecommerce's alone from 2026-10-05), so it is «Boshqa».
     expect(leadTile('UC_9SNG04', false, v)).toBe('other')
   })
 

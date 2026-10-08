@@ -30,7 +30,6 @@ import {
   DM_PAGE_ALIAS,
   LEAD_SOURCE_BRAND,
   LEAD_SOURCE_VOCABULARY,
-  SARAFAN_PIPELINE_ID,
 } from '@/server/integrations/crm/bitrix24/mapping'
 import {
   type CampaignChannel,
@@ -46,7 +45,6 @@ import {
   LEAD_CHANNELS,
   LEAD_TILES,
   LEAD_TILES_APART,
-  LEAD_TILES_OUTSIDE_REGISTRATION,
   formNameOf,
   formOwner,
   leadChannel,
@@ -60,7 +58,6 @@ import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositori
 import type {
   LeadSourcesRepository,
   AiQualifiedStageRow,
-  PipelineSourceCount,
   QualifiedSourceRow,
   RegistrationDayRow,
   TriageDayRow,
@@ -193,9 +190,8 @@ export interface ChannelTileDto {
 export interface LeadSourcesOverviewDto {
   /**
    * The Collagen / Zextra switch the figures were narrowed by. Under one
-   * brand «Сарафан» (Ecommerce deals, no brand on them) and the inbound
-   * calls cannot be split: the screen prints them as «brend boʻyicha
-   * ajratilmaydi», not as a zero.
+   * brand the inbound calls cannot be split: the screen prints them as
+   * «brend boʻyicha ajratilmaydi», not as a zero.
    */
   readonly brand: BrandFilter
   /** When Meta's campaign grain was last read; null means never. */
@@ -263,8 +259,7 @@ export interface LeadSourcesOverviewDto {
   /**
    * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
    * at zero when quiet, and «Jami» — the sum of all but `LEAD_TILES_APART`
-   * («Исход», «Boshqa») and `LEAD_TILES_OUTSIDE_REGISTRATION` («Сарафан»,
-   * Ecommerce deals since 2026-10-05), so `funnel` less «Исход» and «Boshqa».
+   * («Исход», «Boshqa»), so `funnel` less «Исход» and «Boshqa».
    */
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
@@ -427,14 +422,13 @@ type LeadSourcesInput = Parameters<typeof leadSourcesOverview>[0]
  * client, the AI's mark) by `leadBrand` — its «Проект», then its source, then its form; a chat
  * by its page; Meta money by its ad budget (`adBudgetProduct`). What
  * nothing ties to a brand — an outgoing call, a hand-typed lead, a page no
- * brand claims, hiring money — is «Brendsiz», and so are «Сарафан» and the
- * inbound calls, which carry no brand at all: the three slices partition the
- * tab, so Collagen + Zextra + Brendsiz is «Hammasi» on every count.
+ * brand claims, hiring money — is «Brendsiz», and so are the inbound calls,
+ * which carry no brand at all: the three slices partition the tab, so
+ * Collagen + Zextra + Brendsiz is «Hammasi» on every count.
  */
 function ofBrand(input: LeadSourcesInput, brand: Exclude<BrandFilter, 'all'>): LeadSourcesInput {
   const lead = (row: { sourceId: string | null; formTitle: string | null; productLine: string | null }) =>
     brandMatches(brand, leadBrand(row.sourceId, row.formTitle, row.productLine))
-  const brandless = brand === 'none'
   return {
     ...input,
     registration: input.registration.filter(lead),
@@ -443,8 +437,7 @@ function ofBrand(input: LeadSourcesInput, brand: Exclude<BrandFilter, 'all'>): L
     fakt1: input.fakt1?.filter(lead) ?? null,
     qualified: input.qualified.filter(lead),
     aiQualified: input.aiQualified.filter(lead),
-    sarafan: brandless ? input.sarafan : { leads: 0, qualified: 0 },
-    inboundCalls: brandless ? input.inboundCalls : null,
+    inboundCalls: brand === 'none' ? input.inboundCalls : null,
   }
 }
 
@@ -466,8 +459,6 @@ export function leadSourcesOverview(all: {
   qualified: readonly QualifiedSourceRow[]
   /** Deals whose «ИИ квал сана» is in the window, any pipeline, flagged Регистрация or not (`LeadSourcesRepository.aiQualifiedStages`). */
   aiQualified: readonly AiQualifiedStageRow[]
-  /** «Сарафан маркетинг» deals in Ecommerce (`LeadSourcesRepository.pipelineSourceCount`) — the «Сарафан» tile. */
-  sarafan: PipelineSourceCount
   importedAt: Date | null
   /** `LeadSourcesRepository.inboundCallCount`; absent reads as null. */
   inboundCalls?: number | null
@@ -762,14 +753,9 @@ export function leadSourcesOverview(all: {
     tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!.qualified += row.qualified
     qualifiedTotal += row.qualified
   }
-  // Ecommerce deals, no Регистрация lead: no duplicate stage there, and outside «Jami» below.
-  const sarafanTile = tiles.get('sarafan')!
-  sarafanTile.leads = input.sarafan.leads
-  sarafanTile.qualified = input.sarafan.qualified
-
   const tilesTotal = tileZero()
   for (const [tile, t] of tiles) {
-    if (LEAD_TILES_APART.has(tile) || LEAD_TILES_OUTSIDE_REGISTRATION.has(tile)) continue
+    if (LEAD_TILES_APART.has(tile)) continue
     tilesTotal.leads += t.leads
     tilesTotal.duplicates += t.duplicates
     tilesTotal.qualified += t.qualified
@@ -908,7 +894,6 @@ interface WindowScans {
   triage: TriageDayRow[]
   qualified: QualifiedSourceRow[]
   aiQualified: AiQualifiedStageRow[]
-  sarafan: PipelineSourceCount
   inboundCalls: number | null
 }
 const scanCache = processWide('sinolife.leads.scanCache', () => ttlCache<WindowScans>(120_000, LIVE_CACHE))
@@ -1098,7 +1083,6 @@ export class LeadSourcesService {
       fakt1: [],
       qualified: [],
       aiQualified: [],
-      sarafan: { leads: 0, qualified: 0 },
       importedAt,
       brand,
     })
@@ -1126,16 +1110,15 @@ export class LeadSourcesService {
     return registrationCache.get(windowKey(period), () => this.repository.registrationDays(period))
   }
 
-  /** `scanCache`'s build: its five reads, at most `width` at a time — all at once for a reader. */
+  /** `scanCache`'s build: its four reads, at most `width` at a time — all at once for a reader. */
   private async scans(period: Period, width = Infinity): Promise<WindowScans> {
-    const [triage, qualified, aiQualified, sarafan, inboundCalls] = await atMost(width, [
+    const [triage, qualified, aiQualified, inboundCalls] = await atMost(width, [
       () => this.repository.triageDays(period),
       () => this.repository.qualifiedSources(period),
       () => this.repository.aiQualifiedStages(period),
-      () => this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
       () => this.repository.inboundCallCount(period),
     ])
-    return { triage, qualified, aiQualified, sarafan, inboundCalls }
+    return { triage, qualified, aiQualified, inboundCalls }
   }
 }
 

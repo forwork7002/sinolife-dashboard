@@ -48,7 +48,8 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
 
 /**
  * «Boshqa kanallar lidlari» — the client's list of 2026-10-01, one tile each
- * and their «Jami»: Ген лид, Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан.
+ * and their «Jami»: Ген лид, Входящий, Телеграм, Сммщик ии, Веб сайт — and
+ * «Сарафан», until 2026-10-08 (see `leadTile`).
  * A cut of Регистрация of its own, beside the channels above rather than made
  * of them: the client asked for «Ген лид» whole (forms and by hand), and for
  * «Сммщик ии» as every lead the AI qualified out of the DMs — which mostly
@@ -66,7 +67,7 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
  * channels alone, with «Исход» and «Boshqa» on a row of their own beneath —
  * see `LEAD_TILES_APART`. Every lead still has exactly one tile.
  */
-export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
+export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'outbound' | 'other'
 
 export const LEAD_TILES: readonly LeadTile[] = Object.freeze([
   'generated',
@@ -74,21 +75,12 @@ export const LEAD_TILES: readonly LeadTile[] = Object.freeze([
   'telegram',
   'aiSmm',
   'web',
-  'sarafan',
   'outbound',
   'other',
 ])
 
 /** The tiles shown on their own row and left out of «Jami» (the client, 2026-10-02). */
 export const LEAD_TILES_APART: ReadonlySet<LeadTile> = new Set<LeadTile>(['outbound', 'other'])
-
-/**
- * «Сарафан» is NOT Регистрация since 2026-10-05: the client asked for it to
- * count «Сарафан маркетинг» deals in the Ecommerce pipeline alone. They are
- * no lead of «Жами лидлар», so the tile stays in its place but out of «Jami»,
- * and a Регистрация lead on that source counts under «Boshqa» (`leadTile`).
- */
-export const LEAD_TILES_OUTSIDE_REGISTRATION: ReadonlySet<LeadTile> = new Set<LeadTile>(['sarafan'])
 
 /**
  * The tile a Регистрация deal counts on — one, always. The AI's mark wins over
@@ -105,7 +97,9 @@ export function leadTile(sourceId: string | null, aiQualified: boolean, vocabula
   if (vocabulary.inbound.has(sourceId)) return 'inbound'
   if (vocabulary.telegram.has(sourceId)) return 'telegram'
   if (vocabulary.web.has(sourceId)) return 'web'
-  // «Сарафан маркетинг» in Регистрация is «Boshqa»: the tile reads Ecommerce (`LEAD_TILES_OUTSIDE_REGISTRATION`).
+  // «Сарафан маркетинг» is «Boshqa»: its tile went on 2026-10-08 (the client — a
+  // Bitrix deal on that source is not wanted on the row; from 2026-10-05 it had
+  // read the Ecommerce pipeline's deals alone, outside «Jami»).
   if (vocabulary.outbound.has(sourceId)) return 'outbound'
   return 'other'
 }
@@ -128,8 +122,6 @@ export interface LeadSourceVocabulary {
   readonly smm: ReadonlySet<string>
   /** «Веб-сайт» — the brands' own sites. */
   readonly web: ReadonlySet<string>
-  /** «Сарафан маркетинг» — word of mouth. */
-  readonly sarafan: ReadonlySet<string>
   /** «Ген лид» — what a CRM form writes, and what operators type leads under by hand. */
   readonly generated: string
 }

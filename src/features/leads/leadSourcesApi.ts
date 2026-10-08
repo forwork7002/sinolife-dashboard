@@ -13,7 +13,7 @@ import type { TargetProduct } from '@/features/reklama/reklamaApi'
 
 export type LeadChannel = 'form' | 'page' | 'inbound' | 'manual' | 'telegram' | 'smm' | 'other' | 'outbound'
 
-export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
+export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'outbound' | 'other'
 
 /** Leads by the day they arrived, kval by the day it was WON — as the headline tiles. */
 export interface ChannelTileDto {
@@ -117,7 +117,7 @@ export interface SourceRowDto {
 }
 
 export interface LeadSourcesOverviewDto {
-  /** The brand switch the figures were narrowed by. One brand: «Сарафан» and the inbound calls are not split — they are «Brendsiz»'s. */
+  /** The brand switch the figures were narrowed by. One brand: the inbound calls are not split — they are «Brendsiz»'s. */
   readonly brand: DashboardBrand
   readonly importedAt: string | null
   /** Inbound calls in the window, under «Входящий»; null before the call data floor or under one brand. */

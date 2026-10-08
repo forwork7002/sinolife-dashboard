@@ -557,18 +557,12 @@ export const DM_PAGE_ALIAS: Readonly<Record<string, string>> = Object.freeze({
  * sinolifeuz», UC_HCZ9YU «Сммщик sinolife_sedana». The Telegram AD pages
  * (UC_A4WINR, UC_U9KZG8) are pages above and stay so — a page wins first.
  *
- * WEB «Веб-сайт» and UC_9SNG04 «Сарафан маркетинг» joined on 2026-10-01 for
- * the client's channel tiles. Both are rare in Регистрация (September: 6 WEB
- * deals, no Сарафан); they mostly open deals in the sales pipelines.
+ * WEB «Веб-сайт» joined on 2026-10-01 for the client's channel tiles; rare in
+ * Регистрация (September: 6 deals), it mostly opens deals in the sales
+ * pipelines. UC_9SNG04 «Сарафан маркетинг» had a tile of its own from the
+ * same day — Ecommerce's deals alone since 2026-10-05 — until the client
+ * dropped it on 2026-10-08; such a lead is «Boshqa» (`leadTile`).
  */
-/**
- * The «Сарафан» tile's pipeline: Ecommerce (#14) — the client, 2026-10-05,
- * «faqat ecommerce voronkasidagi сарафан маркетинг». Measured that day: none
- * of the pipeline's 197 deals carries the source (all «Веб-сайт», the newest
- * of 03.07.2026), so the tile reads 0 until the portal files one there.
- */
-export const SARAFAN_PIPELINE_ID = '14'
-
 export const LEAD_SOURCE_VOCABULARY: LeadSourceVocabulary = Object.freeze({
   pages: new Set(TARGET_SOURCE_IDS),
   inbound: new Set(['CALL', 'UC_CKXAZS', 'UC_AA84D0']),
@@ -576,7 +570,6 @@ export const LEAD_SOURCE_VOCABULARY: LeadSourceVocabulary = Object.freeze({
   telegram: new Set(['UC_8NZNYM', '2|TELEGRAM', 'UC_Z1OF0D']),
   smm: new Set(['UC_5JW4YK', 'UC_HCZ9YU']),
   web: new Set(['WEB']),
-  sarafan: new Set(['UC_9SNG04']),
   generated: 'REPEAT_SALE',
 })
 
