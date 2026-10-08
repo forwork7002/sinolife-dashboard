@@ -66,7 +66,9 @@ import {
 import { closedTriageDealIds, rereadClosedTriageDeals } from '../src/server/integrations/crm/sync/triageMoves'
 import {
   applyCrmEvents,
+  dropUnknownDeletes,
   expireCrmEvents,
+  localDealIds,
   markCrmEventsProcessed,
   pendingCrmEvents,
   pruneCrmEvents,
@@ -1824,10 +1826,16 @@ async function main() {
       if (rows.length === 0) return
       const distinct = new Set(rows.map((r) => r.externalId)).size
       const flood = distinct > EVENTS_DRAIN_MAX
-      const events = flood
-        ? takeDistinct(rows.filter((r) => r.event === 'ONCRMDEALDELETE'), EVENTS_DRAIN_MAX)
-        : rows
-      const deferred = flood ? rows.filter((r) => r.event !== 'ONCRMDEALDELETE').map((r) => r.id) : []
+      // A deletion of a deal we never held is done without a read — see `dropUnknownDeletes`.
+      const deletes = rows.filter((r) => r.event === 'ONCRMDEALDELETE')
+      const { drop } = dropUnknownDeletes(
+        deletes,
+        await localDealIds(prisma, 'BITRIX24', [...new Set(deletes.map((r) => r.externalId))]),
+      )
+      const dropped = new Set(drop.map((r) => r.id))
+      const live = rows.filter((r) => !dropped.has(r.id))
+      const events = flood ? takeDistinct(live.filter((r) => r.event === 'ONCRMDEALDELETE'), EVENTS_DRAIN_MAX) : live
+      const deferred = [...drop.map((r) => r.id), ...(flood ? live.filter((r) => r.event !== 'ONCRMDEALDELETE').map((r) => r.id) : [])]
       const drainStarted = Date.now()
       const r =
         events.length > 0

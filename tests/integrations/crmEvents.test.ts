@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyCrmEvents, type PendingCrmEvent, takeDistinct } from '@/server/integrations/crm/sync/crmEvents'
+import { applyCrmEvents, dropUnknownDeletes, type PendingCrmEvent, takeDistinct } from '@/server/integrations/crm/sync/crmEvents'
 
 /**
  * The portal's outgoing events, applied between ticks. The worker deletes
@@ -145,5 +145,18 @@ describe('confirmedGoneLimit / takeDistinct', () => {
     expect(taken.map((e) => e.externalId)).toEqual(['1', '2', '1'])
     expect(takeDistinct(events, 10)).toHaveLength(4)
     expect(takeDistinct([], 10)).toEqual([])
+  })
+})
+
+describe('dropUnknownDeletes', () => {
+  it('drops a DELETE for a deal we never held, keeps every other event', () => {
+    const events = [ev('ONCRMDEALDELETE', '1'), ev('ONCRMDEALDELETE', '2'), ev('ONCRMDEALADD', '3'), ev('ONCRMDEALUPDATE', '2')]
+    const { apply, drop } = dropUnknownDeletes(events, new Set(['1']))
+    expect(apply.map((e) => [e.event, e.externalId])).toEqual([
+      ['ONCRMDEALDELETE', '1'],
+      ['ONCRMDEALADD', '3'],
+      ['ONCRMDEALUPDATE', '2'],
+    ])
+    expect(drop.map((e) => e.externalId)).toEqual(['2'])
   })
 })

@@ -114,6 +114,43 @@ export function takeDistinct(events: readonly PendingCrmEvent[], maxIds: number)
   return taken
 }
 
+/** Which of `externalIds` are deals this database holds. */
+export async function localDealIds(
+  prisma: PrismaClient,
+  source: ExternalSourceValue,
+  externalIds: readonly string[],
+): Promise<Set<string>> {
+  if (externalIds.length === 0) return new Set()
+  const rows = await prisma.$queryRawUnsafe<{ externalId: string }[]>(
+    `SELECT "externalId" FROM "deal"
+      WHERE "externalSource" = $1::"ExternalSource" AND "externalId" = ANY($2::text[])`,
+    source,
+    externalIds,
+  )
+  return new Set(rows.map((r) => r.externalId))
+}
+
+/**
+ * A DELETE for a deal this database never held is nothing to do — not even a
+ * read: the portal is not asked about it, the row is simply done. That keeps
+ * a stream of deletions in a pipeline we do not import, or of made-up ids
+ * from somebody holding the token, from spending a single invocation or
+ * standing in front of a real deletion. An ADD/UPDATE for an unknown deal is
+ * still read: that is how a new deal arrives.
+ */
+export function dropUnknownDeletes(
+  events: readonly PendingCrmEvent[],
+  local: ReadonlySet<string>,
+): { apply: PendingCrmEvent[]; drop: PendingCrmEvent[] } {
+  const apply: PendingCrmEvent[] = []
+  const drop: PendingCrmEvent[] = []
+  for (const e of events) {
+    if (e.event === 'ONCRMDEALDELETE' && !local.has(e.externalId)) drop.push(e)
+    else apply.push(e)
+  }
+  return { apply, drop }
+}
+
 export interface CrmEventsResult {
   readonly events: number
   /** Distinct deals the events named. */
