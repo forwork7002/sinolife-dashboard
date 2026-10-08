@@ -6,6 +6,7 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { RegistrationRepository } = await import('@/server/repositories/registrationRepository')
+const { RnpRepository } = await import('@/server/repositories/rnpRepository')
 
 const bare = (sql: string) => sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
 
@@ -36,6 +37,11 @@ describe('distributedDaysSql', () => {
     expect(team.slice(seller)).toContain(`p."role" IS DISTINCT FROM 'LEAD'`)
     expect(sql).toContain('LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"')
     expect(sql).toContain('LEFT JOIN "employee" a ON a."id" = d."employeeId"')
+  })
+
+  it('names the ROP exactly as «RNP jadvali» does', () => {
+    const team = (s: string) => s.slice(s.indexOf('COALESCE('), s.indexOf(') AS rop') + ') AS rop'.length).replace(/\s+/g, ' ')
+    expect(team(sql)).toBe(team(bare(RnpRepository.leadDaysSql())))
   })
 
   it('marks every deal after a contact\'s first that day as a duplicate', () => {
@@ -109,32 +115,22 @@ describe('bezkvalDaysSql', () => {
   })
 })
 
-/*
-  «Квал лид сони» of «ROP otchet», 2026-10-08. Run against a scratch
-  PostgreSQL with the migrations applied and the kval fixture of
-  `RnpRepository.leadDaysSql`: every team's sellers summed to that
-  statement's row for the team and day.
-*/
 describe('sellerLeadsSql', () => {
   const sql = bare(RegistrationRepository.sellerLeadsSql())
+  const distributed = bare(RegistrationRepository.distributedDaysSql())
 
-  it('counts the deals «RNP jadvali» credits the ROP with — the same rows, the same team (2026-10-08)', async () => {
-    const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
-    const { RnpRepository } = await import('@/server/repositories/rnpRepository')
-    const rnp = bare(RnpRepository.leadDaysSql())
-    const cohort = (s: string) => s.slice(s.indexOf('FROM "deal" d'), s.indexOf('GROUP BY')).replace(/\s+/g, ' ')
-    expect(cohort(sql)).toBe(cohort(rnp))
-    const team = (s: string, after: string) => s.slice(s.indexOf(after) + after.length, s.indexOf(' AS rop')).replace(/\s+/g, ' ').trim()
-    expect(team(sql, 'SELECT')).toBe(team(rnp, 'AS day,'))
-    expect(sql).toContain(`${InsightsRepository.ropNameSql('dep."name"')} AS rop`)
-    expect(sql).not.toContain('"leadDistributedOn"')
+  it('counts the same handed-out deals as «Olgan lid», inclusive bounds', () => {
+    expect(sql).toContain(`d."leadDistributedOn" BETWEEN $1::date AND $2::date`)
+    expect(sql).toContain(`(p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL OR d."ropKvalLidEmployeeId" IS NOT NULL)`)
   })
 
-  it('credits the deal\'s «Сотувчи (Первичка)», not its operator or owner', () => {
-    expect(sql).toContain(`d."primarySellerEmployeeId" AS employee_id`)
-    expect(sql).not.toContain('"operatorEmployeeId"')
-    expect(sql).not.toContain('d."employeeId"')
-    expect(sql).toMatch(/GROUP BY 1, 2\s*$/)
+  it('names the team exactly as the split does', () => {
+    const team = (s: string) => s.slice(s.indexOf('COALESCE('), s.indexOf(') AS rop') + ') AS rop'.length).replace(/\s+/g, ' ')
+    expect(team(sql)).toBe(team(distributed))
+  })
+
+  it('credits the person the sellers board credits — the operator, else the owner', () => {
+    expect(sql).toContain(`COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id`)
   })
 })
 

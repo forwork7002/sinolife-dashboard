@@ -131,9 +131,8 @@ export const rnpService = new RnpService(insightsRepository, rnpRepository, rekl
 export const roistatService = new RoistatService(new RoistatRepository(prisma), reklamaRepository, cbuUsdRates)
 /*
   «Registratsiya» (2026-10-01) — the day's handed-out leads per ROP against the
-  administrator's split, and «ROP otchet», the kval leads and orders seller
-  by seller (FAKT from the queue cohort, insightsRepository). See
-  registrationService.ts.
+  administrator's split, and «ROP otchet» seller by seller (FAKT from the
+  queue cohort, insightsRepository). See registrationService.ts.
 */
 export const registrationService = new RegistrationService(new RegistrationRepository(prisma), insightsRepository)
 /*

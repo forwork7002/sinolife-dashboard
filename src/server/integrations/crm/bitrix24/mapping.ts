@@ -425,14 +425,6 @@ export const UF = Object.freeze({
    */
   ROP_KVAL_LID: 'UF_CRM_ROP_KVAL_LID',
   /**
-   * «Сотувчи (Первичка)» — an employee field on Регистрация (#0) deals: the
-   * seller the kval lead was given to. Filled on every «Сделка успешна» deal
-   * closed since 2026-09-16 (portal-measured 2026-10-08: 0 empty of 5 796;
-   * 01–15.09 4 244 empty of 4 551), and the seller can be the ROP themself
-   * (Marjona Shahtiyarovna 197). The client counts each ROP's kval leads by it.
-   */
-  PRIMARY_SELLER: 'UF_CRM_1789399379',
-  /**
    * «Регистрация» — which registrar qualified the lead: an ENUMERATION of 17
    * names (Умида 638, Эъзоза 640, … Рухшона 720, Ситора 722, Маржона 730),
    * resolved through `label()`. Written only when the Регистрация deal goes

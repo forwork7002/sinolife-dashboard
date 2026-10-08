@@ -1,36 +1,31 @@
 /**
  * «ROP otchet» on «Lidlar» («Registratsiya» until 2026-10-02) — the client's group sheet for one day:
- * every ROP team, seller by seller, «Квал лид сони · План · Факт-1 ПР ·
+ * every ROP team, seller by seller, «Лид сони · План · Факт-1 ПР ·
  * Отклонение · Транз-1 · Конверсия · Факт-2 ПР · Транз-2 · Дозвон ·
  * Длительность» and the team's «ОБЩИЙ». Asked for on 2026-10-01 in place of
  * the split table, without the sheet's «Лид руч» column; the plan rule and
  * the two call columns on 2026-10-02.
  *
  * WHERE EACH NUMBER COMES FROM.
- *   Квал лид сони — the day's kval leads (`RegistrationRepository.sellerLeadsSql`):
- *     Регистрация deals that reached «Сделка успешна» that day, by their
- *     «Сотувчи (Первичка)» — the ROP's «Квал лид сони» of the sheet, seller by
- *     seller. It was «Лид сони», the day's handed-out leads by the person
- *     the deal was with, until 2026-10-08.
+ *   Лид сони — the day's handed-out leads (`RegistrationRepository.sellerLeadsSql`):
+ *     the rows «Olgan lid» counts, by the person the deal is with.
  *   Факт-1 / Транз-1, Факт-2 / Транз-2 — the sellers board's cohort on its
  *     queue day (`InsightsRepository.sellerFaktDaysSql`), the team as /rnp
  *     reads it.
- *   План — 500 000 soʻm per kval lead: `PLAN_PER_LEAD` × Квал лид сони. It
- *     replaced the day plan typed per seller (2026-10-01) on 2026-10-02.
+ *   План — 500 000 soʻm per lead: `PLAN_PER_LEAD` × Лид сони. It replaced the
+ *     day plan typed per seller (2026-10-01) on 2026-10-02.
  *   Отклонение — План − Факт-1, the client's sign: above zero the row is
- *     short of plan. Конверсия — Транз-1 ÷ Квал лид сони, the sheet's own
- *     formula with «Лид руч» gone from it.
+ *     short of plan. Конверсия — Транз-1 ÷ Лид сони, the sheet's own formula
+ *     with «Лид руч» gone from it.
  *   Дозвон / Длительность — the day's connected calls and their talk time
  *     (`RegistrationRepository.sellerCallsSql`), the «Ulangan» and «Suhbat
  *     vaqti» of «Qoʻngʻiroqlar» for the same person and day. Null before
  *     `CALL_DATA_FLOOR`, whose calls carry truncated durations.
  *
  * Who is a row: everybody on a ROP team's roster, at zero if the day passed
- * them by, plus anybody else credited with a kval lead or an order that day
- * — the lead under the team its seller sits in, the order under the team it
- * names. Kval leads with no seller or a seller outside the ROP teams (a
- * registrar the portal names as one) and orders that name no team form a
- * last group, so the grand total is the whole company's day.
+ * them by, plus anybody else credited with a lead or an order that day under
+ * the team the lead or order names. Leads and orders that name no team form
+ * a last group, so the grand total is the whole company's day.
  *
  * Pure: rows in, a DTO out.
  */
@@ -46,7 +41,7 @@ export const PLAN_PER_LEAD_MINOR = 500_000n * 100n
 
 export interface SellerLeadRow {
   readonly rop: string | null
-  /** Null for a kval deal that names no seller. */
+  /** Null for a handed-out deal with nobody on it. */
   readonly employeeId: string | null
   readonly leads: number
 }
@@ -82,7 +77,7 @@ export interface RopReportCellsDto {
   /** План − Факт-1: above zero, short of plan. */
   readonly deviation: MoneyDto
   readonly fakt1Orders: number
-  /** Транз-1 ÷ Квал лид сони × 100; null with no lead. */
+  /** Транз-1 ÷ Лид сони × 100; null with no lead. */
   readonly conversionPercent: number | null
   readonly fakt2: MoneyDto
   readonly fakt2Orders: number
@@ -211,14 +206,12 @@ export function buildRopReport(input: {
 
   /*
     ONE ROW CARRIES A PERSON'S CALLS. A call names no team, and a seller can
-    be a row in two groups — their kval leads under their own team, an order
-    sold under another — so crediting the calls to both would count them
-    twice in every total. They sit on the roster row; off every roster, on
-    the group where the person earned the most. Calls of somebody who is no
-    row today (a quiet day off the roster) are not drawn and not counted; a
-    registrar is a row, calls and all, only on a day the portal names them
-    the seller of a kval lead. The plan needs no such rule: it follows the
-    row's own leads.
+    be a row in two groups — a lead that names no team, an order sold under
+    another team — so crediting the calls to both would count them twice in
+    every total. They sit on the roster row; off every roster, on the group
+    where the person earned the most. Calls of somebody who is no row today
+    (the registration desk, a quiet day off the roster) are not drawn and not
+    counted. The plan needs no such rule: it follows the row's own leads.
   */
   for (const c of input.calls ?? []) {
     const member = rosterOf.get(c.employeeId)

@@ -904,8 +904,8 @@ model Deal {
   /// the deal on. «Безквал» reads it first. Added 2026-10-07.
   ropKvalLidEmployeeId String?
   /// UF_CRM_1789399379 «Сотувчи (Первичка)» — the seller a kval lead was given
-  /// to, on the Регистрация deal by «Сделка успешна». «RNP jadvali» counts a
-  /// ROP's kval leads by this seller's team. Added 2026-10-08.
+  /// to. UNREAD AND NO LONGER WRITTEN: counting a ROP's kval leads by it was
+  /// shipped and reverted on 2026-10-08. Kept until a migration drops it.
   primarySellerEmployeeId String?
   /// CREATED_BY_ID — who opened the deal. Differs from `employeeId` once the
   /// deal was handed to someone else: Регистрация deals are opened by the desk

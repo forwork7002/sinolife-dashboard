@@ -4,7 +4,7 @@ import { buildRopReport, PLAN_PER_LEAD_MINOR, type RosterMember, type SellerFakt
 
 /*
   «ROP otchet» — the client's group sheet for 31.07.2026 («ASLIDDIN GRUPPA»),
-  with «Лид руч» gone: conversion is Транз-1 ÷ Квал лид сони, plan 500 000 × Квал лид сони
+  with «Лид руч» gone: conversion is Транз-1 ÷ Лид сони, plan 500 000 × Лид сони
   (2026-10-02), deviation План − Факт-1.
 */
 
@@ -124,26 +124,6 @@ describe('buildRopReport', () => {
     const empty = buildRopReport({ ...base, roster: [], leads: [], fakt: [] })
     expect(empty.groups).toEqual([])
     expect(empty.total.conversionPercent).toBeNull()
-  })
-
-  it('draws a registrar the portal names as the seller in the no-team group, calls and all (2026-10-08)', () => {
-    const desk = buildRopReport({
-      ...base,
-      names: new Map([['reg', 'Ruxshona 201']]),
-      leads: [
-        { rop: null, employeeId: 'reg', leads: 2 },
-        { rop: null, employeeId: null, leads: 1 },
-      ],
-      fakt: [],
-      calls: [{ employeeId: 'reg', connected: 40, talkSec: 1_200 }],
-    })
-    const none = desk.groups.at(-1)!
-    expect(none.rop).toBeNull()
-    expect(none.sellers.map((s) => [s.fullName, s.leads, s.onRoster, s.connectedCalls])).toEqual([
-      ['Ruxshona 201', 2, false, 40],
-      ['Hech kimga biriktirilmagan', 1, false, 0],
-    ])
-    expect(none.total.leads).toBe(3)
   })
 
   it('credits calls once — on the roster row — when the seller is a row in two groups', () => {

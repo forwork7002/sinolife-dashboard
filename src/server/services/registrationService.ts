@@ -38,10 +38,9 @@ const splitDaysCache = ttlCache<{ rows: DistributedDayRow[]; bezkval: BezkvalDay
 
 /**
  * «Registratsiya» — one day's handed-out leads per ROP and the day's split,
- * «ROP otchet», the day's kval leads and orders seller by seller, and
- * «Guruhlar», that sheet summed from the first of the month. The split
- * itself — two small reads — is never memoised: a split saved a second ago
- * is on the next read.
+ * «ROP otchet», the same day seller by seller, and «Guruhlar», that sheet
+ * summed from the first of the month. The split itself — two small reads —
+ * is never memoised: a split saved a second ago is on the next read.
  */
 export class RegistrationService {
   constructor(
@@ -105,7 +104,7 @@ export class RegistrationService {
     const brand = input.brand ?? 'all'
     const [allFakt, allLeads, allRoster, calls] = await Promise.all([
       faktCache.get(`${input.from}:${input.to}`, () => this.insights.sellerFaktDays(period)),
-      this.repository.sellerLeads(input.from, input.to, input.timeZone),
+      this.repository.sellerLeads(input.from, input.to),
       this.repository.roster(),
       !input.calls || callFloorApplied(period.start) ? null : this.repository.sellerCalls(period.start, period.end),
     ])

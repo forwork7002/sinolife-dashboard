@@ -161,7 +161,7 @@ export function sheetLines(blocks: readonly RnpBlockDto[], options: { month: str
       })
   const addedTeams = added('team', 'team', 'team')
   const addedLogistics = added('logistics', 'lg', 'section')
-  // The kval leads of teams no «guruh» row is named after («Boshqa jamoalar — квал»), and its cut per brand.
+  // The leads handed to teams no «guruh» row is named after («Boshqa jamoalar — квал»), and its cut per brand.
   const registrationRows = blocks.find((b) => b.kind === 'registration')?.rows ?? []
   const otherTeams = [
     ...registrationRows.filter((r) => r.key === 'reg:group:none:qualified').map(valueLine),

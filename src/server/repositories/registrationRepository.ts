@@ -25,17 +25,21 @@ export class RegistrationRepository {
   }
 
   /**
-   * The ROP is `leadRopSql`'s — the team the person heads, then the team they
-   * sit in, else null. «RNP jadvali» read the same deals until 2026-10-08;
-   * its «Квал лид сони» is now the Регистрация kval by «Сотувчи (Первичка)»
-   * (`RnpRepository.leadDaysSql`), so the two screens differ by definition.
+   * The ROP is read exactly as «RNP jadvali»'s `leadDaysSql` reads it — the
+   * team the person heads, then the team they sit in, else null — so the two
+   * screens agree on every team's leads. Except on a day the portal re-stamps
+   * old deals as handed out (26.09: 1 704): since 2026-10-02 /rnp counts only
+   * a deal created at most 30 days before, and this screen still counts them
+   * all — the bound was decided for /rnp's «Квал лид сони»; «Lidlar» was
+   * left as it was, pending its own decision.
    *
    * NOT THE REGISTRATION DEAL. When a lead is handed out the portal stamps
    * «Лид таркатилган сана» on the Регистрация deal too (29.09: 54 of 343 deals
    * with that date sat in Регистрация, 52 of them the same contact as a
    * handed-out deal, none with a ROP). Counting them would put a lead in
    * «Jami» twice, so a Регистрация deal is left out — unless it names a ROP:
-   * a handed-out deal moved back to Регистрация still went to that ROP.
+   * a handed-out deal moved back to Регистрация still went to that ROP, and
+   * /rnp counts it, so this screen does too.
    *
    * A DUPLICATE is the same contact handed out again the same day: every deal
    * after the contact's first (by creation) that day. A deal with no contact
@@ -64,8 +68,8 @@ export class RegistrationRepository {
   }
 
   /**
-   * The ROP a handed-out deal went to — «Lidlar»'s rule (/rnp's and «ROP
-   * otchet»'s own until 2026-10-08, see `RnpRepository.leadDaysSql`):
+   * The ROP a handed-out deal went to — ONE rule for «Lidlar» and /rnp
+   * (`RnpRepository.leadDaysSql` reads it too), so the two never disagree:
    *
    * 1. «ROP KVAL LID» (`k`, from 2026-10-07): the portal's own stamp of the
    *    ROP the deal was handed to, kept when the ROP passes it on — the field
@@ -215,45 +219,30 @@ export class RegistrationRepository {
           )`
   }
 
-  /** The kval leads of `from`…`to` (inclusive `YYYY-MM-DD` in `timeZone`) per ROP team × seller. */
-  async sellerLeads(from: string, to: string, timeZone: string): Promise<SellerLeadRow[]> {
+  /** The handed-out leads of `from`…`to` (inclusive) per ROP team × seller. */
+  async sellerLeads(from: string, to: string): Promise<SellerLeadRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string | null; employee_id: string | null; leads: bigint }[]>(
       RegistrationRepository.sellerLeadsSql(),
       from,
       to,
-      timeZone,
     )
     return rows.map((r) => ({ rop: r.rop, employeeId: r.employee_id, leads: Number(r.leads) }))
   }
 
   /**
-   * «Квал лид сони» of «ROP otchet» (the client, 2026-10-08: «lead soni … kval
-   * lead soni deb belgilaysan … shu yerga ham kval leadlarni yozasan»): the
-   * deals `RnpRepository.leadDaysSql` counts — Регистрация at «Сделка
-   * успешна», by the Tashkent day it closed, under the team its «Сотувчи
-   * (Первичка)» sits in — cut by that seller. So a group's leads are the
-   * kval «RNP jadvali» credits that team with for the day (a БАЗА team's
-   * sits in «Boshqa jamoalar — квал» there), and «Guruhlar» — this sheet
-   * summed over the month — reads the same deals. Null `employee_id`: no
-   * seller on the deal — nearly every deal before 16.09.2026, when the
-   * portal began to fill the field.
-   *
-   * It was the handed-out deals of `distributedDaysSql`, by the person the
-   * deal was with, until 2026-10-08.
+   * «Лид сони» of «ROP otchet»: the deals `distributedDaysSql` counts — the
+   * same rows, the same team — cut by the person the deal is with, the
+   * operator the portal stamped or else its owner, exactly the person the
+   * sellers board credits the order to. So a group's leads sum to its «Olgan
+   * lid», duplicates included, as the portal counts them.
    */
   static sellerLeadsSql(): string {
     return `
       SELECT
-        ${InsightsRepository.ropNameSql('dep."name"')} AS rop,
-        d."primarySellerEmployeeId" AS employee_id,
+        ${RegistrationRepository.leadRopSql()} AS rop,
+        COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id,
         count(*)::bigint AS leads
-      FROM "deal" d
-      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
-      LEFT JOIN "employee" s ON s."id" = d."primarySellerEmployeeId"
-      LEFT JOIN "department" dep ON dep."id" = s."departmentId" AND dep."isActive"
-      WHERE d."status" = 'WON'
-        AND d."closedAt" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
-        AND d."closedAt" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
+      ${RegistrationRepository.handedOutSql('BETWEEN $1::date AND $2::date')}
       GROUP BY 1, 2`
   }
 

@@ -45,23 +45,31 @@ describe('rnpTeamDaysSql', () => {
 })
 
 describe('RnpRepository statements', () => {
-  it('counts a ROP\'s kval leads on the registrars\' own kval deals — Регистрация at «Сделка успешна», by the Tashkent close day (2026-10-08)', () => {
+  it('reads handed-out leads from every pipeline, as the portal filter does, and credits the team the ROP heads', () => {
     const sql = bare(RnpRepository.leadDaysSql())
-    const cohort = (s: string) => s.slice(s.indexOf('FROM "deal" d'), s.indexOf('GROUP BY')).replace(/LEFT JOIN[^\n]*\n/g, '').replace(/\s+/g, ' ')
-    // The same deals as «Жами квал сони», so the teams and «Taqsimlanmagan» add up to it.
-    expect(cohort(sql)).toBe(cohort(bare(RnpRepository.registrarKvalDaysSql())))
-    expect(sql).toContain(`(d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day`)
-    expect(sql).not.toContain('"leadDistributedOn"')
-    expect(sql).not.toContain('"leadRopEmployeeId"')
+    // The pipeline is joined only for the seller fallback; nothing filters on it.
+    expect(sql.slice(sql.indexOf('WHERE d."leadDistributedOn"'))).not.toContain('"role"')
+    expect(sql).toContain(`h."headId" = d."leadRopEmployeeId"`)
+    expect(sql).toContain(`d."leadDistributedOn" BETWEEN $1::date AND $2::date`)
   })
 
-  it('credits the team «Сотувчи (Первичка)» sits in — the primary unit, never `department_member`', () => {
+  it('groups by day and team only — the «guruh» rows are teams now, not registrars (2026-10-02)', () => {
     const sql = bare(RnpRepository.leadDaysSql())
-    expect(sql).toContain('LEFT JOIN "employee" s ON s."id" = d."primarySellerEmployeeId"')
-    expect(sql).toContain('LEFT JOIN "department" dep ON dep."id" = s."departmentId" AND dep."isActive"')
-    expect(sql).toContain(`${InsightsRepository.ropNameSql('dep."name"')} AS rop`)
-    expect(sql).not.toContain('department_member')
+    expect(sql).not.toContain('"registrar"')
     expect(sql).toMatch(/GROUP BY 1, 2\s*$/)
+  })
+
+  it('counts only a fresh hand-out: a deal created at most 30 days before its «Лид таркатилган сана» (2026-10-02)', () => {
+    const sql = bare(RnpRepository.leadDaysSql())
+    // `createdAtSource`, never «Лид тушган сана» (`leadArrivedAt`), which is empty before 14.09.
+    expect(sql).toContain(`AND d."createdAtSource" >= d."leadDistributedOn" - interval '30 days'`)
+    expect(sql).not.toContain('"leadArrivedAt"')
+  })
+
+  it('files a person heading two ROP units under the one they sit in, then by name', () => {
+    const sql = bare(RnpRepository.leadDaysSql())
+    expect(sql).toContain(`ORDER BY (h."id" = e."departmentId") DESC, h."name"`)
+    expect(sql).toContain(`LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"`)
   })
 
   it('reads leads and kval in one UNION of two arms, summed per day × source × form × «Проект»', () => {

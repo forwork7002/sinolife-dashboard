@@ -11,7 +11,7 @@
  *
  * WHERE EACH NUMBER COMES FROM — «ROP otchet»'s own figures (`ropReport.ts`)
  * summed over those days, so a month here is the sum of its days there:
- *   Usp soni — the seller's kval leads («Квал лид сони»).
+ *   Usp soni — the kval leads handed to the seller («Лид сони»).
  *   Reja (Avto) — 500 000 × Usp soni («План»).
  *   Buyurtma summasi — Факт-1.
  *   Bajarilish % — Buyurtma ÷ Reja; null with no plan.
@@ -21,16 +21,16 @@
  *     the debt that closes it yet (2026-10-03), so everybody may.
  *
  * Who is a row: anybody the month credited with a lead or an order. A
- * rostered seller with neither has nothing to owe and is left out. Kval
- * leads that name no seller are one last row of the no-team group, «Hech
- * kimga biriktirilmagan» — no person, so no Dostup. Rows run by Qarz, the
- * most ahead first, as on the sheet (not head first, as «ROP otchet» does).
+ * rostered seller with neither has nothing to owe and is left out. Leads a
+ * team got with nobody on them are one last row, «Hech kimga biriktirilmagan»
+ * — no person, so no Dostup. Rows run by Qarz, the most ahead first, as on
+ * the sheet (not head first, as «ROP otchet» does).
  *
- * A ROW IS A PERSON IN ONE TEAM, as on «ROP otchet»: the leads sit under the
- * team the seller is in today, so a seller whose orders name another (a move
- * mid-month) is a row in each, the plan on one and the orders on the other.
- * The totals stay right; a debt threshold for Dostup, once the client names
- * one, must net the person's rows first.
+ * A ROW IS A PERSON IN ONE TEAM, as on «ROP otchet»: a seller whose leads
+ * name one team and whose orders name another (a move mid-month) is a row in
+ * each, the plan on one and the orders on the other. The totals stay right;
+ * a debt threshold for Dostup, once the client names one, must net the
+ * person's rows first.
  *
  * Pure: «ROP otchet» in, a DTO out.
  */
@@ -39,7 +39,7 @@ import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 
 import type { RopReportCellsDto, RopReportDto } from './ropReport'
 
-/** `buildRopReport`'s id for the kval leads that name no seller. */
+/** `buildRopReport`'s id for the leads handed to nobody. */
 const NOBODY = '∅'
 
 const CURRENCY = 'UZS'
