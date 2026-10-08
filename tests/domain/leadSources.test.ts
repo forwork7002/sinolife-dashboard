@@ -128,7 +128,7 @@ describe('leadChannel', () => {
 describe('leadTile', () => {
   const v = LEAD_SOURCE_VOCABULARY
 
-  it('reads the client\'s channels off the portal\'s sources', () => {
+  it('reads the client\'s six channels off the portal\'s sources', () => {
     expect(LEAD_TILES).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'outbound', 'other'])
     expect(leadTile('REPEAT_SALE', false, v)).toBe('generated') // forms and by hand alike
     expect(leadTile('CALL', false, v)).toBe('inbound')

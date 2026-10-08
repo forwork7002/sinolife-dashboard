@@ -47,12 +47,12 @@ const TILES: Record<LeadTile, ChannelTileDto> = {
 }
 
 const data = {
-  // The headline: the five channels' 3 224, «Исход» 2 410 and «Boshqa» 120, less the AI's 40.
+  // The headline: the six channels' 3 224, «Исход» 2 410 and «Boshqa» 120, less the AI's 40.
   brand: 'all',
   funnel: { total: 5714 },
   tiles: {
     rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
-    // The five channels' sum, as the server builds it — «Исход» and «Boshqa» left out.
+    // The six channels' sum, as the server builds it — «Исход» and «Boshqa» left out.
     total: cells(3224, 964, 40),
     toHeadline: { outbound: 2410, other: 120, ai: -40 },
     aiElsewhere: 17,
@@ -69,7 +69,7 @@ async function tipOf(line: HTMLElement): Promise<string> {
 const tile = (label: string) => screen.getByText(label, { selector: 'p' }).closest('.card') as HTMLElement
 
 describe('ChannelTiles', () => {
-  it('prints the client\'s five channels with their kval and rate', async () => {
+  it('prints the client\'s six channels with their kval and rate', async () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     expect(screen.getByRole('heading', { name: 'Boshqa kanallar lidlari' })).toBeTruthy()
