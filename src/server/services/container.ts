@@ -26,6 +26,7 @@ import { RoistatRepository } from '@/server/repositories/roistatRepository'
 import { SverkaRepository } from '@/server/repositories/sverkaRepository'
 import { InboundCallsRepository } from '@/server/repositories/inboundCallsRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
+import { CrmEventRepository } from '@/server/repositories/crmEventRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
@@ -68,6 +69,8 @@ const searchRepository = new SearchRepository(prisma)
  * it is authorisation, not analytics.
  */
 export const scopeRepository = new ScopeRepository(prisma)
+/** `/api/bitrix24/events` — the portal's outgoing events, queued for the worker. */
+export const crmEventRepository = new CrmEventRepository(prisma)
 
 export const scopeService = new ScopeService(scopeRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)

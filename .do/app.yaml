@@ -144,6 +144,12 @@ envs:
     type: SECRET
     value: CHANGE_ME
 
+  # The outgoing webhook's application token — see .env.example. Optional.
+  - key: BITRIX24_APP_TOKEN
+    scope: RUN_TIME
+    type: SECRET
+    value: ""
+
   # Meta Marketing API, read-only use (GET only) — «Target tahlili»'s spend per
   # targetolog, imported hourly by the sync worker into meta_ad_daily. A
   # system-user token that does not expire. Unset means the import is off and

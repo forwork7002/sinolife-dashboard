@@ -155,6 +155,15 @@ const schema = z
     BITRIX24_HOURLY_INVOCATIONS: blankAsUndefined(
       z.coerce.number().int().positive().default(15_000),
     ),
+    /*
+      The «application token» of the portal's OUTGOING webhook — see
+      `bitrix24/outgoingEvent.ts`. Optional: without it `/api/bitrix24/events`
+      answers 404 and the sync is polling only, as before.
+    */
+    BITRIX24_APP_TOKEN: z
+      .string()
+      .optional()
+      .transform((v) => (v === '' ? undefined : v)),
   })
   .superRefine((value, ctx) => {
     if (value.DATA_SOURCE !== DataSource.Bitrix24) return

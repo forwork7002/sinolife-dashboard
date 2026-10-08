@@ -1969,3 +1969,28 @@ model MoyskladSync {
 
   @@map("moysklad_sync")
 }
+
+// ---------------------------------------------------------------------------
+// The portal's outgoing events — `src/server/integrations/crm/bitrix24/outgoingEvent.ts`
+//
+// A Bitrix24 outgoing webhook POSTs to `/api/bitrix24/events` the moment a
+// deal is added, changed or deleted. The route writes one row here and
+// answers; the worker drains the rows between its ticks, every few seconds,
+// through the ordinary provider (`crmEvents.ts`). A queue, not a log:
+// processed rows are pruned after a day.
+// ---------------------------------------------------------------------------
+
+model CrmEvent {
+  id          Int            @id @default(autoincrement())
+  source      ExternalSource
+  /// ONCRMDEALADD / ONCRMDEALUPDATE / ONCRMDEALDELETE, as the portal spells it.
+  event       String
+  /// The deal's portal id.
+  externalId  String
+  receivedAt  DateTime       @default(now())
+  processedAt DateTime?
+
+  @@index([source, processedAt, id])
+  @@index([processedAt])
+  @@map("crm_event")
+}

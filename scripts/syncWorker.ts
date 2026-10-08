@@ -60,6 +60,13 @@ import { historyBackfillCursor } from '../src/server/integrations/crm/sync/backf
 import { relinkDealContacts } from '../src/server/integrations/crm/sync/contactRelink'
 import { type RecentPopulation, sweepRecentConfirmations } from '../src/server/integrations/crm/sync/recentDeletions'
 import { closedTriageDealIds, rereadClosedTriageDeals } from '../src/server/integrations/crm/sync/triageMoves'
+import {
+  applyCrmEvents,
+  deleteDealsByExternalId,
+  markCrmEventsProcessed,
+  pendingCrmEvents,
+  pruneCrmEvents,
+} from '../src/server/integrations/crm/sync/crmEvents'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { importMetaLeads } from '../src/server/integrations/meta/metaLeadImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
@@ -253,6 +260,28 @@ const TRIAGE_REREADS = [
   { label: 'yaqin', days: 2 as number | null, everyMs: Number(process.env.SYNC_TRIAGE_NEAR_MIN ?? 5) * 60_000 },
   { label: 'keng', days: null, everyMs: Number(process.env.SYNC_TRIAGE_WIDE_MIN ?? 60) * 60_000 },
 ] as const
+
+/**
+ * THE PORTAL'S OWN EVENTS, APPLIED BETWEEN TICKS — see `crmEvents.ts` and
+ * `bitrix24/outgoingEvent.ts`.
+ *
+ * Every check above goes and ASKS; this is the portal telling us. The
+ * outgoing webhook queues a row per deal event in `crm_event`, and while the
+ * worker waits out its interval it drains that queue every `EVENTS_DRAIN_MS`:
+ * a deal deleted in Bitrix24 is gone from the Tasdiqlash queue seconds later,
+ * not 6 minutes or an hour later (the client, 2026-09-24 and 2026-10-08:
+ * «Bitrix24ʼda oʻchirilsa srazi oʻchirilishi kerak»).
+ *
+ * COST: one `crm.deal.list` per fifty DISTINCT deals named since the last
+ * drain, so an ordinary hour is a few dozen invocations and a robot rewriting
+ * thousands of deals is capped by `EVENTS_DRAIN_MAX` per drain and by the
+ * gate like everything else. Seconds; 0 switches the drain off (the rows
+ * then wait, unprocessed, for a worker that has it on).
+ */
+const EVENTS_DRAIN_MS = Number(process.env.SYNC_EVENTS_DRAIN_SEC ?? 10) * 1000
+const EVENTS_DRAIN_MAX = 500
+/** Processed rows are kept this long, for a look at what the portal sent. */
+const EVENTS_KEEP_MS = 86_400_000
 
 /**
  * How far back the stage history is re-read once, at startup. Default: 45 days.
@@ -1036,6 +1065,9 @@ async function main() {
       (SWEEP_EVERY > 0
         ? ` Oʻchirilganlarni tozalash har ${SWEEP_EVERY} tsiklda.`
         : ' Tozalash oʻchirilgan.') +
+      (EVENTS_DRAIN_MS > 0
+        ? ` Portal hodisalari har ${EVENTS_DRAIN_MS / 1000}s.`
+        : ' Portal hodisalari oʻchirilgan.') +
       '\n',
   )
 
@@ -1755,7 +1787,55 @@ async function main() {
       : Math.min(failures, 5) * INTERVAL_SEC * 1000
     const remaining = Math.max(INTERVAL_SEC * 1000 - (Date.now() - started), backoff)
 
-    if (remaining > 0 && !stopping) await sleep(remaining)
+    /*
+      THE WAIT IS WHERE THE PORTAL'S EVENTS ARE APPLIED — see `EVENTS_DRAIN_MS`.
+      Sleep in slices; after each, drain `crm_event` unless the gate is shut,
+      the worker is calming down after a block, or it is stopping. `wake()`
+      still cuts the slice short, so shutdown is as immediate as before.
+      A drain failure deletes nothing, leaves the rows pending and is logged
+      once; the next slice tries again.
+    */
+    const deadline = Date.now() + remaining
+    let lastEventsError: string | null = null
+    while (!stopping) {
+      const left = deadline - Date.now()
+      if (left <= 0) break
+      await sleep(EVENTS_DRAIN_MS > 0 ? Math.min(left, EVENTS_DRAIN_MS) : left)
+      if (EVENTS_DRAIN_MS <= 0 || stopping || calm !== 0 || provider.gate.isOpen()) continue
+      try {
+        const events = await pendingCrmEvents(prisma, 'BITRIX24', EVENTS_DRAIN_MAX)
+        if (events.length === 0) continue
+        const drainStarted = Date.now()
+        const r = await applyCrmEvents(
+          events,
+          (ids) => provider.fetchDealsByIds(ids),
+          (deal) => deal.externalId,
+          (deals) => engine.persistRecords('DEALS', deals),
+          (ids) => deleteDealsByExternalId(prisma, 'BITRIX24', ids),
+        )
+        await markCrmEventsProcessed(
+          prisma,
+          events.map((e) => e.id),
+        )
+        await pruneCrmEvents(prisma, new Date(Date.now() - EVENTS_KEEP_MS))
+        lastEventsError = null
+        // Quiet unless something was deleted, held or skipped: updates arrive all day.
+        if (r.deleted > 0 || r.held > 0 || r.skipped > 0) {
+          console.log(
+            `  ${stamp()} portal hodisalari: ${r.events} hodisa, ${r.checked} bitim qayta oʻqildi,` +
+              ` ${r.written} yozildi` +
+              (r.deleted > 0 ? `, ${r.deleted} ta portalda oʻchirilgan — bu yerda ham oʻchirildi` : '') +
+              (r.held > 0 ? `, ${r.held} ta portal qaytarmadi — juda koʻp, oʻchirilmadi (kunlik tozalash hal qiladi)` : '') +
+              (r.skipped > 0 ? `, ${r.skipped} tasi yozilmadi (bosqich/xodim hali yoʻq)` : '') +
+              `  (${((Date.now() - drainStarted) / 1000).toFixed(1)}s)`,
+          )
+        }
+      } catch (error) {
+        const message = (error as Error).message
+        if (message !== lastEventsError) console.warn(`  ${stamp()} portal hodisalari muvaffaqiyatsiz: ${message}`)
+        lastEventsError = message
+      }
+    }
   }
 
   // Releasing the lock explicitly lets a replacement worker start at once
