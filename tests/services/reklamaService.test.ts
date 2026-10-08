@@ -394,10 +394,18 @@ describe('reklamaOverview', () => {
       leadRows: [],
       campaignRows: rows,
       campaignLeadRows: [
-        { campaignId: 'c1', leads: 19, matched: 16, qualified: 4 },
+        { campaignId: 'c1', leads: 19, matched: 16, qualified: 4, noAnswer: 5, lowQuality: 2, duplicate: 1, open: 4 },
         // Its other form's page is closed to the token: half of Meta's 20 leads were read.
-        { campaignId: 'c2', leads: 10, matched: 9, qualified: 3 },
-        { campaignId: 'c3', leads: 5, matched: 5, qualified: 0 },
+        { campaignId: 'c2', leads: 10, matched: 9, qualified: 3, noAnswer: 0, lowQuality: 0, duplicate: 0, open: 6 },
+        { campaignId: 'c3', leads: 5, matched: 5, qualified: 0, noAnswer: 5, lowQuality: 0, duplicate: 0, open: 0 },
+      ],
+      campaignFaktRows: [
+        // Первичка: every team but БАЗА, the no-team bucket included.
+        { campaignId: 'c1', rop: 'Azizbek', fakt1Orders: 2, fakt1Minor: 300_000_000n, fakt2Orders: 1, fakt2Minor: 150_000_000n },
+        { campaignId: 'c1', rop: '(ROP yoʻq)', fakt1Orders: 1, fakt1Minor: 100_000_000n, fakt2Orders: 0, fakt2Minor: 0n },
+        // БАЗА, one under its old name: FAKT 1 is «База», and its FAKT 2 is on no column.
+        { campaignId: 'c1', rop: 'Baza', fakt1Orders: 1, fakt1Minor: 120_000_000n, fakt2Orders: 1, fakt2Minor: 120_000_000n },
+        { campaignId: 'c1', rop: 'Malika', fakt1Orders: 1, fakt1Minor: 80_000_000n, fakt2Orders: 0, fakt2Minor: 0n },
       ],
       importedAt: null,
     })
@@ -411,6 +419,13 @@ describe('reklamaOverview', () => {
     expect(none!.crm).toMatchObject({ qualified: 0, qualifiedPercent: 0, costPerQualifiedUsd: null })
     // A DM campaign has no Meta lead to meet.
     expect(dm!.crm).toBeNull()
+    // «Barcha manbalar»'s outcome columns: with the kval they are the matched leads.
+    expect(whole!.crm).toMatchObject({ noAnswer: 5, lowQuality: 2, duplicate: 1, open: 4 })
+    expect(4 + 5 + 2 + 1 + 4).toBe(whole!.crm!.matched)
+    // The leads' orders in whole soʻm, by the selling team.
+    expect(whole!.crm).toMatchObject({ fakt1PrimaryUzs: 4_000_000, fakt1BaseUzs: 2_000_000, fakt2PrimaryUzs: 1_500_000 })
+    // Leads that bought nothing: a measured zero, not a missing answer.
+    expect(none!.crm).toMatchObject({ fakt1PrimaryUzs: 0, fakt1BaseUzs: 0, fakt2PrimaryUzs: 0 })
   })
 
   it('sums the lead-quality buckets to the leads, with the sheet\'s % over them', () => {
@@ -614,7 +629,19 @@ describe('ReklamaService.overview — collagen.sinolife, the page Sobirjon #2\'s
     campaignsImportedAt: async () => null,
     campaignLeads: async () => [],
   }
-  const service = new ReklamaService(repository as never)
+  const service = new ReklamaService(repository as never, { campaignFakt: async () => [] })
+
+  it('draws the sheets and the campaigns when a per-campaign scan fails', async () => {
+    const failing = new ReklamaService(
+      { ...repository, campaignLeads: async () => [{ campaignId: '2804901113001448:I.S | SMS| New strantsa', leads: 3, matched: 3, qualified: 1, noAnswer: 1, lowQuality: 0, duplicate: 0, open: 1 }] } as never,
+      { campaignFakt: async () => Promise.reject(new Error('canceling statement due to statement timeout')) },
+    )
+    // Another window, so the memo of the cases around this one is not what answers.
+    const out = await failing.overview({ ...PERIOD, start: new Date(PERIOD.start.getTime() + 86_400_000) }, 'Asia/Tashkent')
+    expect(out.campaigns).toHaveLength(1)
+    // The leads were read, their orders were not: no answer, never a zero.
+    expect(out.campaigns[0]!.crm).toMatchObject({ matched: 3, qualified: 1, fakt1PrimaryUzs: null, fakt1BaseUzs: null, fakt2PrimaryUzs: null })
+  })
 
   it('reads the page\'s leads and name, draws it as Collagen\'s, and puts the money on it', async () => {
     const out = await service.overview(PERIOD, 'Asia/Tashkent')
@@ -638,7 +665,7 @@ describe('ReklamaService.overview — collagen.sinolife, the page Sobirjon #2\'s
   })
 
   it('reports the money as unattributed when the portal names no such page', async () => {
-    const bare = new ReklamaService({ ...repository, sources: async () => [{ externalId: 'UC_1X1J24', name: 'sinolifeuz' }] } as never)
+    const bare = new ReklamaService({ ...repository, sources: async () => [{ externalId: 'UC_1X1J24', name: 'sinolifeuz' }] } as never, { campaignFakt: async () => [] })
     const out = await bare.overview(PERIOD, 'Asia/Tashkent')
     expect(out.dm.total.spendUsd).toBe(0)
     expect(out.dm.unattributed).toEqual({ spendUsd: 30, conversations: 50 })

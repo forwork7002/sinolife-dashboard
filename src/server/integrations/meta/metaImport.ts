@@ -76,8 +76,9 @@ export async function getAll<T>(url: string): Promise<T[]> {
     const response: Response = await fetch(next, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
     const body = (await response.json()) as Page<T>
     if (!response.ok || body.error) {
-      // The message only: the URL carries the token and must never be logged.
-      throw new Error(`Meta API ${response.status}: ${body.error?.message ?? 'nomaʼlum xato'}`)
+      // The message only: the URL carries the token and must never be logged — nor a token Meta's own text echoes.
+      const message = (body.error?.message ?? 'nomaʼlum xato').replace(/EAA[\w-]{20,}/g, '[token]')
+      throw new Error(`Meta API ${response.status}: ${message}`)
     }
     out.push(...(body.data ?? []))
     next = body.paging?.next

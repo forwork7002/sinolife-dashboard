@@ -30,6 +30,32 @@ describe('leadPhoneKeys — the numbers a lead is met with the portal by', () =>
     ).toEqual(['901234567'])
   })
 
+  it('never keeps a card or passport number, whatever the question calls it', () => {
+    expect(
+      leadPhoneKeys({
+        id: '1',
+        field_data: [
+          { name: 'karta_raqamingiz?', values: ['8600 1234 5678 9012'] },
+          { name: 'pasport nomeri', values: ['AB 123456789'] },
+          { name: 'phone_number', values: ['+998901234567'] },
+        ],
+      }),
+    ).toEqual(['901234567'])
+  })
+
+  it('reads a question asked in Cyrillic, and takes neither a Telegram name nor a hotel for a phone', () => {
+    expect(
+      leadPhoneKeys({
+        id: '1',
+        field_data: [
+          { name: 'Телефон', values: ['+998 93 111-22-33'] },
+          { name: 'telegram_username', values: ['@aziza998901234567'] },
+          { name: 'hotel', values: ['998901234567'] },
+        ],
+      }),
+    ).toEqual(['931112233'])
+  })
+
   it('is empty for a lead with no phone question', () => {
     expect(leadPhoneKeys({ id: '1', field_data: [{ name: 'ismingiz?', values: ['Olim'] }] })).toEqual([])
     expect(leadPhoneKeys({ id: '1' })).toEqual([])
@@ -165,5 +191,40 @@ describe('importMetaLeads', () => {
     expect(r.leads).toBe(2)
     expect(written.map((w) => w.id)).toEqual(['ok-1', 'ok-1'])
     expect(r.failed).toEqual(['Collagen.marine · New form: Meta API 400: (#200) Requires leads_retrieval'])
+  })
+
+  it('reads an archived form on the first run only — after it, one with nothing stored is not asked again', async () => {
+    const first = stubGraph((form) => (form === 'f-old' ? [] : [lead(`${form}-1`)]))
+    await importMetaLeads(fakePrisma().prisma, 'user-token')
+    expect(first.filter((u) => u.pathname.endsWith('/leads')).map((u) => u.pathname.split('/').at(-2))).toEqual(['f-new', 'f-seen', 'f-old'])
+
+    const later = stubGraph((form) => [lead(`${form}-1`)])
+    await importMetaLeads(fakePrisma([{ formId: 'f-seen', at: '2026-10-08T04:00:00Z' }]).prisma, 'user-token')
+    expect(later.filter((u) => u.pathname.endsWith('/leads')).map((u) => u.pathname.split('/').at(-2))).toEqual(['f-new', 'f-seen'])
+  })
+
+  it('stops asking when its time is up, says so, and leaves the rest to the next run', async () => {
+    const asked = stubGraph((form) => [lead(`${form}-1`)])
+    const { prisma, written } = fakePrisma()
+    const r = await importMetaLeads(prisma, 'user-token', 0)
+
+    expect(written).toEqual([])
+    expect(asked.some((u) => u.pathname.endsWith('/leads'))).toBe(false)
+    expect(r.failed).toEqual(['vaqt tugadi — qolgan formalar keyingi oʻqishda'])
+  })
+
+  it('names a failed write by its kind alone — a database error can quote the row, phone keys and all', async () => {
+    stubGraph((form) => [lead(`${form}-1`)])
+    const prisma = {
+      metaLead: {
+        groupBy: async () => [],
+        createMany: async () => {
+          throw Object.assign(new Error('Invalid value: phoneKeys ["901234567"]'), { name: 'PrismaClientValidationError' })
+        },
+      },
+    } as unknown as PrismaClient
+    const r = await importMetaLeads(prisma, 'user-token')
+    expect(r.failed[0]).toBe('Collagen.marine · New form: yozilmadi (PrismaClientValidationError)')
+    expect(r.failed.join(' ')).not.toContain('901234567')
   })
 })

@@ -144,10 +144,10 @@ export interface CampaignCrmDto {
   readonly lowQuality: number
   readonly duplicate: number
   readonly open: number
-  /** Whole soʻm, queue cohort: FAKT 1 of the Первичка / БАЗА teams, FAKT 2 of Первичка. */
-  readonly fakt1PrimaryUzs: number
-  readonly fakt1BaseUzs: number
-  readonly fakt2PrimaryUzs: number
+  /** Whole soʻm, the window's leads' orders: FAKT 1 of the Первичка / БАЗА teams, FAKT 2 of Первичка. Null: not answered. */
+  readonly fakt1PrimaryUzs: number | null
+  readonly fakt1BaseUzs: number | null
+  readonly fakt2PrimaryUzs: number | null
   readonly costPerQualifiedUsd: number | null
 }
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import type { Period } from '@/server/domain/period/period'
+import type { RnpTeamDayRow } from '@/server/repositories/insightsRepository'
 import type { CampaignDayRow } from '@/server/repositories/reklamaRepository'
 import type { RoistatBitrixRow, RoistatMetaRow } from '@/server/repositories/roistatRepository'
 
@@ -14,9 +15,12 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { RoistatService, resetRoistatCaches } = await import('@/server/services/roistatService')
+const { RoistatService, faktDays, resetRoistatCaches } = await import('@/server/services/roistatService')
 
-beforeEach(() => resetRoistatCaches())
+beforeEach(() => {
+  resetRoistatCaches()
+  teamDays = []
+})
 const { RoistatRepository } = await import('@/server/repositories/roistatRepository')
 
 const PERIOD: Period = {
@@ -27,6 +31,20 @@ const PERIOD: Period = {
   preset: 'custom',
 }
 const NOW = new Date('2026-10-05T07:00:00Z')
+
+function teamDay(fields: Partial<RnpTeamDayRow> & Pick<RnpTeamDayRow, 'day' | 'rop'>): RnpTeamDayRow {
+  return { fakt1Orders: 0, fakt1Minor: 0n, fakt2Orders: 0, fakt2Minor: 0n, refusedOrders: 0, refusedMinor: 0n, productBrand: null, ...fields }
+}
+
+/** The queue cohort's team-days under «Kunlar boʻyicha» — what a case puts here, `days` reads. */
+let teamDays: RnpTeamDayRow[] = []
+let teamDaysFail = false
+const insights = {
+  rnpTeamDays: async () => {
+    if (teamDaysFail) throw new Error('canceling statement due to statement timeout')
+    return teamDays
+  },
+}
 
 function bitrixRow(set: RoistatBitrixRow['set'], fields: Partial<RoistatBitrixRow> = {}): RoistatBitrixRow {
   return {
@@ -140,7 +158,7 @@ function harness() {
       return days.map(() => 12_000)
     },
   }
-  const service = new RoistatService(repository as never, reklama, usd)
+  const service = new RoistatService(repository as never, reklama, usd, insights)
   return { service, bitrixCalls, metaCalls, usdDays }
 }
 
@@ -217,6 +235,62 @@ describe('RoistatService.days — «Kunlar boʻyicha» on Savdo dinamikasi', () 
     expect(bitrixCalls.map((c) => c.shape)).toEqual(['days'])
     expect(metaCalls).toHaveLength(0)
   })
+
+  it('sets the queue cohort\'s FAKT beside each day, by the selling team', async () => {
+    teamDays = [
+      teamDay({ day: '2026-10-01', rop: 'Azizbek', fakt1Minor: 500_000_000n, fakt2Minor: 200_000_000n }),
+      teamDay({ day: '2026-10-01', rop: '(ROP yoʻq)', fakt1Minor: 100_000_000n }),
+      // БАЗА, one under the name its old deals carry: FAKT 1 is «База», its FAKT 2 on no column.
+      teamDay({ day: '2026-10-01', rop: 'Baza', fakt1Minor: 300_000_000n, fakt2Minor: 300_000_000n }),
+      teamDay({ day: '2026-10-01', rop: 'Malika', fakt1Minor: 50_000_000n }),
+      // A day with orders in the queue and neither a lead nor a dollar.
+      teamDay({ day: '2026-10-04', rop: 'Lola', fakt1Minor: 70_000_000n }),
+      // Refused only: nothing to show.
+      teamDay({ day: '2026-10-03', rop: 'Lola', refusedOrders: 1, refusedMinor: 90_000_000n }),
+    ]
+    const { service } = harness()
+    const days = await service.days(PERIOD, NOW)
+    expect(days.fakt!.byDay).toEqual({
+      '2026-10-01': { fakt1PrimaryUzs: 6_000_000, fakt1BaseUzs: 3_500_000, fakt2PrimaryUzs: 2_000_000 },
+      '2026-10-04': { fakt1PrimaryUzs: 700_000, fakt1BaseUzs: 0, fakt2PrimaryUzs: 0 },
+    })
+    expect(days.fakt!.total).toEqual({ fakt1PrimaryUzs: 6_700_000, fakt1BaseUzs: 3_500_000, fakt2PrimaryUzs: 2_000_000 })
+    // The FAKT-only day gets a row of its own, in day order; the lead cohort's total is untouched.
+    expect(days.rows.map((r) => r.key)).toEqual(['2026-10-04', '2026-10-02', '2026-10-01'])
+    expect(days.rows[0]).toMatchObject({ leads: 0, spendUsd: 0, soldUzs: 0 })
+    const overview = await service.overview(PERIOD, { dim: 'days' }, NOW)
+    expect(days.total).toEqual(overview.total)
+    // /roistat's own «Дни» carries no FAKT.
+    expect('fakt' in overview).toBe(false)
+  })
+
+  it('still draws the table when the FAKT scan fails', async () => {
+    teamDaysFail = true
+    const { service } = harness()
+    const days = await service.days(PERIOD, NOW).finally(() => {
+      teamDaysFail = false
+    })
+    expect(days.rows.map((r) => r.key)).toEqual(['2026-10-02', '2026-10-01'])
+    expect('fakt' in days).toBe(false)
+  })
+})
+
+describe('faktDays — the brand switch', () => {
+  const rows = [
+    // An order is its product's brand; the team decides only one with no line item.
+    teamDay({ day: '2026-10-01', rop: 'Azizbek', productBrand: 'Collagen', fakt1Minor: 100_000_000n }),
+    teamDay({ day: '2026-10-01', rop: 'Azizbek', productBrand: 'Zextra', fakt1Minor: 40_000_000n }),
+    teamDay({ day: '2026-10-01', rop: 'Asliddin', productBrand: null, fakt1Minor: 20_000_000n }),
+    teamDay({ day: '2026-10-01', rop: 'Baza', productBrand: '-', fakt1Minor: 10_000_000n }),
+  ]
+  const of = (brand: 'all' | 'Collagen' | 'Zextra' | 'none') => faktDays(rows, brand).total
+
+  it('files each order as the P&L does, and the three slices add up to «Hammasi»', () => {
+    expect(of('Collagen')).toEqual({ fakt1PrimaryUzs: 1_000_000, fakt1BaseUzs: 0, fakt2PrimaryUzs: 0 })
+    expect(of('Zextra')).toEqual({ fakt1PrimaryUzs: 600_000, fakt1BaseUzs: 0, fakt2PrimaryUzs: 0 })
+    expect(of('none')).toEqual({ fakt1PrimaryUzs: 0, fakt1BaseUzs: 100_000, fakt2PrimaryUzs: 0 })
+    expect(of('all')).toEqual({ fakt1PrimaryUzs: 1_600_000, fakt1BaseUzs: 100_000, fakt2PrimaryUzs: 0 })
+  })
 })
 
 describe('RoistatService — the Collagen / Zextra switch', () => {
@@ -271,7 +345,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
       ],
     }
     const usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) }
-    return { service: new RoistatService(repository as never, reklama, usd), calls }
+    return { service: new RoistatService(repository as never, reklama, usd, insights), calls }
   }
 
   it('keeps one brand: leads by source then form, sales by team, money by ad account', async () => {
@@ -323,7 +397,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
         metaName: async () => null,
         metaImportedAt: async () => null,
       }
-      const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) })
+      const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, insights)
       expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(100)
 
       // Past the TTL: the old answer is handed out while ONE rebuild of the scan runs behind it…
@@ -355,7 +429,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
           return []
         },
       }
-      const service = new RoistatService(repository as never, reklama, { forDays: async (d: readonly string[]) => d.map(() => 12_000) })
+      const service = new RoistatService(repository as never, reklama, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, insights)
       await service.overview(PERIOD, { dim: 'rop' }, NOW)
       // A table's Meta reads: this window's spend and the previous one's.
       expect(spendReads).toBe(2)
@@ -395,7 +469,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
       metaName: async () => null,
       metaImportedAt: async () => null,
     }
-    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) })
+    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, insights)
     const z = await service.overview(PERIOD, { dim: 'days', brand: 'Zextra' }, NOW)
     expect(z.kpi).toMatchObject({ sold: 2, soldUzs: 7_000_000 })
     const n = await service.overview(PERIOD, { dim: 'days', brand: 'none' }, NOW)

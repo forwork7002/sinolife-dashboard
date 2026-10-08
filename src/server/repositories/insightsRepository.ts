@@ -1147,6 +1147,17 @@ export interface LeadFakt1ClientRow {
   readonly client: string
 }
 
+/** One Meta campaign's orders under one ROP team, as `campaignFakt` reads it. */
+export interface CampaignFaktRow {
+  readonly campaignId: string
+  /** The team on the deal, as `rnpTeamDays` names it. */
+  readonly rop: string
+  readonly fakt1Orders: number
+  readonly fakt1Minor: bigint
+  readonly fakt2Orders: number
+  readonly fakt2Minor: bigint
+}
+
 export class InsightsRepository {
   private readonly tz: string
 
@@ -5713,6 +5724,89 @@ export class InsightsRepository {
       LEFT JOIN "sales_source" s ON s."id" = l."sourceId"
       LEFT JOIN form_alias fa ON fa.sd = l.sd
      GROUP BY l."id", s."externalId", s."name"`
+  }
+
+  /**
+   * FAKT 1 / FAKT 2 per Meta CAMPAIGN × ROP team — «Reklama samarasi» ·
+   * «Kampaniyalar» (the client, 2026-10-08).
+   *
+   * «Факт1 мижоз»'s join (`leadFakt1Clients`), from the other end: the
+   * board's cohort and predicates, so every order is one Savdo dinamikasi
+   * counts, met BY PHONE with a Meta lead (`meta_lead`) filed in the window
+   * and BEFORE the order's deal was opened. A deal names no campaign; Meta's
+   * own lead does.
+   *
+   * A LEAD COHORT: the window's leads, and their orders queued from the
+   * window's start UNTIL NOW — a lead buys days after it was filed, and with
+   * both sides held to the window «Bugun» would hardly ever show an order.
+   * So a past window's figure grows as its leads' orders arrive.
+   *
+   * ONE ORDER, ONE CAMPAIGN: a person who filled two campaigns' forms before
+   * buying is the LATEST form's order, so the campaigns' money can be summed.
+   * The team is `rnpTeamDays`'s, for the Первичка / База split.
+   */
+  async campaignFakt(period: Period): Promise<CampaignFaktRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      { campaign_id: string; rop: string; fakt1_orders: bigint; fakt1: MoneyText; fakt2_orders: bigint; fakt2: MoneyText }[]
+    >(
+      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.campaignFaktSql()}`,
+      // The queue's window ($1, $2) runs to now; the leads' own ($4, $5) is the period.
+      period.start,
+      new Date(),
+      null,
+      period.start,
+      period.end,
+    )
+    return rows.map((r) => ({
+      campaignId: r.campaign_id,
+      rop: r.rop,
+      fakt1Orders: int(r.fakt1_orders),
+      fakt1Minor: money(r.fakt1),
+      fakt2Orders: int(r.fakt2_orders),
+      fakt2Minor: money(r.fakt2),
+    }))
+  }
+
+  /** Isolated so a test can pin it against the board's own predicates. */
+  static campaignFaktSql(): string {
+    const nine = (phone: string) => `right(regexp_replace(${phone}, '[^0-9]', '', 'g'), 9)`
+    const fakt2 = InsightsRepository.faktDeliveredSql('ds."logisticsRole"')
+    return `,
+    -- Both sides reduced to (phone) before they meet, as in leadFakt1ClientsSql.
+    order_phone AS MATERIALIZED (
+      SELECT DISTINCT c.deal_id, c.created_at, ${nine('x.phone')} AS phone
+        FROM scoped c
+        JOIN "deal" d ON d."id" = c.deal_id
+        LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+        JOIN "customer" cu ON cu."id" = d."customerId"
+        CROSS JOIN LATERAL unnest(cu."phones" || cu."phone") AS x(phone)
+       WHERE ((${InsightsRepository.FAKT1_OUTCOMES}) OR ${fakt2})
+         AND length(${nine('x.phone')}) = 9
+         AND ${nine('x.phone')} !~ '^([0-9])\\1{8}$'
+    ),
+    meta_phone AS MATERIALIZED (
+      SELECT m."id", m."campaignId" AS campaign_id, m."createdTime" AS created, k.phone
+        FROM "meta_lead" m
+        CROSS JOIN LATERAL unnest(m."phoneKeys") AS k(phone)
+       WHERE m."createdTime" >= $4 AND m."createdTime" < $5 AND m."campaignId" <> ''
+    ),
+    campaign_order AS (
+      SELECT DISTINCT ON (o.deal_id) o.deal_id, mp.campaign_id
+        FROM order_phone o
+        JOIN meta_phone mp ON mp.phone = o.phone AND mp.created < o.created_at
+       ORDER BY o.deal_id, mp.created DESC, mp."id"
+    )
+    SELECT co.campaign_id,
+           COALESCE(${InsightsRepository.ropNameSql('d."operatorTeamSource"')}, c.rop, '${InsightsRepository.NO_ROP}') AS rop,
+           count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS fakt1_orders,
+           COALESCE(sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}), 0)::text AS fakt1,
+           count(*) FILTER (WHERE ${fakt2})::bigint AS fakt2_orders,
+           COALESCE(sum(d."amountMinor") FILTER (WHERE ${fakt2}), 0)::text AS fakt2
+      FROM campaign_order co
+      JOIN scoped c ON c.deal_id = co.deal_id
+      JOIN "deal" d ON d."id" = c.deal_id
+      LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+     GROUP BY 1, 2`
   }
 
   /** Isolated so a test can pin it against the board's own predicates. */

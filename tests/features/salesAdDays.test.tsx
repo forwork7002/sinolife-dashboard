@@ -148,6 +148,36 @@ describe('«Kunlar boʻyicha»', () => {
     expect(heading.compareDocumentPosition(sellers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 
+  it('adds the queue cohort\'s FAKT by team after ROAS, and says which day it is dated by', async () => {
+    boardFails = false
+    DAYS = {
+      ...WITH_RATE,
+      fakt: {
+        byDay: { '2026-10-04': { fakt1PrimaryUzs: 61_500_000, fakt1BaseUzs: 9_250_000, fakt2PrimaryUzs: 40_750_000 } },
+        total: { fakt1PrimaryUzs: 61_500_000, fakt1BaseUzs: 9_250_000, fakt2PrimaryUzs: 40_750_000 },
+      },
+    }
+    mount(viewer('ALL'))
+    await screen.findByText('04.10.2026')
+    const heads = screen.getAllByRole('columnheader').map((th) => th.textContent ?? '')
+    const at = (h: string) => heads.findIndex((text) => text.startsWith(h))
+    expect(at('ROAS')).toBeGreaterThan(-1)
+    expect(at('FAKT 1 · Первичка, сум')).toBeGreaterThan(at('ROAS'))
+    expect(at('FAKT 1 · База, сум')).toBeGreaterThan(at('FAKT 1 · Первичка, сум'))
+    expect(at('FAKT 2 · Первичка, сум')).toBeGreaterThan(at('FAKT 1 · База, сум'))
+    // The day's cell and the ИТОГО row.
+    for (const figure of [61_500_000, 9_250_000, 40_750_000]) expect(screen.getAllByText(formatFullUzs(figure))).toHaveLength(2)
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && (el.textContent ?? '').includes('FAKT ustunlari — buyurtma navbatga tushgan kun boʻyicha'))).toBeTruthy()
+    DAYS = WITH_RATE
+  })
+
+  it('draws no FAKT column for a payload without it', async () => {
+    boardFails = false
+    mount(viewer('ALL'))
+    await screen.findByText('04.10.2026')
+    expect(screen.getAllByRole('columnheader').some((th) => th.textContent?.startsWith('FAKT'))).toBe(false)
+  })
+
   it('says so when the CBU rate is missing, and never calls a day with spend «нет расхода»', async () => {
     boardFails = false
     DAYS = { ...WITH_RATE, rate: null }

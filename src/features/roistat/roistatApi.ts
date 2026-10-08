@@ -134,4 +134,20 @@ export interface RoistatOverviewDto {
 }
 
 /** The «Дни» cut alone — `/analytics/sales-days`, `RoistatService.days`. */
-export type RoistatDaysDto = Pick<RoistatOverviewDto, 'dim' | 'columns' | 'rows' | 'total' | 'rate' | 'freshFrom'>
+export type RoistatDaysDto = Pick<RoistatOverviewDto, 'dim' | 'columns' | 'rows' | 'total' | 'rate' | 'freshFrom'> & {
+  /** «Kunlar boʻyicha» only: the queue cohort's FAKT beside each day. Absent on /roistat. */
+  readonly fakt?: RoistatFaktDaysDto
+}
+
+/** FAKT 1 / FAKT 2 of a day, whole soʻm, by the selling team: БАЗА, or everyone else («Первичка»). */
+export interface RoistatFaktDto {
+  readonly fakt1PrimaryUzs: number
+  readonly fakt1BaseUzs: number
+  readonly fakt2PrimaryUzs: number
+}
+
+/** By the day the order reached the queue (Savdo dinamikasi's FAKT), not its lead's day. A day with no FAKT is absent. */
+export interface RoistatFaktDaysDto {
+  readonly byDay: Readonly<Record<string, RoistatFaktDto>>
+  readonly total: RoistatFaktDto
+}

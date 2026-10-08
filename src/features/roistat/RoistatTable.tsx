@@ -9,7 +9,7 @@ import { RankBadge, StatusChip } from '@/components/ui/Stat'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { NO_VALUE, formatCents, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
-import type { RoistatColumnsDto, RoistatCountersDto, RoistatDaysDto, RoistatDim } from './roistatApi'
+import type { RoistatColumnsDto, RoistatCountersDto, RoistatDaysDto, RoistatDim, RoistatFaktDto } from './roistatApi'
 import { type RoistatCurrency, type RoistatMetrics, deriveMetrics, fromUsd, fromUzs } from './roistatMetrics'
 
 /**
@@ -45,6 +45,8 @@ type Line = {
   readonly m: RoistatMetrics
   /** A day still settling (`freshFrom` on) — `days` only. */
   readonly fresh: boolean
+  /** The day's FAKT — «Kunlar boʻyicha» only; null on a day (or a payload) without it. */
+  readonly f: RoistatFaktDto | null
 }
 
 interface Spec {
@@ -101,7 +103,7 @@ export function dayLabel(date: string): string {
   return `${date.slice(8, 10)}.${date.slice(5, 7)}.${date.slice(0, 4)}`
 }
 
-function buildSpecs(cols: RoistatColumnsDto, currency: RoistatCurrency, rate: number | null): Spec[] {
+function buildSpecs(cols: RoistatColumnsDto, currency: RoistatCurrency, rate: number | null, fakt: boolean): Spec[] {
   const unit = currency === 'uzs' ? 'сум' : '$'
   const money = (value: number | null): ReactNode =>
     value === null ? dash() : currency === 'uzs' ? formatFullUzs(Math.round(value)) : formatCents(value)
@@ -179,6 +181,25 @@ function buildSpecs(cols: RoistatColumnsDto, currency: RoistatCurrency, rate: nu
     if (spend) specs.push({ key: 'roas', header: 'ROAS', value: (l) => l.m.roas, render: (l) => roasBadge(l.m.roas, l.c.spendUsd) })
   }
 
+  /*
+    «Kunlar boʻyicha» alone (2026-10-08, the client: «Первичка, База факт 1 /
+    факт 2 Первичка»). The queue cohort's money, on the day the order reached
+    the queue — the columns before these are the lead's day. A day with none
+    is a measured 0, as on Savdo dinamikasi.
+  */
+  if (fakt) {
+    const faktMoney = (header: string, key: keyof RoistatFaktDto): Spec => ({
+      key,
+      header: `${header}, ${unit}`,
+      ...inMoney(uzs((l) => l.f?.[key] ?? 0)),
+    })
+    specs.push(
+      faktMoney('FAKT 1 · Первичка', 'fakt1PrimaryUzs'),
+      faktMoney('FAKT 1 · База', 'fakt1BaseUzs'),
+      faktMoney('FAKT 2 · Первичка', 'fakt2PrimaryUzs'),
+    )
+  }
+
   return specs
 }
 
@@ -215,7 +236,7 @@ export function RoistatTable({
   const dim: RoistatDim = data?.dim ?? 'camp'
   const rate = data?.rate?.uzsPerUsd ?? null
   const specs = useMemo(
-    () => (data ? buildSpecs(data.columns, currency, rate) : []),
+    () => (data ? buildSpecs(data.columns, currency, rate, data.fakt !== undefined) : []),
     [data, currency, rate],
   )
 
@@ -237,6 +258,7 @@ export function RoistatTable({
       c: row,
       m: deriveMetrics(row, rate),
       fresh: dim === 'days' && row.key >= freshFrom,
+      f: data.fakt?.byDay[row.key] ?? null,
     }))
 
     const sign = order === 'asc' ? 1 : -1
@@ -271,6 +293,7 @@ export function RoistatTable({
         c: data.total,
         m: deriveMetrics(data.total, rate),
         fresh: false,
+        f: data.fakt?.total ?? null,
       },
     ]
   }, [data, rate, dim, activeSort, order, specs])

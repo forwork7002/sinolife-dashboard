@@ -234,11 +234,13 @@ export interface CampaignCrmDto {
   /**
    * The campaign's leads' orders (`InsightsRepository.campaignFakt`), whole
    * soʻm: FAKT 1 by the selling team — БАЗА (`isBaseTeam`) or everyone else,
-   * «Первичка» — and the Первичка teams' FAKT 2. Queue cohort, same window.
+   * «Первичка» — and the Первичка teams' FAKT 2. The window's leads, their
+   * orders queued since the window's start (a past window grows).
+   * Null when that scan failed: no answer, not a campaign that sold nothing.
    */
-  readonly fakt1PrimaryUzs: number
-  readonly fakt1BaseUzs: number
-  readonly fakt2PrimaryUzs: number
+  readonly fakt1PrimaryUzs: number | null
+  readonly fakt1BaseUzs: number | null
+  readonly fakt2PrimaryUzs: number | null
   /**
    * spend ÷ qualified — null with no kval, and when under `LEAD_COVERAGE` of
    * Meta's leads were read: the whole spend over a part of the leads' kval
@@ -433,8 +435,8 @@ export function reklamaOverview(input: {
   campaignRows: readonly CampaignDayRow[]
   /** Per campaign, its Meta leads met with the portal; absent = none read. */
   campaignLeadRows?: readonly CampaignLeadRow[]
-  /** Per campaign and ROP team, those leads' FAKT 1 / FAKT 2 orders; absent = none. */
-  campaignFaktRows?: readonly CampaignFaktRow[]
+  /** Per campaign and ROP team, those leads' FAKT 1 / FAKT 2 orders; null = the scan failed, absent = none. */
+  campaignFaktRows?: readonly CampaignFaktRow[] | null
   importedAt: Date | null
   brand?: BrandFilter
 }): ReklamaOverviewDto {
@@ -637,6 +639,7 @@ export function reklamaOverview(input: {
     }
   }
   const crmOf = new Map((input.campaignLeadRows ?? []).map((row) => [row.campaignId, row]))
+  const faktKnown = input.campaignFaktRows !== null
   const faktOf = new Map<string, { fakt1Primary: bigint; fakt1Base: bigint; fakt2Primary: bigint }>()
   for (const row of input.campaignFaktRows ?? []) {
     const acc = faktOf.get(row.campaignId) ?? faktOf.set(row.campaignId, { fakt1Primary: 0n, fakt1Base: 0n, fakt2Primary: 0n }).get(row.campaignId)!
@@ -681,9 +684,9 @@ export function reklamaOverview(input: {
               lowQuality: read.lowQuality,
               duplicate: read.duplicate,
               open: read.open,
-              fakt1PrimaryUzs: soms(fakt?.fakt1Primary ?? 0n),
-              fakt1BaseUzs: soms(fakt?.fakt1Base ?? 0n),
-              fakt2PrimaryUzs: soms(fakt?.fakt2Primary ?? 0n),
+              fakt1PrimaryUzs: faktKnown ? soms(fakt?.fakt1Primary ?? 0n) : null,
+              fakt1BaseUzs: faktKnown ? soms(fakt?.fakt1Base ?? 0n) : null,
+              fakt2PrimaryUzs: faktKnown ? soms(fakt?.fakt2Primary ?? 0n) : null,
               costPerQualifiedUsd:
                 read.leads >= c.total.leads * LEAD_COVERAGE ? perUnit(c.total.spend, read.qualified) : null,
             }
@@ -864,8 +867,18 @@ const REKLAMA_SOURCE_IDS: readonly string[] = [...new Set([...TARGET_SOURCE_IDS,
 
 const leadCache = ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE)
 /** The campaigns' kval: Meta's leads arrive hourly, the deals' stages by the minute — the lead scan's own clock. */
-const campaignLeadCache = ttlCache<CampaignLeadRow[]>(120_000, LIVE_CACHE)
-const campaignFaktCache = ttlCache<CampaignFaktRow[]>(120_000, LIVE_CACHE)
+const campaignLeadCache = ttlCache<CampaignLeadRow[] | undefined>(120_000, LIVE_CACHE)
+const campaignFaktCache = ttlCache<CampaignFaktRow[] | null>(120_000, LIVE_CACHE)
+
+/** Logs a failed per-campaign scan and answers `fallback` in its place. */
+function scanFailed<T>(scan: string, fallback: T) {
+  return (error: unknown): T => {
+    void import('@/server/logging/logger').then(({ logger }) =>
+      logger.warn({ err: error }, `«Kampaniyalar» ${scan} scan failed; the campaigns draw without it`),
+    )
+    return fallback
+  }
+}
 
 export class ReklamaService {
   constructor(
@@ -894,8 +907,16 @@ export class ReklamaService {
       leadCache.get(key, () => this.repository.leadStageDays(period, REKLAMA_SOURCE_IDS)),
       this.repository.sources(REKLAMA_SOURCE_IDS),
       this.repository.campaignDays(window.from, window.to),
-      campaignLeadCache.get(key, () => this.repository.campaignLeads(period)),
-      campaignFaktCache.get(key, () => this.insights.campaignFakt(period)),
+      /*
+        The two per-campaign portal scans are an addition to the sheets, never
+        their price: a failure (the pool's statement timeout on a long window)
+        is logged and the campaigns draw without those columns. Caught INSIDE
+        the memo: the memo drops a rejection, and a scan that times out would
+        then run again — a pool connection for its whole timeout — on every
+        load of a long window. The failure stands for the memo's two minutes.
+      */
+      campaignLeadCache.get(key, () => this.repository.campaignLeads(period).catch(scanFailed('campaign leads', undefined))),
+      campaignFaktCache.get(key, () => this.insights.campaignFakt(period).catch(scanFailed('campaign FAKT', null))),
       this.repository.campaignsImportedAt(),
     ])
 

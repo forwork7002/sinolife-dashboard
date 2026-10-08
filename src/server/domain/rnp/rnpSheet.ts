@@ -262,6 +262,13 @@ export const TEAM_ALIASES: Readonly<Record<string, string>> = Object.freeze({
 })
 
 /**
+ * Whether a team, as `ropNameSql` names it, is a БАЗА team — alias folded
+ * first, so «Malika» is. Every other team, the no-team bucket included, is
+ * «Первичка»: the split of «Первичка усп» / «База усп».
+ */
+export const isBaseTeam = (rop: string | null): boolean => rop !== null && BASE_TEAMS.has(TEAM_ALIASES[rop] ?? rop)
+
+/**
  * The brand of the team that sold an order — the P&L's rule (`BRAND_TEAMS`),
  * a renamed department folded first (`TEAM_ALIASES`). Null for a team on
  * neither list (Hayot, Kompaniya, «(ROP yoʻq)»). Every screen's Collagen /

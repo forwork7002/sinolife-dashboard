@@ -37,11 +37,12 @@ import {
 } from '@/server/domain/roistat/roistatCuts'
 import { leadChannel } from '@/server/domain/leads/leadSources'
 import type { DealProductBrand } from '@/server/domain/products/productBrand'
-import { saleBrand } from '@/server/domain/rnp/rnpSheet'
+import { isBaseTeam, saleBrand } from '@/server/domain/rnp/rnpSheet'
 import { type BrandFilter, brandMatches } from '@/server/domain/types'
 import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { LEAD_SOURCE_VOCABULARY } from '@/server/integrations/crm/bitrix24/mapping'
 import { adBudgetProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
+import type { InsightsRepository, RnpTeamDayRow } from '@/server/repositories/insightsRepository'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import type { RoistatBitrixRow, RoistatMetaRow, RoistatRepository } from '@/server/repositories/roistatRepository'
 
@@ -113,7 +114,31 @@ export interface RoistatOverviewDto {
  * «dashboarddagi Дни qanday boʻlsa, shunday»). The overview's `days` table,
  * row for row, without its tiles, chart or previous window.
  */
-export type RoistatDaysDto = Pick<RoistatOverviewDto, 'dim' | 'columns' | 'rows' | 'total' | 'rate' | 'freshFrom'>
+export type RoistatDaysDto = Pick<RoistatOverviewDto, 'dim' | 'columns' | 'rows' | 'total' | 'rate' | 'freshFrom'> & {
+  /** «Kunlar boʻyicha» only (`RoistatService.days`): the queue cohort's FAKT beside each day. */
+  readonly fakt?: RoistatFaktDaysDto
+}
+
+/**
+ * FAKT 1 / FAKT 2 of a day, whole soʻm, by the selling team — БАЗА
+ * (`isBaseTeam`) or everyone else, «Первичка» (the client, 2026-10-08:
+ * «Первичка, База факт 1 / факт 2 Первичка»).
+ */
+export interface RoistatFaktDto {
+  readonly fakt1PrimaryUzs: number
+  readonly fakt1BaseUzs: number
+  readonly fakt2PrimaryUzs: number
+}
+
+/**
+ * ANOTHER CLOCK THAN THE ROW IT SITS ON: the day an order reached the queue
+ * (`rnpTeamDays`, Savdo dinamikasi's FAKT), not its lead's day — so a day's
+ * FAKT and its «Продажи» are different orders. Days with no FAKT are absent.
+ */
+export interface RoistatFaktDaysDto {
+  readonly byDay: Readonly<Record<string, RoistatFaktDto>>
+  readonly total: RoistatFaktDto
+}
 
 /** Micro-dollars to dollars, cents kept. */
 function dollars(micro: bigint): number {
@@ -200,6 +225,36 @@ function spendOfBrand(days: readonly SpendDay[], brand: BrandFilter): readonly S
   return brand === 'all' ? days : days.filter((d) => brandMatches(brand, d.product))
 }
 
+/**
+ * The queue cohort's team-days as «Kunlar boʻyicha»'s FAKT columns: per day,
+ * FAKT 1 of the Первичка teams and of the БАЗА teams, and the Первичка
+ * teams' FAKT 2. The brand switch files an order as the P&L does (`saleBrand`).
+ * Summed in tiyin and rounded once per cell.
+ */
+export function faktDays(rows: readonly RnpTeamDayRow[], brand: BrandFilter): RoistatFaktDaysDto {
+  const acc = new Map<string, { fakt1Primary: bigint; fakt1Base: bigint; fakt2Primary: bigint }>()
+  const total = { fakt1Primary: 0n, fakt1Base: 0n, fakt2Primary: 0n }
+  for (const row of rows) {
+    if (brand !== 'all' && !brandMatches(brand, saleBrand(row.productBrand ?? null, row.rop))) continue
+    const base = isBaseTeam(row.rop)
+    const fakt1 = row.fakt1Minor
+    const fakt2 = base ? 0n : row.fakt2Minor
+    if (fakt1 === 0n && fakt2 === 0n) continue
+    const day = acc.get(row.day) ?? acc.set(row.day, { fakt1Primary: 0n, fakt1Base: 0n, fakt2Primary: 0n }).get(row.day)!
+    for (const into of [day, total]) {
+      if (base) into.fakt1Base += fakt1
+      else into.fakt1Primary += fakt1
+      into.fakt2Primary += fakt2
+    }
+  }
+  const dto = (a: typeof total): RoistatFaktDto => ({
+    fakt1PrimaryUzs: soms(a.fakt1Primary),
+    fakt1BaseUzs: soms(a.fakt1Base),
+    fakt2PrimaryUzs: soms(a.fakt2Primary),
+  })
+  return { byDay: Object.fromEntries([...acc].map(([day, a]) => [day, dto(a)])), total: dto(total) }
+}
+
 /** The overview's two Bitrix cohort scans: this window's every grouping set, the previous window's total. */
 interface BitrixScan {
   /** Which build this is — the table memo's key carries it (see `overview`). */
@@ -245,6 +300,7 @@ export class RoistatService {
     private readonly repository: RoistatRepository,
     private readonly reklama: Pick<ReklamaRepository, 'campaignDays'>,
     private readonly usd: Pick<CbuUsdRates, 'forDays'>,
+    private readonly insights: Pick<InsightsRepository, 'rnpTeamDays'>,
   ) {}
 
   /*
@@ -354,12 +410,31 @@ export class RoistatService {
     const today = zonedDateKey(now, period.timeZone)
     const window = dayRange(period)
     const rateDay = window.to < today ? window.to : today
-    const [bitrix, spend, rates] = await Promise.all([
+    const [bitrix, spend, rates, teamDays] = await Promise.all([
       this.repository.bitrix(period, now, 'days', brand !== 'all'),
       this.spendDays(window.from, window.to),
       this.usd.forDays([rateDay], today),
+      // An addition to the «Дни» table, never its price: a failed scan is logged and the table draws without FAKT.
+      this.insights.rnpTeamDays(period).catch((error: unknown) => {
+        void import('@/server/logging/logger').then(({ logger }) =>
+          logger.warn({ err: error }, '«Kunlar boʻyicha» FAKT scan failed; the table draws without it'),
+        )
+        return null
+      }),
     ])
-    return this.table('days', bitrixOfBrand(bitrix, brand), spendOfBrand(spend, brand), [], rates[0], rateDay, today)
+    const table = this.table('days', bitrixOfBrand(bitrix, brand), spendOfBrand(spend, brand), [], rates[0], rateDay, today)
+    if (teamDays === null) return table
+    const fakt = faktDays(teamDays, brand)
+    // A day with orders in the queue and neither a lead nor a dollar still has its FAKT to show.
+    const known = new Set(table.rows.map((row) => row.key))
+    const bare = Object.keys(fakt.byDay)
+      .filter((day) => !known.has(day))
+      .map((day) => ({ key: day, label: day, account: null, ...toCountersDto(emptyCounters()) }))
+    return {
+      ...table,
+      rows: bare.length === 0 ? table.rows : [...table.rows, ...bare].sort((a, b) => b.key.localeCompare(a.key)),
+      fakt,
+    }
   }
 
   /** One cut's table — the part `overview` and `days` share, so the two cannot drift. */

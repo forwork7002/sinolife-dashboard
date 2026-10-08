@@ -198,7 +198,8 @@ export class ReklamaRepository {
    * nearest to it, from ten minutes before (the clocks) to two days after (the
    * portal's robot files a returning contact's form late). The nearest, not
    * «a WON one if any»: a person who filled two campaigns' forms has two
-   * deals, and each campaign is judged by its own.
+   * deals, and each campaign is judged by its own. And a deal is one lead's:
+ * when the portal filed one deal for two forms, the nearer lead has it.
    *
    * Dated by the lead's own time, so the window is the spend's window. Only
    * the Регистрация deals around the window are read, never every contact.
@@ -227,17 +228,27 @@ export class ReklamaRepository {
           SELECT right(regexp_replace(ph, '[^0-9]', '', 'g'), 9) AS key
           FROM unnest(c."phones" || ARRAY[c."phone"]) AS ph
           WHERE length(regexp_replace(ph, '[^0-9]', '', 'g')) >= 9
+            -- 000000000, 999999999: a placeholder the floor types, never a person.
+            AND right(regexp_replace(ph, '[^0-9]', '', 'g'), 9) !~ '^([0-9])\\1{8}$'
         ) k
         WHERE d."createdAtSource" >= $1::timestamp - interval '10 minutes'
           AND d."createdAtSource" < $2::timestamp + interval '2 days'
       ),
-      hit AS (
-        SELECT DISTINCT ON (mk."id") mk."id", dk.status, dk.stage
+      nearest AS (
+        SELECT DISTINCT ON (mk."id") mk."id", dk."id" AS deal_id, dk.status, dk.stage,
+               abs(extract(epoch FROM dk.created - mk."createdTime")) AS apart
         FROM mk
         JOIN dk ON dk.key = mk.key
           AND dk.created >= mk."createdTime" - interval '10 minutes'
           AND dk.created < mk."createdTime" + interval '2 days'
         ORDER BY mk."id", abs(extract(epoch FROM dk.created - mk."createdTime")), dk."id"
+      ),
+      -- ONE DEAL, ONE LEAD: two forms filled within the reach of one deal (the portal filed one)
+      -- would make its kval both campaigns'. The nearer lead keeps it; the other found no deal.
+      hit AS (
+        SELECT DISTINCT ON (n.deal_id) n."id", n.status, n.stage
+        FROM nearest n
+        ORDER BY n.deal_id, n.apart, n."id"
       )
       -- One row per campaign and outcome; a lead with no deal has neither stage nor status.
       SELECT

@@ -101,7 +101,7 @@ export const targetService = new TargetService(targetRepository, marketingReposi
   from Meta's campaign grain and the Регистрация leads. See reklamaService.ts.
 */
 const reklamaRepository = new ReklamaRepository(prisma)
-export const reklamaService = new ReklamaService(reklamaRepository)
+export const reklamaService = new ReklamaService(reklamaRepository, insightsRepository)
 /*
   «Lid manbalari» (the first tab of «Lidlar») — every Регистрация lead by
   source, the lead forms per targetolog against Meta's lead count (Meta rows
@@ -128,7 +128,7 @@ export const rnpService = new RnpService(insightsRepository, rnpRepository, rekl
   cohort through to Доставка, from its own repository; Meta's campaign-days
   for the money through the reklama repository. See roistatService.ts.
 */
-export const roistatService = new RoistatService(new RoistatRepository(prisma), reklamaRepository, cbuUsdRates)
+export const roistatService = new RoistatService(new RoistatRepository(prisma), reklamaRepository, cbuUsdRates, insightsRepository)
 /*
   «Registratsiya» (2026-10-01) — the day's handed-out leads per ROP against the
   administrator's split, and «ROP otchet» seller by seller (FAKT from the
