@@ -8,7 +8,7 @@
  */
 
 import { TZDate } from '@date-fns/tz'
-import { addMonths, addWeeks, addYears } from 'date-fns'
+import { addDays, addMonths, addWeeks, addYears, startOfDay } from 'date-fns'
 
 import type { Period } from '@/server/domain/period/period'
 import { periodElapsedFraction } from './performance'
@@ -67,9 +67,71 @@ export function fullUnitWindow(period: Period): Period {
   })
 }
 
-/** Fraction of the FULL calendar unit elapsed at `now`, clamped to [0, 1]. */
+/**
+ * The floor's working day, in minutes after local midnight: 08:30–18:00.
+ *
+ * The client, 2026-10-09: «bizda ish 8:30 dan 18:00 gacha». Every day of the
+ * week counts — the client named hours, not days off.
+ */
+export const WORKDAY_START_MINUTES = 8 * 60 + 30
+export const WORKDAY_END_MINUTES = 18 * 60
+
+/**
+ * Fraction of the window's WORKING time elapsed at `now`, in [0, 1].
+ *
+ * A run-rate divides money by the share of the period already worked. Taken
+ * against the 24-hour clock, «Bugun» at 13:15 read 55% elapsed while half the
+ * working day (08:30–18:00) was still ahead, and at 18:00 it still projected
+ * a third more money from six hours in which nobody sells. Here only working
+ * minutes count: zero before 08:30, 50% at 13:15, 100% from 18:00 on — at
+ * which point the day's total IS the result and no projection is made.
+ *
+ * Walked day by day in the period's own time zone, each day's 08:30–18:00
+ * clipped to the window. A window holding no working time at all falls back
+ * to the plain clock rather than dividing by zero.
+ */
+export function workingElapsedFraction(period: Period, now: Date): number {
+  const startMs = period.start.getTime()
+  const endMs = period.end.getTime()
+  if (endMs <= startMs) return 1
+
+  const nowMs = now.getTime()
+  let total = 0
+  let elapsed = 0
+
+  for (
+    let day = startOfDay(new TZDate(startMs, period.timeZone));
+    day.getTime() < endMs;
+    day = addDays(day, 1)
+  ) {
+    const at = (minutes: number) =>
+      new TZDate(
+        day.getFullYear(),
+        day.getMonth(),
+        day.getDate(),
+        Math.floor(minutes / 60),
+        minutes % 60,
+        period.timeZone,
+      ).getTime()
+
+    const from = Math.max(at(WORKDAY_START_MINUTES), startMs)
+    const to = Math.min(at(WORKDAY_END_MINUTES), endMs)
+    if (to <= from) continue
+
+    total += to - from
+    elapsed += Math.min(to - from, Math.max(0, nowMs - from))
+  }
+
+  if (total <= 0) return periodElapsedFraction(period, now)
+  return elapsed / total
+}
+
+/**
+ * Fraction of the FULL calendar unit's working time elapsed at `now`, in
+ * [0, 1] — see `workingElapsedFraction` for why working time and not the clock.
+ */
 export function projectionElapsedFraction(period: Period, now: Date): number {
-  return periodElapsedFraction(fullUnitWindow(period), now)
+  return workingElapsedFraction(fullUnitWindow(period), now)
 }
 
 /**

@@ -50,10 +50,32 @@ describe('projectionElapsedFraction', () => {
   it('measures against the full month, not the to-date window', () => {
     const period = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
     const fraction = projectionElapsedFraction(period, NOW)
-    // 22 days + 14.5 hours of 31 days ≈ 72.9%. Against the TO-DATE window it
-    // would read ~98% and the projection would forecast nothing.
+    // 22 working days + 6 h of the 23rd (08:30 → 14:30), of 31 days of 9.5 h
+    // ≈ 73.0%. Against the TO-DATE window it would read ~98% and the
+    // projection would forecast nothing.
     expect(fraction).toBeGreaterThan(0.72)
     expect(fraction).toBeLessThan(0.74)
+  })
+
+  it('counts only the working day, 08:30–18:00, on «Bugun»', () => {
+    const at = (utc: string) => {
+      const now = new Date(utc)
+      return projectionElapsedFraction(resolvePeriod('today', { timeZone: TZ, now }), now)
+    }
+    // Tashkent is UTC+5: 08:30 local is 03:30Z, 18:00 local is 13:00Z.
+    expect(at('2026-08-23T02:00:00.000Z')).toBe(0) // 07:00 — not open yet
+    expect(at('2026-08-23T03:30:00.000Z')).toBe(0) // 08:30 — opening
+    expect(at('2026-08-23T08:15:00.000Z')).toBeCloseTo(0.5, 6) // 13:15 — half
+    expect(at('2026-08-23T13:00:00.000Z')).toBe(1) // 18:00 — closed
+    expect(at('2026-08-23T17:00:00.000Z')).toBe(1) // 22:00 — still the result
+  })
+
+  it('does not move overnight: 18:00 and next morning 08:30 read the same', () => {
+    const period = resolvePeriod('this_month', { timeZone: TZ, now: NOW })
+    const evening = projectionElapsedFraction(period, new Date('2026-08-23T13:00:00.000Z'))
+    const morning = projectionElapsedFraction(period, new Date('2026-08-24T03:30:00.000Z'))
+    expect(evening).toBeCloseTo(23 / 31, 9)
+    expect(morning).toBe(evening)
   })
 
   it('reads 1 for a period that is fully in the past', () => {

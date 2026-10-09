@@ -80,7 +80,8 @@ export function ForecastSection() {
           Prognoz · davr yakuni
         </h2>
         <p className="text-[11px]" style={{ color: "var(--ink-muted)" }}>
-          {QUEUE_BASIS} · butun kompaniya boʻyicha · toʻgʻri chiziqli surʼat
+          {QUEUE_BASIS} · butun kompaniya boʻyicha · toʻgʻri chiziqli surʼat · ish
+          vaqti 08:30–18:00
         </p>
       </div>
 

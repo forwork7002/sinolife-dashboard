@@ -100,7 +100,8 @@ describe('the FAKT 2 run-rate measures the month, not the window', () => {
     const board = await boardOver([rating({ employeeId: 'a', rop: 'Lola', deliveredMinor: mln(100) })])
 
     /*
-      27.9% — 8 days and 9 hours of a 30-day September.
+      26.8% — 8 working days and half an hour of the 9th (09:00, the floor
+      opens at 08:30), of thirty 9.5-hour days: 76.5 h of 285 h.
 
       The figure this replaces was 93.1%: `this_month` resolves to
       [1-sen, 10-sen) and a to-date window is by construction nearly spent, so
@@ -108,18 +109,18 @@ describe('the FAKT 2 run-rate measures the month, not the window', () => {
       called it «oy yakuni». `performance.ts` records the identical bug from
       the KPI screen — "The number was wrong every day of every month".
     */
-    expect(board.forecast.elapsedPercent).toBeCloseTo(27.9, 1)
+    expect(board.forecast.elapsedPercent).toBeCloseTo(26.8, 1)
     expect(board.forecast.elapsedPercent).toBeLessThan(40)
   })
 
   it('projects the month from that fraction, not from the window', async () => {
     const board = await boardOver([rating({ employeeId: 'a', rop: 'Lola', deliveredMinor: mln(100) })])
 
-    // 100 mln in 27.9% of the month → ~358 mln by month end. The old reading
+    // 100 mln in 26.8% of the month's working time → ~373 mln by month end. The old reading
     // projected ~107 mln, which is barely a forecast at all.
     const projected = board.forecast.fakt2
     expect(projected).not.toBeNull()
-    expect(projected!.amount / 1_000_000).toBeCloseTo(358, 0)
+    expect(projected!.amount / 1_000_000).toBeCloseTo(372.5, 0)
   })
 
   it('projects nothing for a period that is already over', async () => {

@@ -150,10 +150,11 @@ describe('each row carries its full figures', () => {
       source({ sourceId: 'a', confirmedMinor: mln(100), deliveredMinor: mln(40) }),
     ])
 
-    // 27.9% of September has elapsed at 09:00 on the 9th — see sellerForecast.test.ts.
-    expect(row!.forecast.fakt1!.amount).toBeGreaterThan(350_000_000)
-    expect(row!.forecast.fakt1!.amount).toBeLessThan(365_000_000)
-    expect(row!.forecast.fakt2!.amount).toBeGreaterThan(140_000_000)
+    // 26.8% of September's working time has elapsed at 09:00 on the 9th — see
+    // sellerForecast.test.ts.
+    expect(row!.forecast.fakt1!.amount).toBeGreaterThan(368_000_000)
+    expect(row!.forecast.fakt1!.amount).toBeLessThan(377_000_000)
+    expect(row!.forecast.fakt2!.amount).toBeGreaterThan(145_000_000)
   })
 
   it('projects nothing for a finished period', async () => {

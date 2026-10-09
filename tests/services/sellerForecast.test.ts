@@ -127,17 +127,18 @@ describe('the company projection carries BOTH facts', () => {
     const { forecast } = await boardOver(ONE_SELLER)
 
     /*
-      27.9% of September elapsed at 09:00 on the 9th, so 100 mln of FAKT 1 is
-      on course for ~358 mln and 40 mln of FAKT 2 for ~143 mln.
+      26.8% of September's working time (08:30–18:00) elapsed at 09:00 on the
+      9th, so 100 mln of FAKT 1 is on course for ~373 mln and 40 mln of FAKT 2
+      for ~149 mln.
 
       FAKT 1 WAS THE MISSING HALF AND IT IS THE HALF THAT MOVES FIRST. Delivery
       lags the arrival it is projected from by about two days, so a board whose
       only projection was FAKT 2 told a floor that had confirmed a third of its
       month that it was behind — every morning, correctly, and uselessly.
     */
-    expect(forecast.elapsedPercent).toBeCloseTo(27.9, 1)
-    expect(forecast.fakt1!.amount / 1_000_000).toBeCloseTo(358, 0)
-    expect(forecast.fakt2!.amount / 1_000_000).toBeCloseTo(143, 0)
+    expect(forecast.elapsedPercent).toBeCloseTo(26.8, 1)
+    expect(forecast.fakt1!.amount / 1_000_000).toBeCloseTo(372.5, 0)
+    expect(forecast.fakt2!.amount / 1_000_000).toBeCloseTo(149, 0)
   })
 
   it('names the horizon it projects to, half-open like every other bound', async () => {
@@ -169,9 +170,9 @@ describe('every row and every team is projected on the SAME clock', () => {
     const a = rows.find((r) => r.employeeId === 'a')!
     const b = rows.find((r) => r.employeeId === 'b')!
 
-    expect(a.forecast.fakt1!.amount / 1_000_000).toBeCloseTo(215, 0)
-    expect(a.forecast.fakt2!.amount / 1_000_000).toBeCloseTo(107, 0)
-    expect(b.forecast.fakt1!.amount / 1_000_000).toBeCloseTo(143, 0)
+    expect(a.forecast.fakt1!.amount / 1_000_000).toBeCloseTo(223.5, 0)
+    expect(a.forecast.fakt2!.amount / 1_000_000).toBeCloseTo(111.8, 0)
+    expect(b.forecast.fakt1!.amount / 1_000_000).toBeCloseTo(149, 0)
 
     /*
       ONE FRACTION, NOT ONE PER ROW. Two sellers' projections divided by their
@@ -198,7 +199,7 @@ describe('every row and every team is projected on the SAME clock', () => {
     // agreeing the moment the rule grew a floor, a cap or a per-seller
     // horizon — and the team's own money is the reading that stays true to
     // what the column is asked.
-    expect(lola.forecast.fakt1!.amount / 1_000_000).toBeCloseTo(358, 0)
+    expect(lola.forecast.fakt1!.amount / 1_000_000).toBeCloseTo(372.5, 0)
     expect(lola.forecast.fakt1!.amount).toBeCloseTo(
       members.reduce((a, r) => a + r.forecast.fakt1!.amount, 0),
       0,
