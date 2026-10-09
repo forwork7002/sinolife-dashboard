@@ -1079,7 +1079,9 @@ Per-screen traps worth knowing before you touch one:
   «First stage (NEW)» held 15 leads: the portal files a new lead under «Лид
   новый (лид)» / «Веб-сайт (лид)» / «Сммшик (лид)», so `idle` reads the four
   `REGISTRATION_INTAKE_STAGE_IDS`. «Дубликат (лид)» is parked, not waiting —
-  never a problem row, still in the flow. Service checked on a throwaway DB
+  never a problem row, still in the flow. A row's CHANNEL is the tile «Lid
+  manbalari» counts the lead on (`leadTile` over `LEAD_TILE_SOURCES`, the
+  client's SOURCE_ID list of 2026-10-09), so «Исход» is out by source alone. Service checked on a throwaway DB
   with synthetic rows, NOT against production.
 - **Savdo dinamikasi** — **stripped to FAKT 1 / FAKT 2 on 2026-09-10**, on the
   client's instruction («bu boʻlimda koʻp malumotlar ortiqcha boʻlib ketgan…

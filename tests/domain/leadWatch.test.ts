@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import { LEAD_WATCH_SETTINGS } from '@/lib/leadWatchSettings'
-import type { LeadSourceVocabulary } from '@/server/domain/leads/leadSources'
 import {
   type FeedHourRow,
   type LeadWatchInput,
@@ -17,7 +16,6 @@ import {
   arrivalPercent,
   buildLeadWatch,
   channelStopIssue,
-  chatChannel,
   chatsIssue,
   flowHours,
   idleIssue,
@@ -314,39 +312,15 @@ describe('3 · open chats', () => {
 })
 
 describe('channels', () => {
-  const vocabulary: LeadSourceVocabulary = {
-    pages: new Set(['PAGE']),
-    inbound: new Set(['CALL']),
-    outbound: new Set(['OUT']),
-    telegram: new Set(['TG']),
-    smm: new Set(['SMM']),
-    web: new Set(['WEB']),
-    sarafan: new Set(['SARAFAN']),
-    generated: 'GEN',
-  }
-
-  it('folds «Lid manbalari»’s channels into the watch’s five and leaves «Исход» out', () => {
-    expect(watchChannel('form')).toBe('generated')
-    expect(watchChannel('manual')).toBe('generated')
-    expect(watchChannel('page')).toBe('smm')
-    expect(watchChannel('smm')).toBe('smm')
+  it('folds «Lid manbalari»’s tiles into the watch’s five and leaves «Исход» out', () => {
+    expect(watchChannel('generated')).toBe('generated')
+    expect(watchChannel('aiSmm')).toBe('smm')
     expect(watchChannel('inbound')).toBe('inbound')
     expect(watchChannel('telegram')).toBe('telegram')
+    expect(watchChannel('web')).toBe('other')
+    expect(watchChannel('sarafan')).toBe('other')
     expect(watchChannel('other')).toBe('other')
     expect(watchChannel('outbound')).toBeNull()
-  })
-
-  it('files a chat by where it is happening', () => {
-    expect(chatChannel('PAGE', null, vocabulary)).toBe('smm')
-    expect(chatChannel('SMM', null, vocabulary)).toBe('smm')
-    expect(chatChannel('TG', null, vocabulary)).toBe('telegram')
-    // The source speaks before the form here, unlike for a lead.
-    expect(chatChannel('PAGE', 'Some form', vocabulary)).toBe('smm')
-    expect(chatChannel('GEN', 'Some form', vocabulary)).toBe('generated')
-    expect(chatChannel('CALL', null, vocabulary)).toBe('inbound')
-    expect(chatChannel(null, null, vocabulary)).toBe('other')
-    // An outgoing call's deal has no channel of the watch's own.
-    expect(chatChannel('OUT', null, vocabulary)).toBe('other')
   })
 
   it('watches a form by its name and a page by its source, and nothing else', () => {

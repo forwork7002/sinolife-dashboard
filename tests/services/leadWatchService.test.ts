@@ -75,12 +75,12 @@ describe('watchLeads', () => {
     ])
   })
 
-  it('leaves «Исход» out — unless a form opened the deal, which wins over its source', () => {
+  it('leaves «Исход» out by its source alone, a form on it included — as the tiles of «Lid manbalari» do', () => {
     const rows = watchLeads([
       leadRow({ dealId: 'out', sourceId: 'UC_KPZA32', source: 'Исход', formTitle: null, title: '+998 00 000 00 02' }),
       leadRow({ dealId: 'form-on-out', sourceId: 'UC_KPZA32', source: 'Исход' }),
     ])
-    expect(rows.map((r) => [r.dealId, r.channel])).toEqual([['form-on-out', 'generated']])
+    expect(rows).toEqual([])
   })
 
   it('files every other source on one of the five channels', () => {

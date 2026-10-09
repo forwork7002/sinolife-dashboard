@@ -32,7 +32,7 @@ import type { LeadWatchSettings as SettingsFile } from '@/lib/leadWatchSettings'
 
 import { phoneKey } from '../calls/inboundCalls'
 import { zonedHour, zonedHourStart } from '../period/period'
-import { type LeadChannel, type LeadSourceVocabulary, leadChannel } from './leadSources'
+import type { LeadChannel, LeadTile } from './leadSources'
 
 type Loose<T> = T extends number ? number : { readonly [K in keyof T]: Loose<T[K]> }
 
@@ -146,41 +146,27 @@ export interface LeadWatchSummaryDto {
 // ---------------------------------------------------------------------------
 
 /**
- * A lead's channel as the watch files it, from «Lid manbalari»'s own
- * (`leadChannel`): a form and a hand-typed «Ген лид» are both «Ген лид»; an
- * ad page and an SMM manager's source are both «СММ». Null for «Исход» — an
- * outgoing call is not a lead that came in, and the watch leaves it out.
+ * A lead's channel as the watch files it: the tile «Lid manbalari» counts it
+ * on (`leadTile` over the client's written SOURCE_ID list of 2026-10-09), so
+ * a chip here and a tile there are the same leads. «Сммщик ии» is «СММ»;
+ * «Веб сайт» and a source the list does not name are «other». Null for
+ * «Исход» — an operator's own call is not a lead that came in, form or not.
  */
-export function watchChannel(channel: LeadChannel): WatchChannel | null {
-  switch (channel) {
-    case 'form':
-    case 'manual':
-      return 'generated'
-    case 'page':
-    case 'smm':
-      return 'smm'
+export function watchChannel(tile: LeadTile): WatchChannel | null {
+  switch (tile) {
+    case 'generated':
     case 'inbound':
-      return 'inbound'
     case 'telegram':
-      return 'telegram'
-    case 'other':
-      return 'other'
+      return tile
+    case 'aiSmm':
+      return 'smm'
     case 'outbound':
       return null
+    case 'web':
+    case 'sarafan':
+    case 'other':
+      return 'other'
   }
-}
-
-/**
- * A chat's channel, from the deal it belongs to. The SOURCE speaks first,
- * unlike a lead's: a chat on an Instagram page is «СММ» and one on a Telegram
- * line «Телеграм» even when a form opened the deal, because the chat is what
- * is waiting and that is where it is. Any other deal by `leadChannel`; a deal
- * an outgoing call opened has no channel of the watch's own and is «other».
- */
-export function chatChannel(sourceId: string | null, formName: string | null, vocabulary: LeadSourceVocabulary): WatchChannel {
-  if (sourceId !== null && (vocabulary.pages.has(sourceId) || vocabulary.smm.has(sourceId))) return 'smm'
-  if (sourceId !== null && vocabulary.telegram.has(sourceId)) return 'telegram'
-  return watchChannel(leadChannel(sourceId, formName, vocabulary)) ?? 'other'
 }
 
 /** A feed «Канал стоп» watches: one lead form, or one SMM page. */

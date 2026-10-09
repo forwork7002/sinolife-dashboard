@@ -22,7 +22,7 @@
  */
 
 import { LEAD_WATCH_SETTINGS } from '@/lib/leadWatchSettings'
-import { LEAD_SOURCE_VOCABULARY, REGISTRATION_DUPLICATE_STAGE_ID, REGISTRATION_INTAKE_STAGE_IDS, openLineSubject } from '@/server/integrations/crm/bitrix24/mapping'
+import { LEAD_SOURCE_VOCABULARY, LEAD_TILE_SOURCES, REGISTRATION_DUPLICATE_STAGE_ID, REGISTRATION_INTAKE_STAGE_IDS, openLineSubject } from '@/server/integrations/crm/bitrix24/mapping'
 import {
   type FeedHourRow,
   type LeadWatchDto,
@@ -35,12 +35,11 @@ import {
   type WatchLead,
   type WatchSplit,
   buildLeadWatch,
-  chatChannel,
   missedCallers,
   watchChannel,
   watchFeed,
 } from '@/server/domain/leads/leadWatch'
-import { formNameOf, leadChannel } from '@/server/domain/leads/leadSources'
+import { formNameOf, leadChannel, leadTile } from '@/server/domain/leads/leadSources'
 import { resolvePeriod, trailingDays, zonedDateKey } from '@/server/domain/period/period'
 import { buildLeadSplit } from '@/server/domain/registration/leadSplit'
 import { teamBrand } from '@/server/domain/rnp/rnpSheet'
@@ -112,7 +111,7 @@ export function watchLeads(rows: readonly WatchLeadRow[]): WatchLead[] {
   for (const row of rows) {
     const form = formNameOf(row.formTitle)
     const channel = leadChannel(row.sourceId, form, LEAD_SOURCE_VOCABULARY)
-    const watch = watchChannel(channel)
+    const watch = watchChannel(leadTile(row.sourceId, LEAD_TILE_SOURCES))
     // «Исход»: an operator's own outgoing call is not a lead anybody is waiting on.
     if (watch === null) continue
     leads.push({
@@ -146,7 +145,7 @@ export function watchHistory(rows: readonly WatchFeedHourRow[]): FeedHourRow[] {
   for (const row of rows) {
     const form = formNameOf(row.formTitle)
     const channel = leadChannel(row.sourceId, form, LEAD_SOURCE_VOCABULARY)
-    const watch = watchChannel(channel)
+    const watch = watchChannel(leadTile(row.sourceId, LEAD_TILE_SOURCES))
     if (watch === null) continue
     history.push({
       day: row.day,
@@ -169,7 +168,7 @@ export function watchChats(rows: readonly WatchChatRow[]): WatchChat[] {
       dealId: row.dealId,
       // The contact, else the deal; a chat whose deal is not here yet still names who wrote, in its subject.
       title: row.customerName ?? row.dealTitle ?? user ?? row.subject,
-      channel: hasDeal ? chatChannel(row.sourceId, formNameOf(row.formTitle), LEAD_SOURCE_VOCABULARY) : null,
+      channel: hasDeal ? (watchChannel(leadTile(row.sourceId, LEAD_TILE_SOURCES)) ?? 'other') : null,
       brand: hasDeal ? leadBrand(row.sourceId, row.formTitle, row.productLine) : null,
       owner: row.responsible,
       rop: row.rop,
