@@ -41,7 +41,7 @@ const { InsightsRepository } = await import('@/server/repositories/insightsRepos
  */
 const queueSql = (
   InsightsRepository as unknown as {
-    queueSql: (mode: 'window' | 'backlog', scopeParam: string) => string
+    queueSql: (mode: 'window' | 'backlog', scopeParam: string, unit?: 'order' | 'day') => string
   }
 ).queueSql
 
@@ -402,8 +402,8 @@ describe('the caller\'s scope', () => {
  * the July arrival to compare against.
  */
 const historySql = (
-  InsightsRepository as unknown as { QUEUE_HISTORY_SQL: string }
-).QUEUE_HISTORY_SQL
+  InsightsRepository as unknown as { queueHistorySql: (upTo: string) => string }
+).queueHistorySql('p.queued_at')
 const REPEAT = bare(historySql)
 
 describe('the repeat mark', () => {
@@ -457,7 +457,7 @@ describe('the repeat mark', () => {
       looks like the data changed.
     */
     const source = readFileSync('src/server/repositories/insightsRepository.ts', 'utf8')
-    const uses = source.match(/InsightsRepository\.QUEUE_HISTORY_SQL/g) ?? []
+    const uses = source.match(/InsightsRepository\.queueHistorySql\(/g) ?? []
     expect(uses).toHaveLength(2)
   })
 })
@@ -699,8 +699,8 @@ describe('the state band’s money', () => {
       both.
     */
     const byRop = source.slice(
-      source.indexOf("queueSql(mode, '$4')"),
-      source.indexOf('GROUP BY c.rop', source.indexOf("queueSql(mode, '$4')")),
+      source.indexOf("queueSql(mode, '$4', 'day')"),
+      source.indexOf('GROUP BY c.rop', source.indexOf("queueSql(mode, '$4', 'day')")),
     )
     const cte = source.slice(
       source.indexOf('by_rop AS ('),
@@ -751,7 +751,7 @@ describe('what each column filter is allowed to narrow', () => {
   /** The two blocks that produce the PAGE of rows, one per window shape. */
   const rowBlocks = () => {
     const short = source.slice(
-      source.indexOf("queueSql(mode, '$8')}"),
+      source.indexOf("queueSql(mode, '$8', 'day')}"),
       source.indexOf('ORDER BY ${sortColumn[query.sort]}'),
     )
     const long = source.slice(source.indexOf('filtered AS ('), source.indexOf('page AS ('))
@@ -761,7 +761,7 @@ describe('what each column filter is allowed to narrow', () => {
   /**
    * The two blocks that produce the per-ROP breakdown, one per window shape.
    *
-   * ANCHORED ON THE METHOD, not on `queueSql(mode, '$4')` the way the older
+   * ANCHORED ON THE METHOD, not on `queueSql(mode, '$4', 'day')` the way the older
    * block above does. Three methods bind the scope at $4, and the first of
    * them has no `GROUP BY c.rop` of its own — so slicing from the first match
    * to the first GROUP BY swallows two unrelated statements, one of which has
@@ -894,5 +894,59 @@ describe('the search box', () => {
     expect(search).toContain('emp."id" = c.operator_id')
     // The assignee is not reachable from the box at all any more.
     expect(search).not.toContain('d."employeeId"')
+  })
+})
+
+/**
+ * THE TASDIQLASH BOARD FILES AN ORDER UNDER EVERY DAY IT ARRIVED ON.
+ *
+ * The client, 2026-10-09, over deal 1081546: queued and refused on 07.10,
+ * re-queued and confirmed on 08.10 — and missing from the 07.10 report,
+ * because the cohort dated the one row by the last arrival. A day keeps the
+ * order in the state that day left it in; the later arrival is a row of its
+ * own. Run against a throwaway PostgreSQL with that deal's shape: 07.10
+ * REJECTED, 08.10 CONFIRMED, and the per-order readers unchanged.
+ *
+ * ONLY THE BOARD. FAKT 1 and every money reading stay one row per order — an
+ * order confirmed, pulled back and confirmed again is sold once.
+ */
+describe('the board per arrival day', () => {
+  const DAY_SQL = bare(queueSql('window', SCOPE, 'day'))
+  const source = readFileSync('src/server/repositories/insightsRepository.ts', 'utf8')
+
+  it('groups an order by the Tashkent day of the arrival each move follows', () => {
+    expect(DAY_SQL).toContain('GROUP BY deal_id, queue_day')
+    expect(DAY_SQL).toContain(`FILTER (WHERE m.signal = 'CONFIRM_NEW') OVER (`)
+    // The arrival sorts last within one instant, as in the visit chain.
+    expect(DAY_SQL).toContain(`ORDER BY m.moved_at, (m.signal = 'CONFIRM_NEW')`)
+    // A move whose arrival precedes the scan belongs to no day in the window.
+    expect(DAY_SQL).toContain('WHERE queue_day IS NOT NULL')
+  })
+
+  it('closes an earlier visit at the next arrival', () => {
+    // The exit scan stops there, the deal's present stage does not reach back,
+    // and «Тастиклаш анализ» refines the latest visit alone.
+    expect(DAY_SQL).toContain('xh."enteredAt" < w.next_queued_at')
+    expect(DAY_SQL).toContain('CASE WHEN w.next_queued_at IS NULL THEN (CASE')
+    expect(DAY_SQL).toContain(`d."confirmStatus" = 'UNREACHABLE' AND w.next_queued_at IS NULL`)
+  })
+
+  it('leaves the per-order cohort, and the backlog, exactly as they were', () => {
+    expect(bare(queueSql('window', SCOPE, 'order'))).toBe(WINDOW_SQL)
+    expect(bare(queueSql('backlog', SCOPE, 'day'))).toBe(BACKLOG_SQL)
+    expect(WINDOW_SQL).not.toContain('queue_day')
+    expect(WINDOW_SQL).not.toContain('next_queued_at')
+    expect(WINDOW_SQL).toContain('GROUP BY deal_id')
+  })
+
+  it('is asked for by the four board readings and by nothing else', () => {
+    expect(source.match(/queueSql\([^)]*'day'\)/g) ?? []).toHaveLength(4)
+    expect(source.match(/queueSql\(mode, '\$[48]', 'day'\)/g) ?? []).toHaveLength(4)
+  })
+
+  it('shows a row its own past only, and pages two rows of one order apart', () => {
+    expect(REPEAT).toContain('WHERE visits.queued_at <= p.queued_at')
+    expect(source).toContain(`NULLS LAST, deal_id ASC, queued_at ASC`)
+    expect(source.match(/NULLS LAST, d\."id" ASC, c\.queued_at ASC/g) ?? []).toHaveLength(2)
   })
 })

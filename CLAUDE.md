@@ -461,7 +461,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Yalpi marja | `/margin` | `margin/MarginPage` | `/insights/margin` | Insights → Insights | `closedAt`, WON + `countsAsRevenue` |
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
 | Sverka | `/sverka` (section `sverka`, 2026-10-06) | `sverka/SverkaPage` — four Bitrix24 ↔ MoySklad pair tiles (FAKT 1, FAKT 2, Yoʻlda, Qaytgan) + «Kassa» (2026-10-08: FAKT 2 owed against MoySklad's «Касса» status — `totals.kassa`, banked + awaiting = FAKT 2's MoySklad side; Bitrix24 keeps no payment sum) + «Toʻliq mos», the difference list (chips by issue, a row opens both sides), products by code, ROP teams | `/sverka/overview` (`analytics:read:all`) | Sverka → Insights (`sverkaCohort`), Sverka | **the arrival in `C4:NEW`** (`queued_at`) for the Bitrix24 side — FAKT 1 / FAKT 2 are Savdo dinamikasi's to the soʻm; each deal's MoySklad orders whatever their date. Plus MoySklad orders whose `moment` is in the window and whose deal is not in the cohort |
-| Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — the latest `deal_stage_history` row whose stage signals `CONFIRM_NEW`; `?queue=backlog` (where the bell lands) drops the window entirely |
+| Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — since 2026-10-09 EVERY Tashkent day the order arrived on is a row, in the state that visit ended in (`queueSql` unit `'day'`; every other queue-cohort screen keeps the latest arrival only); `?queue=backlog` (where the bell lands) drops the window entirely |
 | Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` + `PayrollTeams` — three tabs, «Haftalik», «15 kunlik» (1–15 / 16–oxiri) and «Oylik» (2026-10-05); sellers in one card per ROP, every figure against the like period before | `/payroll/weekly`, `/payroll/sellers` | Payroll → Insights (`deliveredSellerRows`) | **a payroll period, on the DELIVERY day** (2026-10-05) — a Monday-to-Sunday week (`week`, its Monday) or a calendar month / one half of it (`month` + `half`), resolved on the server. No dashboard preset reaches it |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) — the sellers' seats and rows carry medals, the teams' carry none — and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
@@ -2102,6 +2102,28 @@ bot's own threshold, so the two surfaces cannot contradict each other in front
 of the same operator. The lookup is unbounded by the window (a return in
 September against a July arrival is still a return) and runs after the page's
 LIMIT, so it costs 25 index lookups rather than a second pass over the cohort.
+
+**THE TASDIQLASH BOARD FILES AN ORDER UNDER EVERY DAY IT ARRIVED ON — 2026-10-09.**
+The client, over deal 1081546 (queued and refused on 07.10, re-queued and
+confirmed on 08.10, and gone from the 07.10 report): «kun oxirida qanday
+holatda boʻlsa oʻsha kunda shu holatida qoladi», the new day's arrival is a
+row of its own under the usual rules. `queueSql` takes a third argument,
+`unit`: `'day'` groups the moves by the Tashkent day of the arrival they
+follow, closes an earlier visit at the next arrival (exit scan bounded, the
+deal's present stage and «Тастиклаш анализ» read onto the latest visit only),
+and is passed by the four board readings ALONE — `confirmationOrders`,
+`confirmationBoard`, `confirmationByRop`, `confirmationRegions`, window mode.
+Two arrivals on one day are still one row. An order that arrives at 23:50 and
+is decided next morning WITHOUT a new arrival stays on its arrival day with
+that decision. `queueHistorySql(upTo)` cuts the chain at the row's own visit.
+**Everything else — FAKT 1 / FAKT 2, Savdo dinamikasi, Reyting, RNP,
+Logistika, Sverka, Maosh, the backlog and the bell — keeps `'order'`**, the
+rule below: one row per order at its last arrival, so an order confirmed,
+pulled back and confirmed again is sold once. So the board's «Жами» and
+refusals for a past day can exceed those screens' by the orders that came
+back later; that is the stated difference, not drift. Extending `'day'` to a
+money reading needs the client's word on the double-confirmed order first.
+Pinned by «the board per arrival day» in `confirmationQueueSql.test.ts`.
 
 **The LAST arrival dates the row, so the row has to carry the earlier ones.**
 One order is one row — their bot and their board keep one entry per deal, and

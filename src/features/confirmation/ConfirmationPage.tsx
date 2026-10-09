@@ -1252,7 +1252,9 @@ export function ConfirmationPage() {
               <DataTable
                 columns={columns}
                 rows={data?.items ?? []}
-                rowKey={(row) => row.dealId}
+                // An order holds one row per day it arrived on, so the deal alone
+                // is no longer unique inside a window of several days.
+                rowKey={(row) => `${row.dealId}:${row.queuedAt ?? ''}`}
                 status={queryStatus}
                 errorMessage={(query.error as Error | null)?.message}
                 onRetry={() => void query.refetch()}
@@ -2247,7 +2249,9 @@ function mask(phone: string): string {
  *
  * NOTHING HERE IS COUNTED. The five tiles, the Статистика panel, the state
  * filter and the header bell all read `outcome`, which is `queueHistory[0]`.
- * An order confirmed in August and refused in September is one order, refused.
+ * Since 2026-10-09 an order refused on the 7th and confirmed on the 8th is a
+ * row on each day, each counted in its own state; the chain under a row is
+ * that row's past only, so it never shows a later day's outcome.
  *
  * ONE VISIT RENDERS EXACTLY AS BEFORE — a single chip, no chain, no date.
  * That is 3 077 of the 3 269 orders that arrived in a month, and a table that

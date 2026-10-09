@@ -64,6 +64,9 @@ import { formAliasOverSql, leadFormTitleSql, sourceDescriptionSql } from './lead
 /** A money column as Postgres returns it: text, to survive the driver. */
 type MoneyText = string | null
 
+/** What one row of the queue cohort is — see `queueSql`. */
+type ConfirmationQueueUnit = 'order' | 'day'
+
 function money(value: MoneyText): bigint {
   return value === null || value === undefined ? 0n : BigInt(value)
 }
@@ -3841,7 +3844,26 @@ export class InsightsRepository {
         END)`
   }
 
-  private static queueSql(mode: ConfirmationQueueMode, scopeParam: string): string {
+  /**
+   * @param unit What one row of the cohort is.
+   *   order — one row per order, dated by its LAST arrival and standing where
+   *           the order stands now. FAKT 1 and every money reading: an order
+   *           is sold once however many times it was queued.
+   *   day   — one row per order per Tashkent day it arrived on, each in the
+   *           state that visit ended in. The Tasdiqlash board alone (the
+   *           client, 2026-10-09): yesterday's report keeps yesterday's
+   *           refusal after the order comes back and is confirmed today.
+   */
+  private static queueSql(
+    mode: ConfirmationQueueMode,
+    scopeParam: string,
+    unit: ConfirmationQueueUnit = 'order',
+  ): string {
+    /*
+      THE BACKLOG IS ALWAYS PER ORDER. It lists what is waiting NOW, and only
+      an order's latest visit can still be waiting.
+    */
+    const perDay = unit === 'day' && mode === 'window'
     /*
       Backlog mode keeps LIVE orders only, and it applies that AFTER the
       aggregate rather than before it.
@@ -3872,6 +3894,16 @@ export class InsightsRepository {
       an all-time span for the backlog — so the parameter positions every
       reading below depends on stay identical in either mode.
     */
+    /*
+      WHERE THE DEAL STANDS TODAY describes its latest visit and no other: a
+      visit that a later arrival closed keeps the state it ended in. The exit
+      scan is bounded by that arrival for the same reason.
+    */
+    const standingNow = InsightsRepository.standingSql('w.signal', 'cs."externalId"')
+    const standing = perDay
+      ? `CASE WHEN w.next_queued_at IS NULL THEN ${standingNow} END`
+      : standingNow
+
     const cohort =
       mode === 'backlog'
         ? `WHERE a.signal = 'CONFIRM_NEW'
@@ -3930,6 +3962,9 @@ export class InsightsRepository {
     /*
       One row per order, at its latest signal.
 
+      unit = order (every reader but the Tasdiqlash board; its day unit is
+      spelled out in the branch below).
+
       THE ORDER IS THE UNIT, not the visit. An order that was queued, refused,
       re-queued and confirmed is one line showing where it stands. Counting
       each visit separately would put the same order in a month three times
@@ -3941,13 +3976,53 @@ export class InsightsRepository {
       nothing that happened. Null when it was refused without ever being
       queued — which happens, and which the client's bot counts too.
     */
-    agg AS (
+    agg AS (${
+      perDay
+        ? `
+      /*
+        unit = day: ONE ROW PER ORDER PER TASHKENT DAY IT ARRIVED ON.
+
+        The client, 2026-10-09, over deal 1081546 — queued and refused on
+        07.10, re-queued and confirmed on 08.10, and gone from the 07.10
+        report: a day keeps the order in the state that day left it in, and a
+        later arrival is a row of its own on its own day. queue_day is the
+        Tashkent day of the latest arrival at or before the move, so every
+        move is filed under the visit it belongs to; the arrival sorts LAST
+        within one instant, as it does in queueHistorySql, so a decision
+        stamped in the same second as the bounce back ends the earlier visit.
+
+        Two arrivals on ONE day stay one row, at the day's last word — the
+        fifteen-minute self-correction (deal 319494) is still one order.
+
+        Moves whose arrival lies before the scan have no queue_day and are
+        dropped: that visit is outside the window by construction.
+      */
+      SELECT deal_id,
+             max(moved_at) AS moved_at,
+             max(moved_at) FILTER (WHERE signal = 'CONFIRM_NEW') AS queued_at,
+             (array_agg(signal ORDER BY moved_at DESC, signal))[1] AS signal,
+             lead(min(moved_at) FILTER (WHERE signal = 'CONFIRM_NEW'))
+               OVER (PARTITION BY deal_id ORDER BY queue_day) AS next_queued_at
+        FROM (
+          SELECT m.*,
+                 max((m.moved_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date)
+                   FILTER (WHERE m.signal = 'CONFIRM_NEW') OVER (
+                     PARTITION BY m.deal_id
+                     ORDER BY m.moved_at, (m.signal = 'CONFIRM_NEW')
+                     ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                   ) AS queue_day
+            FROM moves m
+        ) m
+       WHERE queue_day IS NOT NULL
+       GROUP BY deal_id, queue_day`
+        : `
       SELECT deal_id,
              max(moved_at) AS moved_at,
              max(moved_at) FILTER (WHERE signal = 'CONFIRM_NEW') AS queued_at,
              (array_agg(signal ORDER BY moved_at DESC, signal))[1] AS signal
         FROM moves
-       GROUP BY deal_id
+       GROUP BY deal_id`
+    }
     ),
     /*
       THE WINDOW IS THE ARRIVAL IN THE QUEUE — a.queued_at.
@@ -3986,7 +4061,7 @@ export class InsightsRepository {
     */
     arrived AS (
       SELECT a.deal_id, d."createdAtSource" AS created_at, a.moved_at, a.queued_at, a.signal,
-             d."stageId" AS stage_id
+             d."stageId" AS stage_id${perDay ? ', a.next_queued_at' : ''}
         FROM agg a
         JOIN "deal" d ON d."id" = a.deal_id
        ${cohort}
@@ -3998,11 +4073,11 @@ export class InsightsRepository {
     dated AS (
       SELECT w.deal_id, w.created_at,
              COALESCE(x.moved_at, w.moved_at) AS moved_at,
-             w.queued_at,
-             COALESCE(x.signal, ${InsightsRepository.standingSql('w.signal', 'cs."externalId"')}, w.signal::text) AS signal
+             w.queued_at,${perDay ? ' w.next_queued_at,' : ''}
+             COALESCE(x.signal, ${standing}, w.signal::text) AS signal
         FROM arrived w
         JOIN "deal_stage" cs ON cs."id" = w.stage_id
-        LEFT JOIN LATERAL ${InsightsRepository.exitSql('w.deal_id', 'w.signal', 'w.moved_at', null)} x ON true
+        LEFT JOIN LATERAL ${InsightsRepository.exitSql('w.deal_id', 'w.signal', 'w.moved_at', perDay ? 'w.next_queued_at' : null)} x ON true
        ${mode === 'backlog' ? `WHERE x.signal IS NULL AND ${InsightsRepository.standingSql('w.signal', 'cs."externalId"')} IS NULL` : ''}
     ),
     classified AS (
@@ -4074,7 +4149,9 @@ export class InsightsRepository {
           instead of being a sixth signal nothing could ever set.
         */
         CASE
-          WHEN w.signal = 'CONFIRMED' AND d."confirmStatus" = 'UNREACHABLE'
+          WHEN w.signal = 'CONFIRMED' AND d."confirmStatus" = 'UNREACHABLE'${
+            perDay ? ' AND w.next_queued_at IS NULL' : ''
+          }
             THEN 'UNCONFIRMED_SHIPPED'
           ELSE w.signal::text
         END AS outcome
@@ -4283,9 +4360,16 @@ export class InsightsRepository {
   private static readonly REPEAT_GAP_HOURS = 6
 
   /**
-   * The order's WHOLE life in the queue — every visit, and how each one ended.
+   * The order's life in the queue — every visit up to the row's own, and how
+   * each one ended.
    *
-   * ONE ORDER IS STILL ONE ROW. The board is dated by the LAST arrival, so an
+   * SINCE 2026-10-09 THE TASDIQLASH BOARD FILES AN ORDER UNDER EVERY DAY IT
+   * ARRIVED ON (queueSql's unit = day), so what follows describes the
+   * per-order readers — FAKT 1 and everything else cut from this cohort — and
+   * the chain is bounded by the row's own arrival: visits[0] is the visit the
+   * row is filed under, on whichever day that row sits.
+   *
+   * ONE ORDER IS STILL ONE ROW THERE. The cohort is dated by the LAST arrival, so an
    * order confirmed on the 29th and pulled back into Тасдиклаш on the 31st
    * leaves the 29th and lands on the 31st. Deal 834920 did exactly that, and
    * the operator reading the 29th found an order their Telegram channel had
@@ -4319,7 +4403,8 @@ export class InsightsRepository {
    * and a window that starts today cannot see the July arrival to compare
    * against — nor show it under the row it now dates.
    */
-  private static readonly QUEUE_HISTORY_SQL = `
+  private static queueHistorySql(upTo: string): string {
+    return `
        LEFT JOIN LATERAL (
          SELECT
            count(*)::int AS entries,
@@ -4463,7 +4548,17 @@ export class InsightsRepository {
              LEFT JOIN LATERAL ${InsightsRepository.exitSql('d."id"', 'g.outcome', 'g.last_at', 'g.next_queued_at')} x ON true
            ) v
          ) visits
+         /*
+           UP TO THE ROW'S OWN VISIT. The board files an order under every
+           day it arrived on, so a row for the 7th must not wear the 8th's
+           outcome as its chip, nor a 🔁 for a return that had not happened
+           yet. Applied after the window functions, so is_last and the gaps
+           are still measured over the whole history; on the order's latest
+           row it removes nothing.
+         */
+         WHERE visits.queued_at <= ${upTo}
        ) rep ON true`
+  }
 
   /**
    * The search box, as one predicate.
@@ -4604,7 +4699,7 @@ export class InsightsRepository {
         unconfirmed_shipped_amount: MoneyText
       }[]
     >(
-      `${InsightsRepository.queueSql(mode, '$4')}
+      `${InsightsRepository.queueSql(mode, '$4', 'day')}
        SELECT
          c.rop AS rop,
          count(*)::bigint AS orders,
@@ -4709,7 +4804,7 @@ export class InsightsRepository {
     mode: ConfirmationQueueMode = 'window',
   ): Promise<{ region: string; orders: number }[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ region: string; orders: bigint }[]>(
-      `${InsightsRepository.queueSql(mode, '$4')}
+      `${InsightsRepository.queueSql(mode, '$4', 'day')}
        SELECT
          coalesce(d."region", '${InsightsRepository.NO_REGION}') AS region,
          count(*)::bigint AS orders
@@ -5905,7 +6000,7 @@ export class InsightsRepository {
     const offset = (query.page - 1) * query.pageSize
     // The deal id breaks ties, so paging cannot show one order twice and skip
     // another when a thousand rows share a sort value.
-    const order = `${sortColumn[query.sort]} ${direction} NULLS LAST, deal_id ASC`
+    const order = `${sortColumn[query.sort]} ${direction} NULLS LAST, deal_id ASC, queued_at ASC`
 
     type PageJson = {
       pos: number
@@ -5956,7 +6051,7 @@ export class InsightsRepository {
     const rows = await this.prisma.$queryRawUnsafe<
       { total_items: bigint; page: PageJson[]; by_rop: RopJson[] }[]
     >(
-      `${InsightsRepository.queueSql(mode, '$8')},
+      `${InsightsRepository.queueSql(mode, '$8', 'day')},
        filtered AS (
          SELECT
            c.deal_id, c.rop, c.daily_no, c.outcome,
@@ -6024,7 +6119,7 @@ export class InsightsRepository {
              JOIN "product" pr ON pr."id" = di."productId"
             WHERE di."dealId" = d."id"
          ) items ON true
-         ${InsightsRepository.QUEUE_HISTORY_SQL}
+         ${InsightsRepository.queueHistorySql('p.queued_at')}
        ),
        by_rop AS (
          SELECT
@@ -6176,7 +6271,7 @@ export class InsightsRepository {
         total_items: bigint
       }[]
     >(
-      `${InsightsRepository.queueSql(mode, '$8')},
+      `${InsightsRepository.queueSql(mode, '$8', 'day')},
        /*
          PAGE FIRST, DECORATE AFTERWARDS.
 
@@ -6212,7 +6307,7 @@ export class InsightsRepository {
           ${InsightsRepository.SEARCH_SQL('$4')}
         -- The deal id breaks ties, so paging cannot show one order twice and
         -- skip another when a thousand rows share a sort value.
-        ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC
+        ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC, c.queued_at ASC
         LIMIT $6 OFFSET $7
        )
        SELECT
@@ -6258,9 +6353,9 @@ export class InsightsRepository {
            JOIN "product" pr ON pr."id" = di."productId"
           WHERE di."dealId" = d."id"
        ) items ON true
-       ${InsightsRepository.QUEUE_HISTORY_SQL}
+       ${InsightsRepository.queueHistorySql('c.queued_at')}
       -- The same order the page was cut in; a join does not promise to keep it.
-      ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC`,
+      ORDER BY ${sortColumn[query.sort]} ${direction} NULLS LAST, d."id" ASC, c.queued_at ASC`,
       period.start,
       period.end,
       query.outcomes && query.outcomes.length > 0 ? [...query.outcomes] : null,
