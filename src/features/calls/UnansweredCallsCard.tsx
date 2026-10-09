@@ -12,7 +12,7 @@ import { apiGet } from '@/lib/api'
 import { formatDateTime, formatNumber } from '@/lib/format'
 
 /**
- * «Javobsiz qolgan raqamlar» — the tiles' «N tasi javobsiz qoldi», number by
+ * «Javobsiz qolgan raqamlar» — the tiles' «N ta raqam javobsiz qolgan», number by
  * number, so somebody can ring them back (the client, 2026-10-06). Mirrors
  * `UnansweredCallsDto` in `server/services/inboundCallsService.ts`; nothing
  * checks the mirror, edit both.

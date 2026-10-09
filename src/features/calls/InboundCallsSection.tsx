@@ -183,22 +183,34 @@ export function InboundCalls({
       </div>
 
       <div className="stagger grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatTile status={status} label="Kiruvchi qoʻngʻiroq" value={total?.calls ?? null} unit="count" />
+        <StatTile
+          status={status}
+          label="Kiruvchi qoʻngʻiroq"
+          value={total?.calls ?? null}
+          unit="count"
+          hint="mijozlar bizga qilgan qoʻngʻiroqlar"
+        />
         <StatTile
           status={status}
           label="Xil raqam"
           value={total?.numbers ?? null}
           unit="count"
-          hint="davrda bir raqam bir marta"
+          hint="nechta raqamdan kelgan · bir raqam bir marta"
         />
         <StatTile
           status={status}
           label="Gaplashilgan raqam"
           value={total?.talked ?? null}
           unit="count"
-          hint={total ? `${formatPercent(total.talkedPercent)} · kamida bitta suhbat` : undefined}
+          hint={total ? `${formatPercent(total.talkedPercent)} · kamida bir marta suhbat boʻlgan` : undefined}
         />
-        <StatTile status={status} label="Chiquvchi qoʻngʻiroq" value={total?.outbound ?? null} unit="count" />
+        <StatTile
+          status={status}
+          label="Chiquvchi qoʻngʻiroq"
+          value={total?.outbound ?? null}
+          unit="count"
+          hint="xodimlar oʻzi qilgan qoʻngʻiroqlar"
+        />
       </div>
 
       <div className="stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" data-testid="inbound-groups">
@@ -211,7 +223,7 @@ export function InboundCalls({
             value={total?.groups[g] ?? null}
             unit="count"
             fill={g === 'fresh' ? 'good' : undefined}
-            hint={total ? `${formatNumber(total.unreached[g])} tasi javobsiz qoldi` : undefined}
+            hint={total ? `shundan ${formatNumber(total.unreached[g])} ta raqam javobsiz qolgan` : undefined}
             context={
               <p className="text-[11px] leading-snug" style={muted}>
                 {GROUP_RULE[g]}
@@ -220,11 +232,22 @@ export function InboundCalls({
           />
         ))}
       </div>
-      <p className="text-[11px] leading-snug" style={muted}>
-        «Javobsiz qoldi» — guruhdagi raqamlardan davr ichida bironta ham qoʻngʻirogʻi ulanmaganlari (suhbat 0 soniya):
-        hech kim koʻtarmagan yoki mijoz ulanmasdan qoʻyib qoʻygan. Bularga qayta qoʻngʻiroq qilish kerak — roʻyxati
-        quyida.
-      </p>
+      <div className="flex flex-col gap-1 text-[11px] leading-snug" style={muted} data-testid="inbound-unreached-rule">
+        <p>
+          «Javobsiz qolgan» — qoʻngʻiroqlar soni emas, raqamlar soni: shu davrda bizga qoʻngʻiroq qilgan, lekin
+          kiruvchi qoʻngʻiroqlarining birortasida ham suhbat boʻlmagan (hammasi 0 soniya) raqamlar. Sababi ikki xil:
+          hech kim koʻtarmagan yoki mijoz ulanmasdan oʻzi qoʻyib qoʻygan — Bitrix24 bularni ajratmaydi.
+        </p>
+        <p>
+          Bu son faqat kiruvchi qoʻngʻiroqlarga va faqat tanlangan davrga qaraydi: xodim keyin oʻzi qayta qoʻngʻiroq
+          qilib gaplashgan boʻlsa ham raqam shu sonda qoladi. Qayta qoʻngʻiroq qilingan-qilinmagani quyidagi
+          roʻyxatda koʻrinadi.
+        </p>
+        <p>
+          Guruh (Соф янги, Эски харидор va boshqalar) — raqam egasining davrdagi birinchi qoʻngʻirogʻi paytida
+          Bitrix24da kim boʻlgani. Qoʻngʻiroqlar Bitrix24 telefoniyasidan taxminan har 3 soatda yuklanadi.
+        </p>
+      </div>
       {unanswered}
 
       {data && data.undatedContacts > 0 && (
