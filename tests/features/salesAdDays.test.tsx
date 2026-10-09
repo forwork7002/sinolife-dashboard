@@ -168,6 +168,9 @@ describe('«Kunlar boʻyicha»', () => {
     // The day's cell and the ИТОГО row.
     for (const figure of [61_500_000, 9_250_000, 40_750_000]) expect(screen.getAllByText(formatFullUzs(figure))).toHaveLength(2)
     expect(screen.getByText((_, el) => el?.tagName === 'P' && (el.textContent ?? '').includes('FAKT ustunlari — buyurtma navbatga tushgan kun boʻyicha'))).toBeTruthy()
+    // «Заказы» is the two FAKT 1 columns added — the day's cell and the ИТОГО row.
+    expect(screen.getAllByText(formatFullUzs(61_500_000 + 9_250_000))).toHaveLength(2)
+    expect(screen.getByText((_, el) => el?.tagName === 'P' && (el.textContent ?? '').includes('Заказы = FAKT 1 Первичка + FAKT 1 База'))).toBeTruthy()
     DAYS = WITH_RATE
   })
 

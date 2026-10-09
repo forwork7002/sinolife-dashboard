@@ -33,6 +33,10 @@ import { formatFullUzs } from '@/lib/format'
  * (`data.fakt`, `rnpTeamDays`) — this page's own FAKT, split by team. They
  * are not the row's «Продажи» re-cut, and the caption says that too.
  *
+ * «ЗАКАЗЫ» IS THEIR FAKT 1 ADDED (2026-10-09, the client: «Первичка + База =
+ * Заказы»), not the lead cohort's orders — `RoistatTable` swaps it wherever
+ * the payload carries FAKT, and «Выкуп» divides by it.
+ *
  * THE WINDOW AND THE BRAND ONLY. Meta money has no employee, department or
  * source, so the page's other filters do not reach this table; the Collagen /
  * Zextra switch does (Roistat's rule — the ad account, the lead's brand, the
@@ -71,6 +75,7 @@ export function AdSalesDaysTable() {
         hint={
           'Roistat «Дни» · sotuv lid kelgan kunga yoziladi (FAKT 1 emas) · Расход — Meta, ishga olishsiz' +
           ' · FAKT ustunlari — buyurtma navbatga tushgan kun boʻyicha; База — БАЗА jamoalari, Первичка — qolganlari' +
+          ' · Заказы = FAKT 1 Первичка + FAKT 1 База' +
           (data?.rate ? ` · kurs ${formatFullUzs(Math.round(data.rate.uzsPerUsd))} soʻm (${dayLabel(data.rate.date)})` : '') +
           (activeCount > 0 ? ' · filtrlar bu jadvalga taʼsir qilmaydi, butun kompaniya' : '')
         }

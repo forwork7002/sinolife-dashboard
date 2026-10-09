@@ -249,17 +249,31 @@ export function RoistatTable({
   const lines: Line[] = useMemo(() => {
     if (!data || data.rows.length === 0) return []
     const freshFrom = data.freshFrom
-    const rows: Line[] = data.rows.map((row) => ({
-      key: row.key,
-      label: row.label,
-      account: row.account,
-      kind: 'row',
-      rank: 0,
-      c: row,
-      m: deriveMetrics(row, rate),
-      fresh: dim === 'days' && row.key >= freshFrom,
-      f: data.fakt?.byDay[row.key] ?? null,
-    }))
+    /*
+      «Kunlar boʻyicha» alone (2026-10-09, the client: «Первичка + База =
+      Заказы, булар хаммаси факт1»): where the payload carries FAKT, «Заказы»
+      IS the two FAKT 1 columns added — the queue cohort's money on the day
+      the order reached the queue, no longer the lead cohort's. «Выкуп»
+      follows it, so the row still divides the «Продажи» it shows by the
+      «Заказы» it shows. A day with no FAKT is a measured 0.
+    */
+    const withFakt = <C extends RoistatCountersDto>(c: C, f: RoistatFaktDto | null): C =>
+      data.fakt === undefined ? c : { ...c, orderedUzs: (f?.fakt1PrimaryUzs ?? 0) + (f?.fakt1BaseUzs ?? 0) }
+    const rows: Line[] = data.rows.map((row) => {
+      const f = data.fakt?.byDay[row.key] ?? null
+      const c = withFakt(row, f)
+      return {
+        key: row.key,
+        label: row.label,
+        account: row.account,
+        kind: 'row',
+        rank: 0,
+        c,
+        m: deriveMetrics(c, rate),
+        fresh: dim === 'days' && row.key >= freshFrom,
+        f,
+      }
+    })
 
     const sign = order === 'asc' ? 1 : -1
     if (activeSort === 'name') {
@@ -282,6 +296,7 @@ export function RoistatTable({
     }
 
     const ranked = rows.map((line, i) => ({ ...line, rank: i + 1 }))
+    const total = withFakt(data.total, data.fakt?.total ?? null)
     return [
       ...ranked,
       {
@@ -290,8 +305,8 @@ export function RoistatTable({
         account: null,
         kind: 'total',
         rank: 0,
-        c: data.total,
-        m: deriveMetrics(data.total, rate),
+        c: total,
+        m: deriveMetrics(total, rate),
         fresh: false,
         f: data.fakt?.total ?? null,
       },
