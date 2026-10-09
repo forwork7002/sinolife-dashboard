@@ -30,7 +30,9 @@ import {
   DM_PAGE_ALIAS,
   LEAD_SOURCE_BRAND,
   LEAD_SOURCE_VOCABULARY,
+  LEAD_TILE_SOURCES,
   SARAFAN_PIPELINE_ID,
+  SMM_ACCOUNTS,
 } from '@/server/integrations/crm/bitrix24/mapping'
 import {
   type CampaignChannel,
@@ -172,22 +174,28 @@ export interface SourceRowDto {
    * window — «Факт1 мижоз». Null while the phone match is not ready yet.
    */
   readonly fakt1Clients: number | null
+  /** In «Жами лидлар» — false for «Исход» and the sources no tile names (`LEAD_TILES_APART`). */
+  readonly counted: boolean
 }
 
 /**
- * One channel tile, read as the headline tiles read Регистрация: leads by the
- * day they arrived, kval by the day it was WON — so the tiles' «Jami» is
- * «Жами лидлар» and «Квал лидлар сони» to the lead.
+ * One channel tile, read as the headline tiles read Регистрация — a COHORT
+ * since 2026-10-09 (the client: «ikki xil kunning leadlari aralashgan»): the
+ * leads created in the window, and how many of THOSE are WON by now. Until
+ * then kval was the deals WON in the window whenever they arrived, over the
+ * window's arrivals; that count stays as `closedQualified`, a quiet line.
  */
 export interface ChannelTileDto {
   /** Created in the window, duplicates included. */
   readonly leads: number
   /** `leads` less the duplicates. */
   readonly fresh: number
-  /** WON in the window, whenever it arrived. */
+  /** Of `leads`, WON («Сделка успешна») by now. */
   readonly qualified: number
   /** qualified ÷ fresh — «Квал %» of the headline. */
   readonly qualifiedPercent: number | null
+  /** The tile's deals WON in the window by `closedAt`, whenever they arrived. */
+  readonly closedQualified: number
 }
 
 export interface LeadSourcesOverviewDto {
@@ -209,33 +217,38 @@ export interface LeadSourcesOverviewDto {
   /**
    * The tab's six headline tiles (the client's list, 2026-10-01): Жами /
    * Янги / Дубль лидлар, Квал лидлар сони, Квал %, Квал лид нархи $.
-   * The RNP sheet's «Регистрация» block on the same day reads the same
-   * figures: leads by creation day, kval by the day it was WON, the ad
-   * budget as its «Жами бюджет».
+   * ONE TOTAL SINCE 2026-10-09: the first three are `tiles.total` — the
+   * channel tiles' «Jami», so «Исход» (an operator's own call, 112 of
+   * 09.10's 854) and «Boshqa» are in none of them — and kval is that
+   * cohort's (`ChannelTileDto`). The RNP sheet's «Регистрация» block still
+   * counts every Регистрация deal and kval by the day it was WON.
    */
   readonly funnel: {
-    /** Every Регистрация deal created in the window, duplicates included. */
+    /** `tiles.total.leads`: Регистрация deals created in the window on a counted tile, duplicates included. */
     readonly total: number
     /** `total` less the duplicates. */
     readonly fresh: number
-    /** Created in the window and standing in «Дубликат (лид)» now (not the red «Дубликат»). */
+    /** Of `total`, standing in «Дубликат (лид)» now (not the red «Дубликат»). */
     readonly duplicates: number
-    /** Регистрация deals WON («Сделка успешна») in the window, by `closedAt`. */
+    /** Of `total`, WON («Сделка успешна») by now. */
     readonly qualified: number
-    /**
-     * `qualified` ÷ `fresh`, the sheet's «% квал лид»; null with no new leads.
-     * Two clocks, as on the sheet (WON day over arrival day), so a short
-     * window can read above 100%.
-     */
+    /** `qualified` ÷ `fresh`; null with no new leads. One cohort, so never above 100%. */
     readonly qualifiedPercent: number | null
-    /** Meta spend of Collagen + Zextra, hiring campaigns left out (`adBudgetProduct`). */
+    /** The counted tiles' deals WON in the window by `closedAt` — «Квал лидлар сони» until 2026-10-09. */
+    readonly closedQualified: number
+    /** `forms.total.spendUsd` — the Meta money the kval price divides. */
     readonly spendUsd: number
+    /** `forms.total.outcome.success` — the «Ген лид» cohort's kval, the price's divisor. */
+    readonly generatedQualified: number
+    /** `forms.total.costPerSuccessUsd`, so it IS «Targetologlar»'s «Jami» «Kval narxi». */
     readonly costPerQualifiedUsd: number | null
   }
   readonly totals: {
-    /** Every Регистрация deal created in the window. */
+    /** Every Регистрация deal created in the window, «Исход» included — «Barcha manbalar»'s rows. */
     readonly registration: LeadOutcomeDto
-    /** «Факт1 мижоз» of the whole of Регистрация — distinct, so not the sum of the channels; null while not ready. */
+    /** `registration` less what «Жами лидлар» leaves out — «Barcha manbalar»'s «Jami». */
+    readonly counted: LeadOutcomeDto
+    /** «Факт1 мижоз» of `counted` — distinct, so not the sum of the channels; null while not ready. */
     readonly fakt1Clients: number | null
     readonly formReachPercent: number | null
   }
@@ -247,6 +260,29 @@ export interface LeadSourcesOverviewDto {
     readonly spendUsd: number
     readonly metaLeads: number
     readonly outcome: LeadOutcomeDto
+    /** «Ген лид» typed in by hand — no form names a targetolog — so the table's «Jami» is every «Ген лид». */
+    readonly manual: LeadOutcomeDto
+    /**
+     * «Bogʻlanmagan sarf»: the ad budget's money no lead form took — message
+     * and other campaigns of the Collagen / Zextra accounts — by account,
+     * largest first. Hiring and unmapped accounts are no ad budget and stay out.
+     */
+    readonly unlinked: {
+      readonly spendUsd: number
+      readonly accounts: readonly { readonly name: string; readonly spendUsd: number }[]
+    }
+    /**
+     * The table's «Jami» (2026-10-09): the owners, `manual` and `unlinked`
+     * together. `costPerSuccessUsd` is the headline's «Квал лид нархи $» —
+     * one figure on the server, so the two cannot differ. Null with no spend
+     * read: unknown, never free.
+     */
+    readonly total: {
+      readonly spendUsd: number
+      readonly outcome: LeadOutcomeDto
+      readonly costPerLeadUsd: number | null
+      readonly costPerSuccessUsd: number | null
+    }
   }
   readonly dm: {
     readonly pages: readonly DmPageDto[]
@@ -264,26 +300,19 @@ export interface LeadSourcesOverviewDto {
    * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
    * at zero when quiet, and «Jami» — the sum of all but `LEAD_TILES_APART`
    * («Исход», «Boshqa») and `LEAD_TILES_OUTSIDE_REGISTRATION` («Сарафан»,
-   * Ecommerce deals since 2026-10-05), so `funnel` less «Исход» and «Boshqa».
+   * Ecommerce deals since 2026-10-05). `funnel` is this «Jami».
    */
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
     readonly total: ChannelTileDto
+    /** «Сммщик ии» by account (`SMM_ACCOUNTS`), the ones with a lead in the window, largest first. */
+    readonly smmAccounts: readonly ({ readonly key: string; readonly name: string } & ChannelTileDto)[]
     /**
-     * What takes `total.leads` to `funnel.total` (the client, 2026-10-02:
-     * «Jami» must visibly meet «Жами лидлар»). An identity, not a remainder:
-     * total.leads + outbound + other + ai = funnel.total, always.
-     *   outbound, other — the two tiles kept out of «Jami».
-     *   ai — Регистрация leads of the window carrying the AI mark, less
-     *        «Сммщик ии» (the «ИИ квал сана» filter on Регистрация, any
-     *        creation day): 01.10 read 60 − 72 = −12.
+     * Регистрация deals whose «ИИ квал сана» is in the window, any creation
+     * day — «Сммщик ии»'s big number until 2026-10-09, a quiet line on it now.
      */
-    readonly toHeadline: { readonly outbound: number; readonly other: number; readonly ai: number }
-    /**
-     * Deals the AI qualified in the window that sit outside Регистрация now
-     * (Первичный отдел, Доставка, …) — the client, 2026-10-03: shown under
-     * «Сммщик ии» as duplicates, counted in no tile and not in «Jami».
-     */
+    readonly aiQualified: number
+    /** The same, outside Регистрация now (Первичный отдел, Доставка, …) — said in that line's tip, summed nowhere. */
     readonly aiElsewhere: number
   }
   readonly sources: readonly SourceRowDto[]
@@ -384,14 +413,24 @@ interface TileAcc {
   leads: number
   duplicates: number
   qualified: number
+  closed: number
 }
 
-const tileZero = (): TileAcc => ({ leads: 0, duplicates: 0, qualified: 0 })
+const tileZero = (): TileAcc => ({ leads: 0, duplicates: 0, qualified: 0, closed: 0 })
 
 function tileCells(a: TileAcc): ChannelTileDto {
   const fresh = a.leads - a.duplicates
-  return { leads: a.leads, fresh, qualified: a.qualified, qualifiedPercent: percent(a.qualified, fresh) }
+  return {
+    leads: a.leads,
+    fresh,
+    qualified: a.qualified,
+    qualifiedPercent: percent(a.qualified, fresh),
+    closedQualified: a.closed,
+  }
 }
+
+/** A lead (or what is read by its source) on one of these is in «Жами лидлар»; registration rows are never «Сарафан». */
+const countedSource = (sourceId: string | null): boolean => !LEAD_TILES_APART.has(leadTile(sourceId, LEAD_TILE_SOURCES))
 
 const PRODUCT_ORDER: readonly MetaProduct[] = ['Collagen', 'Zextra', 'Boshqa']
 
@@ -503,6 +542,7 @@ export function leadSourcesOverview(all: {
     channel: LeadChannel
     name: string
     outcome: OutcomeAcc
+    counted: boolean
   }
 
   const formDayZero = (): FormDayAcc => ({ spend: 0n, metaLeads: 0, leads: 0, success: 0, ...expenseZero() })
@@ -528,9 +568,10 @@ export function leadSourcesOverview(all: {
   const channels = new Map<LeadChannel, OutcomeAcc>(LEAD_CHANNELS.map((c) => [c, outcomeZero()]))
   const tiles = new Map<LeadTile, TileAcc>(LEAD_TILES.map((t) => [t, tileZero()]))
   const registration = outcomeZero()
-  let leadDuplicates = 0
-  // Регистрация leads carrying the AI mark — what «Сммщик ии» held before it read the AI's date.
-  let aiArrived = 0
+  // What «Жами лидлар» counts of it, and the «Ген лид» no form names (typed in by hand).
+  const counted = outcomeZero()
+  const manual = outcomeZero()
+  const smmAccounts = new Map<string, TileAcc>()
 
   /*
     ИИ обработка FIRST: a page is anything people write to, and the
@@ -554,15 +595,17 @@ export function leadSourcesOverview(all: {
 
     addOutcome(registration, one)
     addOutcome(channels.get(channel)!, one)
-    if (isLeadDuplicate(row.stage)) leadDuplicates += row.leads
-    const tileKey = leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY)
-    // «Сммщик ии» counts by the AI's date, not the day the lead arrived — below.
-    if (tileKey !== 'aiSmm') {
-      const tile = tiles.get(tileKey)!
+    const tileKey = leadTile(row.sourceId, LEAD_TILE_SOURCES)
+    const inTotal = !LEAD_TILES_APART.has(tileKey)
+    if (inTotal) addOutcome(counted, one)
+    if (tileKey === 'generated' && form === null) addOutcome(manual, one)
+    // The tile, and under «Сммщик ии» its account — a page's second bot is the page's.
+    const tileAccs = [tiles.get(tileKey)!]
+    if (tileKey === 'aiSmm' && row.sourceId !== null) tileAccs.push(mapGet(smmAccounts, pageKeyOf(row.sourceId), tileZero))
+    for (const tile of tileAccs) {
       tile.leads += row.leads
       if (isLeadDuplicate(row.stage)) tile.duplicates += row.leads
-    } else {
-      aiArrived += row.leads
+      if (bucket === 'success') tile.qualified += row.leads
     }
     const sourceKey = sourceKeyOf(form, row.sourceId)
     const source = mapGet(sources, sourceKey, () => ({
@@ -570,6 +613,7 @@ export function leadSourcesOverview(all: {
       channel,
       name: form ?? row.source ?? row.sourceId ?? 'Manbasiz',
       outcome: outcomeZero(),
+      counted: inTotal,
     }))
     addOutcome(source.outcome, one)
 
@@ -604,7 +648,8 @@ export function leadSourcesOverview(all: {
     const sourceKey = sourceKeyOf(form, row.sourceId)
     mapGet(fakt1Sources, sourceKey, () => new Set<string>()).add(row.client)
     fakt1Channels.get(leadChannel(row.sourceId, form, LEAD_SOURCE_VOCABULARY))!.add(row.client)
-    fakt1All.add(row.client)
+    // The whole is «Jami»'s: a client of an «Исход» lead alone is not in it.
+    if (countedSource(row.sourceId)) fakt1All.add(row.client)
   }
 
   /*
@@ -612,6 +657,7 @@ export function leadSourcesOverview(all: {
     every other campaign is an expense line beside it. An owner with no form
     and no lead stays out of the lead tables below — `expenseOwners` carries it.
   */
+  const unlinked = new Map<string, bigint>()
   for (const row of input.campaigns) {
     const channel = campaignChannel(row.objective, row.campaignName, row.accountId)
     const owner = ownerOf(row.accountId, row.accountName)
@@ -619,7 +665,13 @@ export function leadSourcesOverview(all: {
     const day = mapGet(acc.days, row.date, formDayZero)
     addCampaignExpense(acc.expense, row, channel)
     addCampaignExpense(day, row, channel)
-    if (channel !== 'form') continue
+    if (channel !== 'form') {
+      // Ad-budget money on no lead form: «Bogʻlanmagan sarf», by account.
+      if (row.spendMicroUsd > 0n && adBudgetProduct(row) !== null) {
+        unlinked.set(row.accountName, (unlinked.get(row.accountName) ?? 0n) + row.spendMicroUsd)
+      }
+      continue
+    }
     acc.accounts.add(row.accountName)
     acc.spend += row.spendMicroUsd
     acc.metaLeads += row.leads
@@ -732,40 +784,24 @@ export function leadSourcesOverview(all: {
   const formLeads = outcomeCells(formOutcome).leads
 
   /*
-    Kval by the day it was WON, onto the tile its lead counts on — the
-    headline's own count, split. The arrival cohort's kval (a lead created in
-    the window and WON by now) stays in the tables below, where it sits beside
-    the lead's other outcomes; on the tiles it read 189 against the headline's
-    240 on 01.10.
+    «ИИ квал сана» in the window, any creation day — «Сммщик ии»'s count until
+    2026-10-09, a quiet line on it since: what is in Регистрация, and apart
+    what has already moved on to Первичный отдел or Доставка.
   */
-  /*
-    «Сммщик ии» is the portal's «ИИ квал сана» filter on the window, any
-    creation day, but only what is in Регистрация (the client, 2026-10-03;
-    01.10: 72 of the filter's 89). A deal already moved on to Первичный отдел
-    or Доставка is a repeat of a lead counted before: said apart, as
-    `aiElsewhere`, and summed nowhere. Its kval stays the Регистрация WON by
-    close date below, like every other tile.
-  */
-  const aiTile = tiles.get('aiSmm')!
+  let aiQualified = 0
   let aiElsewhere = 0
   for (const row of input.aiQualified) {
-    if (!row.registration) {
-      aiElsewhere += row.leads
-      continue
-    }
-    aiTile.leads += row.leads
-    if (isLeadDuplicate(row.stage)) aiTile.duplicates += row.leads
+    if (row.registration) aiQualified += row.leads
+    else aiElsewhere += row.leads
   }
 
-  let qualifiedTotal = 0
-  for (const row of input.qualified) {
-    tiles.get(leadTile(row.sourceId, row.aiQualified, LEAD_SOURCE_VOCABULARY))!.qualified += row.qualified
-    qualifiedTotal += row.qualified
-  }
-  // Ecommerce deals, no Регистрация lead: no duplicate stage there, and outside «Jami» below.
+  // Kval by the day it was WON, onto the tile its lead counts on — each tile's quiet second line.
+  for (const row of input.qualified) tiles.get(leadTile(row.sourceId, LEAD_TILE_SOURCES))!.closed += row.qualified
+  // Ecommerce deals, no Регистрация lead: no duplicate stage or cohort read there, and outside «Jami» below.
   const sarafanTile = tiles.get('sarafan')!
   sarafanTile.leads = input.sarafan.leads
   sarafanTile.qualified = input.sarafan.qualified
+  sarafanTile.closed = input.sarafan.qualified
 
   const tilesTotal = tileZero()
   for (const [tile, t] of tiles) {
@@ -773,30 +809,45 @@ export function leadSourcesOverview(all: {
     tilesTotal.leads += t.leads
     tilesTotal.duplicates += t.duplicates
     tilesTotal.qualified += t.qualified
+    tilesTotal.closed += t.closed
   }
+  const jami = tileCells(tilesTotal)
 
-  // --- the headline tiles
-  let adSpend = 0n
-  for (const row of input.campaigns) if (adBudgetProduct(row) !== null) adSpend += row.spendMicroUsd
-  const registrationCells = outcomeCells(registration)
-  const fresh = registrationCells.leads - leadDuplicates
+  /*
+    «Targetologlar»'s «Jami» and the headline's kval price, ONE figure (the
+    client, 2026-10-09): the ad budget — the forms' spend and what no form
+    took — over the kval of every «Ген лид», a form's or typed by hand. It
+    was the whole budget over every channel's kval by close day (886.49 $ ÷
+    226), the free channels' kval making a paid one look cheap.
+  */
+  let unlinkedSpend = 0n
+  for (const spend of unlinked.values()) unlinkedSpend += spend
+  const totalSpend = formSpend + unlinkedSpend
+  const totalOutcome = outcomeZero()
+  addOutcome(totalOutcome, formOutcome)
+  addOutcome(totalOutcome, manual)
+  const totalCells = outcomeCells(totalOutcome)
+  /* No spend read (Meta not imported yet, or down that day) is «unknown», never a free kval. */
+  const costPerSuccessUsd = totalSpend > 0n ? perUnit(totalSpend, totalCells.success) : null
 
   return {
     brand,
     importedAt: input.importedAt?.toISOString() ?? null,
     inboundCalls: input.inboundCalls ?? null,
     funnel: {
-      total: registrationCells.leads,
-      fresh,
-      duplicates: leadDuplicates,
-      qualified: qualifiedTotal,
-      qualifiedPercent: percent(qualifiedTotal, fresh),
-      spendUsd: usd(adSpend),
-      /* No spend read (Meta not imported yet, or down that day) is «unknown», never a free kval. */
-      costPerQualifiedUsd: adSpend > 0n ? perUnit(adSpend, qualifiedTotal) : null,
+      total: jami.leads,
+      fresh: jami.fresh,
+      duplicates: tilesTotal.duplicates,
+      qualified: jami.qualified,
+      qualifiedPercent: jami.qualifiedPercent,
+      closedQualified: jami.closedQualified,
+      spendUsd: usd(totalSpend),
+      generatedQualified: totalCells.success,
+      costPerQualifiedUsd: costPerSuccessUsd,
     },
     totals: {
-      registration: registrationCells,
+      registration: outcomeCells(registration),
+      counted: outcomeCells(counted),
       fakt1Clients: fakt1Ready ? fakt1All.size : null,
       formReachPercent: percent(formLeads, metaFormLeads),
     },
@@ -807,6 +858,19 @@ export function leadSourcesOverview(all: {
       spendUsd: usd(formSpend),
       metaLeads: metaFormLeads,
       outcome: outcomeCells(formOutcome),
+      manual: outcomeCells(manual),
+      unlinked: {
+        spendUsd: usd(unlinkedSpend),
+        accounts: [...unlinked]
+          .sort((a, b) => (a[1] === b[1] ? a[0].localeCompare(b[0], 'ru') : a[1] > b[1] ? -1 : 1))
+          .map(([name, spend]) => ({ name, spendUsd: usd(spend) })),
+      },
+      total: {
+        spendUsd: usd(totalSpend),
+        outcome: totalCells,
+        costPerLeadUsd: perUnit(totalSpend, totalCells.leads),
+        costPerSuccessUsd,
+      },
     },
     dm: { pages: dmPages, days: dmDays, conversations: dmConversations, outcome: outcomeCells(dmOutcome) },
     channels: LEAD_CHANNELS.map((channel) => ({
@@ -816,12 +880,11 @@ export function leadSourcesOverview(all: {
     })),
     tiles: {
       rows: LEAD_TILES.map((tile) => ({ tile, ...tileCells(tiles.get(tile)!) })),
-      total: tileCells(tilesTotal),
-      toHeadline: {
-        outbound: tiles.get('outbound')!.leads,
-        other: tiles.get('other')!.leads,
-        ai: aiArrived - aiTile.leads,
-      },
+      total: jami,
+      smmAccounts: [...smmAccounts]
+        .map(([key, t]) => ({ key, name: SMM_ACCOUNTS.find((a) => a.id === key)?.name ?? key, ...tileCells(t) }))
+        .sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name, 'ru')),
+      aiQualified,
       aiElsewhere,
     },
     sources: [...sources.values()]
@@ -831,6 +894,7 @@ export function leadSourcesOverview(all: {
         name: s.name,
         outcome: outcomeCells(s.outcome),
         fakt1Clients: fakt1Ready ? (fakt1Sources.get(s.key)?.size ?? 0) : null,
+        counted: s.counted,
       }))
       .sort(
         (a, b) =>

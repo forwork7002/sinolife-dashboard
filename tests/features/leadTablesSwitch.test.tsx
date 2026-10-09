@@ -35,13 +35,22 @@ const outcome = (leads: number, success: number): LeadOutcomeDto => ({
 })
 
 const data = {
-  totals: { formReachPercent: 63.6, registration: outcome(899, 240), fakt1Clients: 31 },
-  channels: [{ channel: 'form', outcome: outcome(91, 23), fakt1Clients: 4 }],
-  sources: [{ key: 'REPEAT_SALE', channel: 'form', name: 'Ген лид', outcome: outcome(91, 23), fakt1Clients: 4 }],
+  totals: { formReachPercent: 63.6, registration: outcome(899, 240), counted: outcome(787, 239), fakt1Clients: 31 },
+  channels: [
+    { channel: 'form', outcome: outcome(91, 23), fakt1Clients: 4 },
+    { channel: 'outbound', outcome: outcome(112, 1), fakt1Clients: 0 },
+  ],
+  sources: [
+    { key: 'REPEAT_SALE', channel: 'form', name: 'Ген лид', outcome: outcome(91, 23), fakt1Clients: 4, counted: true },
+    { key: 'source|UC_KPZA32', channel: 'outbound', name: 'Исход', outcome: outcome(112, 1), fakt1Clients: 0, counted: false },
+  ],
   forms: {
     spendUsd: 167.48,
     metaLeads: 130,
     outcome: outcome(91, 23),
+    manual: outcome(9, 2),
+    unlinked: { spendUsd: 32.52, accounts: [{ name: 'Collagen Eldor', spendUsd: 30 }, { name: 'Umar 63', spendUsd: 2.52 }] },
+    total: { spendUsd: 200, outcome: outcome(100, 25), costPerLeadUsd: 2, costPerSuccessUsd: 8 },
     days: [{ date: '2026-10-01', metaLeads: 130, leads: 91, success: 23 }],
     owners: [
       {
@@ -98,6 +107,26 @@ describe('TablesBlock', () => {
     expect(screen.queryByText('collagen.marine')).toBeNull()
   })
 
+  it('adds «Ген лид · formasiz» and «Bogʻlanmagan sarf» with its accounts, and totals them — the headline\'s kval price (2026-10-09)', () => {
+    render(<TablesBlock data={data} status="ready" />)
+
+    const rowOf = (el: HTMLElement) => [...el.closest('tr')!.querySelectorAll('td')].map((td) => td.textContent)
+    // Sarf · Meta lid · Bitrix24 lid · Yetib keldi · Kval · … · Lid narxi · Kval narxi
+    const manual = rowOf(screen.getByTestId('forms-row-manual'))
+    expect(manual.slice(0, 3)).toEqual(['—', '—', '9'])
+    expect(manual[4]).toBe('2')
+    const unlinked = screen.getByTestId('forms-row-unlinked')
+    expect(unlinked.textContent).toContain('Bogʻlanmagan sarf')
+    expect(within(unlinked).getByText('Collagen Eldor — 30.00 $')).toBeTruthy()
+    expect(within(unlinked).getByText('Umar 63 — 2.52 $')).toBeTruthy()
+    expect(rowOf(unlinked)[0]).toBe('32.52 $')
+    const total = rowOf(screen.getByText('Jami'))
+    expect(total[0]).toBe('200.00 $')
+    expect(total[2]).toBe('100')
+    expect(total[4]).toBe('25')
+    expect(total.at(-1)).toBe('8.00 $')
+  })
+
   it('draws one table at a time', () => {
     render(<TablesBlock data={data} status="ready" />)
 
@@ -117,6 +146,16 @@ describe('TablesBlock', () => {
     expect(screen.getByText('Ген лид')).toBeTruthy()
     expect(screen.getByRole('columnheader', { name: 'Факт1 мижоз' })).toBeTruthy()
     expect(screen.getAllByRole('table')).toHaveLength(1)
+  })
+
+  it('lists «Исход» in «Barcha manbalar» marked «jamiga kirmaydi», and totals without it (2026-10-09)', () => {
+    render(<TablesBlock data={data} status="ready" />)
+
+    view('Barcha manbalar')
+    const cells = (el: HTMLElement) => [...el.closest('tr')!.querySelectorAll('td')].map((td) => td.textContent)
+    expect(screen.getAllByText('· jamiga kirmaydi')).toHaveLength(2) // the channel line and its source
+    expect(screen.getByText('Lid-forma').closest('tr')!.textContent).not.toContain('jamiga kirmaydi')
+    expect(cells(screen.getByText('Jami'))[0]).toBe('787')
   })
 
   it('keeps a day view\'s pick across the switch', () => {

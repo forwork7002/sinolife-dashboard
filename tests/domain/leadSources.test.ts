@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { LEAD_TILES, formNameOf, formOwner, leadChannel, leadTile, targetologOfField } from '@/server/domain/leads/leadSources'
-import { LEAD_SOURCE_VOCABULARY } from '@/server/integrations/crm/bitrix24/mapping'
+import { LEAD_SOURCE_VOCABULARY, LEAD_TILE_SOURCES, SMM_ACCOUNTS } from '@/server/integrations/crm/bitrix24/mapping'
 
 /*
   Every title and source here was read off obey.bitrix24.kz for 18–24.09.2026
@@ -126,36 +126,34 @@ describe('leadChannel', () => {
 })
 
 describe('leadTile', () => {
-  const v = LEAD_SOURCE_VOCABULARY
+  const v = LEAD_TILE_SOURCES
 
-  it('reads the client\'s six channels off the portal\'s sources', () => {
+  it('reads the client\'s channels off the portal\'s sources — the list of 2026-10-09', () => {
     expect(LEAD_TILES).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan', 'outbound', 'other'])
-    expect(leadTile('REPEAT_SALE', false, v)).toBe('generated') // forms and by hand alike
-    expect(leadTile('CALL', false, v)).toBe('inbound')
-    expect(leadTile('UC_CKXAZS', false, v)).toBe('inbound') // Входящий collagen
-    expect(leadTile('UC_AA84D0', false, v)).toBe('inbound') // Входящий zextra
-    expect(leadTile('UC_8NZNYM', false, v)).toBe('telegram')
-    expect(leadTile('2|TELEGRAM', false, v)).toBe('telegram')
-    expect(leadTile('UC_Z1OF0D', false, v)).toBe('telegram') // sinolif_tg
-    expect(leadTile('WEB', false, v)).toBe('web') // Веб-сайт
+    expect(leadTile('REPEAT_SALE', v)).toBe('generated') // forms and by hand alike
+    for (const id of ['CALL', 'UC_AA84D0', 'UC_CKXAZS']) expect(leadTile(id, v)).toBe('inbound')
+    expect(leadTile('UC_8NZNYM', v)).toBe('telegram')
+    expect(leadTile('2|TELEGRAM', v)).toBe('telegram') // the open line: not on the list, Telegram all the same
+    for (const id of ['WEB', 'UC_309FPI']) expect(leadTile(id, v)).toBe('web') // Веб-сайт, Sinolifeshop
+  })
+
+  it('puts the bot accounts and the SMM sources on «Сммщик ии» by source, whatever the AI marked', () => {
+    const smm = ['UC_1X1J24', 'UC_0FMQ5Q', 'UC_Z1OF0D', 'UC_MWIKOC', 'UC_NBCV5K', 'UC_A8LE21', 'UC_LBSZDU', '38|NEXTBOT', 'UC_KX2114', 'UC_5JW4YK', 'UC_HCZ9YU', 'UC_MXY08O']
+    expect(SMM_ACCOUNTS.map((a) => a.id)).toEqual(smm)
+    for (const id of smm) expect(leadTile(id, v)).toBe('aiSmm')
+    // zextra.sinolife's second bot is the page's.
+    expect(leadTile('46|NEXTBOT', v)).toBe('aiSmm')
+  })
+
+  it('gives «Исход» its own tile and everything unlisted «Boshqa» — every lead has one', () => {
+    expect(leadTile('UC_KPZA32', v)).toBe('outbound')
     // Сарафан маркетинг: the tile reads Ecommerce since 2026-10-05, so in Регистрация it is «Boshqa».
-    expect(leadTile('UC_9SNG04', false, v)).toBe('other')
+    for (const id of ['UC_9SNG04', 'WEBFORM', 'UC_A4WINR']) expect(leadTile(id, v)).toBe('other')
+    expect(leadTile(null, v)).toBe('other')
   })
 
-  it('puts every lead the AI qualified on «Сммщик ии», whatever its source', () => {
-    expect(leadTile('UC_1X1J24', true, v)).toBe('aiSmm') // sinolifeuz — an ad page
-    expect(leadTile('UC_Z1OF0D', true, v)).toBe('aiSmm') // a Telegram chat the AI qualified
-    expect(leadTile(null, true, v)).toBe('aiSmm')
-    // The mark wins over «Ген лид» too; an AI-qualified «Исход» never occurred (24–30.09), but would count here.
-    expect(leadTile('REPEAT_SALE', true, v)).toBe('aiSmm')
-    expect(leadTile('UC_KPZA32', true, v)).toBe('aiSmm')
-  })
-
-  it('gives «Исход» its own tile and everything else «Boshqa» — every lead has one', () => {
-    expect(leadTile('UC_KPZA32', false, v)).toBe('outbound')
-    for (const id of ['UC_1X1J24', 'UC_5JW4YK', 'UC_HCZ9YU', 'UC_NBCV5K', 'WEBFORM', 'UC_MXY08O']) {
-      expect(leadTile(id, false, v)).toBe('other')
-    }
-    expect(leadTile(null, false, v)).toBe('other')
+  it('files no source under two tiles', () => {
+    const all = [v.generated, ...v.inbound, ...v.telegram, ...v.smm, ...v.web, ...v.outbound]
+    expect(new Set(all).size).toBe(all.length)
   })
 })

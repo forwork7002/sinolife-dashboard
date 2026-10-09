@@ -9,7 +9,9 @@ import type { ChannelTileDto, LeadSourcesOverviewDto, LeadTile } from '@/feature
   «Boshqa kanallar lidlari» — the client's list of 2026-10-01: Ген лид,
   Входящий, Телеграм, Сммщик ии, Веб сайт, Сарафан, and since 2026-10-02
   «Исход» and «Boshqa» — those two on a row of their own, outside «Jami». Kval as «Квал лидлар сони» counts
-  it: by the day it was WON, over new leads.
+  it: the cohort's, over new leads, with the count closed in the window as a
+  quiet line (2026-10-09). «Jami» is «Жами лидлар» and «Сммщик ии» lists its
+  accounts.
 
   Reduced motion, so `AnimatedNumber` prints the final figure rather than the
   frame the assertion happened to catch (the stub faktQueueBand.test.tsx uses).
@@ -27,11 +29,12 @@ window.matchMedia = ((query: string) => ({
 
 afterEach(cleanup)
 
-const cells = (leads: number, qualified: number, duplicates = 0): ChannelTileDto => ({
+const cells = (leads: number, qualified: number, duplicates = 0, closedQualified = qualified + 1): ChannelTileDto => ({
   leads,
   fresh: leads - duplicates,
   qualified,
   qualifiedPercent: leads - duplicates > 0 ? (qualified / (leads - duplicates)) * 100 : null,
+  closedQualified,
 })
 
 // 24–30.09.2026 off the portal, rounded.
@@ -47,14 +50,18 @@ const TILES: Record<LeadTile, ChannelTileDto> = {
 }
 
 const data = {
-  // The headline: the six channels' 3 224, «Исход» 2 410 and «Boshqa» 120, less the AI's 40.
   brand: 'all',
-  funnel: { total: 5714 },
+  // The headline is the channels' «Jami» — «Исход» 2 410 and «Boshqa» 120 in neither.
+  funnel: { total: 3224 },
   tiles: {
     rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
-    // The six channels' sum, as the server builds it — «Исход» and «Boshqa» left out.
-    total: cells(3224, 964, 40),
-    toHeadline: { outbound: 2410, other: 120, ai: -40 },
+    // The counted channels' sum, as the server builds it — «Исход» and «Boshqa» left out.
+    total: cells(3224, 964, 40, 990),
+    smmAccounts: [
+      { key: 'UC_1X1J24', name: 'sinolifeuz', ...cells(300, 100) },
+      { key: 'UC_MWIKOC', name: 'collagen.marine', ...cells(145, 50) },
+    ],
+    aiQualified: 410,
     aiElsewhere: 17,
   },
 } as unknown as LeadSourcesOverviewDto
@@ -79,7 +86,7 @@ describe('ChannelTiles', () => {
     expect(within(tile('Телеграм')).getByText('27')).toBeTruthy()
     expect(within(tile('Телеграм')).getByText('13 kval · 48.1%')).toBeTruthy()
     expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
-    expect(await tipOf(within(tile('Сммщик ии')).getByText('«ИИ квал сана» shu davrda · faqat Регистрация'))).toContain('14.09.2026')
+    expect(await tipOf(within(tile('Сммщик ии')).getByText('Instagram / Telegram bot akkauntlari · yaratilgan kuni boʻyicha'))).toContain('collagen.marine')
     expect(within(tile('Веб сайт')).getByText('1')).toBeTruthy()
   })
 
@@ -94,19 +101,32 @@ describe('ChannelTiles', () => {
     expect(within(tile('Входящий')).getByText('473')).toBeTruthy()
   })
 
-  it('says under «Сммщик ии», quietly, the AI kval already past Регистрация — a dubl summed nowhere (2026-10-03)', async () => {
+  it('lists «Сммщик ии» by account, and keeps «ИИ квал сана» as a quiet line with what left Регистрация in its tip (2026-10-09)', async () => {
     render(<ChannelTiles data={data} status="ready" />)
 
-    const line = within(tile('Сммщик ии')).getByText('+17 dubl · Первичный / Доставка · sanalmagan')
-    expect(await tipOf(line)).toMatch(/«Jami»ga kirmaydi/)
-    expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
-    expect(within(screen.getByTestId('lead-channel-total')).getByText('3,224')).toBeTruthy()
+    const smm = tile('Сммщик ии')
+    const accounts = within(smm).getByTestId('smm-accounts')
+    expect([...accounts.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['sinolifeuz300', 'collagen.marine145'])
+    const line = within(smm).getByText('«ИИ квал сана» boʻyicha: 410')
+    expect(await tipOf(line)).toMatch(/Yana 17 tasi Регистрацияdan oʻtib ketgan/)
+    // The big number is the accounts' leads by creation day, not the AI's date.
+    expect(within(smm).getByText('445')).toBeTruthy()
   })
 
-  it('says nothing past Регистрация when nothing is', () => {
-    render(<ChannelTiles data={{ ...data, tiles: { ...data.tiles, aiElsewhere: 0 } }} status="ready" />)
+  it('names nothing past Регистрация when nothing is, and no list with no account', async () => {
+    render(<ChannelTiles data={{ ...data, tiles: { ...data.tiles, smmAccounts: [], aiElsewhere: 0 } }} status="ready" />)
 
-    expect(within(tile('Сммщик ии')).queryByText(/Первичный \/ Доставка/)).toBeNull()
+    const smm = tile('Сммщик ии')
+    expect(within(smm).queryByTestId('smm-accounts')).toBeNull()
+    expect(await tipOf(within(smm).getByText('«ИИ квал сана» boʻyicha: 410'))).not.toMatch(/oʻtib ketgan/)
+  })
+
+  it('prints the count closed in the window as a quiet second line on every tile', async () => {
+    render(<ChannelTiles data={data} status="ready" />)
+
+    const line = within(tile('Телеграм')).getByText('shu davrda yopilgan: 14')
+    expect(await tipOf(line)).toMatch(/eski hisob/)
+    expect(within(screen.getByTestId('lead-channel-total')).getByText('shu davrda yopilgan: 990')).toBeTruthy()
   })
 
   it('shows a quiet channel at 0, with a dash for its rate', () => {
@@ -128,38 +148,12 @@ describe('ChannelTiles', () => {
     expect(total.parentElement!.children).toHaveLength(7)
   })
 
-  it('says, quietly, what takes «Jami» to «Жами лидлар» (2026-10-02)', async () => {
+  it('says «Jami» is «Жами лидлар» and nothing about a gap — the «+N / ИИ farqi» lines are gone (2026-10-09)', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const total = screen.getByTestId('lead-channel-total')
-    // 3 224 + 2 410 + 120 − 40 = 5 714, the headline.
-    expect(within(total).getByText('+2,490 → 5,714 «Жами лидлар»')).toBeTruthy()
-    const parts = within(total).getByText('Исход +2,410 · Boshqa +120 · ИИ farqi −40')
-    expect(await tipOf(parts)).toMatch(/«ИИ квал сана»/)
-  })
-
-  it('names only the parts that add something', () => {
-    const quiet = {
-      brand: 'all',
-      funnel: { total: 3344 },
-      tiles: { ...data.tiles, toHeadline: { outbound: 0, other: 120, ai: 0 } },
-    } as unknown as LeadSourcesOverviewDto
-    render(<ChannelTiles data={quiet} status="ready" />)
-
-    const total = screen.getByTestId('lead-channel-total')
-    expect(within(total).getByText('+120 → 3,344 «Жами лидлар»')).toBeTruthy()
-    expect(within(within(total).getByText('Boshqa +120')).queryByRole('button', { name: 'Izoh' })).toBeNull()
-  })
-
-  it('says «= Жами лидлар» when nothing is apart', () => {
-    const even = {
-      brand: 'all',
-      funnel: { total: 3224 },
-      tiles: { ...data.tiles, toHeadline: { outbound: 0, other: 0, ai: 0 } },
-    } as unknown as LeadSourcesOverviewDto
-    render(<ChannelTiles data={even} status="ready" />)
-
-    expect(within(screen.getByTestId('lead-channel-total')).getByText('= «Жами лидлар»')).toBeTruthy()
+    expect(within(total).getByText('= «Жами лидлар» · Исходsiz')).toBeTruthy()
+    expect(within(total).queryByText(/→|ИИ farqi|Исход \+/)).toBeNull()
   })
 
   it('puts «Исход» and «Boshqa» on one card beneath, outside «Jami», picked by a filter (2026-10-02)', () => {
@@ -169,7 +163,7 @@ describe('ChannelTiles', () => {
     expect(apart.querySelectorAll('.card')).toHaveLength(1)
     // «Исход» first, the picker on the card.
     expect(within(tile('Исход')).getByText('2,410')).toBeTruthy()
-    expect(within(tile('Исход')).getByText('operatorning chiquvchi qoʻngʻirogʻi')).toBeTruthy()
+    expect(within(tile('Исход')).getByText('operatorning chiquvchi qoʻngʻirogʻi — lid emas')).toBeTruthy()
     fireEvent.click(within(apart).getByRole('button', { name: 'Boshqa' }))
     expect(within(tile('Boshqa')).getByText('120')).toBeTruthy()
     expect(screen.queryByText('Исход', { selector: 'p' })).toBeNull()

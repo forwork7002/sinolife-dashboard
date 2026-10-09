@@ -15,13 +15,15 @@ export type LeadChannel = 'form' | 'page' | 'inbound' | 'manual' | 'telegram' | 
 
 export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
 
-/** Leads by the day they arrived, kval by the day it was WON — as the headline tiles. */
+/** A cohort: the leads created in the window, and how many of those are WON by now — as the headline tiles. */
 export interface ChannelTileDto {
   readonly leads: number
   readonly fresh: number
   readonly qualified: number
   /** qualified ÷ fresh. */
   readonly qualifiedPercent: number | null
+  /** The tile's deals WON in the window by close day, whenever they arrived — the quiet second line. */
+  readonly closedQualified: number
 }
 
 export interface LeadOutcomeDto {
@@ -114,6 +116,8 @@ export interface SourceRowDto {
   readonly outcome: LeadOutcomeDto
   /** Distinct clients (by phone) of these leads with a FAKT 1 order in the window; null while not ready. */
   readonly fakt1Clients: number | null
+  /** In «Жами лидлар» — false for «Исход» and the sources no tile names. */
+  readonly counted: boolean
 }
 
 export interface LeadSourcesOverviewDto {
@@ -122,19 +126,26 @@ export interface LeadSourcesOverviewDto {
   readonly importedAt: string | null
   /** Inbound calls in the window, under «Входящий»; null before the call data floor or under one brand. */
   readonly inboundCalls: number | null
-  /** The six headline tiles — leads by creation day, kval by the day it was WON. */
+  /** The six headline tiles — `tiles.total` («Исход» and «Boshqa» in none), kval the cohort's. */
   readonly funnel: {
     readonly total: number
     readonly fresh: number
     readonly duplicates: number
     readonly qualified: number
     readonly qualifiedPercent: number | null
+    /** WON in the window by close day — the count until 2026-10-09. */
+    readonly closedQualified: number
+    /** `forms.total`'s spend, kval and price — «Targetologlar»'s «Jami». */
     readonly spendUsd: number
+    readonly generatedQualified: number
     readonly costPerQualifiedUsd: number | null
   }
   readonly totals: {
+    /** Every Регистрация deal, «Исход» included. */
     readonly registration: LeadOutcomeDto
-    /** Distinct over the whole of Регистрация — not the sum of the channels. */
+    /** `registration` less what «Жами лидлар» leaves out — «Barcha manbalar»'s «Jami». */
+    readonly counted: LeadOutcomeDto
+    /** Distinct over `counted` — not the sum of the channels. */
     readonly fakt1Clients: number | null
     readonly formReachPercent: number | null
   }
@@ -146,6 +157,20 @@ export interface LeadSourcesOverviewDto {
     readonly spendUsd: number
     readonly metaLeads: number
     readonly outcome: LeadOutcomeDto
+    /** «Ген лид» typed in by hand, no form. */
+    readonly manual: LeadOutcomeDto
+    /** Ad-budget money on no lead form, by account. */
+    readonly unlinked: {
+      readonly spendUsd: number
+      readonly accounts: readonly { readonly name: string; readonly spendUsd: number }[]
+    }
+    /** The table's «Jami»: owners + `manual` + `unlinked`; its kval price is the headline's. */
+    readonly total: {
+      readonly spendUsd: number
+      readonly outcome: LeadOutcomeDto
+      readonly costPerLeadUsd: number | null
+      readonly costPerSuccessUsd: number | null
+    }
   }
   readonly dm: {
     readonly pages: readonly DmPageDto[]
@@ -158,13 +183,15 @@ export interface LeadSourcesOverviewDto {
     readonly outcome: LeadOutcomeDto
     readonly fakt1Clients: number | null
   }[]
-  /** «Boshqa kanallar lidlari» — every tile in the server's order, and the sum of all but «Исход» and «Boshqa». */
+  /** «Boshqa kanallar lidlari» — every tile in the server's order, and the sum of all but «Исход», «Boshqa» and «Сарафан» (= `funnel`). */
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
     readonly total: ChannelTileDto
-    /** total.leads + outbound + other + ai = funnel.total — what «Jami» lacks of «Жами лидлар». */
-    readonly toHeadline: { readonly outbound: number; readonly other: number; readonly ai: number }
-    /** AI-qualified in the window but outside Регистрация now — shown under «Сммщик ии» as duplicates, summed nowhere. */
+    /** «Сммщик ии» by account, the ones with a lead, largest first. */
+    readonly smmAccounts: readonly ({ readonly key: string; readonly name: string } & ChannelTileDto)[]
+    /** Регистрация deals whose «ИИ квал сана» is in the window — a quiet line on «Сммщик ии». */
+    readonly aiQualified: number
+    /** The same, outside Регистрация now — said in that line's tip, summed nowhere. */
     readonly aiElsewhere: number
   }
   readonly sources: readonly SourceRowDto[]

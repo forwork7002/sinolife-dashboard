@@ -65,6 +65,14 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
  * THEY LEFT «JAMI» LATER THAT DAY: the client asked for «Jami» to be the six
  * channels alone, with «Исход» and «Boshqa» on a row of their own beneath —
  * see `LEAD_TILES_APART`. Every lead still has exactly one tile.
+ *
+ * BY SOURCE ALONE SINCE 2026-10-09 (the client's written list of SOURCE_IDs):
+ * «Сммщик ии» is the Instagram / Telegram bot accounts and the SMM sources
+ * (`LeadTileVocabulary.smm`) by the day the deal was created — it read the
+ * «ИИ квал сана» filter, any creation day, so «Jami» could not meet «Жами
+ * лидлар». The AI's mark moves no lead between tiles any more, and «Жами /
+ * Янги / Дубль лидлар» above are these tiles' «Jami»: «Исход» is an
+ * operator's own call, not a lead, and is in neither.
  */
 export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
 
@@ -91,21 +99,33 @@ export const LEAD_TILES_APART: ReadonlySet<LeadTile> = new Set<LeadTile>(['outbo
 export const LEAD_TILES_OUTSIDE_REGISTRATION: ReadonlySet<LeadTile> = new Set<LeadTile>(['sarafan'])
 
 /**
- * The tile a Регистрация deal counts on — one, always. The AI's mark wins over
- * every source, «Ген лид» and «Исход» included, so a qualified sinolif_tg chat
- * is «Сммщик ии», not «Телеграм» — no lead is counted twice in «Jami». The
- * portal fills the mark since 2026-09-14; before that the tile reads 0.
- * «Сммщик ии»'s own count is not these leads: since 2026-10-02 it is the
- * portal's «ИИ квал сана» filter (`aiQualifiedStages`), as the client checks it.
+ * The portal's SOURCE_IDs by the TILE they count on — the client's list of
+ * 2026-10-09, apart from `LeadSourceVocabulary` (the tables' channels), which
+ * files «sinolif_tg» under Telegram and the ad pages under «page».
+ * `mapping.ts` holds the one copy, as `LEAD_TILE_SOURCES`.
  */
-export function leadTile(sourceId: string | null, aiQualified: boolean, vocabulary: LeadSourceVocabulary): LeadTile {
-  if (aiQualified) return 'aiSmm'
+export interface LeadTileVocabulary {
+  readonly generated: string
+  readonly inbound: ReadonlySet<string>
+  readonly telegram: ReadonlySet<string>
+  /** The Instagram / Telegram bot accounts and the «Сммщик» sources. */
+  readonly smm: ReadonlySet<string>
+  readonly web: ReadonlySet<string>
+  readonly outbound: ReadonlySet<string>
+}
+
+/**
+ * The tile a Регистрация deal counts on — one, always, by its source alone.
+ * A source the client's list does not name (none, «Сарафан маркетинг» — its
+ * tile reads Ecommerce, `LEAD_TILES_OUTSIDE_REGISTRATION`) is «Boshqa».
+ */
+export function leadTile(sourceId: string | null, vocabulary: LeadTileVocabulary): LeadTile {
   if (sourceId === null) return 'other'
   if (sourceId === vocabulary.generated) return 'generated'
   if (vocabulary.inbound.has(sourceId)) return 'inbound'
   if (vocabulary.telegram.has(sourceId)) return 'telegram'
+  if (vocabulary.smm.has(sourceId)) return 'aiSmm'
   if (vocabulary.web.has(sourceId)) return 'web'
-  // «Сарафан маркетинг» in Регистрация is «Boshqa»: the tile reads Ecommerce (`LEAD_TILES_OUTSIDE_REGISTRATION`).
   if (vocabulary.outbound.has(sourceId)) return 'outbound'
   return 'other'
 }

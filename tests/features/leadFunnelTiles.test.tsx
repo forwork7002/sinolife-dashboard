@@ -33,8 +33,10 @@ const data = {
     duplicates: 60,
     qualified: 300,
     qualifiedPercent: (300 / 940) * 100,
+    closedQualified: 340,
     spendUsd: 1200,
-    costPerQualifiedUsd: 4,
+    generatedQualified: 200,
+    costPerQualifiedUsd: 6,
   },
   tiles: { rows: [], total: { leads: 3224 } },
 } as unknown as LeadSourcesOverviewDto
@@ -55,14 +57,22 @@ describe('FunnelTiles', () => {
     expect(within(tile('Дубль лидлар')).getByText('60')).toBeTruthy()
     expect(within(tile('Квал лидлар сони')).getByText('300')).toBeTruthy()
     expect(within(tile('Квал %')).getByText('31.9%')).toBeTruthy()
-    expect(within(tile('Квал лид нархи $')).getByText('4.00')).toBeTruthy()
-    expect(within(tile('Квал лид нархи $')).getByText('Meta byudjeti 1 200 $ ÷ квал')).toBeTruthy()
+    expect(within(tile('Квал лид нархи $')).getByText('6.00')).toBeTruthy()
+  })
+
+  it('says the leads are without «Исход», the kval the cohort\'s with the closed count beside it, and what the price divides (2026-10-09)', () => {
+    render(<FunnelTiles data={data} status="ready" />)
+
+    expect(within(tile('Жами лидлар')).getByText('Исходsiz · dubllar bilan')).toBeTruthy()
+    expect(within(tile('Квал лидлар сони')).getByText('shu davr lidlaridan «Сделка успешна»')).toBeTruthy()
+    expect(within(tile('Квал лидлар сони')).getByText('shu davrda yopilgan: 340')).toBeTruthy()
+    expect(within(tile('Квал лид нархи $')).getByText('Meta sarfi 1 200 $ ÷ Ген лид kvali 200')).toBeTruthy()
   })
 
   it('draws a dash, never a zero, for a rate or a price it cannot compute', () => {
     const quiet = {
       importedAt: null,
-      funnel: { total: 0, fresh: 0, duplicates: 0, qualified: 0, qualifiedPercent: null, spendUsd: 0, costPerQualifiedUsd: null },
+      funnel: { total: 0, fresh: 0, duplicates: 0, qualified: 0, qualifiedPercent: null, closedQualified: 0, spendUsd: 0, generatedQualified: 0, costPerQualifiedUsd: null },
       tiles: { rows: [], total: { leads: 0 } },
     } as unknown as LeadSourcesOverviewDto
     render(<FunnelTiles data={quiet} status="ready" />)

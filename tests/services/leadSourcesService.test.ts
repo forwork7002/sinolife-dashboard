@@ -137,17 +137,69 @@ describe('leadSourcesOverview', () => {
     sarafan: { leads: 3, qualified: 2 },
   })
 
-  it('reads the six headline figures', () => {
+  it('reads the six headline figures off the counted tiles — «Исход» is in none (the client, 2026-10-09)', () => {
     expect(data.funnel).toEqual({
-      total: 26,
-      fresh: 25,
+      // 26 Регистрация deals less «Исход» 7 and the Регистрация «Сарафан маркетинг» lead.
+      total: 18,
+      fresh: 17,
       duplicates: 1,
-      qualified: 6,
-      qualifiedPercent: (6 / 25) * 100,
-      // Umar's form 20 + 5 and his DM 9; the unmapped account and the hiring campaign are left out.
-      spendUsd: 34,
-      costPerQualifiedUsd: 34 / 6,
+      // The cohort: of those 18, WON by now — «Ген лид» 5, sinolifeuz 1, collagen.sinolife 1, Telegram 1, the site 1.
+      qualified: 9,
+      qualifiedPercent: (9 / 17) * 100,
+      // WON in the window whenever it arrived, the old count: «Ген лид» 3 + sinolifeuz 1 («Исход» and the sourceless kval apart).
+      closedQualified: 4,
+      // Umar's forms 20 + 5, the unmapped account's form 1, and his DM 9; the hiring campaign is no ad money.
+      spendUsd: 35,
+      // Every «Ген лид» kval of the cohort: the form's 3 and the hand-typed 2 — not the free channels'.
+      generatedQualified: 5,
+      costPerQualifiedUsd: 35 / 5,
     })
+  })
+
+  it('prices a kval as «Targetologlar»\'s «Jami» does — one figure, the forms\' money and the unlinked over «Ген лид» kval', () => {
+    const { forms, funnel } = data
+    expect(forms.spendUsd).toBe(26)
+    expect(forms.unlinked).toEqual({ spendUsd: 9, accounts: [{ name: 'Umar 63', spendUsd: 9 }] })
+    expect(forms.manual).toMatchObject({ leads: 2, success: 2 })
+    expect(forms.total).toEqual({
+      spendUsd: forms.spendUsd + forms.unlinked.spendUsd,
+      outcome: expect.objectContaining({ leads: forms.outcome.leads + 2, success: forms.outcome.success + 2 }),
+      costPerLeadUsd: 35 / 7,
+      costPerSuccessUsd: 35 / 5,
+    })
+    expect(funnel.spendUsd).toBe(forms.total.spendUsd)
+    expect(funnel.costPerQualifiedUsd).toBe(forms.total.costPerSuccessUsd)
+    // The «Ген лид» tile's cohort kval is that divisor.
+    expect(data.tiles.rows.find((r) => r.tile === 'generated')!.qualified).toBe(funnel.generatedQualified)
+  })
+
+  it('lists the unlinked money by account, largest first, and leaves hiring and unmapped accounts out', () => {
+    const d = leadSourcesOverview({
+      window: WINDOW,
+      importedAt: null,
+      registration: [],
+      triage: [],
+      campaigns: [
+        campaign({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'DM', spendMicroUsd: 3_000_000n }),
+        campaign({ objective: 'OUTCOME_TRAFFIC', campaignName: 'Trafik', spendMicroUsd: 1_500_000n }),
+        campaign({ accountId: '926218346480236', accountName: 'Zextra Kamron 1', objective: 'OUTCOME_ENGAGEMENT', campaignName: 'DM', spendMicroUsd: 6_000_000n }),
+        campaign({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'vakansiya DM', spendMicroUsd: 7_000_000n }),
+        campaign({ accountId: '1306271057053174', accountName: 'Newgen_davi01', objective: 'OUTCOME_ENGAGEMENT', campaignName: 'DM', spendMicroUsd: 2_000_000n }),
+      ],
+      fakt1: [],
+      qualified: [],
+      aiQualified: [],
+      sarafan: NO_SARAFAN,
+    })
+    expect(d.forms.unlinked).toEqual({
+      spendUsd: 10.5,
+      accounts: [
+        { name: 'Zextra Kamron 1', spendUsd: 6 },
+        { name: 'Umar 63', spendUsd: 4.5 },
+      ],
+    })
+    // Money with no «Ген лид» kval to divide it: a price is unknown, not infinite and not free.
+    expect(d.funnel).toMatchObject({ spendUsd: 10.5, generatedQualified: 0, costPerQualifiedUsd: null })
   })
 
   it('counts only «Дубликат (лид)» as Дубль, not the red «Дубликат» at the end', () => {
@@ -183,6 +235,9 @@ describe('leadSourcesOverview', () => {
 
   it('counts every Регистрация lead, and splits the ad ones out', () => {
     expect(data.totals.registration.leads).toBe(26)
+    // «Barcha manbalar»'s «Jami» is «Жами лидлар»: «Исход» and the unlisted source are listed, marked, not summed.
+    expect(data.totals.counted.leads).toBe(data.funnel.total)
+    expect(data.sources.filter((s) => !s.counted).map((s) => s.key).sort()).toEqual(['source|UC_9SNG04', 'source|UC_KPZA32'])
     // forms (5) + the ad page (4); calls, «Ген лид» by hand and collagen.sinolife are not ads.
     const ads = (['form', 'page'] as const).map((ch) => data.channels.find((c) => c.channel === ch)!.outcome)
     expect(ads[0]!.leads + ads[1]!.leads).toBe(9)
@@ -212,47 +267,82 @@ describe('leadSourcesOverview', () => {
     expect(data.sources.find((s) => s.key === 'source|UC_8NZNYM')!.channel).toBe('telegram')
   })
 
-  it('fills the client\'s channel tiles, «Исход» and «Boshqa» included, and sums all but those two and «Сарафан»', () => {
+  it('fills the client\'s channel tiles by source alone, kval the cohort\'s, and sums all but «Исход», «Boshqa» and «Сарафан»', () => {
     const tile = (t: string) => data.tiles.rows.find((r) => r.tile === t)!
     expect(data.tiles.rows.map((r) => r.tile)).toEqual(['generated', 'inbound', 'telegram', 'aiSmm', 'web', 'sarafan', 'outbound', 'other'])
-    // Umar's form (5) and the hand-typed «Ген лид» (2): «Ген лид» whole; kval by the day it was WON.
-    expect(tile('generated')).toMatchObject({ leads: 7, fresh: 7, qualified: 3, qualifiedPercent: (3 / 7) * 100 })
-    expect(tile('inbound')).toMatchObject({ leads: 3, qualified: 0, qualifiedPercent: 0 })
-    expect(tile('telegram')).toMatchObject({ leads: 2, qualified: 0 })
-    // By «ИИ квал сана», Регистрация only — not the one window lead the AI marked, nor the 3 moved on.
-    expect(tile('aiSmm')).toMatchObject({ leads: 6, fresh: 5, qualified: 1, qualifiedPercent: 20 })
+    // Umar's form (5) and the hand-typed «Ген лид» (2): «Ген лид» whole. Kval: of those 7, WON by now; 3 were closed in the window.
+    expect(tile('generated')).toEqual({ tile: 'generated', leads: 7, fresh: 7, qualified: 5, qualifiedPercent: (5 / 7) * 100, closedQualified: 3 })
+    expect(tile('inbound')).toMatchObject({ leads: 3, qualified: 0, qualifiedPercent: 0, closedQualified: 0 })
+    expect(tile('telegram')).toMatchObject({ leads: 2, qualified: 1, closedQualified: 0 })
+    // The bot accounts by the day the deal was created — sinolifeuz 4 (one «Дубликат (лид)») and collagen.sinolife 1 —
+    // whatever the AI marked: «ИИ квал сана» is a line apart.
+    expect(tile('aiSmm')).toMatchObject({ leads: 5, fresh: 4, qualified: 2, qualifiedPercent: 50, closedQualified: 1 })
+    expect(data.tiles.smmAccounts).toEqual([
+      { key: 'UC_1X1J24', name: 'sinolifeuz', leads: 4, fresh: 3, qualified: 1, qualifiedPercent: (1 / 3) * 100, closedQualified: 0 },
+      { key: 'UC_NBCV5K', name: 'collagen.sinolife', leads: 1, fresh: 1, qualified: 1, qualifiedPercent: 100, closedQualified: 0 },
+    ])
+    expect(data.tiles.aiQualified).toBe(6)
     expect(data.tiles.aiElsewhere).toBe(3)
-    expect(tile('web')).toMatchObject({ leads: 1, qualified: 0 })
+    expect(tile('web')).toMatchObject({ leads: 1, qualified: 1 })
     // Ecommerce's «Сарафан маркетинг», not Регистрация's.
     expect(tile('sarafan')).toMatchObject({ leads: 3, fresh: 3, qualified: 2 })
-    expect(tile('outbound')).toMatchObject({ leads: 7, qualified: 1 })
-    // The page's unqualified three (one a duplicate), collagen.sinolife, the Регистрация «Сарафан маркетинг» lead,
-    // and the kval with no source.
-    expect(tile('other')).toMatchObject({ leads: 5, fresh: 4, qualified: 1 })
-    // «Jami» is the headline less «Исход» (7 · 1 kval) and «Boshqa» (5, one a duplicate · 1 kval),
-    // with «Сммщик ии» on its own date: 6 (one «Дубликат (лид)») where the window held 1. «Сарафан» is no Регистрация lead.
-    expect(data.tiles.total).toEqual({
-      leads: data.funnel.total - 12 - 1 + 6,
-      fresh: data.funnel.fresh - 11 - 1 + 5,
-      qualified: data.funnel.qualified - 2,
-      qualifiedPercent: ((data.funnel.qualified - 2) / (data.funnel.fresh - 11 - 1 + 5)) * 100,
-    })
+    // Out of «Jami»: the operators' own calls, and the Регистрация «Сарафан маркетинг» lead (with the sourceless closed kval).
+    expect(tile('outbound')).toMatchObject({ leads: 7, qualified: 0, closedQualified: 1 })
+    expect(tile('other')).toMatchObject({ leads: 1, fresh: 1, qualified: 0, closedQualified: 1 })
     const inTotal = data.tiles.rows.filter((r) => !['outbound', 'other', 'sarafan'].includes(r.tile))
-    expect(data.tiles.total.leads).toBe(inTotal.reduce((n, r) => n + r.leads, 0))
+    expect(data.tiles.total).toEqual({
+      leads: inTotal.reduce((n, r) => n + r.leads, 0),
+      fresh: inTotal.reduce((n, r) => n + r.fresh, 0),
+      qualified: inTotal.reduce((n, r) => n + r.qualified, 0),
+      qualifiedPercent: (9 / 17) * 100,
+      closedQualified: inTotal.reduce((n, r) => n + r.closedQualified, 0),
+    })
   })
 
-  it('says what takes «Jami» to «Жами лидлар», to the lead (the client, 2026-10-02)', () => {
-    // «Исход» 7, «Boshqa» 5, and the AI: 1 window lead carried the mark, «Сммщик ии» reads 6.
-    expect(data.tiles.toHeadline).toEqual({ outbound: 7, other: 5, ai: 1 - 6 })
-    const { outbound, other, ai } = data.tiles.toHeadline
-    expect(data.tiles.total.leads + outbound + other + ai).toBe(data.funnel.total)
+  it('has ONE total: the tiles\' «Jami» is «Жами лидлар», «Янги» and the kval to the lead (the client, 2026-10-09)', () => {
+    const { total } = data.tiles
+    expect(data.funnel).toMatchObject({
+      total: total.leads,
+      fresh: total.fresh,
+      duplicates: total.leads - total.fresh,
+      qualified: total.qualified,
+      qualifiedPercent: total.qualifiedPercent,
+      closedQualified: total.closedQualified,
+    })
+    // And with «Исход» and «Boshqa» it is every Регистрация deal — nothing is lost, only kept apart.
+    const apart = data.tiles.rows.filter((r) => r.tile === 'outbound' || r.tile === 'other')
+    expect(total.leads + apart.reduce((n, r) => n + r.leads, 0)).toBe(data.totals.registration.leads)
   })
 
-  it('keeps the identity on an empty window', () => {
+  it('folds a page\'s second bot into its account, and names an unlisted account by its id', () => {
+    const d = leadSourcesOverview({
+      window: WINDOW,
+      importedAt: null,
+      registration: [
+        reg({ sourceId: 'UC_LBSZDU', source: 'zextra.sinolife', leads: 2 }),
+        reg({ sourceId: '46|NEXTBOT', source: 'NEXTBOT - zextra.sinolife', stage: 'Обработка', status: 'OPEN', leads: 3 }),
+        reg({ sourceId: 'UC_Z1OF0D', source: 'sinolif_tg', stage: 'Обработка', status: 'OPEN', leads: 1 }),
+      ],
+      triage: [],
+      campaigns: [],
+      fakt1: [],
+      qualified: [],
+      aiQualified: [],
+      sarafan: NO_SARAFAN,
+    })
+    expect(d.tiles.smmAccounts.map((a) => [a.name, a.leads, a.qualified])).toEqual([
+      ['zextra.sinolife', 5, 2],
+      ['sinolif_tg', 1, 0],
+    ])
+    expect(d.tiles.rows.find((r) => r.tile === 'aiSmm')!.leads).toBe(6)
+    expect(d.tiles.rows.find((r) => r.tile === 'telegram')!.leads).toBe(0)
+  })
+
+  it('keeps the totals equal on an empty window', () => {
     const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [], sarafan: NO_SARAFAN })
-    expect(empty.tiles.toHeadline).toEqual({ outbound: 0, other: 0, ai: 0 })
-    expect(empty.tiles.aiElsewhere).toBe(0)
+    expect(empty.tiles).toMatchObject({ smmAccounts: [], aiQualified: 0, aiElsewhere: 0 })
     expect(empty.tiles.total.leads).toBe(empty.funnel.total)
+    expect(empty.forms.total).toMatchObject({ spendUsd: 0, costPerLeadUsd: null, costPerSuccessUsd: null })
   })
 
   it('puts the form and the Meta account on one targetolog, and reads the reach', () => {
@@ -499,10 +589,12 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
   it('narrows leads by source then form, kval and FAKT 1 clients alike, and money by ad account', () => {
     expect(all.brand).toBe('all')
     expect(zextra.brand).toBe('Zextra')
-    expect(zextra.funnel).toMatchObject({ total: 7, qualified: 2, spendUsd: 8 })
-    expect(collagen.funnel).toMatchObject({ total: 5, qualified: 1, spendUsd: 20 })
-    // The outgoing call is the brandless remainder: the two brands and it make the whole.
-    expect(all.funnel.total).toBe(zextra.funnel.total + collagen.funnel.total + 7)
+    // Kval is the cohort's (the Kamron form's 3 leads, WON); the 2 closed in the window ride beside it.
+    expect(zextra.funnel).toMatchObject({ total: 7, qualified: 3, closedQualified: 2, spendUsd: 8 })
+    expect(collagen.funnel).toMatchObject({ total: 5, qualified: 0, closedQualified: 1, spendUsd: 20 })
+    // The outgoing call is no lead, so the two brands make «Жами лидлар»; with it they make Регистрация.
+    expect(all.funnel.total).toBe(zextra.funnel.total + collagen.funnel.total)
+    expect(all.totals.registration.leads).toBe(all.funnel.total + 7)
     expect(zextra.totals.fakt1Clients).toBe(1)
   })
 
@@ -511,11 +603,13 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     expect(collagen.forms.owners.some((o) => o.targetolog === 'Kamron')).toBe(false)
   })
 
-  it('lists only the brand\'s DM pages, and reads the AI\'s mark by its source', () => {
+  it('lists only the brand\'s DM pages, and reads «Сммщик ии» and the AI\'s mark by their source', () => {
     expect(zextra.dm.pages.map((p) => p.key)).toEqual(['UC_A8LE21', 'UC_LBSZDU', '38|NEXTBOT'])
     expect(zextra.dm.conversations).toBe(10)
     expect(collagen.dm.pages.some((p) => p.key === 'UC_Z1OF0D')).toBe(false)
-    expect(zextra.tiles.rows.find((r) => r.tile === 'aiSmm')!.leads).toBe(1)
+    expect(zextra.tiles.rows.find((r) => r.tile === 'aiSmm')!.leads).toBe(4)
+    expect(zextra.tiles.smmAccounts.map((a) => a.name)).toEqual(['zextra.uz'])
+    expect(zextra.tiles.aiQualified).toBe(1)
   })
 
   it('cannot split «Сарафан» or the inbound calls, and does not pretend to', () => {
@@ -527,14 +621,19 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
 
   it('reads a lead\'s «Проект» before its source: an «Исход» call the floor marked Zextra is Zextra\'s', () => {
     const marked = { ...input, registration: [...input.registration, reg({ sourceId: 'UC_KPZA32', source: 'Исход', productLine: 'Zextra sure', leads: 2 })] }
-    expect(leadSourcesOverview({ ...marked, brand: 'Zextra' }).funnel.total).toBe(zextra.funnel.total + 2)
-    expect(leadSourcesOverview({ ...marked, brand: 'none' }).funnel.total).toBe(7)
+    const outbound = (brand: 'Zextra' | 'none') => leadSourcesOverview({ ...marked, brand }).tiles.rows.find((r) => r.tile === 'outbound')!.leads
+    expect(outbound('Zextra')).toBe(2)
+    expect(outbound('none')).toBe(7)
+    // Whatever its brand, an operator's own call is no lead of «Жами лидлар».
+    expect(leadSourcesOverview({ ...marked, brand: 'Zextra' }).funnel.total).toBe(zextra.funnel.total)
   })
 
   it('files what no brand claims under «Brendsiz» — the three add up to «Hammasi»', () => {
     const none = leadSourcesOverview({ ...input, brand: 'none' })
     expect(none.brand).toBe('none')
-    expect(none.funnel.total).toBe(7)
+    expect(none.totals.registration.leads).toBe(7)
+    expect(none.funnel.total).toBe(0)
+    expect(collagen.totals.registration.leads + zextra.totals.registration.leads + none.totals.registration.leads).toBe(all.totals.registration.leads)
     expect(collagen.funnel.total + zextra.funnel.total + none.funnel.total).toBe(all.funnel.total)
     expect(collagen.funnel.qualified + zextra.funnel.qualified + none.funnel.qualified).toBe(all.funnel.qualified)
     expect(collagen.funnel.spendUsd + zextra.funnel.spendUsd + none.funnel.spendUsd).toBe(all.funnel.spendUsd)

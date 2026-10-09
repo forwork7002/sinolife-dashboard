@@ -16,7 +16,7 @@ import type {
   StageCategoryValue,
   TargetProduct,
 } from '@/server/domain/types'
-import type { LeadSourceVocabulary } from '@/server/domain/leads/leadSources'
+import type { LeadSourceVocabulary, LeadTileVocabulary } from '@/server/domain/leads/leadSources'
 
 // ---------------------------------------------------------------------------
 // Pipelines
@@ -578,6 +578,43 @@ export const LEAD_SOURCE_VOCABULARY: LeadSourceVocabulary = Object.freeze({
   web: new Set(['WEB']),
   sarafan: new Set(['UC_9SNG04']),
   generated: 'REPEAT_SALE',
+})
+
+/**
+ * «Сммщик ии»'s accounts on «Lid manbalari», in the client's order of
+ * 2026-10-09: the Instagram / Telegram bot pages and the SMM managers' own
+ * sources. The card lists each with its leads; the name is the client's.
+ */
+export const SMM_ACCOUNTS: readonly { readonly id: string; readonly name: string }[] = Object.freeze([
+  { id: 'UC_1X1J24', name: 'sinolifeuz' },
+  { id: 'UC_0FMQ5Q', name: 'sinolife_otziv' },
+  { id: 'UC_Z1OF0D', name: 'sinolif_tg' },
+  { id: 'UC_MWIKOC', name: 'collagen.marine' },
+  { id: 'UC_NBCV5K', name: 'collagen.sinolife' },
+  { id: 'UC_A8LE21', name: 'zextra.uz' },
+  { id: 'UC_LBSZDU', name: 'zextra.sinolife' },
+  { id: '38|NEXTBOT', name: 'zextra_life' },
+  { id: 'UC_KX2114', name: 'sinogummy' },
+  { id: 'UC_5JW4YK', name: 'Сммщик sinolifeuz' },
+  { id: 'UC_HCZ9YU', name: 'Сммщик sinolife_sedana' },
+  { id: 'UC_MXY08O', name: 'Instagram' },
+])
+
+/**
+ * The channel tiles' sources — the client's written list of 2026-10-09
+ * (Регистрация, CATEGORY_ID 0), which is NOT `LEAD_SOURCE_VOCABULARY`: there
+ * «sinolif_tg» is Telegram and the bot pages are ad pages; here both are
+ * «Сммщик ии». Two ids the list leaves out stay with their family rather
+ * than fall to «Boshqa»: 2|TELEGRAM (the open line) and a page's second bot
+ * (`DM_PAGE_ALIAS`). «Sinolifeshop» UC_309FPI is a website.
+ */
+export const LEAD_TILE_SOURCES: LeadTileVocabulary = Object.freeze({
+  generated: 'REPEAT_SALE',
+  inbound: new Set(['CALL', 'UC_AA84D0', 'UC_CKXAZS']),
+  telegram: new Set(['UC_8NZNYM', '2|TELEGRAM']),
+  smm: new Set([...SMM_ACCOUNTS.map((a) => a.id), ...Object.keys(DM_PAGE_ALIAS)]),
+  web: new Set(['WEB', 'UC_309FPI']),
+  outbound: new Set(['UC_KPZA32']),
 })
 
 /**

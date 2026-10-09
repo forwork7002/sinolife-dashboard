@@ -37,9 +37,10 @@ import type {
  * «Lid manbalari» — every lead Bitrix24 registered, by where it came from.
  *
  * Three questions, one request (`/leads/overview`), so every table's leads on
- * the period sum to the tiles above it. Their kval is the cohort's — what the
- * period's leads have become by now — while the tiles count kval by the day it
- * was WON, so the two kvals differ and the «Barcha manbalar» hint says so. The
+ * the period sum to the tiles above it. Kval is the cohort's everywhere since
+ * 2026-10-09 — what the period's leads have become by now — on the tiles as
+ * in the tables; the deals WON in the period, whenever they arrived, are a
+ * quiet second line on each tile. The
  * ROP cards placed in the slots read their own day. The three tables below
  * share one card, a switch at its top choosing the table:
  *
@@ -101,8 +102,10 @@ export function LeadSourcesSection({
 
 /**
  * The client's headline figures (2026-10-01), in their order: Жами / Янги /
- * Дубль, Квал лидлар сони, Квал %, Квал лид нархи $. The same day on the RNP
- * sheet's «Регистрация» block reads the same numbers — `funnel` says how. Янги
+ * Дубль, Квал лидлар сони, Квал %, Квал лид нархи $. Since 2026-10-09 they
+ * are the channel row's «Jami» — «Исход» is in none of them — with the
+ * cohort's kval, and the price is «Targetologlar»'s «Jami» «Kval narxi»
+ * (`funnel` says how). Янги
  * is washed green and Дубль red, as the client asked. «Бошка лидлар» stood
  * after Дубль until 2026-10-02: once the channel row covered every lead it
  * equalled «Жами лидлар», and the client had it removed.
@@ -119,7 +122,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           label="Жами лидлар"
           value={f?.total ?? null}
           unit="count"
-          hint="Регистрация — dubllar bilan"
+          hint="Исходsiz · dubllar bilan"
         />
         <StatTile
           compact
@@ -145,7 +148,8 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           label="Квал лидлар сони"
           value={f?.qualified ?? null}
           unit="count"
-          hint="«Сделка успешна» — yopilgan kuni"
+          hint="shu davr lidlaridan «Сделка успешна»"
+          context={f ? closedNote(f.closedQualified) : undefined}
         />
         <StatTile
           compact
@@ -161,7 +165,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           label="Квал лид нархи $"
           value={f?.costPerQualifiedUsd ?? null}
           unit="usd"
-          hint={f ? `Meta byudjeti ${usd(f.spendUsd)} ÷ квал` : undefined}
+          hint={f ? `Meta sarfi ${usd(f.spendUsd)} ÷ Ген лид kvali ${formatNumber(f.generatedQualified)}` : undefined}
         />
       </div>
       {data?.importedAt && (
@@ -201,10 +205,10 @@ const TILES_IN_TOTAL = TILES.filter((t) => !(TILES_APART as readonly LeadTile[])
 /** What a tile counts, where its name alone does not say it. */
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
-  aiSmm: '«ИИ квал сана» shu davrda · faqat Регистрация',
+  aiSmm: 'Instagram / Telegram bot akkauntlari · yaratilgan kuni boʻyicha',
   sarafan: 'faqat Ecommerce voronkasi · «Jami»ga kirmaydi',
-  outbound: 'operatorning chiquvchi qoʻngʻirogʻi',
-  other: 'qolgan manbalar: ИИ kval qilmagan reklama sahifalari, Сммщик, Instagram, Сарафан маркетинг, manbasiz',
+  outbound: 'operatorning chiquvchi qoʻngʻirogʻi — lid emas',
+  other: 'roʻyxatda yoʻq manbalar: Сарафан маркетинг (Регистрация), manbasiz va boshqalar',
 }
 
 /**
@@ -212,7 +216,8 @@ const TILE_NOTE: Partial<Record<LeadTile, string>> = {
  * as the day the count starts; it is only when the portal began the mark.
  */
 const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
-  aiSmm: 'Tanlangan davr boʻyicha sanaladi. Portal «ИИ квал сана» maydonini 14.09.2026 dan toʻldiradi — undan oldingi kunlarda 0.',
+  aiSmm:
+    'Регистрацияga shu davrda tushgan, manbasi SMM akkauntlaridan biri boʻlgan bitimlar (sinolifeuz, sinolife_otziv, sinolif_tg, collagen.marine, collagen.sinolife, zextra.uz, zextra.sinolife, zextra_life, sinogummy, Сммщик sinolifeuz, Сммщик sinolife_sedana, Instagram).',
   sarafan:
     'Ecommerce voronkasidagi «Сарафан маркетинг» manbali bitimlar: shu davrda ochilgani, kval — shu davrda «Доставлен» boʻlgani. Регистрация lidi emas, shuning uchun «Jami»ga kirmaydi; Регистрацияdagi «Сарафан маркетинг» lidlari «Boshqa»da.',
 }
@@ -251,7 +256,7 @@ function TipNote({
   )
 }
 
-/** «N kval · X%» — kval ÷ new leads, as «Квал %» above; a dash when the channel had no new lead. */
+/** «N kval · X%» — the cohort's kval ÷ new leads, as «Квал %» above; a dash when the channel had no new lead. */
 const kvalHint = (t: ChannelTileDto) =>
   `${formatNumber(t.qualified)} kval · ${t.qualifiedPercent === null ? NO_VALUE : formatPercent(t.qualifiedPercent)}`
 
@@ -267,19 +272,52 @@ const dublNote = (t: ChannelTileDto | undefined) => {
 }
 
 /**
- * Under «Сммщик ии», quieter still: AI-qualified deals that have already left
- * Регистрация (Первичный отдел, Доставка, …) — the client, 2026-10-03: a
- * repeat of a lead counted before, said as «dubl» but summed nowhere.
+ * «shu davrda yopilgan: N» — the deals WON in the window whenever they
+ * arrived, the kval every tile printed until 2026-10-09 (the client: keep it
+ * as a small second line).
  */
-const aiElsewhereNote = (n: number) =>
-  n > 0 ? (
-    <TipNote
-      className="text-[10px]"
-      tip="«ИИ квал сана» shu davrda, lekin bitim Регистрацияdan oʻtib ketgan (Первичный отдел, Доставка …) — avval sanalgan lidning takrori; hech qaysi kartaga va «Jami»ga kirmaydi"
-    >
-      +{formatNumber(n)} dubl · Первичный / Доставка · sanalmagan
-    </TipNote>
-  ) : null
+const closedNote = (n: number) => (
+  <TipNote
+    className="text-[10px]"
+    tip="Shu davr ichida «Сделка успешна»ga oʻtgan bitimlar — qaysi kuni kelganidan qatʼi nazar (eski hisob). Katta raqam esa shu davrda kelgan lidlarning hozirgi holati."
+  >
+    shu davrda yopilgan: {formatNumber(n)}
+  </TipNote>
+)
+
+/**
+ * Under «Сммщик ии»: each account's leads (the client, 2026-10-09), then the
+ * «ИИ квал сана» count the card showed as its big number until that day —
+ * with the deals that have already left Регистрация said in its tip.
+ */
+function SmmBreakdown({ tiles }: { tiles: LeadSourcesOverviewDto['tiles'] }) {
+  return (
+    <>
+      {tiles.smmAccounts.length > 0 && (
+        <ul className="mt-1 flex flex-col gap-0.5 text-[11px] leading-snug" data-testid="smm-accounts">
+          {tiles.smmAccounts.map((a) => (
+            <li key={a.key} className="flex min-w-0 items-baseline justify-between gap-2" title={`${a.name}: ${kvalHint(a)}`}>
+              <span className="min-w-0 truncate" style={muted}>
+                {a.name}
+              </span>
+              <span className="font-medium tabular-nums">{formatNumber(a.leads)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <TipNote
+        className="text-[10px]"
+        tip={`«ИИ квал сана» shu davrga toʻgʻri kelgan Регистрация bitimlari — qaysi kuni yaratilganidan qatʼi nazar (kartaning eski hisobi).${
+          tiles.aiElsewhere > 0
+            ? ` Yana ${formatNumber(tiles.aiElsewhere)} tasi Регистрацияdan oʻtib ketgan (Первичный отдел, Доставка …) — sanalmagan.`
+            : ''
+        }`}
+      >
+        «ИИ квал сана» boʻyicha: {formatNumber(tiles.aiQualified)}
+      </TipNote>
+    </>
+  )
+}
 
 /**
  * Under «Входящий»: how many inbound CALLS the window had (the client,
@@ -298,49 +336,15 @@ const inboundCallsNote = (n: number | null) =>
     </p>
   )
 
-const signed = (n: number) => `${n < 0 ? '−' : '+'}${formatNumber(Math.abs(n))}`
-
-/**
- * «+128 → 899 «Жами лидлар»» under «Jami», quietly, with what makes up the
- * difference — the client, 2026-10-02: the row's «Jami» has to visibly meet
- * the headline. The parts are the server's identity (`tiles.toHeadline`), not
- * a remainder taken here, so a label can never name a gap it did not cause.
- */
-function headlineNote(data: LeadSourcesOverviewDto): ReactNode {
-  const { outbound, other, ai } = data.tiles.toHeadline
-  const gap = outbound + other + ai
-  // A part that adds nothing is not named.
-  const parts = (
-    [
-      [TILE_LABEL.outbound, outbound],
-      [TILE_LABEL.other, other],
-      ['ИИ farqi', ai],
-    ] as const
-  )
-    .filter(([, n]) => n !== 0)
-    .map(([label, n]) => `${label} ${signed(n)}`)
-  return (
-    <>
-      {note(gap === 0 ? '= «Жами лидлар»' : `${signed(gap)} → ${formatNumber(data.funnel.total)} «Жами лидлар»`)}
-      {gap !== 0 &&
-        note(
-          parts.join(' · '),
-          ai !== 0
-            ? '«ИИ farqi»: «Сммщик ии» shu davrdagi «ИИ квал сана» boʻyicha sanaladi (Регистрацияdagilar, istalgan kuni kelgan); «Жами лидлар»da esa shu davrda Регистрацияga kelgan ИИ lidlari.'
-            : undefined,
-        )}
-    </>
-  )
-}
-
 /**
  * The client's lead channels (2026-10-01), one tile each, and their «Jami»
  * (summed on the server, `tiles.total`). A cut of its own that overlaps the
  * tables below on purpose: «Ген лид» holds every lead-form lead
  * («Targetologlar») and «Сммщик ии» every lead the AI qualified, mostly off
  * the DM pages. Every tile is on the wire even at zero, so a quiet channel
- * reads 0. A tile's kval is counted as «Квал лидлар сони» above it — by the
- * day it was WON, over new leads. «Исход» and «Boshqa» share one card
+ * reads 0. A tile's kval is counted as «Квал лидлар сони» above it — the
+ * cohort's, over new leads. «Jami» IS «Жами лидлар» since 2026-10-09 and
+ * says nothing more. «Исход» and «Boshqa» share one card
  * beneath, outside «Jami», picked by a filter (the client, 2026-10-02).
  */
 export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; status: Status }) {
@@ -374,9 +378,10 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
         unit="count"
         hint={o ? kvalHint(o) : undefined}
         context={
-          text || extra || dubl ? (
+          o || text || extra ? (
             <>
               {dubl}
+              {o && closedNote(o.closedQualified)}
               {text && note(text, TILE_NOTE_TITLE[tile])}
               {extra}
             </>
@@ -408,10 +413,11 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             unit="count"
             hint={total ? kvalHint(total) : undefined}
             context={
-              data ? (
+              total ? (
                 <>
                   {dublNote(total)}
-                  {headlineNote(data)}
+                  {closedNote(total.closedQualified)}
+                  {note('= «Жами лидлар» · Исходsiz')}
                 </>
               ) : undefined
             }
@@ -423,7 +429,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             !data
               ? undefined
               : t === 'aiSmm'
-                ? aiElsewhereNote(data.tiles.aiElsewhere)
+                ? <SmmBreakdown tiles={data.tiles} />
                 : t === 'inbound'
                   ? isOneBrand(data.brand)
                     ? unsplitNote('Kiruvchi qoʻngʻiroqlar', '📞 qoʻngʻiroqlar')
@@ -536,32 +542,60 @@ const ownerLabel = (o: FormOwnerDto) =>
   o.product === 'Boshqa' ? o.targetolog : `${o.targetolog} · ${PRODUCT_LABEL[o.product]}`
 
 function formsView(data: LeadSourcesOverviewDto | undefined, status: Status): TableViewParts {
-  type OwnerRow = { key: string; owner: FormOwnerDto | null; cells: FormTotals }
-  const owners = data?.forms.owners ?? []
-  const rows: OwnerRow[] =
-    data && owners.length > 0
-      ? [
-          ...owners.map((o) => ({ key: o.key, owner: o, cells: ownerTotals(o) })),
-          {
-            key: 'total',
-            owner: null,
-            cells: {
-              spendUsd: data.forms.spendUsd,
-              metaLeads: data.forms.metaLeads,
-              outcome: data.forms.outcome,
-              reachPercent: data.totals.formReachPercent,
-              costPerLeadUsd: data.forms.outcome.leads > 0 ? data.forms.spendUsd / data.forms.outcome.leads : null,
-              costPerSuccessUsd:
-                data.forms.outcome.success > 0 ? data.forms.spendUsd / data.forms.outcome.success : null,
-            },
-          },
-        ]
-      : []
+  const forms = data?.forms
+  const owners = forms?.owners ?? []
+  const rows: OwnerRow[] = []
+  if (data && forms && (owners.length > 0 || forms.manual.leads > 0 || forms.unlinked.spendUsd > 0)) {
+    rows.push(...owners.map((o) => ({ key: o.key, owner: o, cells: ownerTotals(o) })))
+    // «Ген лид» no form names: no targetolog and no spend of its own, yet a «Ген лид» kval the price divides by.
+    if (forms.manual.leads > 0) {
+      rows.push({
+        key: 'manual',
+        owner: null,
+        label: 'Ген лид · formasiz',
+        sub: ['Qoʻlda kiritilgan — forma nomi yoʻq'],
+        cells: { spendUsd: 0, metaLeads: 0, outcome: forms.manual, reachPercent: null, costPerLeadUsd: null, costPerSuccessUsd: null },
+      })
+    }
+    // The ad budget no lead form took, by account — what the headline's Meta spend has over the forms'.
+    if (forms.unlinked.spendUsd > 0) {
+      rows.push({
+        key: 'unlinked',
+        owner: null,
+        label: 'Bogʻlanmagan sarf',
+        sub: [
+          'Hech qaysi lid-formaga bogʻlanmagan kampaniyalar (DM / xabar va boshqa)',
+          ...forms.unlinked.accounts.map((a) => `${a.name} — ${usd(a.spendUsd)}`),
+        ],
+        cells: {
+          spendUsd: forms.unlinked.spendUsd,
+          metaLeads: 0,
+          outcome: NO_OUTCOME,
+          reachPercent: null,
+          costPerLeadUsd: null,
+          costPerSuccessUsd: null,
+        },
+      })
+    }
+    rows.push({
+      key: 'total',
+      owner: null,
+      cells: {
+        spendUsd: forms.total.spendUsd,
+        metaLeads: forms.metaLeads,
+        outcome: forms.total.outcome,
+        reachPercent: data.totals.formReachPercent,
+        costPerLeadUsd: forms.total.costPerLeadUsd,
+        costPerSuccessUsd: forms.total.costPerSuccessUsd,
+      },
+    })
+  }
 
   return {
     title: 'Targetologlar · lid-forma — davr boʻyicha',
     hint: 'Meta hisoblagan lidlar va shu targetologning CRM-formasi Bitrix24 Регистрация ga ochgan bitimlar — keyin ular nima boʻlgani. Targetolog forma nomidan olinadi («Sinolife (UMAR) 777», «… Eldor»). «Yetib keldi» — Bitrix24 lid ÷ Meta lid; past boʻlsa, Meta formasi Bitrix24 ga ulanmagan boʻlishi mumkin.',
-    footer: 'Lid va kval narxi — lid-forma sarfi ÷ Bitrix24 dagi lid (yoki kval). Meta lid narxi «Reklama samarasi» boʻlimida.',
+    footer:
+      'Lid va kval narxi — sarf ÷ Bitrix24 dagi lid (yoki kval). «Jami» — barcha Meta sarfi (formalar + bogʻlanmagan) ÷ barcha «Ген лид» kvali; yuqoridagi «Квал лид нархи $» aynan shu raqam. «Yetib keldi» faqat formalar boʻyicha. Meta lid narxi «Reklama samarasi» boʻlimida.',
     table: (
       <DataTable<OwnerRow>
         columns={ownerColumns}
@@ -626,6 +660,17 @@ function formDaysView(
   }
 }
 
+/** A row of «Targetologlar»: an owner, or a named line with no owner («Ген лид · formasiz», «Bogʻlanmagan sarf»), or — neither — «Jami». */
+interface OwnerRow {
+  key: string
+  owner: FormOwnerDto | null
+  label?: string
+  sub?: readonly string[]
+  cells: FormTotals
+}
+
+const NO_OUTCOME: LeadOutcomeDto = { leads: 0, success: 0, noAnswer: 0, lowQuality: 0, duplicate: 0, open: 0, successPercent: null }
+
 interface FormTotals {
   spendUsd: number
   metaLeads: number
@@ -677,14 +722,25 @@ const outcomeColumns = <R,>(pick: (row: R) => LeadOutcomeDto): Column<R>[] => [
   },
 ]
 
-const ownerColumns: readonly Column<{ key: string; owner: FormOwnerDto | null; cells: FormTotals }>[] = [
+const ownerColumns: readonly Column<OwnerRow>[] = [
   {
     key: 'who',
     header: 'Targetolog',
     rowHeader: true,
     render: (r) =>
       r.owner === null ? (
-        <span className="eyebrow">Jami</span>
+        r.label === undefined ? (
+          <span className="eyebrow">Jami</span>
+        ) : (
+          <span className="flex flex-col leading-tight" data-testid={`forms-row-${r.key}`}>
+            <span className="whitespace-nowrap">{r.label}</span>
+            {r.sub?.map((line) => (
+              <span key={line} className="max-w-[300px] truncate text-[11px] font-normal" style={muted} title={line}>
+                {line}
+              </span>
+            ))}
+          </span>
+        )
       ) : (
         <span className="flex flex-col leading-tight">
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
@@ -942,11 +998,14 @@ function sourcesView(data: LeadSourcesOverviewDto | undefined, status: Status): 
     outcome: LeadOutcomeDto
     fakt1Clients: number | null
     subtotal: boolean
+    /** Out of «Жами лидлар» («Исход», a source no tile names) — listed, marked, and not in «Jami». */
+    apart: boolean
   }
   const rows: Row[] = []
   if (data && data.totals.registration.leads > 0) {
     for (const c of data.channels) {
       if (c.outcome.leads === 0) continue
+      const mine = data.sources.filter((x: SourceRowDto) => x.channel === c.channel)
       rows.push({
         key: `channel|${c.channel}`,
         channel: c.channel,
@@ -954,18 +1013,28 @@ function sourcesView(data: LeadSourcesOverviewDto | undefined, status: Status): 
         outcome: c.outcome,
         fakt1Clients: c.fakt1Clients,
         subtotal: true,
+        apart: mine.every((x) => !x.counted),
       })
-      for (const s of data.sources.filter((x: SourceRowDto) => x.channel === c.channel)) {
-        rows.push({ key: s.key, channel: s.channel, name: s.name, outcome: s.outcome, fakt1Clients: s.fakt1Clients, subtotal: false })
+      for (const s of mine) {
+        rows.push({
+          key: s.key,
+          channel: s.channel,
+          name: s.name,
+          outcome: s.outcome,
+          fakt1Clients: s.fakt1Clients,
+          subtotal: false,
+          apart: !s.counted,
+        })
       }
     }
     rows.push({
       key: 'total',
       channel: null,
       name: 'Jami',
-      outcome: data.totals.registration,
+      outcome: data.totals.counted,
       fakt1Clients: data.totals.fakt1Clients,
       subtotal: true,
+      apart: false,
     })
   }
   // «Факт1 мижоз» right after Kval %: lead → kval → a client who bought.
@@ -974,7 +1043,7 @@ function sourcesView(data: LeadSourcesOverviewDto | undefined, status: Status): 
 
   return {
     title: 'Barcha manbalar · Регистрация',
-    hint: 'Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. Kval — shu davrda kelgan lidlardan hozirgacha «Сделка успешна» boʻlganlari; yuqoridagi «Квал лидлар сони» esa davr ichida yopilganlarni sanaydi, shuning uchun ikkisi farq qiladi. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz).',
+    hint: 'Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. «Jami» — yuqoridagi «Жами лидлар»: «Исход» (operatorning chiquvchi qoʻngʻirogʻi) va roʻyxatda yoʻq manbalar jadvalda koʻrinadi, lekin «jamiga kirmaydi». Kval — shu davrda kelgan lidlardan hozirgacha «Сделка успешна» boʻlganlari, yuqoridagi «Квал лидлар сони» kabi. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz).',
     table: (
       <DataTable<Row>
         columns={[
@@ -985,10 +1054,15 @@ function sourcesView(data: LeadSourcesOverviewDto | undefined, status: Status): 
             render: (r) =>
               r.channel === null ? (
                 <span className="eyebrow">Jami</span>
-              ) : r.subtotal ? (
-                <span className="font-semibold">{r.name}</span>
               ) : (
-                <span className="pl-3">{r.name}</span>
+                <span className={r.subtotal ? 'font-semibold' : 'pl-3'}>
+                  {r.name}
+                  {r.apart && (
+                    <span className="ml-1.5 text-[11px] font-normal" style={muted}>
+                      · jamiga kirmaydi
+                    </span>
+                  )}
+                </span>
               ),
           },
           {
