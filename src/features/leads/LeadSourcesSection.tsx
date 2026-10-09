@@ -381,7 +381,8 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
           o || text || extra ? (
             <>
               {dubl}
-              {o && closedNote(o.closedQualified)}
+              {/* «Сарафан» is Ecommerce: its kval already is the closed count. */}
+              {o && tile !== 'sarafan' && closedNote(o.closedQualified)}
               {text && note(text, TILE_NOTE_TITLE[tile])}
               {extra}
             </>

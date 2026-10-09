@@ -450,9 +450,13 @@ function ownerOfForm(form: string): { key: string; targetolog: string; product: 
     : { key: `form|${form}`, targetolog: form, product: 'Boshqa' }
 }
 
-/** The line a lead is counted on — a form by its name, anything else by its source. */
+/**
+ * The line a lead is counted on — a form by its name, anything else by its
+ * source. A form's leads on a source «Жами лидлар» leaves out («Исход») are a
+ * line apart, so a line is wholly in «Jami» or wholly out of it.
+ */
 const sourceKeyOf = (form: string | null, sourceId: string | null): string =>
-  form !== null ? `form|${form}` : `source|${sourceId ?? ''}`
+  form !== null ? `form|${form}${countedSource(sourceId) ? '' : '|apart'}` : `source|${sourceId ?? ''}`
 
 /** What a page's chats and leads sell — the page's own brand, the second bot folded into its page. */
 const pageBrand = (sourceId: string | null): TargetProduct | null =>
@@ -657,7 +661,7 @@ export function leadSourcesOverview(all: {
     every other campaign is an expense line beside it. An owner with no form
     and no lead stays out of the lead tables below — `expenseOwners` carries it.
   */
-  const unlinked = new Map<string, bigint>()
+  const unlinked = new Map<string, { name: string; spend: bigint }>()
   for (const row of input.campaigns) {
     const channel = campaignChannel(row.objective, row.campaignName, row.accountId)
     const owner = ownerOf(row.accountId, row.accountName)
@@ -668,7 +672,7 @@ export function leadSourcesOverview(all: {
     if (channel !== 'form') {
       // Ad-budget money on no lead form: «Bogʻlanmagan sarf», by account.
       if (row.spendMicroUsd > 0n && adBudgetProduct(row) !== null) {
-        unlinked.set(row.accountName, (unlinked.get(row.accountName) ?? 0n) + row.spendMicroUsd)
+        mapGet(unlinked, row.accountId, () => ({ name: row.accountName, spend: 0n })).spend += row.spendMicroUsd
       }
       continue
     }
@@ -821,7 +825,7 @@ export function leadSourcesOverview(all: {
     226), the free channels' kval making a paid one look cheap.
   */
   let unlinkedSpend = 0n
-  for (const spend of unlinked.values()) unlinkedSpend += spend
+  for (const account of unlinked.values()) unlinkedSpend += account.spend
   const totalSpend = formSpend + unlinkedSpend
   const totalOutcome = outcomeZero()
   addOutcome(totalOutcome, formOutcome)
@@ -861,14 +865,14 @@ export function leadSourcesOverview(all: {
       manual: outcomeCells(manual),
       unlinked: {
         spendUsd: usd(unlinkedSpend),
-        accounts: [...unlinked]
-          .sort((a, b) => (a[1] === b[1] ? a[0].localeCompare(b[0], 'ru') : a[1] > b[1] ? -1 : 1))
-          .map(([name, spend]) => ({ name, spendUsd: usd(spend) })),
+        accounts: [...unlinked.values()]
+          .sort((a, b) => (a.spend === b.spend ? a.name.localeCompare(b.name, 'ru') : a.spend > b.spend ? -1 : 1))
+          .map((a) => ({ name: a.name, spendUsd: usd(a.spend) })),
       },
       total: {
         spendUsd: usd(totalSpend),
         outcome: totalCells,
-        costPerLeadUsd: perUnit(totalSpend, totalCells.leads),
+        costPerLeadUsd: totalSpend > 0n ? perUnit(totalSpend, totalCells.leads) : null,
         costPerSuccessUsd,
       },
     },
@@ -886,6 +890,12 @@ export function leadSourcesOverview(all: {
         .sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name, 'ru')),
       aiQualified,
       aiElsewhere,
+      /*
+        Not in the DTO: a tab opened before the 2026-10-09 deploy still reads
+        `toHeadline` on its next poll and would throw without it. Zeros read
+        «= Жами лидлар» there. Delete once those tabs are gone.
+      */
+      ...{ toHeadline: { outbound: 0, other: 0, ai: 0 } },
     },
     sources: [...sources.values()]
       .map((s) => ({

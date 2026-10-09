@@ -338,6 +338,18 @@ describe('leadSourcesOverview', () => {
     expect(d.tiles.rows.find((r) => r.tile === 'telegram')!.leads).toBe(0)
   })
 
+  it('keeps a form\'s «Исход» leads on a line apart, so every «Barcha manbalar» line is wholly in «Jami» or out of it', () => {
+    const rows = [
+      reg({ sourceId: 'UC_KPZA32', source: 'Исход', formTitle: UMAR_FORM, leads: 2 }),
+      reg({ formTitle: UMAR_FORM, leads: 3 }),
+    ]
+    for (const registration of [rows, [...rows].reverse()]) {
+      const d = leadSourcesOverview({ window: WINDOW, importedAt: null, registration, triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [], sarafan: NO_SARAFAN })
+      expect(d.sources.map((x) => [x.outcome.leads, x.counted]).sort()).toEqual([[2, false], [3, true]])
+      expect(d.sources.filter((x) => x.counted).reduce((n, x) => n + x.outcome.leads, 0)).toBe(d.totals.counted.leads)
+    }
+  })
+
   it('keeps the totals equal on an empty window', () => {
     const empty = leadSourcesOverview({ window: WINDOW, importedAt: null, registration: [], triage: [], campaigns: [], fakt1: [], qualified: [], aiQualified: [], sarafan: NO_SARAFAN })
     expect(empty.tiles).toMatchObject({ smmAccounts: [], aiQualified: 0, aiElsewhere: 0 })
