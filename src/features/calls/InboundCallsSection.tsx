@@ -223,7 +223,7 @@ export function InboundCalls({
             value={total?.groups[g] ?? null}
             unit="count"
             fill={g === 'fresh' ? 'good' : undefined}
-            hint={total ? `shundan ${formatNumber(total.unreached[g])} ta raqam javobsiz qolgan` : undefined}
+            hint={total ? `shundan ${formatNumber(total.unreached[g])} tasi qoʻngʻiroq qilgan, lekin ulanmagan` : undefined}
             context={
               <p className="text-[11px] leading-snug" style={muted}>
                 {GROUP_RULE[g]}
@@ -234,7 +234,7 @@ export function InboundCalls({
       </div>
       <div className="flex flex-col gap-1 text-[11px] leading-snug" style={muted} data-testid="inbound-unreached-rule">
         <p>
-          «Javobsiz qolgan» — qoʻngʻiroqlar soni emas, raqamlar soni: shu davrda bizga qoʻngʻiroq qilgan, lekin
+          «Ulanmagan» — qoʻngʻiroqlar soni emas, raqamlar soni: shu davrda bizga qoʻngʻiroq qilgan, lekin
           kiruvchi qoʻngʻiroqlarining birortasida ham suhbat boʻlmagan (hammasi 0 soniya) raqamlar. Sababi ikki xil:
           hech kim koʻtarmagan yoki mijoz ulanmasdan oʻzi qoʻyib qoʻygan — Bitrix24 bularni ajratmaydi.
         </p>

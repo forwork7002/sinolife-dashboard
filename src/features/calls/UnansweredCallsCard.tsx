@@ -145,7 +145,7 @@ export function UnansweredCallsCard({
 
   return (
     <ChartCard
-      title="Javobsiz qolgan raqamlar"
+      title="Qoʻngʻiroq qilib, ulanmagan raqamlar"
       hint="Davr ichida qoʻngʻiroq qilib, bironta ham soniya gaplasha olmagan raqamlar. «Qayta qoʻngʻiroq» — oxirgi kiruvchi qoʻngʻiroqdan keyin shu raqamga chiquvchi qoʻngʻiroq qilinganmi (bugungacha). Raqamni bossangiz — telefon, kontaktni bossangiz — Bitrix24 kartasi ochiladi. Raqami aniqlanmagan qoʻngʻiroqlar roʻyxatda yoʻq. Qoʻngʻiroqlar — kiruvchi ham, qayta qoʻngʻiroq ham — Bitrix24 dan har ~3 soatda keladi: hozirgina qilingan qayta qoʻngʻiroq keyingi yuklashgacha «Qilinmagan» boʻlib turishi mumkin."
     >
       <div className="flex flex-col gap-2 pb-3">
@@ -190,7 +190,7 @@ export function UnansweredCallsCard({
         initialRows={50}
         emptyTitle={
           data && data.rows.length === 0
-            ? 'Bu davrda javobsiz qolgan raqam yoʻq'
+            ? 'Bu davrda ulanmagan raqam yoʻq'
             : state === 'waiting' && group === 'all'
               ? 'Hammasiga qayta qoʻngʻiroq qilingan'
               : 'Bu tanlov boʻyicha raqam yoʻq'
