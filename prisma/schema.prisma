@@ -1999,3 +1999,64 @@ model CrmEvent {
   @@index([processedAt])
   @@map("crm_event")
 }
+
+// ---------------------------------------------------------------------------
+// «Лид назорати» (2026-10-09) — `src/server/integrations/crm/sync/leadWatchFeeds.ts`
+//
+// The lead watch on «Lidlar» needs two things the three-hourly reference pass
+// cannot give it: the calls of the last minutes, and the open-line chats a
+// person has left open. The worker reads both on the watch's own two-minute
+// clock. Calls land in `call_record` through the ordinary upsert; the chats
+// have no table of their own in the CRM model, so they get this one.
+// ---------------------------------------------------------------------------
+
+/// One open-line chat («Чат с клиентом» on the portal's kanban) that is OPEN
+/// right now and answered for by a PERSON — a `crm.activity` row with
+/// PROVIDER_ID IMOPENLINES_SESSION, COMPLETED N, on a deal. The bot's own
+/// chats (RESPONSIBLE_ID 1, 815 of the 826 open on 2026-10-09) are never read.
+///
+/// A CURRENT SET, NOT A HISTORY: every pass replaces it — rows the portal no
+/// longer returns were completed and are deleted. Dozens of rows at most.
+///
+/// NO FOREIGN KEYS, ON PURPOSE. The deal and the responsible are kept as the
+/// portal's own ids and joined at read time: a chat routinely arrives a tick
+/// before the deal it opened is imported, and an id resolved at write time
+/// would then be null until something rewrote the row. Joined at read, the
+/// link appears the moment the deal does, and a deleted deal needs no SetNull.
+model OpenLineChat {
+  id             String         @id @default(cuid())
+  externalSource ExternalSource @default(BITRIX24)
+  /// The activity's portal id.
+  externalId     String
+  /// OWNER_ID — the portal id of the deal the chat belongs to.
+  dealExternalId String
+  /// RESPONSIBLE_ID — the portal user answering the chat. Never the bot.
+  responsibleExternalId String?
+  /// SUBJECT as the portal wrote it: «Чат открытой линии - "<user> - <line>" (NEXTBOT)».
+  /// Kept whole; the line's name is parsed at read time (`openLineName`).
+  subject        String
+  /// CREATED — when the session's activity was opened.
+  openedAt       DateTime
+  /// The pass that last saw it open.
+  lastSeenAt     DateTime
+  createdAt      DateTime       @default(now())
+
+  @@unique([externalSource, externalId])
+  @@map("open_line_chat")
+}
+
+/// The lead watch's two feeds, one row each — id 'calls' and 'chats'. Like
+/// `moysklad_sync`: a pass that found nothing new and a pass that never ran
+/// would otherwise read the same, and «Лид назорати» prints how old its data
+/// is (`dataAsOf`). `state` is the pass's own bookmark, JSON because the two
+/// differ: the calls' last read, the chats' ID floor and its hourly anchors.
+model LeadWatchSync {
+  id            String    @id
+  lastSuccessAt DateTime?
+  lastError     String?
+  lastErrorAt   DateTime?
+  state         Json?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("lead_watch_sync")
+}

@@ -520,7 +520,8 @@ export class SyncEngine {
 
   /**
    * Write records the caller already read — the by-id re-read of
-   * `triageMoves.ts`. The same upsert as a run, with no run around it: no
+   * `triageMoves.ts`, the portal's own events (`crmEvents.ts`), «Лид
+   * назорати»'s recent calls (`leadWatchFeeds.ts`). The same upsert as a run, with no run around it: no
    * `sync_log` row (a `DEALS` BACKFILL row would settle the one-off backfill),
    * no watermark, no sweep. Only for a handler with no `finalize`.
    */

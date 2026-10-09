@@ -19,6 +19,7 @@ import { SearchRepository } from '@/server/repositories/searchRepository'
 import { TargetRepository } from '@/server/repositories/targetRepository'
 import { LeadCohortRepository } from '@/server/repositories/leadCohortRepository'
 import { LeadSourcesRepository } from '@/server/repositories/leadSourcesRepository'
+import { LeadWatchRepository } from '@/server/repositories/leadWatchRepository'
 import { ReklamaRepository } from '@/server/repositories/reklamaRepository'
 import { RegistrationRepository } from '@/server/repositories/registrationRepository'
 import { RnpRepository } from '@/server/repositories/rnpRepository'
@@ -41,6 +42,7 @@ import { ScopeService } from './scopeService'
 import { TargetService } from './targetService'
 import { LeadCohortService } from './leadCohortService'
 import { LeadSourcesService } from './leadSourcesService'
+import { LeadWatchService } from './leadWatchService'
 import { ReklamaService } from './reklamaService'
 import { RegistrationService } from './registrationService'
 import { RnpService } from './rnpService'
@@ -79,7 +81,8 @@ export const insightsService = new InsightsService(insightsRepository)
   «Kiruvchi qoʻngʻiroqlar» (2026-10-05) on «Qoʻngʻiroqlar»: inbound callers by
   number, grouped by what the CRM held for them. See inboundCallsService.ts.
 */
-export const inboundCallsService = new InboundCallsService(new InboundCallsRepository(prisma), env.APP_TIMEZONE)
+const inboundCallsRepository = new InboundCallsRepository(prisma)
+export const inboundCallsService = new InboundCallsService(inboundCallsRepository, env.APP_TIMEZONE)
 export const pulseService = new PulseService(pulseRepository)
 /*
   «Oyliklar» reads the confirmation cohort's per-seller rating — the same query
@@ -137,7 +140,22 @@ export const roistatService = new RoistatService(new RoistatRepository(prisma), 
   administrator's split, and «ROP otchet» seller by seller (FAKT from the
   queue cohort, insightsRepository). See registrationService.ts.
 */
-export const registrationService = new RegistrationService(new RegistrationRepository(prisma), insightsRepository)
+const registrationRepository = new RegistrationRepository(prisma)
+export const registrationService = new RegistrationService(registrationRepository, insightsRepository)
+/*
+  «Лид назорати» (2026-10-09) — what is waiting right now on «Lidlar»: today's
+  Регистрация leads and the open chats from its own repository, the day's
+  inbound calls as «Qoʻngʻiroqlar» reads them, the day's hand-out as «Lidlar
+  qanday boʻlinadi» reads it, «Yetib keldi» from «Lid manbalari», and the
+  sync's clock for how old it all is. See leadWatchService.ts.
+*/
+export const leadWatchService = new LeadWatchService(
+  new LeadWatchRepository(prisma),
+  inboundCallsRepository,
+  registrationRepository,
+  referenceRepository,
+  leadSourcesService,
+)
 /*
   «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.
 */

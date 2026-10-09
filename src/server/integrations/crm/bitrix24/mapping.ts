@@ -618,6 +618,72 @@ export const LEAD_TILE_SOURCES: LeadTileVocabulary = Object.freeze({
 })
 
 /**
+ * «ЛИД НАЗОРАТИ» — the portal vocabulary of the lead watch (2026-10-09).
+ *
+ * Регистрация's INTAKE stages — «nobody has touched this lead yet». Category
+ * 0 is the portal's default pipeline, so its stage ids carry no `C<n>:`
+ * prefix, as `deal_stage."externalId"` stores them. The spec said «the first
+ * stage (NEW)», and on 2026-10-09 «Новые регистрации» held 15 of the day's
+ * 778 leads: the portal files a new lead by where it came from — «Лид новый
+ * (лид)», «Веб-сайт (лид)», «Сммшик (лид)» — and all four stand before
+ * «Обработка», the first stage an operator moves a lead to.
+ */
+export const REGISTRATION_INTAKE_STAGE_IDS: ReadonlySet<string> = new Set(['NEW', 'UC_MVRVO1', 'UC_3J2ME8', 'UC_CJU776'])
+
+/**
+ * «Дубликат (лид)» — a lead the portal parked as a copy of one it already
+ * has. Nobody hands it to a ROP or names its project, so it is no problem of
+ * the watch; it still counts in the day's intake, as on «Lid manbalari».
+ */
+export const REGISTRATION_DUPLICATE_STAGE_ID = 'UC_GV19A1'
+
+/**
+ * How Bitrix24 exposes the kanban's «Чат с клиентом» counter: one
+ * `crm.activity` per open-line session — PROVIDER_ID below, TYPE_ID 6,
+ * IS_INCOMING_CHANNEL 'Y', ORIGIN_ID `IMOL_<n>`, DEADLINE 9999-12-31 —
+ * COMPLETED 'N' while the chat is open. Measured through the read-only MCP on
+ * 2026-10-09: the portal held 29 460 such open activities.
+ */
+export const OPEN_LINE_PROVIDER_ID = 'IMOPENLINES_SESSION'
+
+/** `crm.activity` OWNER_TYPE_ID of a deal. */
+export const ACTIVITY_OWNER_DEAL = '2'
+
+/**
+ * The NEXTBOT AI bot's portal user. Of the 826 chats open on 2026-10-09, 815
+ * had RESPONSIBLE_ID = 1 — the bot's own conversations, their deals standing
+ * in «ИИ обработка» (C20:NEW) — and 11 a person. A chat the bot holds is not a
+ * chat somebody left unanswered, so the watch never reads them.
+ */
+export const OPEN_LINE_BOT_USER_ID = '1'
+
+/*
+  «Чат открытой линии - "<user> - <line>" (NEXTBOT)». The quoted part is the
+  user's name, a dash, the line; a name can carry a dash of its own, so the
+  line is what follows the LAST one.
+*/
+const OPEN_LINE_SUBJECT = /[«"“]([^»"”]+)(?:[»"”]|$)/
+
+/**
+ * A chat activity's SUBJECT taken apart: who wrote, and on which open line —
+ * «Madina», «sinolifeuz instagram». Both null when the subject is not in the
+ * portal's shape; the user null when the quoted part names only a line. Read
+ * at display time, never stored: fix the rule and every chat follows.
+ */
+export function openLineSubject(subject: string | null | undefined): { readonly user: string | null; readonly line: string | null } {
+  const quoted = subject ? OPEN_LINE_SUBJECT.exec(subject)?.[1] : undefined
+  if (!quoted) return { user: null, line: null }
+  const clean = (text: string) => text.replace(/\s+/g, ' ').trim() || null
+  const cut = quoted.lastIndexOf(' - ')
+  return cut < 0 ? { user: null, line: clean(quoted) } : { user: clean(quoted.slice(0, cut)), line: clean(quoted.slice(cut + 3)) }
+}
+
+/** The open line's name from a chat activity's SUBJECT — «sinolifeuz instagram», «collagen.marine» — or null. */
+export function openLineName(subject: string | null | undefined): string | null {
+  return openLineSubject(subject).line
+}
+
+/**
  * Confirmation outcome, from the label rather than the item id.
  *
  * Item ids are portal-local and would break if the field were ever rebuilt;

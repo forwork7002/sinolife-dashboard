@@ -52,6 +52,7 @@ import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
 
 import { PrismaClient } from '../src/generated/prisma/client'
 import type { SyncEntityValue } from '../src/server/domain/types'
+import type { RawCall } from '../src/server/integrations/crm/CrmProvider'
 import { Bitrix24CrmProvider } from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
 import { createSyncHandlers, SweepRefusedError } from '../src/server/integrations/crm/sync/handlers'
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
@@ -74,10 +75,17 @@ import {
   pruneCrmEvents,
   takeDistinct,
 } from '../src/server/integrations/crm/sync/crmEvents'
+import {
+  describeFeedError,
+  prismaChatStore,
+  prismaFeedClock,
+  refreshOpenLineChats,
+  refreshRecentCalls,
+} from '../src/server/integrations/crm/sync/leadWatchFeeds'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { importMetaLeads } from '../src/server/integrations/meta/metaLeadImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
-import { zonedDateKey } from '../src/server/domain/period/period'
+import { resolvePeriod, zonedDateKey } from '../src/server/domain/period/period'
 import {
   type DealsBackfill,
   isBackfillDue,
@@ -99,6 +107,7 @@ import {
 import type { RefusalClass } from '../src/server/integrations/crm/bitrix24/refusal'
 import { FRESHNESS_ENTITIES } from '../src/server/repositories/referenceRepository'
 import { CALL_DATA_FLOOR } from '../src/lib/callQuality'
+import { LEAD_WATCH_SETTINGS } from '../src/lib/leadWatchSettings'
 
 const DATABASE_URL = process.env.DATABASE_URL
 const WEBHOOK_URL = process.env.BITRIX24_WEBHOOK_URL
@@ -298,6 +307,32 @@ const EVENTS_KEEP_MS = 86_400_000
  * applied); the nightly walk still owns whatever the rows named.
  */
 const EVENTS_GIVE_UP_MS = 3_600_000
+
+/**
+ * «ЛИД НАЗОРАТИ»'S TWO FEEDS — see `leadWatchFeeds.ts`.
+ *
+ * The lead watch on «Lidlar» reads the calls of the last minutes and the
+ * open-line chats a person has left open; neither is on the tick (calls ride
+ * the three-hourly reference pass, chats were never read). Both are refreshed
+ * here on the watch's own clock — the settings file's `refreshEveryMs`, two
+ * minutes, the cadence the page itself asks on.
+ *
+ * ON THE WALL CLOCK, AND DUE A LITTLE EARLY RATHER THAN A WHOLE TICK LATE. At
+ * the deployed 120 s tick «every two minutes» is every tick — but a pass is
+ * stamped when the tick's own work has finished, and that work takes a
+ * different number of seconds each tick, so two stamps can be 115 s apart and
+ * a strict 120 would skip every other tick. `LEAD_WATCH_SLACK_MS` is that
+ * allowance; at the code's 60 s default tick the feeds still run on every
+ * second one.
+ *
+ * COST: 2 requests / 3 invocations an ordinary pass, ~175 invocations an
+ * ordinary hour with the calls' settle read and the chats' anchor — counted
+ * and explained over `leadWatchFeeds.ts`. No environment variable: the
+ * cadence is a product setting, and the hourly ceiling and the gate are what
+ * stop a pass that should not run.
+ */
+const LEAD_WATCH_MS = LEAD_WATCH_SETTINGS.refreshEveryMs
+const LEAD_WATCH_SLACK_MS = 30_000
 
 /**
  * How far back the stage history is re-read once, at startup. Default: 45 days.
@@ -965,6 +1000,10 @@ async function main() {
   let lastSweepFailedAt: Date | null = null
   // In memory only: a restart costs one near and one wide check, ~150 invocations.
   const recentSweepAt = new Map<string, Date>()
+  // In memory only: a restart costs one pass of the feeds, two requests.
+  let lastLeadWatchAt: Date | null = null
+  const leadWatchClock = prismaFeedClock(prisma)
+  const openChatStore = prismaChatStore(prisma, 'BITRIX24')
   const triageRereadAt = new Map<string, Date>()
   try {
     const now = Date.now()
@@ -1084,6 +1123,7 @@ async function main() {
       (EVENTS_DRAIN_MS > 0
         ? ` Portal hodisalari har ${EVENTS_DRAIN_MS / 1000}s.`
         : ' Portal hodisalari oʻchirilgan.') +
+      ` Lid nazorati (qoʻngʻiroqlar, ochiq chatlar) har ${LEAD_WATCH_MS / 1000}s.` +
       '\n',
   )
 
@@ -1333,6 +1373,92 @@ async function main() {
     } catch (error) {
       failures += 1
       console.error(`  ${stamp()} ✗ tsikl xatosi:`, error)
+    }
+
+    /*
+      «ЛИД НАЗОРАТИ»'S FEEDS — see `LEAD_WATCH_MS` and `leadWatchFeeds.ts`.
+
+      AFTER THE TICK, BEFORE THE SLOW PASSES. The tick above is what the
+      dashboard is judged on, so these never run in its place; and they run
+      ahead of the sweeps below because a daily walk takes minutes, and a
+      watch that says «no call in 15 minutes» cannot wait behind it.
+
+      THE WORKER'S GUARDS, ALL OF THEM. Nothing while the gate is shut or the
+      worker is calming down after a block (`CALM_TICKS`) — a recovery tick is
+      for the hot entities alone. Tick 0 is allowed, unlike the sweeps: a pass
+      is two requests, and after a deploy the watch would otherwise show the
+      previous process's calls for one more tick. The clock records the
+      ATTEMPT, so a refusal waits out the interval; each feed has its own try,
+      so a failure costs that feed one pass and nothing else — not the tick's
+      `failures` count, not the other feed. The calls' walk stops between two
+      pages once the worker is told to stop. A refusal has already been told to
+      the gate by `call()` itself, and the chats are not asked once the calls
+      have shut it.
+    */
+    const watchNow = new Date()
+    if (
+      isPassDue(lastLeadWatchAt, watchNow, Math.max(1, LEAD_WATCH_MS - LEAD_WATCH_SLACK_MS)) &&
+      LEAD_WATCH_MS > 0 &&
+      calm === 0 &&
+      !provider.gate.isOpen() &&
+      !stopping
+    ) {
+      lastLeadWatchAt = watchNow
+      try {
+        const r = await refreshRecentCalls({
+          clock: leadWatchClock,
+          fetch: (options) => provider.fetchCalls(options),
+          persist: (calls: readonly RawCall[]) => engine.persistRecords('CALLS', calls),
+          now: watchNow,
+          dayStart: resolvePeriod('today', { timeZone: WORKER_TIME_ZONE, now: watchNow }).start,
+          stopping: () => stopping,
+        })
+        // Quiet on an ordinary pass: it runs 720 times a day. A walk cut short by shutdown reads again next start.
+        if (!r.stopped && (r.settle || r.failed > 0 || r.pages > 2)) {
+          console.log(
+            `  ${stamp()} lid nazorati · qoʻngʻiroqlar: ${r.since.toISOString().slice(11, 16)} UTC dan ${r.read} ta oʻqildi` +
+              (r.settle ? ' (uzun suhbatlar uchun kengroq oʻqish)' : '') +
+              (r.failed > 0 ? `, ${r.failed} tasi yozilmadi (maʼlumotnoma oʻtishi qayta taklif qiladi)` : ''),
+          )
+        }
+      } catch (error) {
+        // Never the raw error: see `describeFeedError`.
+        const message = describeFeedError(error)
+        console.warn(`  ${stamp()} lid nazorati · qoʻngʻiroqlar muvaffaqiyatsiz: ${message}`)
+        await leadWatchClock.failed('calls', message, new Date()).catch(() => undefined)
+      }
+
+      if (!provider.gate.isOpen() && !stopping) {
+        try {
+          const r = await refreshOpenLineChats({
+            clock: leadWatchClock,
+            store: openChatStore,
+            fetchChats: (afterId) => provider.fetchOpenLineChats(afterId),
+            newestId: () => provider.newestActivityId(),
+            firstIdSince: (since) => provider.firstActivityIdSince(since),
+            anyOpenChat: (afterId) => provider.anyOpenLineChat(afterId),
+            now: watchNow,
+          })
+          if (r.bootstrap) {
+            console.log(
+              `  ${stamp()} lid nazorati · ochiq chatlar: oyna #${r.floor} dan boshlandi` +
+                (r.bootstrap === 'head'
+                  ? ' (sana boʻyicha topilmadi — faqat hozirdan keyin ochilgan chatlar koʻrinadi, bir kunda toʻladi)'
+                  : ' (soʻnggi 24 soat)'),
+            )
+          }
+          if (r.held > 0) {
+            console.warn(
+              `  ${stamp()} lid nazorati · ochiq chatlar: ${r.held} tasi birdan yoʻqoldi — oʻchirilmadi,` +
+                ' keyingi oʻtishda tasdiqlansa oʻchiriladi',
+            )
+          }
+        } catch (error) {
+          const message = describeFeedError(error)
+          console.warn(`  ${stamp()} lid nazorati · ochiq chatlar muvaffaqiyatsiz: ${message}`)
+          await leadWatchClock.failed('chats', message, new Date()).catch(() => undefined)
+        }
+      }
     }
 
     /*

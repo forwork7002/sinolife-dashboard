@@ -2711,6 +2711,107 @@ p {
 }
 
 /* ===========================================================================
+ * «ЛИД НАЗОРАТИ» — the lead watch block on «Lidlar»
+ *
+ * A problem card speaks the filled StatTile's language («Янги лидлар» green,
+ * «Дубль» red): the status step washed 12% into the glass card under a 30%
+ * edge, so text keeps the floors `glassContrast.test.ts` measures for that
+ * tile — plus a full-strength 3px rule down the leading edge, the Callout's
+ * recipe, which is what still reads when a wash is too faint to (amber in a
+ * dark surface is nearly the card's own colour).
+ *
+ * A CLASS, NOT AN INLINE STYLE, BECAUSE THE CARD IS A BUTTON: an inline
+ * background cannot have a hover, and `.card-button:hover` would repaint a
+ * tinted card as bare glass. The tone and the wash are two custom properties;
+ * every rule below reads them.
+ *
+ * A calm card takes a fainter wash (7%) — it is «dimmed» by saying less, not
+ * by an opacity that would take its text under 4.5:1.
+ *
+ * THE ONE THING THAT MOVES is the rule of a critical card: its opacity dips
+ * once every three seconds. Opacity only, on a 3px strip, and not at all
+ * under reduced motion — the colour, the number and the header chip already
+ * say «critical» without it.
+ * ======================================================================== */
+.watch-card {
+  --watch-tone: var(--status-good);
+  --watch-wash: 12%;
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in oklab, var(--watch-tone) var(--watch-wash), var(--glass-card));
+  border-color: color-mix(in oklab, var(--watch-tone) 30%, var(--glass-edge));
+}
+.watch-card--good {
+  --watch-wash: 7%;
+}
+.watch-card--warning {
+  --watch-tone: var(--status-warning);
+}
+.watch-card--critical {
+  --watch-tone: var(--status-critical);
+}
+.watch-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--watch-tone);
+}
+button.watch-card:hover {
+  background:
+    linear-gradient(var(--glass-hover), var(--glass-hover)),
+    color-mix(in oklab, var(--watch-tone) var(--watch-wash), var(--glass-card));
+}
+
+@keyframes watch-pulse {
+  0%,
+  60%,
+  100% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .watch-card--critical::before {
+    animation: watch-pulse 3s var(--ease-in-out) infinite;
+  }
+}
+
+/* Forced colours drop backgrounds: the rule becomes a border so it survives. */
+@media (forced-colors: active) {
+  .watch-card::before {
+    border-left: 3px solid CanvasText;
+  }
+}
+
+/*
+ * The drawer a card opens. It carries a table, and data never sits on glass:
+ * the opaque raised surface, the strong edge and the ambient shadow every
+ * floating panel casts. From the right, on the phone drawer's own clock
+ * (220ms, the house curve), over the same page-tinted scrim.
+ */
+.watch-drawer {
+  background: var(--surface-raised);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-ambient);
+}
+.watch-drawer-enter {
+  animation: watch-drawer-in 220ms var(--ease-out) both;
+}
+@keyframes watch-drawer-in {
+  from { transform: translateX(100%); }
+  to { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .watch-drawer-enter {
+    animation: none;
+  }
+}
+
+/* ===========================================================================
  * PODIUM — the sellers board's ceremony layer
  *
  * The one screen whose audience is the sellers themselves, and the client's

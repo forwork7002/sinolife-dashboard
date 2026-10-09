@@ -39,6 +39,7 @@ import {
   type SectionValue,
 } from '@/lib/sections'
 import { setTheme, useResolvedTheme } from '@/lib/theme'
+import { useLeadWatchCritical } from '@/features/leads/leadWatchQueries'
 import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
 import { classifySearchTerm, shortTermHint } from '@/lib/searchTerm'
@@ -497,6 +498,14 @@ export function Shell({
   const visibleNav = NAV.filter(canOpen)
 
   /*
+    «Lidlar» wears a badge while «Лид назорати» has something critical — the
+    one number, asked every two minutes and never in a hidden tab. ONLY FOR AN
+    ACCOUNT THAT HAS THE SECTION: the gate is the rail's own, so an account
+    that cannot see the link never asks the endpoint behind it.
+  */
+  const criticalLeads = useLeadWatchCritical(visibleNav.some((item) => item.href === '/leads'))
+
+  /*
     The menu, resolved: which groups this account may see, where each entry
     goes, and which one is the current screen. Computed here once so the rail
     and the drawer render the same list from the same facts.
@@ -511,6 +520,7 @@ export function Shell({
         icon: item.icon,
         href: hrefFor(item.href),
         active: isActive(pathname, item.href),
+        badge: item.href === '/leads' ? criticalLeads : 0,
       })),
   })).filter((group) => group.items.length > 0)
 
@@ -1055,6 +1065,8 @@ interface RailGroup {
     readonly icon: NavItem['icon']
     readonly href: string
     readonly active: boolean
+    /** A count pinned to the entry — «Lidlar»'s critical problems; 0 draws nothing. */
+    readonly badge: number
   }[]
 }
 
@@ -1223,6 +1235,7 @@ function RailBody({
             <ul className="space-y-0.5">
               {group.items.map((item) => {
                 const Icon = item.icon
+                const badgeLabel = item.badge > 0 ? `${item.badge} ta muhim muammo` : null
 
                 const link = (
                   <Link
@@ -1247,7 +1260,7 @@ function RailBody({
                     prefetch
                     onClick={onNavigate}
                     aria-current={item.active ? 'page' : undefined}
-                    aria-label={collapsed ? item.label : undefined}
+                    aria-label={collapsed ? (badgeLabel ? `${item.label}, ${badgeLabel}` : item.label) : undefined}
                     className={`rail-item focusable relative flex items-center rounded-lg font-medium ${
                       collapsed
                         ? 'rail-item--folded mx-auto h-10 w-10 justify-center'
@@ -1270,6 +1283,31 @@ function RailBody({
                       <Icon />
                     </span>
                     {!collapsed && <span className="truncate">{item.label}</span>}
+                    {badgeLabel &&
+                      /*
+                        The critical step, with the ink measured for it
+                        (`--ink-on-series`: white in light, near-black in dark,
+                        6.08:1 and 7.10:1 — leadWatchContrast.test.ts). Folded,
+                        there is no room for a number: a dot on the icon's
+                        corner, ringed in the rail's colour so it reads on the
+                        active item's blue as well. The count is in the link's
+                        name either way.
+                      */
+                      (collapsed ? (
+                        <span
+                          aria-hidden="true"
+                          className="absolute top-1.5 right-1.5 h-2.5 w-2.5 rounded-full border-2"
+                          style={{ background: 'var(--status-critical)', borderColor: 'var(--surface)' }}
+                        />
+                      ) : (
+                        <span
+                          className="tabular ml-auto min-w-[18px] shrink-0 rounded-full px-1.5 text-center text-[10.5px] leading-[18px] font-semibold"
+                          style={{ background: 'var(--status-critical)', color: 'var(--ink-on-series)' }}
+                        >
+                          <span aria-hidden="true">{item.badge > 99 ? '99+' : item.badge}</span>
+                          <span className="sr-only">, {badgeLabel}</span>
+                        </span>
+                      ))}
                   </Link>
                 )
 

@@ -34,6 +34,7 @@ import {
   type RawDealItem,
   type RawDepartment,
   type RawEmployee,
+  type RawOpenLineChat,
   type RawPayment,
   type RawPipeline,
   type RawProduct,
@@ -47,9 +48,12 @@ import {
 import type { ExternalSourceValue } from '@/server/domain/types'
 
 import {
+  ACTIVITY_OWNER_DEAL,
   ALL_PIPELINES,
   CONFIRMATION_REFUSAL_STAGES,
   DELIVERY_ROUTE_NAMES,
+  OPEN_LINE_BOT_USER_ID,
+  OPEN_LINE_PROVIDER_ID,
   PIPELINE_NAMES,
   UF,
   UF_FIELDS,
@@ -191,6 +195,19 @@ const ITEM_READ_ATTEMPTS = 3
  * written off (`deadLabels`) before a deal naming it may ask again.
  */
 const DEAD_LABEL_MS = 60 * 60_000
+
+/** The activity list — the open-line chats' method. */
+const ACTIVITY_LIST = 'crm.activity.list'
+
+/**
+ * Pages of fifty one open-chat read may take before it refuses.
+ *
+ * A day's chats held by a PERSON were 11 on 2026-10-09 — one short page. Ten
+ * pages is five hundred of them at once, which is not a busy day but a filter
+ * the portal ignored (the bot's 815, or all 29 460), and the caller REPLACES
+ * its table with what this returns.
+ */
+const OPEN_CHAT_MAX_PAGES = 10
 
 /** One row of `crm.deal.productrows.get`, as far as this file reads it. */
 interface ProductRow {
@@ -2413,6 +2430,179 @@ export class Bitrix24CrmProvider implements CrmProvider {
   }
 
   // -------------------------------------------------------------------------
+  // Open-line chats — «Лид назорати»
+  // -------------------------------------------------------------------------
+
+  /**
+   * The open-line chats a PERSON is holding open right now, newer than
+   * activity `afterId` — the kanban's «Чат с клиентом» counter, minus the bot.
+   *
+   * MEASURED ON THE LIVE PORTAL, 2026-10-09 (read-only MCP), and every choice
+   * below is one of those measurements:
+   *
+   *   · the portal holds 29 460 open activities of this provider, and the
+   *     filter with a DATE (`>=CREATED`) took 12–16 SECONDS a page — unusable
+   *     on a two-minute clock. The same filter with an ID floor (`>ID`),
+   *     `order: { ID: 'ASC' }` and `start: -1` answered in 1.0 s. So the
+   *     window is an id, never a date; the caller keeps the floor about a day
+   *     behind (`sync/leadWatchFeeds.ts`).
+   *   · 815 of the day's 826 open chats had RESPONSIBLE_ID = 1, the NEXTBOT
+   *     bot. `!RESPONSIBLE_ID` leaves the 11 a person answers for.
+   *
+   * NOT `batchWalk`. A chained walk always sends a second command whose
+   * `>ID` refers to the fiftieth row of the first, and with a dozen rows that
+   * reference is empty — on `crm.deal.list` the portal answers
+   * INVALID_ARG_VALUE, on this method nobody has measured what an empty floor
+   * does, and «the whole open set from the beginning» is the 12-second query.
+   * One plain call is the normal pass; a full page seeks on from its last id.
+   *
+   * THROWS RATHER THAN GUESSING, because the caller deletes what is not
+   * returned: an answer that is not a list, a row outside what was asked (the
+   * bot's, a completed one, another provider's, an id at or under the floor —
+   * what a silently ignored filter looks like), a row without its date, or
+   * more than `OPEN_CHAT_MAX_PAGES` pages. One attempt, no retry ladder: the
+   * next pass is two minutes away, and a ladder here would hold the tick.
+   */
+  async fetchOpenLineChats(afterId: string): Promise<RawOpenLineChat[]> {
+    const chats: RawOpenLineChat[] = []
+    let after = afterId
+
+    for (let page = 0; page < OPEN_CHAT_MAX_PAGES; page++) {
+      const payload = await this.call<unknown>(
+        ACTIVITY_LIST,
+        {
+          order: { ID: 'ASC' },
+          filter: {
+            PROVIDER_ID: OPEN_LINE_PROVIDER_ID,
+            COMPLETED: 'N',
+            OWNER_TYPE_ID: ACTIVITY_OWNER_DEAL,
+            '!RESPONSIBLE_ID': OPEN_LINE_BOT_USER_ID,
+            '>ID': after,
+          },
+          select: ['ID', 'OWNER_ID', 'OWNER_TYPE_ID', 'RESPONSIBLE_ID', 'SUBJECT', 'CREATED', 'COMPLETED', 'PROVIDER_ID'],
+          start: -1,
+        },
+        { retries: 0 },
+      )
+      if (!Array.isArray(payload.result)) {
+        throw new Bitrix24Error(`Bitrix24 ${ACTIVITY_LIST} (ochiq chatlar) roʻyxat qaytarmadi`, undefined, false, undefined, ACTIVITY_LIST)
+      }
+      const rows = payload.result as Record<string, unknown>[]
+
+      for (const row of rows) {
+        const id = nonEmpty(row.ID)
+        const asked =
+          id !== undefined &&
+          /^\d+$/.test(id) &&
+          Number(id) > Number(after) &&
+          row.PROVIDER_ID === OPEN_LINE_PROVIDER_ID &&
+          row.COMPLETED === 'N' &&
+          String(row.OWNER_TYPE_ID) === ACTIVITY_OWNER_DEAL &&
+          String(row.RESPONSIBLE_ID ?? '') !== OPEN_LINE_BOT_USER_ID
+        if (!asked) {
+          throw new Bitrix24Error(
+            // The id only when it IS one: whatever else sits in that field is the portal's text, not ours to print.
+            `Bitrix24 ${ACTIVITY_LIST} (ochiq chatlar) soʻralmagan yozuvni qaytardi: ${id !== undefined && /^\d+$/.test(id) ? id : '—'} — filtr eʼtiborsiz qoldi`,
+            undefined,
+            false,
+            undefined,
+            ACTIVITY_LIST,
+          )
+        }
+        const dealExternalId = nonEmpty(row.OWNER_ID)
+        const openedAt = toDate(row.CREATED)
+        if (!dealExternalId || !openedAt) {
+          throw new Bitrix24Error(
+            `Bitrix24 ${ACTIVITY_LIST} (ochiq chatlar) ${id} yozuvida bitim yoki sana yoʻq`,
+            undefined,
+            false,
+            undefined,
+            ACTIVITY_LIST,
+          )
+        }
+        chats.push({
+          externalId: id,
+          dealExternalId,
+          responsibleExternalId: portalUserId(row.RESPONSIBLE_ID),
+          subject: typeof row.SUBJECT === 'string' ? row.SUBJECT : '',
+          openedAt,
+        })
+        // Ascending by id and each row checked above the floor, so the walk only moves forward.
+        after = id
+      }
+
+      if (rows.length < LIST_PAGE) return chats
+    }
+
+    throw new Bitrix24Error(
+      `Bitrix24 ${ACTIVITY_LIST} (ochiq chatlar) ${OPEN_CHAT_MAX_PAGES} sahifadan oshdi — filtr eʼtiborsiz qolgan boʻlishi mumkin`,
+      undefined,
+      false,
+      undefined,
+      ACTIVITY_LIST,
+    )
+  }
+
+  /**
+   * THE CONTROL READ: is ANY open-line chat open above `afterId`, the bot's
+   * included? Asked only when `fetchOpenLineChats` came back empty over a
+   * table that holds chats — an empty list is also what a webhook user who
+   * lost sight of the open lines gets, and the caller is about to delete on
+   * it. The same floor, the same indexed seek, without `!RESPONSIBLE_ID`: the
+   * bot holds hundreds open all day (815 of 826 on 2026-10-09), so one row
+   * here says the lines are visible. One page, one attempt; rows are not
+   * read, only counted.
+   */
+  async anyOpenLineChat(afterId: string): Promise<boolean> {
+    const payload = await this.call<unknown>(
+      ACTIVITY_LIST,
+      {
+        order: { ID: 'ASC' },
+        filter: { PROVIDER_ID: OPEN_LINE_PROVIDER_ID, COMPLETED: 'N', OWNER_TYPE_ID: ACTIVITY_OWNER_DEAL, '>ID': afterId },
+        select: ['ID'],
+        start: -1,
+      },
+      { retries: 0 },
+    )
+    if (!Array.isArray(payload.result)) {
+      throw new Bitrix24Error(`Bitrix24 ${ACTIVITY_LIST} (nazorat soʻrovi) roʻyxat qaytarmadi`, undefined, false, undefined, ACTIVITY_LIST)
+    }
+    return payload.result.length > 0
+  }
+
+  /**
+   * The newest activity's id on the portal, of any kind — the head the open
+   * chats' window is anchored to once an hour. No filter at all and `start:
+   * -1`: a backwards step on the primary key. Null on an empty portal.
+   */
+  async newestActivityId(): Promise<string | null> {
+    const payload = await this.call<unknown>(
+      ACTIVITY_LIST,
+      { order: { ID: 'DESC' }, select: ['ID'], start: -1 },
+      { retries: 0 },
+    )
+    return activityIdOf(payload.result)
+  }
+
+  /**
+   * The id of the first activity created at or after `since` — where the open
+   * chats' window starts on the very first pass, before any hourly anchor is
+   * a day old. A DATE filter, so asked ONCE in a database's life and never on
+   * the two-minute clock: with the open-lines provider in the filter a dated
+   * read took 12–16 s (see `fetchOpenLineChats`); this one names no provider
+   * and its cost on the live portal is NOT measured. One attempt; the caller
+   * falls back to the head when it fails. Null when nothing is that new.
+   */
+  async firstActivityIdSince(since: Date): Promise<string | null> {
+    const payload = await this.call<unknown>(
+      ACTIVITY_LIST,
+      { order: { ID: 'ASC' }, filter: { '>=CREATED': isoLocal(since) }, select: ['ID', 'CREATED'], start: -1 },
+      { retries: 0 },
+    )
+    return activityIdOf(payload.result)
+  }
+
+  // -------------------------------------------------------------------------
   // Warehouse
   // -------------------------------------------------------------------------
 
@@ -2485,6 +2675,15 @@ export class Bitrix24CrmProvider implements CrmProvider {
 // ---------------------------------------------------------------------------
 
 const DAY_MS = 24 * 60 * 60 * 1000
+
+/** The first row's numeric ID of an activity list answer, or null when it holds none. */
+function activityIdOf(result: unknown): string | null {
+  if (!Array.isArray(result)) {
+    throw new Bitrix24Error(`Bitrix24 ${ACTIVITY_LIST} roʻyxat qaytarmadi`, undefined, false, undefined, ACTIVITY_LIST)
+  }
+  const id = nonEmpty((result[0] as { ID?: unknown } | undefined)?.ID)
+  return id !== undefined && /^\d+$/.test(id) ? id : null
+}
 
 /** Midnight UTC of the day a date falls in. */
 export function startOfUtcDay(date: Date): Date {

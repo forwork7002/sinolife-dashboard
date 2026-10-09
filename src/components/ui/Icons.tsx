@@ -404,3 +404,103 @@ export function MoonGlyph(props: GlyphProps) {
     </Glyph>
   )
 }
+
+// ---------------------------------------------------------------------------
+// «Лид назорати» — the seven problems, and the way out to the portal
+//
+// Drawn for 18px, on the card beside its title: at that size a silhouette has
+// room, so these are the full pictograms the 12px confirmation marks above
+// could not afford (a handset, a balance, a folder). Same grid, same stroke
+// recipe, `currentColor` — each sits next to its title, which is what says
+// what the card is; the drawing only makes the seven findable by shape.
+// ---------------------------------------------------------------------------
+
+/** A lead nobody owns: a person, crossed. */
+export function UserXGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={18} {...props}>
+      <path d="M15 20.5v-1.6a4 4 0 0 0-4-4H6.5a4 4 0 0 0-4 4v1.6" {...stroke} />
+      <circle cx="8.8" cy="7.6" r="3.6" {...stroke} />
+      <path d="M16.8 8.6l4.6 4.6M21.4 8.6l-4.6 4.6" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** A lead nobody has touched: sand running. */
+export function HourglassGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={18} {...props}>
+      <path d="M5.5 3.5h13M5.5 20.5h13" {...stroke} />
+      <path d="M7.5 3.5v3.3a2 2 0 0 0 .6 1.4L12 12l3.9-3.8a2 2 0 0 0 .6-1.4V3.5" {...stroke} />
+      <path d="M7.5 20.5v-3.3a2 2 0 0 1 .6-1.4L12 12l3.9 3.8a2 2 0 0 1 .6 1.4v3.3" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** A chat left open. */
+export function ChatGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={18} {...props}>
+      <path d="M7.6 19.4A8.5 8.5 0 1 0 4.5 16L3 21z" {...stroke} />
+      <path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01" {...stroke} strokeWidth={2.2} />
+    </Glyph>
+  )
+}
+
+/** A call nobody rang back: a handset, crossed. */
+export function PhoneXGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={18} {...props}>
+      <path
+        d="M20.5 16.6v2.6a1.8 1.8 0 0 1-2 1.8 17.6 17.6 0 0 1-7.7-2.7 17.3 17.3 0 0 1-5.3-5.3A17.6 17.6 0 0 1 2.8 5.2 1.8 1.8 0 0 1 4.6 3.3h2.6a1.8 1.8 0 0 1 1.8 1.5c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9l-1.1 1.1a14 14 0 0 0 5.3 5.3l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6a1.8 1.8 0 0 1 1.6 1.9z"
+        {...stroke}
+      />
+      <path d="M15.5 3.5l5 5M20.5 3.5l-5 5" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** A channel gone quiet: paused. */
+export function PauseCircleGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={18} {...props}>
+      <circle cx="12" cy="12" r="8.8" {...stroke} />
+      <path d="M10 8.8v6.4M14 8.8v6.4" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** A split that is not even: a balance. */
+export function ScaleGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={18} {...props}>
+      <path d="M12 3.5v17M7.5 20.5h9" {...stroke} />
+      <path d="M3.5 7.2h2c2 0 4.6-.9 6.5-1.9 1.9 1 4.5 1.9 6.5 1.9h2" {...stroke} />
+      <path d="M2.8 15.5l2.7-7.5 2.7 7.5a4.2 4.2 0 0 1-5.4 0z" {...stroke} />
+      <path d="M15.8 15.5l2.7-7.5 2.7 7.5a4.2 4.2 0 0 1-5.4 0z" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** A lead with no «Проект»: a folder, crossed. */
+export function FolderXGlyph(props: GlyphProps) {
+  return (
+    <Glyph size={18} {...props}>
+      <path
+        d="M19.5 19.5a2 2 0 0 0 2-2V8.8a2 2 0 0 0-2-2h-7.3a2 2 0 0 1-1.7-.9l-.7-1.1a2 2 0 0 0-1.7-.9H4.5a2 2 0 0 0-2 2v11.6a2 2 0 0 0 2 2z"
+        {...stroke}
+      />
+      <path d="M9.8 10.8l4.4 4.4M14.2 10.8l-4.4 4.4" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** ↗ — opens somewhere else (the portal's own card for a deal). */
+export function ArrowUpRightGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M7.5 16.5L16.5 7.5" {...stroke} />
+      <path d="M8.5 7.5h8v8" {...stroke} />
+    </Glyph>
+  )
+}

@@ -313,6 +313,19 @@ export interface RawCall extends ExternalRecord {
   readonly recordUrl?: string
 }
 
+/**
+ * An open-line chat that is open right now — one `crm.activity` of the
+ * portal's open-lines provider, on a deal. Not part of `CrmProvider`: only
+ * Bitrix24 has them, and the worker reads them through the provider class
+ * itself (`fetchOpenLineChats`), like the by-id deal reads.
+ */
+export interface RawOpenLineChat extends ExternalRecord {
+  readonly dealExternalId: string
+  readonly responsibleExternalId?: string
+  readonly subject: string
+  readonly openedAt: Date
+}
+
 export interface RawStore extends ExternalRecord {
   readonly name: string
   readonly address?: string

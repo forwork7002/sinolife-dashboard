@@ -64,6 +64,16 @@ email+password the value is `local:credential`.
 
 **Operations**: `sync_log`, `sync_cursor`, `audit_log`.
 
+**Lead watch** («Лид назорати», 2026-10-09): `open_line_chat` — the open-line
+chats a PERSON holds open right now (a `crm.activity` each; the bot's are never
+read). A current set, not a history: the sync worker replaces it every two
+minutes and deletes what the portal no longer returns. It carries **no foreign
+keys on purpose** — `dealExternalId` and `responsibleExternalId` are portal ids
+joined at read time, because a chat routinely arrives a tick before the deal it
+opened. `lead_watch_sync` — one row per feed (`calls`, `chats`): when the
+worker last read it whole, its last error, and its bookmark as JSON (the calls'
+last pass, the chats' activity-ID floor and hourly anchors).
+
 ### Notable columns
 
 | Column | Note |

@@ -629,6 +629,26 @@ export function zonedDateKey(instant: Date, timeZone: string): string {
 }
 
 /**
+ * The clock hour (0–23) an instant falls in, in `timeZone`.
+ *
+ * For the screens that read a DAY by its hours — «Лид назорати» draws the
+ * working day hour by hour and gates «Канал стоп» on it. Through `TZDate`
+ * like every boundary here, so the hour is the wall clock's, never UTC's.
+ */
+export function zonedHour(instant: Date, timeZone: string): number {
+  return new TZDate(instant.getTime(), timeZone).getHours()
+}
+
+/**
+ * The instant the wall clock reads `hour`:00 on the calendar day `instant`
+ * falls on, in `timeZone`. `hour` 24 is the next midnight.
+ */
+export function zonedHourStart(instant: Date, timeZone: string, hour: number): Date {
+  const zoned = new TZDate(instant.getTime(), timeZone)
+  return toInstant(new TZDate(zoned.getFullYear(), zoned.getMonth(), zoned.getDate(), hour, 0, 0, 0, timeZone))
+}
+
+/**
  * Enumerate the half-open buckets tiling a period.
  *
  * The first and last buckets are clipped to the period, so a month-granularity

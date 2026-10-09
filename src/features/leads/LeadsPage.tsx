@@ -19,6 +19,8 @@ import { LeadCohortSection } from './LeadCohortSection'
 import { LeadSplitCard, LeadWeekCard, today } from './LeadSplitCards'
 import { LeadSourcesSection } from './LeadSourcesSection'
 import type { LeadSourcesOverviewDto } from './leadSourcesApi'
+import { LeadWatch } from './LeadWatch'
+import { useCriticalTitle, useLeadWatchCritical } from './leadWatchQueries'
 
 /**
  * «Lidlar» — everything about a lead once Bitrix24 has it, in one section.
@@ -49,6 +51,11 @@ import type { LeadSourcesOverviewDto } from './leadSourcesApi'
  * card and the seven-day grid sit among its blocks on their own day, shared
  * with «Guruhlar» (`LeadSplitCards.tsx`), while everything else keeps the
  * period.
+ *
+ * «Лид назорати» (2026-10-09) opens «Lid manbalari»: what is stuck right now
+ * — today, the whole company, whatever the period and brand say — on its own
+ * request and its own two-minute clock (`LeadWatch.tsx`). It is mounted only
+ * while that tab is shown, so it asks only then.
  *
  * «Reklama samarasi» kept the Meta side — spend, campaigns, the client's
  * «DM» / «Отчёт Т» sheets.
@@ -81,6 +88,8 @@ export function LeadsPage() {
   })
 
   const status: Status = statusOf(overview)
+  // «(3) Lidlar» in the browser tab on every tab of this screen; the sidebar badge reads the same number.
+  useCriticalTitle(t.modules.leads.title, useLeadWatchCritical(true))
   // The ROP cards: their own day and their own request, so a failed overview does not take them down.
   const slots = {
     afterChannels: <LeadSplitCard day={day} onDay={setDay} />,
@@ -134,19 +143,25 @@ export function LeadsPage() {
           <TargetologDaySection params={params} brand={filters.brand} />
         ) : tab === 'groups' ? (
           <GroupPlanCard day={day} onDay={setDay} />
-        ) : status === 'error' ? (
-          <>
-            <Card className="p-5">
-              <ErrorState
-                message={overview.error instanceof Error ? overview.error.message : undefined}
-                onRetry={() => void overview.refetch()}
-              />
-            </Card>
-            {slots.afterChannels}
-            {slots.beforeForms}
-          </>
         ) : (
-          <LeadSourcesSection data={overview.data?.data} status={status} slots={slots} />
+          <>
+            {/* «Лид назорати» — above everything, on its own request: see LeadWatch. */}
+            <LeadWatch />
+            {status === 'error' ? (
+              <>
+                <Card className="p-5">
+                  <ErrorState
+                    message={overview.error instanceof Error ? overview.error.message : undefined}
+                    onRetry={() => void overview.refetch()}
+                  />
+                </Card>
+                {slots.afterChannels}
+                {slots.beforeForms}
+              </>
+            ) : (
+              <LeadSourcesSection data={overview.data?.data} status={status} slots={slots} />
+            )}
+          </>
         )}
       </div>
     </PageShell>
