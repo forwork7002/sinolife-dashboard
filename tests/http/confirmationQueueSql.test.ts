@@ -661,7 +661,7 @@ describe('the state band’s money', () => {
       const sums = [
         ...source.matchAll(
           new RegExp(
-            `sum\\(d\\."amountMinor"\\) FILTER \\(WHERE c\\.outcome = '${state}'\\)::text\\s*\\n?\\s*AS ${column}`,
+            `sum\\(c\\.amount_minor\\) FILTER \\(WHERE c\\.outcome = '${state}'\\)::text\\s*\\n?\\s*AS ${column}`,
             'g',
           ),
         ),
@@ -682,7 +682,7 @@ describe('the state band’s money', () => {
       against Bitrix24 digit for digit. The counts beside it are safe as
       numbers; money never is.
     */
-    const money = [...source.matchAll(/sum\(d\."amountMinor"\) FILTER \(WHERE c\.outcome[\s\S]{0,120}?AS \w*amount/g)]
+    const money = [...source.matchAll(/sum\((?:d\."amountMinor"|c\.amount_minor)\) FILTER \(WHERE c\.outcome[\s\S]{0,120}?AS \w*amount/g)]
     // Ten for the ROP panel's two window shapes, and five more since
     // 2026-09-15 in `ratingSql`, where Savdo dinamikasi reads the same five
     // states' money — held to the same rule, for the same reason.
@@ -838,8 +838,8 @@ describe('what each column filter is allowed to narrow', () => {
 
     // Two independent bounds, each optional, and inclusive at both ends.
     const range = rop.amountRange('$10', '$11')
-    expect(range).toContain('$10::bigint IS NULL OR d."amountMinor" >= $10::bigint')
-    expect(range).toContain('$11::bigint IS NULL OR d."amountMinor" <= $11::bigint')
+    expect(range).toContain('$10::bigint IS NULL OR c.amount_minor >= $10::bigint')
+    expect(range).toContain('$11::bigint IS NULL OR c.amount_minor <= $11::bigint')
   })
 })
 
@@ -933,7 +933,10 @@ describe('the board per arrival day', () => {
 
   it('leaves the per-order cohort, and the backlog, exactly as they were', () => {
     expect(bare(queueSql('window', SCOPE, 'order'))).toBe(WINDOW_SQL)
-    expect(bare(queueSql('backlog', SCOPE, 'day'))).toBe(BACKLOG_SQL)
+    // The backlog differs by the one column the board's readers select.
+    expect(
+      bare(queueSql('backlog', SCOPE, 'day')).replace(/\s+d\."amountMinor" AS amount_minor,/, ''),
+    ).toBe(BACKLOG_SQL)
     expect(WINDOW_SQL).not.toContain('queue_day')
     expect(WINDOW_SQL).not.toContain('next_queued_at')
     expect(WINDOW_SQL).toContain('GROUP BY deal_id')
@@ -942,6 +945,26 @@ describe('the board per arrival day', () => {
   it('is asked for by the four board readings and by nothing else', () => {
     expect(source.match(/queueSql\([^)]*'day'\)/g) ?? []).toHaveLength(4)
     expect(source.match(/queueSql\(mode, '\$[48]', 'day'\)/g) ?? []).toHaveLength(4)
+  })
+
+  it('prices a closed visit at the sum it ended on, and the latest at the present one', () => {
+    /*
+      Refused at 1 600 000 on the 7th, confirmed at 1 000 000 on the 8th: the
+      7th keeps 1 600 000 (the client, 2026-10-09). The sync stamps the amount
+      on each transition once; a visit with no stamp reads the present amount.
+    */
+    expect(DAY_SQL).toContain('CASE WHEN a.next_queued_at IS NOT NULL THEN (')
+    expect(DAY_SQL).toContain('vh."enteredAt" >= a.queued_at')
+    expect(DAY_SQL).toContain('vh."enteredAt" < a.next_queued_at')
+    expect(DAY_SQL).toContain('COALESCE(w.visit_amount, d."amountMinor") AS amount_minor')
+    // The backlog asked for by the board carries the column too, unpriced.
+    expect(bare(queueSql('backlog', SCOPE, 'day'))).toContain('d."amountMinor" AS amount_minor')
+    expect(WINDOW_SQL).not.toContain('amount_minor')
+    // Tiles, the сумма filter and the row all read that one column.
+    const board = source.slice(source.indexOf('async confirmationByRop('), source.indexOf('private static readonly FAKT1_OUTCOMES'))
+      + source.slice(source.indexOf('async confirmationBoard('), source.indexOf('// 5 — The command centre'))
+    expect(board).not.toContain('sum(d."amountMinor")')
+    expect(board.match(/sum\(c\.amount_minor\) FILTER/g) ?? []).toHaveLength(10)
   })
 
   it('shows a row its own past only, and pages two rows of one order apart', () => {

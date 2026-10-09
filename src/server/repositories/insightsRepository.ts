@@ -3665,8 +3665,9 @@ export class InsightsRepository {
    * expects to see that order.
    */
   private static amountRange(min: string, max: string): string {
-    return `(${min}::bigint IS NULL OR d."amountMinor" >= ${min}::bigint)
-          AND (${max}::bigint IS NULL OR d."amountMinor" <= ${max}::bigint)`
+    // c.amount_minor: the row's own sum on the board — see queueSql, unit day.
+    return `(${min}::bigint IS NULL OR c.amount_minor >= ${min}::bigint)
+          AND (${max}::bigint IS NULL OR c.amount_minor <= ${max}::bigint)`
   }
 
   /**
@@ -4061,7 +4062,30 @@ export class InsightsRepository {
     */
     arrived AS (
       SELECT a.deal_id, d."createdAtSource" AS created_at, a.moved_at, a.queued_at, a.signal,
-             d."stageId" AS stage_id${perDay ? ', a.next_queued_at' : ''}
+             d."stageId" AS stage_id${
+               perDay
+                 ? `, a.next_queued_at,
+             /*
+               WHAT THE ORDER WAS WORTH WHEN THIS VISIT ENDED, for a visit a
+               later arrival has closed: the newest amount the sync stamped on
+               one of the deal's transitions inside the visit. Refused at
+               1 600 000 on the 7th and confirmed at 1 000 000 on the 8th is
+               1 600 000 under the 7th. Null — no stamp, the column is younger
+               than the visit — falls back to the deal's present amount in
+               classified. The latest visit always reads the present amount.
+             */
+             CASE WHEN a.next_queued_at IS NOT NULL THEN (
+               SELECT vh."amountMinor"
+                 FROM "deal_stage_history" vh
+                WHERE vh."dealId" = a.deal_id
+                  AND vh."enteredAt" >= a.queued_at
+                  AND vh."enteredAt" < a.next_queued_at
+                  AND vh."amountMinor" IS NOT NULL
+                ORDER BY vh."enteredAt" DESC
+                LIMIT 1
+             ) END AS visit_amount`
+                 : ''
+             }
         FROM agg a
         JOIN "deal" d ON d."id" = a.deal_id
        ${cohort}
@@ -4073,7 +4097,7 @@ export class InsightsRepository {
     dated AS (
       SELECT w.deal_id, w.created_at,
              COALESCE(x.moved_at, w.moved_at) AS moved_at,
-             w.queued_at,${perDay ? ' w.next_queued_at,' : ''}
+             w.queued_at,${perDay ? ' w.next_queued_at, w.visit_amount,' : ''}
              COALESCE(x.signal, ${standing}, w.signal::text) AS signal
         FROM arrived w
         JOIN "deal_stage" cs ON cs."id" = w.stage_id
@@ -4097,7 +4121,12 @@ export class InsightsRepository {
         e."id" AS operator_id,
         w.created_at,
         w.moved_at,
-        w.queued_at,
+        w.queued_at,${
+          unit === 'day'
+            ? `
+        ${perDay ? 'COALESCE(w.visit_amount, d."amountMinor")' : 'd."amountMinor"'} AS amount_minor,`
+            : ''
+        }
         CASE WHEN w.signal = 'CONFIRM_NEW' THEN NULL ELSE w.moved_at END AS decided_at,
         /*
           РОП is the department's OWN name with the marker stripped, not its
@@ -4717,11 +4746,11 @@ export class InsightsRepository {
            sums to NULL, which money() in TypeScript reads as zero — the honest
            reading for a tile whose count is also zero.
          */
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed_amount,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'NO_ANSWER')::text AS no_answer_amount,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'REJECTED')::text AS rejected_amount,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRM_NEW')::text AS pending_amount,
-         sum(d."amountMinor") FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::text
+         sum(c.amount_minor) FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed_amount,
+         sum(c.amount_minor) FILTER (WHERE c.outcome = 'NO_ANSWER')::text AS no_answer_amount,
+         sum(c.amount_minor) FILTER (WHERE c.outcome = 'REJECTED')::text AS rejected_amount,
+         sum(c.amount_minor) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::text AS pending_amount,
+         sum(c.amount_minor) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::text
            AS unconfirmed_shipped_amount
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
@@ -6056,7 +6085,7 @@ export class InsightsRepository {
          SELECT
            c.deal_id, c.rop, c.daily_no, c.outcome,
            c.created_at, c.moved_at, c.queued_at, c.decided_at,
-           d."amountMinor" AS amount_minor_sort,
+           c.amount_minor AS amount_minor_sort,
            d."title" AS title_sort
          FROM visible c
          JOIN "deal" d ON d."id" = c.deal_id
@@ -6098,7 +6127,7 @@ export class InsightsRepository {
            d."region" AS region,
            d."deliveryAddress" AS delivery_address,
            src."name" AS source_name,
-           d."amountMinor"::text AS amount_minor,
+           p.amount_minor_sort::text AS amount_minor,
            d."currency" AS currency,
            p.outcome,
            p.created_at, p.queued_at,
@@ -6132,11 +6161,11 @@ export class InsightsRepository {
            count(*) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::int AS unconfirmed_shipped,
            -- The five state tiles' money, measured here so the long-window
            -- shape returns exactly what the two-query shape does.
-           sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed_amount,
-           sum(d."amountMinor") FILTER (WHERE c.outcome = 'NO_ANSWER')::text AS no_answer_amount,
-           sum(d."amountMinor") FILTER (WHERE c.outcome = 'REJECTED')::text AS rejected_amount,
-           sum(d."amountMinor") FILTER (WHERE c.outcome = 'CONFIRM_NEW')::text AS pending_amount,
-           sum(d."amountMinor") FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::text
+           sum(c.amount_minor) FILTER (WHERE c.outcome = 'CONFIRMED')::text AS confirmed_amount,
+           sum(c.amount_minor) FILTER (WHERE c.outcome = 'NO_ANSWER')::text AS no_answer_amount,
+           sum(c.amount_minor) FILTER (WHERE c.outcome = 'REJECTED')::text AS rejected_amount,
+           sum(c.amount_minor) FILTER (WHERE c.outcome = 'CONFIRM_NEW')::text AS pending_amount,
+           sum(c.amount_minor) FILTER (WHERE c.outcome = 'UNCONFIRMED_SHIPPED')::text
              AS unconfirmed_shipped_amount
          FROM visible c
          JOIN "deal" d ON d."id" = c.deal_id
@@ -6240,7 +6269,7 @@ export class InsightsRepository {
       movedAt: 'c.moved_at',
       queuedAt: 'c.queued_at',
       decidedAt: 'c.decided_at',
-      amountMinor: 'd."amountMinor"',
+      amountMinor: 'c.amount_minor',
       title: 'd."title"',
     }
     const direction = query.order === 'asc' ? 'ASC' : 'DESC'
@@ -6292,7 +6321,7 @@ export class InsightsRepository {
        page AS (
          SELECT
            c.deal_id, c.rop, c.daily_no, c.outcome,
-           c.created_at, c.moved_at, c.queued_at, c.decided_at,
+           c.created_at, c.moved_at, c.queued_at, c.decided_at, c.amount_minor,
            (count(*) OVER ())::bigint AS total_items
          FROM visible c
          JOIN "deal" d ON d."id" = c.deal_id
@@ -6330,7 +6359,7 @@ export class InsightsRepository {
          d."region" AS region,
          d."deliveryAddress" AS delivery_address,
          src."name" AS source_name,
-         d."amountMinor"::text AS amount_minor,
+         c.amount_minor::text AS amount_minor,
          d."currency" AS currency,
          c.outcome AS outcome,
          c.created_at AS created_at,

@@ -1001,6 +1001,11 @@ model DealStageHistory {
   /// Filled from the deal's NEXT transition when the history is written.
   /// Null means the deal is still sitting in this stage.
   leftAt         DateTime?
+  /// The deal's amount when the sync first imported this transition, written
+  /// once and never again (2026-10-09). Null on rows imported before the
+  /// column existed or too long after the move to say what the sum was — the
+  /// Tasdiqlash board then reads the deal's present amount.
+  amountMinor    BigInt?
   createdAt      DateTime       @default(now())
 
   deal  Deal      @relation(fields: [dealId], references: [id], onDelete: Cascade)

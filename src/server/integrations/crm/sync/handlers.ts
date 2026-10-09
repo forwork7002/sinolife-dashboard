@@ -152,6 +152,41 @@ export function ownerChangesOf(
  * not change this run cannot have a new answer. Deals nobody touched are
  * skipped because there is nothing to recompute, not because it is faster.
  */
+/**
+ * How long after a move its transition may still be stamped with the deal's
+ * amount.
+ *
+ * The stamp claims «this is what the order was worth when it moved», and the
+ * only amount we hold is the deal's present one. Imported within a tick or two
+ * of the move that is true; a backfill or a rewound cursor importing a July
+ * move today would write today's sum onto July. Past this the row stays NULL
+ * and the board falls back to the present amount, which is what it showed
+ * before the column existed.
+ */
+export const HISTORY_AMOUNT_MAX_AGE_MS = 30 * 60_000
+
+/**
+ * Stamps the deal's present amount on the transitions a batch has just
+ * created ($2), and on nothing else.
+ *
+ * WRITTEN ONCE. `"amountMinor" IS NULL` is what makes it so: a transition
+ * offered again — the settle overlap re-reads the last three minutes every
+ * tick — keeps the sum it was first given, however the deal has changed since.
+ * That is the whole point: the Tasdiqlash board files an order refused
+ * yesterday under yesterday at yesterday's sum (the client, 2026-10-09).
+ */
+export function historyAmountStampSql(): string {
+  return `
+        UPDATE "deal_stage_history" AS h
+        SET "amountMinor" = d."amountMinor"
+        FROM "deal" d
+        WHERE d."id" = h."dealId"
+          AND h."externalSource" = $1::"ExternalSource"
+          AND h."externalId" = ANY($2::text[])
+          AND h."amountMinor" IS NULL
+      `
+}
+
 export function historyLeftAtSql(scoped: boolean): string {
   return `
         UPDATE "deal_stage_history" AS h
@@ -1411,6 +1446,9 @@ export function createSyncHandlers(
       const now = new Date().toISOString()
       const rows: unknown[][] = []
       let skipped = 0
+      // New transitions fresh enough to say what the order was worth.
+      const stampable: string[] = []
+      const freshFrom = Date.now() - HISTORY_AMOUNT_MAX_AGE_MS
 
       for (const record of batch) {
         const dealId = dealMap.get(record.dealExternalId)
@@ -1424,6 +1462,9 @@ export function createSyncHandlers(
         }
 
         rows.push([rowId(), source, record.externalId, dealId, stageId, ts(record.enteredAt), now])
+        if (!existing.has(record.externalId) && record.enteredAt.getTime() >= freshFrom) {
+          stampable.push(record.externalId)
+        }
         /*
           Remembered for `finalize` below, which closes only these deals'
           transitions. Accumulated across the run's pages, cleared when the
@@ -1440,6 +1481,10 @@ export function createSyncHandlers(
         conflict: ['externalSource', 'externalId'],
         rows,
       })
+
+      if (stampable.length > 0) {
+        await prisma.$executeRawUnsafe(historyAmountStampSql(), source, stampable)
+      }
 
       const counts = classify(
         batch.filter((r) => dealMap.has(r.dealExternalId) && stageMap.has(r.stageExternalId)),

@@ -2116,6 +2116,16 @@ and is passed by the four board readings ALONE — `confirmationOrders`,
 Two arrivals on one day are still one row. An order that arrives at 23:50 and
 is decided next morning WITHOUT a new arrival stays on its arrival day with
 that decision. `queueHistorySql(upTo)` cuts the chain at the row's own visit.
+**AND EACH DAY KEEPS ITS OWN SUM** (the client, same day: «qancha summa
+bilan ishlamay qolgan boʻlsa shuncha summa bilan turadi»). The portal keeps
+only the deal's present amount, so the STAGE_HISTORY handler stamps
+`deal_stage_history."amountMinor"` on each transition it CREATES
+(`historyAmountStampSql`, `IS NULL` — written once, never again; skipped when
+the move is older than `HISTORY_AMOUNT_MAX_AGE_MS`, so a backfill cannot write
+today's sum on an old move). A visit closed by a later arrival reads the newest
+stamp inside it; no stamp (everything before the 2026-10-09 deploy) or the
+order's latest visit reads `deal."amountMinor"`. The board's tiles, сумма
+filter, sort and row all read the cohort's `c.amount_minor`.
 **Everything else — FAKT 1 / FAKT 2, Savdo dinamikasi, Reyting, RNP,
 Logistika, Sverka, Maosh, the backlog and the bell — keeps `'order'`**, the
 rule below: one row per order at its last arrival, so an order confirmed,

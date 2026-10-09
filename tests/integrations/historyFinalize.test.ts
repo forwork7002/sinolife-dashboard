@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { historyLeftAtSql } from '@/server/integrations/crm/sync/handlers'
+import {
+  HISTORY_AMOUNT_MAX_AGE_MS,
+  historyAmountStampSql,
+  historyLeftAtSql,
+} from '@/server/integrations/crm/sync/handlers'
 
 /**
  * THE MOST EXPENSIVE STATEMENT ON THE DATABASE, BY A FACTOR OF FOUR.
@@ -50,5 +55,27 @@ describe('closing stage transitions', () => {
     for (const sql of [scoped, whole]) {
       expect(sql).toContain('h."leftAt" IS DISTINCT FROM next."enteredAt"')
     }
+  })
+})
+
+/**
+ * The amount a transition is stamped with is written ONCE — the Tasdiqlash
+ * board files an order refused yesterday under yesterday at yesterday's sum,
+ * so a stamp that followed the deal would defeat its own purpose.
+ */
+describe('the amount stamped on a new transition', () => {
+  const sql = historyAmountStampSql()
+
+  it('never overwrites a stamp, and touches only the rows it is handed', () => {
+    expect(sql).toContain('h."amountMinor" IS NULL')
+    expect(sql).toContain('h."externalId" = ANY($2::text[])')
+    expect(sql).toContain('SET "amountMinor" = d."amountMinor"')
+  })
+
+  it('is refused to a move imported long after it happened', () => {
+    // A backfill importing a July move today must not write today's sum on it.
+    expect(HISTORY_AMOUNT_MAX_AGE_MS).toBeLessThanOrEqual(60 * 60_000)
+    const source = readFileSync('src/server/integrations/crm/sync/handlers.ts', 'utf8')
+    expect(source).toContain('!existing.has(record.externalId) && record.enteredAt.getTime() >= freshFrom')
   })
 })
