@@ -4,7 +4,7 @@
  *
  * THE CLIENT'S DECISIONS OF 2026-09-30. The page is the sheet and nothing
  * else («faqat jadval … to'liqligicha»). A row Bitrix24 cannot supply —
- * followers, a group's «без квал» — keeps its place with empty cells
+ * followers — keeps its place with empty cells
  * (`key: null`). Typed by hand (rows carrying `manual`): the P&L's five cost
  * lines (2026-09-30) and each ROP's «Ходим сони» (2026-10-01); column-C plans
  * are typed in their own cells (`planInput`).

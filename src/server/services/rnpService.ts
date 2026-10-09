@@ -69,6 +69,7 @@ function monthPeriod(month: string, timeZone: string, now: Date): Period {
 interface MonthRows {
   fakt: RnpTeamDayRow[]
   leads: RnpLeadDayRow[]
+  bezkval: RnpLeadDayRow[]
   registration: RnpRegistrationDayRow[]
   registrarKval: RnpRegistrarKvalRow[]
   calls: RnpCallDayRow[]
@@ -147,6 +148,10 @@ const REGISTRATION_HISTORY_MS = 30 * 60_000
 const REGISTRATION_HISTORY_TIMEOUT_MS = 60_000
 const registrationHistory = processWide('sinolife.rnp.registrationHistory', () =>
   staleWhileRevalidate<RnpRegistrationDayRow[]>(REGISTRATION_HISTORY_MS, Date.now, Infinity, warnRebuild),
+)
+/* «Безквал» walks the same Регистрация deals, so its closed days are kept the same way. */
+const bezkvalHistory = processWide('sinolife.rnp.bezkvalHistory', () =>
+  staleWhileRevalidate<RnpLeadDayRow[]>(REGISTRATION_HISTORY_MS, Date.now, Infinity, warnRebuild),
 )
 
 /**
@@ -259,6 +264,7 @@ export class RnpService {
       teams: rows.teams,
       fakt: rows.fakt,
       leads: rows.leads,
+      bezkval: rows.bezkval,
       registration: rows.registration.map((r) => ({ ...r, brand: leadBrand(r.sourceId, r.formTitle, r.productLine) })),
       registrarKval: rows.registrarKval,
       calls: rows.calls,
@@ -372,13 +378,25 @@ export class RnpService {
       this.repository.warehouseDays(from, to, now),
     ])
     const [campaigns, teams] = await Promise.all([this.reklama.campaignDays(from, to), this.repository.teams()])
+    const bezkval = await this.bezkval(from, to, today, closedTo)
     const meta: MonthRows['meta'] = []
     for (const c of campaigns) {
       const product = adBudgetProduct(c)
       if (product === null) continue
       meta.push({ day: c.date, product, spendMicroUsd: c.spendMicroUsd, impressions: c.impressions, clicks: c.clicks, leads: c.leads })
     }
-    return { fakt, leads, registration, registrarKval, calls, warehouse, meta, teams }
+    return { fakt, leads, bezkval, registration, registrarKval, calls, warehouse, meta, teams }
+  }
+
+  /** «Безквал» as `registration` reads its scan: the closed days from the half-hour memo, today live. */
+  private async bezkval(from: string, to: string, today: string, closedTo: string): Promise<RnpLeadDayRow[]> {
+    const [closed, live] = await Promise.all([
+      closedTo >= from
+        ? bezkvalHistory.get(`${from}|${closedTo}`, () => this.repository.bezkvalDays(from, closedTo, REGISTRATION_HISTORY_TIMEOUT_MS))
+        : Promise.resolve([]),
+      today >= from && today <= to ? this.repository.bezkvalDays(today, today) : Promise.resolve([]),
+    ])
+    return [...closed.filter((r) => r.day <= closedTo), ...live.filter((r) => r.day === today)]
   }
 
   /** The closed days from the half-hour memo, today read live. */

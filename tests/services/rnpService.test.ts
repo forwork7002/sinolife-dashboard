@@ -197,6 +197,7 @@ function serviceOver(
       return []
     },
     registrationDays,
+    bezkvalDays: none,
     registrarKvalDays: none,
     callDays: none,
     warehouseDays: none,
@@ -411,6 +412,7 @@ describe('RnpService — the Collagen funnel reads Meta views and clicks (2026-1
     const repository = {
       leadDays: none,
       registrationDays: none,
+      bezkvalDays: none,
       registrarKvalDays: none,
       callDays: none,
       warehouseDays: none,

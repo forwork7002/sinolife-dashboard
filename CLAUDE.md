@@ -606,7 +606,9 @@ Per-screen traps worth knowing before you touch one:
     qilib hisoblangan»). A day of the sheet is shown only if Bitrix24 or Meta
     can compute it; the sheet's typed rows (Instagram/Telegram 5–10, HR
     335–343, the P&L cost lines 411–415 / 438–442, a group's «без квал»,
-    Zextra's lead count) are NOT filled from the sheet — they keep their place
+    Zextra's lead count; «без квал» / «квал %» ARE filled since 2026-10-09 —
+    «Lidlar»'s «Безквал» of the group's ROP team, `RnpRepository.bezkvalDays`
+    → `reg:bezkval:<g>` / `reg:bezkval_pct:<g>` = квал ÷ без квал) are NOT filled from the sheet — they keep their place
     empty and hatched (HR was later removed, the cost lines became typed, see
     below) — and a ROP's early leads stay muted rather than being filled from
     the sheet. `rnp_manual_day` and its

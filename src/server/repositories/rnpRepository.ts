@@ -245,6 +245,27 @@ export class RnpRepository {
   }
 
   /**
+   * «Безквал» per day × ROP team — `RegistrationRepository.bezkvalDaysSql`,
+   * the very statement behind «Kimga qancha lid kelayapti» on «Lidlar», so a
+   * group's «без квал» here and a ROP's «Безквал» there never disagree.
+   * `statementTimeoutMs`: as `registrationDays`, for a month's closed days.
+   */
+  async bezkvalDays(from: string, to: string, statementTimeoutMs?: number): Promise<RnpLeadDayRow[]> {
+    type Row = { day: string; rop: string | null; leads: bigint }
+    const sql = RegistrationRepository.bezkvalDaysSql()
+    const rows = statementTimeoutMs
+      ? await this.prisma.$transaction(
+          async (tx) => {
+            await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${Math.trunc(statementTimeoutMs)}`)
+            return tx.$queryRawUnsafe<Row[]>(sql, from, to, this.tz)
+          },
+          { maxWait: CONNECTION_WAIT_MS, timeout: statementTimeoutMs + 5_000 },
+        )
+      : await this.prisma.$queryRawUnsafe<Row[]>(sql, from, to, this.tz)
+    return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads) }))
+  }
+
+  /**
    * Three clocks, one day column: a lead on the day it was registered, a
    * kval on the day the registrar closed it, a conversation on the day it
    * opened. A duplicate is «Дубликат (лид)» only, read by NAME — the same

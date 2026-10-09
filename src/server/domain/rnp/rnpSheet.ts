@@ -179,6 +179,8 @@ export interface RnpSheetInput {
   readonly fakt: readonly RnpFaktDay[]
   /** Deals handed out per day × ROP («Лид таркатилган сана»); `rop` null: not handed to a ROP team. */
   readonly leads: readonly { readonly day: string; readonly rop: string | null; readonly leads: number }[]
+  /** «Безквал»: Регистрация deals per creation day × the ROP team they were handed to (`bezkvalDaysSql`); `rop` null: no ROP. */
+  readonly bezkval: readonly { readonly day: string; readonly rop: string | null; readonly leads: number }[]
   readonly registration: readonly {
     readonly day: string
     /** The lead's brand (source, then form); null when nothing ties it to one. */
@@ -512,7 +514,13 @@ export const GROUP_TEAM: Readonly<Record<(typeof REGISTRATION_GROUPS)[number], s
   Sadriddin: 'Sadriddin',
 })
 
-/* The sheet's «квал» row of each group (51, 54, … 66). Its «без квал» and «квал %» rows count leads before they are qualified, per group, which Bitrix24 does not record — they keep their place, empty. */
+/*
+  The sheet's «квал» row of each group (51, 54, … 66); «без квал» is the row
+  above it and «квал %» the row below. Those two were empty («Bitrix24'da
+  yoʻq») until 2026-10-09: the portal now stamps each Регистрация deal with
+  the ROP it went to («ROP KVAL LID»), so a group's «без квал» is «Lidlar»'s
+  «Безквал» of its team, and «квал %» is квал ÷ без квал.
+*/
 /* Asliddin and Sadriddin — the client's two groups added in place of the Zextra desk (2026-09-30) — have no sheet row; `rnpSheetLayout` numbers them 1002 / 1012. */
 const GROUP_SHEET_ROW: Readonly<Record<string, number>> = { Sevinch: 51, Gulzora: 54, Aziz: 57, Maftuna: 60, Lola: 63, Saidaziz: 66, Asliddin: 1002, Sadriddin: 1012 }
 
@@ -837,6 +845,16 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     if (r.rop === null) undistributed[i]! += r.leads
     else teamOf(canonical(r.rop)).leads[i]! += r.leads
   }
+  // Only the group rows read it, so a team is not made for it: `intakeOf` answers zeros for the rest.
+  const intake = new Map<string, number[]>()
+  for (const r of input.bezkval) {
+    const i = at.get(r.day)
+    if (i === undefined || r.rop === null) continue
+    const rop = canonical(r.rop)
+    const counts = intake.get(rop) ?? zeros()
+    counts[i]! += r.leads
+    intake.set(rop, counts)
+  }
   for (const r of input.calls) {
     const i = at.get(r.day)
     const rop = canonical(r.rop)
@@ -1076,6 +1094,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   */
   const groupTeams = new Set<string>(Object.values(GROUP_TEAM))
   const handedTo = (rop: string) => grid.get(rop)?.leads ?? zeros()
+  const intakeOf = (rop: string) => intake.get(rop) ?? zeros()
   const otherTeams = total((t) => t.leads, (rop) => !groupTeams.has(rop))
   const otherNames = teamNames.filter((rop) => !groupTeams.has(rop) && sum(grid.get(rop)!.leads) > 0).map(labelOf)
   /*
@@ -1108,9 +1127,11 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
       additive(clock, { key: 'reg:qualified', label: 'Квал лид — жами (Сделка успешна)', unit: 'count', tone: 'total', hint: 'Registrator «Сделка успешна» ga oʻtkazgan lidlar — yopilgan kuni boʻyicha. Collagen + Zextra.' }, reg.qualified),
       additive(clock, { key: 'reg:qualified_collagen', label: 'Регистрация COLLAGEN (квал)', unit: 'count', ...planned('', 'reg_qualified'), hint: 'Barcha registratorlarning kvali — «Сделка успешна», yopilgan kuni boʻyicha (Zextra registratsiyasi 2026-09-30 da olib tashlangan). Guruh qatorlari esa ROP jamoalariga tarqatilgan lidlar, shuning uchun ularning yigʻindisi bunga teng emas.', sheet: sh(48, 'Регистрация COLLAGEN') }, reg.qualified),
       ratio(clock, { key: 'reg:qualified_pct', label: '% квал лид (Collagen)', unit: 'percent', ...planned('', 'reg_qualified_pct'), sheet: sh(49, '% квал лид') }, reg.qualified, reg.leads, 100),
-      ...REGISTRATION_GROUPS.map((g) =>
+      ...REGISTRATION_GROUPS.flatMap((g) => [
+        additive(clock, { key: `reg:bezkval:${g}`, label: `${g} guruh — без квал`, unit: 'count', hint: `Регистрация voronkasida shu kuni yaratilgan va ${labelOf(GROUP_TEAM[g])} jamoasiga biriktirilgan bitimlar — Bitrix24 «ROP KVAL LID» maydoni boʻyicha, har qanday bosqichda. «Lidlar» → «Kimga qancha lid kelayapti» → «Безквал» bilan bir xil.`, sheet: sh(GROUP_SHEET_ROW[g]! - 1, `${g} guruh — без квал`) }, intakeOf(GROUP_TEAM[g])),
         additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `${labelOf(GROUP_TEAM[g])} jamoasiga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha; ROP blokidagi «Квал лид сони» bilan bir xil.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, handedTo(GROUP_TEAM[g])),
-      ),
+        ratio(clock, { key: `reg:bezkval_pct:${g}`, label: `${g} guruh — квал %`, unit: 'percent', hint: 'квал ÷ без квал × 100. Квал tarqatilgan kuni, без квал yaratilgan kuni boʻyicha sanaladi, shuning uchun bir kunlik foiz 100% dan oshishi mumkin; oylik ustun aniqroq.', sheet: sh(GROUP_SHEET_ROW[g]! + 1, `${g} guruh — квал %`) }, handedTo(GROUP_TEAM[g]), intakeOf(GROUP_TEAM[g]), 100),
+      ]),
       additive(clock, { key: 'reg:group:none:qualified', label: 'Boshqa jamoalar — квал', unit: 'count', hint: `Guruh qatori yoʻq ROP jamoalariga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha: ${otherNames.length > 0 ? otherNames.join(', ') : 'bu oy yoʻq'}.` }, otherTeams),
       ...otherBrandRows,
       additive(clock, { key: 'reg:distributed', label: 'РОП ларга тарқатилди', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: '«Лид таркатилган сана» shu kun va «РОП (Первичка)» ROP jamoasi boʻlgan bitimlar, shu sanadan oldingi 30 kun ichida yaratilganlari.' }, ropLeads),

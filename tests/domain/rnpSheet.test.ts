@@ -62,6 +62,7 @@ function input(over: Partial<RnpSheetInput> = {}): RnpSheetInput {
       { day: '2026-09-21', rop: 'Sevinch', leads: 3 },
       { day: '2026-09-21', rop: null, leads: 1 },
     ],
+    bezkval: [],
     registration: [{ day: '2026-09-21', leads: 4, duplicates: 1, qualified: 2, aiConversations: 2 }],
     calls: [
       { day: '2026-09-21', rop: 'Charos', connected: 3 },
@@ -480,8 +481,37 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
           // Not handed to a ROP team (the Регистрация copy, the desk head): no row counts it.
           { day: '2026-09-02', rop: null, leads: 50 },
         ],
+        // Регистрация deals created that day, by the ROP team they were handed to.
+        bezkval: [
+          { day: '2026-09-02', rop: 'Sevinch', leads: 190 },
+          { day: '2026-09-03', rop: 'Sevinch', leads: 10 },
+          { day: '2026-09-02', rop: 'Azizbek', leads: 52 },
+          // A team with no group row, and the deals no ROP got: in no group.
+          { day: '2026-09-02', rop: 'Shohjaxon', leads: 30 },
+          { day: '2026-09-02', rop: null, leads: 400 },
+        ],
       }),
     )
+
+  it('fills a group\'s «без квал» with its team\'s «Безквал» and «квал %» with квал ÷ без квал (2026-10-09)', () => {
+    const d = dto()
+    const intake = row(d, 'registration', 'reg:bezkval:Sevinch')
+    expect(on(intake, '2026-09-02')).toBe(190)
+    expect(intake.fact).toBe(200)
+    expect(intake.sheet?.row).toBe(50)
+    // «Aziz guruh» is Azizbek's team.
+    expect(on(row(d, 'registration', 'reg:bezkval:Aziz'), '2026-09-02')).toBe(52)
+    expect(on(row(d, 'registration', 'reg:bezkval_pct:Sevinch'), '2026-09-02')).toBeCloseTo(30)
+    // The month's rate is pooled: 57 ÷ (190 + 10).
+    expect(row(d, 'registration', 'reg:bezkval_pct:Sevinch').fact).toBeCloseTo(28.5)
+    expect(row(d, 'registration', 'reg:bezkval_pct:Sadriddin').sheet?.row).toBe(1013)
+    // A team handed nothing reads 0, and a rate over nothing is empty.
+    expect(on(row(d, 'registration', 'reg:bezkval:Gulzora'), '2026-09-02')).toBe(0)
+    expect(on(row(d, 'registration', 'reg:bezkval_pct:Gulzora'), '2026-09-02')).toBeNull()
+    // On the page they sit on the sheet's own lines, around the group's «квал».
+    expect(d.lines.find((l) => l.row === 50)).toMatchObject({ kind: 'value', sub: 'без квал', key: 'reg:bezkval:Sevinch' })
+    expect(d.lines.find((l) => l.row === 52)).toMatchObject({ kind: 'value', sub: 'квал %', key: 'reg:bezkval_pct:Sevinch' })
+  })
 
   it('counts a group\'s kval as the leads handed to the team it is named after — the series of its «Квал лид сони» (2026-10-02)', () => {
     const d = dto()
@@ -736,7 +766,6 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
     expect(lineAt(x, 210)).toBeUndefined() // Саида — removed
     expect(lineAt(x, 165)).toBeUndefined() // a БАЗА block's «Конверсия % факт2» — removed
     expect(lineAt(x, 353)).toBeUndefined() // the per-ROP «Свод» — removed
-    expect(lineAt(x, 50)).toMatchObject({ kind: 'value', sub: 'без квал', key: null })
   })
 
   it('fills a sheet team with zeros in a quiet month rather than calling it missing', () => {

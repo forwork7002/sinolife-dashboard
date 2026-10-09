@@ -11,6 +11,8 @@ process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
 const { RnpRepository } = await import('@/server/repositories/rnpRepository')
+const { RegistrationRepository } = await import('@/server/repositories/registrationRepository')
+const { env } = await import('@/server/config/env')
 
 /** Comments name the very tokens some assertions forbid. */
 const bare = (sql: string) => sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
@@ -203,6 +205,43 @@ describe('registrationDays — the history scan gets its own statement timeout',
     const rows = await repo.registrationDays('2026-09-01', '2026-09-29', 60_000)
     expect(calls).toEqual(['tx:65000', 'SET LOCAL statement_timeout = 60000', 'query'])
     expect(rows).toHaveLength(1)
+  })
+})
+
+describe('bezkvalDays — «Lidlar»\'s «Безквал» statement, for the sheet\'s «без квал» rows', () => {
+  function fakePrisma() {
+    const calls: unknown[][] = []
+    const client = {
+      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
+        calls.push([sql === RegistrationRepository.bezkvalDaysSql() ? 'bezkval' : sql, ...params])
+        return [{ day: '2026-10-02', rop: 'Sevinch', leads: 24n }, { day: '2026-10-02', rop: null, leads: 7n }]
+      },
+      $executeRawUnsafe: async (sql: string) => {
+        calls.push([sql])
+        return 0
+      },
+      $transaction: async (fn: (tx: unknown) => Promise<unknown>, options: { timeout: number }) => {
+        calls.push([`tx:${options.timeout}`])
+        return fn(client)
+      },
+    }
+    return { client, calls }
+  }
+
+  it('runs the one statement over the days, in the app\'s time zone', async () => {
+    const { client, calls } = fakePrisma()
+    const rows = await new RnpRepository(client as never).bezkvalDays('2026-10-01', '2026-10-08')
+    expect(calls).toEqual([['bezkval', '2026-10-01', '2026-10-08', env.APP_TIMEZONE]])
+    expect(rows).toEqual([
+      { day: '2026-10-02', rop: 'Sevinch', leads: 24 },
+      { day: '2026-10-02', rop: null, leads: 7 },
+    ])
+  })
+
+  it('lifts the limit for a month\'s closed days, as the registration scan does', async () => {
+    const { client, calls } = fakePrisma()
+    await new RnpRepository(client as never).bezkvalDays('2026-10-01', '2026-10-08', 60_000)
+    expect(calls.map((c) => c[0])).toEqual(['tx:65000', 'SET LOCAL statement_timeout = 60000', 'bezkval'])
   })
 })
 
