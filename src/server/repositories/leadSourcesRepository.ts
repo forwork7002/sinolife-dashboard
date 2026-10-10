@@ -210,26 +210,29 @@ export class LeadSourcesRepository {
   }
 
   /**
-   * Deals of one pipeline on the given sources: created in the window, and
-   * WON in it by `closedAt` — the «Сарафан» tile, which the client asked on
-   * 2026-10-05 to count in Ecommerce alone. The window bounds both arms, so
-   * the scan rides the `createdAtSource` and `closedAt` predicates together.
+   * Deals on the given sources, whatever their pipeline: created in the
+   * window, and WON in it by `closedAt` — the «Сарафан» tile. Ecommerce alone
+   * from 2026-10-05 to 2026-10-10, when the client asked for every pipeline
+   * (the source mostly opens deals in the sales pipelines, and the tile read
+   * 0). База (RETENTION) is left out, as everywhere: it re-files Доставка's
+   * orders under the same source (September: 2 of the source's 7 deals were
+   * such copies), so a client would count twice. The window bounds both arms,
+   * so the scan rides the `createdAtSource` and `closedAt` predicates together.
    */
-  async pipelineSourceCount(period: Period, pipelineExternalId: string, sourceIds: readonly string[]): Promise<PipelineSourceCount> {
+  async sourceCount(period: Period, sourceIds: readonly string[]): Promise<PipelineSourceCount> {
     const [row] = await this.prisma.$queryRawUnsafe<{ leads: bigint; qualified: bigint }[]>(
       `
       SELECT
         count(*) FILTER (WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2)::bigint AS leads,
         count(*) FILTER (WHERE d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2)::bigint AS qualified
       FROM "deal" d
-      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."externalId" = $3
-      JOIN "sales_source" s ON s."id" = d."sourceId" AND s."externalId" = ANY($4::text[])
+      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" <> 'RETENTION'
+      JOIN "sales_source" s ON s."id" = d."sourceId" AND s."externalId" = ANY($3::text[])
       WHERE (d."createdAtSource" >= $1 AND d."createdAtSource" < $2)
          OR (d."status" = 'WON' AND d."closedAt" >= $1 AND d."closedAt" < $2)
       `,
       period.start,
       period.end,
-      pipelineExternalId,
       [...sourceIds],
     )
     return { leads: Number(row?.leads ?? 0), qualified: Number(row?.qualified ?? 0) }

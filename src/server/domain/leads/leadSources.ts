@@ -91,10 +91,11 @@ export const LEAD_TILES: readonly LeadTile[] = Object.freeze([
 export const LEAD_TILES_APART: ReadonlySet<LeadTile> = new Set<LeadTile>(['outbound', 'other'])
 
 /**
- * «Сарафан» is NOT Регистрация since 2026-10-05: the client asked for it to
- * count «Сарафан маркетинг» deals in the Ecommerce pipeline alone. They are
- * no lead of «Жами лидлар», so the tile stays in its place but out of «Jami»,
- * and a Регистрация lead on that source counts under «Boshqa» (`leadTile`).
+ * «Сарафан» is NOT Регистрация alone: it counts «Сарафан маркетинг» deals of
+ * EVERY pipeline since 2026-10-10 (the client; Ecommerce alone from
+ * 2026-10-05, which read 0). Most are no lead of «Жами лидлар», so the tile
+ * stays in its place but out of «Jami», and a Регистрация lead on that source
+ * still counts under «Boshqa» as well (`leadTile`) — both are outside «Jami».
  */
 export const LEAD_TILES_OUTSIDE_REGISTRATION: ReadonlySet<LeadTile> = new Set<LeadTile>(['sarafan'])
 
@@ -117,7 +118,7 @@ export interface LeadTileVocabulary {
 /**
  * The tile a Регистрация deal counts on — one, always, by its source alone.
  * A source the client's list does not name (none, «Сарафан маркетинг» — its
- * tile reads Ecommerce, `LEAD_TILES_OUTSIDE_REGISTRATION`) is «Boshqa».
+ * tile reads every pipeline, `LEAD_TILES_OUTSIDE_REGISTRATION`) is «Boshqa».
  */
 export function leadTile(sourceId: string | null, vocabulary: LeadTileVocabulary): LeadTile {
   if (sourceId === null) return 'other'

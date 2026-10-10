@@ -95,7 +95,7 @@ describe('ChannelTiles', () => {
 
     const sarafan = tile('Сарафан')
     expect(within(sarafan).getByText('Brend boʻyicha ajratilmaydi')).toBeTruthy()
-    expect(within(sarafan).queryByText('faqat Ecommerce voronkasi · «Jami»ga kirmaydi')).toBeNull()
+    expect(within(sarafan).queryByText('barcha voronkalar · «Jami»ga kirmaydi')).toBeNull()
     expect(within(tile('Входящий')).getByText('📞 qoʻngʻiroqlar · Brend boʻyicha ajratilmaydi')).toBeTruthy()
     // The brand's own channels still print their figures.
     expect(within(tile('Входящий')).getByText('473')).toBeTruthy()

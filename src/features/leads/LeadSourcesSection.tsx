@@ -206,7 +206,7 @@ const TILES_IN_TOTAL = TILES.filter((t) => !(TILES_APART as readonly LeadTile[])
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
   aiSmm: 'Instagram / Telegram bot akkauntlari · yaratilgan kuni boʻyicha',
-  sarafan: 'faqat Ecommerce voronkasi · «Jami»ga kirmaydi',
+  sarafan: 'barcha voronkalar · «Jami»ga kirmaydi',
   outbound: 'operatorning chiquvchi qoʻngʻirogʻi — lid emas',
   other: 'roʻyxatda yoʻq manbalar: Сарафан маркетинг (Регистрация), manbasiz va boshqalar',
 }
@@ -219,11 +219,11 @@ const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
   aiSmm:
     'Регистрацияga shu davrda tushgan, manbasi SMM akkauntlaridan biri boʻlgan bitimlar (sinolifeuz, sinolife_otziv, sinolif_tg, collagen.marine, collagen.sinolife, zextra.uz, zextra.sinolife, zextra_life, sinogummy, Сммщик sinolifeuz, Сммщик sinolife_sedana, Instagram).',
   sarafan:
-    'Ecommerce voronkasidagi «Сарафан маркетинг» manbali bitimlar: shu davrda ochilgani, kval — shu davrda «Доставлен» boʻlgani. Регистрация lidi emas, shuning uchun «Jami»ga kirmaydi; Регистрацияdagi «Сарафан маркетинг» lidlari «Boshqa»da.',
+    'Barcha voronkalardagi «Сарафан маркетинг» manbali bitimlar: shu davrda ochilgani, kval — shu davrda muvaffaqiyatli yopilgani. «База» sanalmaydi — u Доставка buyurtmalarining nusxasi. Faqat Регистрация lidlari emas, shuning uchun «Jami»ga kirmaydi; Регистрацияdagi «Сарафан маркетинг» lidlari «Boshqa»da ham sanaladi.',
 }
 
 /**
- * Under one brand, for what carries none — «Сарафан» (Ecommerce deals) and
+ * Under one brand, for what carries none — «Сарафан» (deals of every pipeline) and
  * the inbound calls: a dash and this, never the company's figure and never a
  * zero that reads as «nothing came in». They are «Brendsiz»'s figures.
  */
@@ -361,7 +361,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
           label={TILE_LABEL[tile]}
           value={null}
           unit="count"
-          context={unsplitNote('Ecommerce voronkasidagi «Сарафан» bitimlari')}
+          context={unsplitNote('Barcha voronkalardagi «Сарафан» bitimlari')}
         />
       )
     }
@@ -381,7 +381,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
           o || text || extra ? (
             <>
               {dubl}
-              {/* «Сарафан» is Ecommerce: its kval already is the closed count. */}
+              {/* «Сарафан» is deals of every pipeline: its kval already is the closed count. */}
               {o && tile !== 'sarafan' && closedNote(o.closedQualified)}
               {text && note(text, TILE_NOTE_TITLE[tile])}
               {extra}

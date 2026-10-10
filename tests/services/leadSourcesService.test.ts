@@ -133,7 +133,7 @@ describe('leadSourcesOverview', () => {
       { registration: false, sourceId: null, formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', leads: 2 },
       { registration: false, sourceId: null, formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
     ],
-    // «Сарафан маркетинг» in Ecommerce: 3 created, 2 delivered (the client, 2026-10-05).
+    // «Сарафан маркетинг» in every pipeline: 3 created, 2 won (the client, 2026-10-10).
     sarafan: { leads: 3, qualified: 2 },
   })
 
@@ -284,7 +284,7 @@ describe('leadSourcesOverview', () => {
     expect(data.tiles.aiQualified).toBe(6)
     expect(data.tiles.aiElsewhere).toBe(3)
     expect(tile('web')).toMatchObject({ leads: 1, qualified: 1 })
-    // Ecommerce's «Сарафан маркетинг», not Регистрация's.
+    // «Сарафан маркетинг» of every pipeline, not Регистрация's alone.
     expect(tile('sarafan')).toMatchObject({ leads: 3, fresh: 3, qualified: 2 })
     // Out of «Jami»: the operators' own calls, and the Регистрация «Сарафан маркетинг» lead (with the sourceless closed kval).
     expect(tile('outbound')).toMatchObject({ leads: 7, qualified: 0, closedQualified: 1 })
@@ -681,7 +681,7 @@ describe('LeadSourcesService.targetologForms', () => {
           triageDays: slow ? never('triageDays') : async () => [],
           qualifiedSources: slow ? never('qualifiedSources') : async () => [],
           aiQualifiedStages: slow ? never('aiQualifiedStages') : async () => [],
-          pipelineSourceCount: slow ? never('pipelineSourceCount') : async () => NO_SARAFAN,
+          sourceCount: slow ? never('sourceCount') : async () => NO_SARAFAN,
           inboundCallCount: slow ? never('inboundCallCount') : async () => null,
         } as never,
         { campaignDays: async () => campaigns, campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -717,7 +717,7 @@ describe('LeadSourcesService.overview — «Факт1 мижоз» never takes L
         triageDays: async () => [],
         qualifiedSources: async () => [],
         aiQualifiedStages: async () => [],
-        pipelineSourceCount: async () => NO_SARAFAN,
+        sourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -764,7 +764,7 @@ describe('LeadSourcesService.overview — a slow «Факт1 мижоз»', () =
         triageDays: async () => [],
         qualifiedSources: async () => [],
         aiQualifiedStages: async () => [],
-        pipelineSourceCount: async () => NO_SARAFAN,
+        sourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -817,7 +817,7 @@ describe('LeadSourcesService.overview — the leads and their kval from one rebu
           { sourceId: 'REPEAT_SALE', formTitle: UMAR_FORM, productLine: null, aiQualified: false, qualified: ++kvals },
         ],
         aiQualifiedStages: async () => [],
-        pipelineSourceCount: async () => NO_SARAFAN,
+        sourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -861,7 +861,7 @@ describe('LeadSourcesService.overview — a reader\'s cold miss (2026-10-06 revi
         triageDays: read('triageDays', []),
         qualifiedSources: read('qualifiedSources', []),
         aiQualifiedStages: read('aiQualifiedStages', []),
-        pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
+        sourceCount: read('sourceCount', NO_SARAFAN),
         inboundCallCount: read('inboundCallCount', null),
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -875,9 +875,9 @@ describe('LeadSourcesService.overview — a reader\'s cold miss (2026-10-06 revi
       'aiQualifiedStages',
       'inboundCallCount',
       'leadFakt1Clients',
-      'pipelineSourceCount',
       'qualifiedSources',
       'registrationDays',
+      'sourceCount',
       'triageDays',
     ])
     for (const release of answers) release()
@@ -899,7 +899,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
         triageDays: async () => [],
         qualifiedSources: async () => [],
         aiQualifiedStages: async () => [],
-        pipelineSourceCount: async () => NO_SARAFAN,
+        sourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -939,7 +939,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           triageDays: read([]),
           qualifiedSources: read([]),
           aiQualifiedStages: read([]),
-          pipelineSourceCount: read(NO_SARAFAN),
+          sourceCount: read(NO_SARAFAN),
           inboundCallCount: read(null),
         } as never,
         { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -981,7 +981,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           triageDays: read('triageDays', []),
           qualifiedSources: read('qualifiedSources', []),
           aiQualifiedStages: read('aiQualifiedStages', []),
-          pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
+          sourceCount: read('sourceCount', NO_SARAFAN),
           inboundCallCount: read('inboundCallCount', null),
         } as never,
         { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
@@ -998,9 +998,9 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
         'aiQualifiedStages',
         'inboundCallCount',
         'leadFakt1Clients',
-        'pipelineSourceCount',
         'qualifiedSources',
         'registrationDays',
+        'sourceCount',
         'triageDays',
       ])
       // Every window's other memos come first: a slow phone match holds up none of them.
@@ -1030,7 +1030,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           triageDays: read('triageDays', []),
           qualifiedSources: read('qualifiedSources', []),
           aiQualifiedStages: read('aiQualifiedStages', []),
-          pipelineSourceCount: read('pipelineSourceCount', NO_SARAFAN),
+          sourceCount: read('sourceCount', NO_SARAFAN),
           inboundCallCount: read('inboundCallCount', null),
         } as never,
         { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,

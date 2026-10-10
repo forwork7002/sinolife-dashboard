@@ -561,14 +561,6 @@ export const DM_PAGE_ALIAS: Readonly<Record<string, string>> = Object.freeze({
  * the client's channel tiles. Both are rare in Регистрация (September: 6 WEB
  * deals, no Сарафан); they mostly open deals in the sales pipelines.
  */
-/**
- * The «Сарафан» tile's pipeline: Ecommerce (#14) — the client, 2026-10-05,
- * «faqat ecommerce voronkasidagi сарафан маркетинг». Measured that day: none
- * of the pipeline's 197 deals carries the source (all «Веб-сайт», the newest
- * of 03.07.2026), so the tile reads 0 until the portal files one there.
- */
-export const SARAFAN_PIPELINE_ID = '14'
-
 export const LEAD_SOURCE_VOCABULARY: LeadSourceVocabulary = Object.freeze({
   pages: new Set(TARGET_SOURCE_IDS),
   inbound: new Set(['CALL', 'UC_CKXAZS', 'UC_AA84D0']),

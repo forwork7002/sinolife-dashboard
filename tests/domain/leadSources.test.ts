@@ -147,7 +147,7 @@ describe('leadTile', () => {
 
   it('gives «Исход» its own tile and everything unlisted «Boshqa» — every lead has one', () => {
     expect(leadTile('UC_KPZA32', v)).toBe('outbound')
-    // Сарафан маркетинг: the tile reads Ecommerce since 2026-10-05, so in Регистрация it is «Boshqa».
+    // Сарафан маркетинг: the tile reads every pipeline since 2026-10-10; in Регистрация it is «Boshqa» as well.
     for (const id of ['UC_9SNG04', 'WEBFORM', 'UC_A4WINR']) expect(leadTile(id, v)).toBe('other')
     expect(leadTile(null, v)).toBe('other')
   })

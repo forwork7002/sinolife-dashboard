@@ -31,7 +31,6 @@ import {
   LEAD_SOURCE_BRAND,
   LEAD_SOURCE_VOCABULARY,
   LEAD_TILE_SOURCES,
-  SARAFAN_PIPELINE_ID,
   SMM_ACCOUNTS,
 } from '@/server/integrations/crm/bitrix24/mapping'
 import {
@@ -201,7 +200,7 @@ export interface ChannelTileDto {
 export interface LeadSourcesOverviewDto {
   /**
    * The Collagen / Zextra switch the figures were narrowed by. Under one
-   * brand «Сарафан» (Ecommerce deals, no brand on them) and the inbound
+   * brand «Сарафан» (deals of every pipeline, no brand read on them) and the inbound
    * calls cannot be split: the screen prints them as «brend boʻyicha
    * ajratilmaydi», not as a zero.
    */
@@ -300,7 +299,7 @@ export interface LeadSourcesOverviewDto {
    * «Boshqa kanallar lidlari»: every tile of `LEAD_TILES`, in its order and
    * at zero when quiet, and «Jami» — the sum of all but `LEAD_TILES_APART`
    * («Исход», «Boshqa») and `LEAD_TILES_OUTSIDE_REGISTRATION` («Сарафан»,
-   * Ecommerce deals since 2026-10-05). `funnel` is this «Jami».
+   * deals of every pipeline since 2026-10-10). `funnel` is this «Jami».
    */
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
@@ -509,7 +508,7 @@ export function leadSourcesOverview(all: {
   qualified: readonly QualifiedSourceRow[]
   /** Deals whose «ИИ квал сана» is in the window, any pipeline, flagged Регистрация or not (`LeadSourcesRepository.aiQualifiedStages`). */
   aiQualified: readonly AiQualifiedStageRow[]
-  /** «Сарафан маркетинг» deals in Ecommerce (`LeadSourcesRepository.pipelineSourceCount`) — the «Сарафан» tile. */
+  /** «Сарафан маркетинг» deals of every pipeline (`LeadSourcesRepository.sourceCount`) — the «Сарафан» tile. */
   sarafan: PipelineSourceCount
   importedAt: Date | null
   /** `LeadSourcesRepository.inboundCallCount`; absent reads as null. */
@@ -801,7 +800,7 @@ export function leadSourcesOverview(all: {
 
   // Kval by the day it was WON, onto the tile its lead counts on — each tile's quiet second line.
   for (const row of input.qualified) tiles.get(leadTile(row.sourceId, LEAD_TILE_SOURCES))!.closed += row.qualified
-  // Ecommerce deals, no Регистрация lead: no duplicate stage or cohort read there, and outside «Jami» below.
+  // Deals of every pipeline, not Регистрация leads alone: no duplicate stage or cohort read there, and outside «Jami» below.
   const sarafanTile = tiles.get('sarafan')!
   sarafanTile.leads = input.sarafan.leads
   sarafanTile.qualified = input.sarafan.qualified
@@ -1206,7 +1205,7 @@ export class LeadSourcesService {
       () => this.repository.triageDays(period),
       () => this.repository.qualifiedSources(period),
       () => this.repository.aiQualifiedStages(period),
-      () => this.repository.pipelineSourceCount(period, SARAFAN_PIPELINE_ID, [...LEAD_SOURCE_VOCABULARY.sarafan]),
+      () => this.repository.sourceCount(period, [...LEAD_SOURCE_VOCABULARY.sarafan]),
       () => this.repository.inboundCallCount(period),
     ])
     return { triage, qualified, aiQualified, sarafan, inboundCalls }
