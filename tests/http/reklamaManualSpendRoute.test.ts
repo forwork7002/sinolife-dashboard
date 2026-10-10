@@ -41,6 +41,16 @@ describe('GET /reklama/targetologs — the gate', () => {
   })
 })
 
+describe('GET /reklama/overview — «Отчёт Т»\'s kval (2026-10-10)', () => {
+  it('reads «Lidlar»\'s forms block only for an account that holds «Lidlar»', async () => {
+    const source = await import('node:fs').then((fs) => fs.readFileSync('src/app/api/v1/reklama/overview/route.ts', 'utf8'))
+    expect(source).toContain("{ permission: 'analytics:read:all', section: 'marketing' }")
+    // The block's own endpoint is gated on `leads`; this one may not be a way around that gate.
+    expect(source).toMatch(/canSeeSection\(ctx\.principal, 'leads'\)\s*\? leadSourcesService\.targetologForms\(/)
+    expect(source.match(/targetologForms\(/g)).toHaveLength(1)
+  })
+})
+
 describe('POST /reklama/manual-spend — the gate', () => {
   it('asks for kpi:manage inside the leads gate, refuses a day after today, and saves cents', async () => {
     const source = await import('node:fs').then((fs) => fs.readFileSync('src/app/api/v1/reklama/manual-spend/route.ts', 'utf8'))
