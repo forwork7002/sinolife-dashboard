@@ -31,11 +31,17 @@ export const GET = getHandler(ACCESS, reklamaOverviewQuerySchema, async (ctx) =>
     «Отчёт Т»'s kval is «Lidlar»'s `forms` block, and that block's own endpoint
     (`/reklama/targetologs`) is gated on section `leads`. An account handed
     «Reklama samarasi» alone must not read it through this door, so the scan
-    is run only for an account that holds «Lidlar» too; anyone else gets the
+    is run only for an account that gate would admit: it holds «Lidlar», and
+    reads it company-wide. `ctx.principal` here may be WIDENED for `marketing`
+    — a narrowed account whose «Lidlar» tick is not wide is refused there
+    (`analytics:read:all`), so it is refused here. Anyone else gets the
     column unread. An addition to the sheets, never their price: a failed scan
     is logged and the table draws without the column's figures.
   */
-  const formsScan = canSeeSection(ctx.principal, 'leads')
+  const readsLeads =
+    canSeeSection(ctx.principal, 'leads') &&
+    (!ctx.principal.widened || (ctx.principal.wideSections ?? []).includes('leads'))
+  const formsScan = readsLeads
     ? leadSourcesService.targetologForms(period, ctx.timeZone, ctx.query.brand).then(
         (answer) => answer.forms,
         (error: unknown) => {

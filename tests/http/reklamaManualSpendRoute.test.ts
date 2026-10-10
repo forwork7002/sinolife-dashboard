@@ -46,7 +46,10 @@ describe('GET /reklama/overview — «Отчёт Т»\'s kval (2026-10-10)', () 
     const source = await import('node:fs').then((fs) => fs.readFileSync('src/app/api/v1/reklama/overview/route.ts', 'utf8'))
     expect(source).toContain("{ permission: 'analytics:read:all', section: 'marketing' }")
     // The block's own endpoint is gated on `leads`; this one may not be a way around that gate.
-    expect(source).toMatch(/canSeeSection\(ctx\.principal, 'leads'\)\s*\? leadSourcesService\.targetologForms\(/)
+    expect(source).toContain("canSeeSection(ctx.principal, 'leads') &&")
+    // Widened for `marketing` is not wide on `leads`: a ROP who reads «Lidlar» for their team is refused there.
+    expect(source).toContain("(!ctx.principal.widened || (ctx.principal.wideSections ?? []).includes('leads'))")
+    expect(source).toMatch(/readsLeads\s*\? leadSourcesService\.targetologForms\(/)
     expect(source.match(/targetologForms\(/g)).toHaveLength(1)
   })
 })
