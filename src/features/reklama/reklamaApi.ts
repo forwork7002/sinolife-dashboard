@@ -150,6 +150,25 @@ export interface CampaignCrmDto {
   readonly costPerQualifiedUsd: number | null
 }
 
+export interface LeadFormDto {
+  /** Empty for «Forma aniqlanmagan». */
+  readonly id: string
+  readonly name: string
+  readonly targetolog: string | null
+  readonly product: MetaProduct
+  readonly accounts: readonly string[]
+  readonly campaigns: number
+  readonly spendUsd: number
+  readonly metaLeads: number
+  readonly costPerLeadUsd: number | null
+  readonly impressions: number
+  readonly clicks: number
+  readonly ctrPercent: number | null
+  readonly activeDays: number
+  readonly lastActive: string | null
+  readonly crm: CampaignCrmDto | null
+}
+
 export interface SideColumnDto {
   readonly key: 'hr' | 'kosmetika'
   readonly name: string
@@ -165,4 +184,5 @@ export interface ReklamaOverviewDto {
   readonly form: FormBlockDto
   readonly quality: QualityBlockDto
   readonly campaigns: readonly CampaignDto[]
+  readonly leadForms: readonly LeadFormDto[]
 }

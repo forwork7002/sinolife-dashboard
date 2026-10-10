@@ -52,6 +52,7 @@ export interface CampaignDayRow {
 
 /** One Meta campaign's lead-form leads of the window, met with the portal by phone. */
 export interface CampaignLeadRow {
+  /** Empty on an organic lead — the form filled with no ad behind it. */
   readonly campaignId: string
   /** Meta leads read into `meta_lead` — below Meta's own count when a form's page is closed to the token. */
   readonly leads: number
@@ -68,6 +69,28 @@ export interface CampaignLeadRow {
   readonly lowQuality: number
   readonly duplicate: number
   readonly open: number
+}
+
+/** The same leads cut once more by the FORM they were filed through — «Formalar»'s rows. */
+export interface FormLeadRow extends CampaignLeadRow {
+  readonly formId: string
+  readonly formName: string
+}
+
+/** One lead form's ads on one day, in one campaign. `formId` is null for an ad no read lead names a form for. */
+export interface FormAdDayRow {
+  readonly date: string
+  readonly accountId: string
+  readonly accountName: string
+  readonly campaignId: string
+  readonly campaignName: string
+  readonly objective: string
+  readonly formId: string | null
+  readonly formName: string | null
+  readonly spendMicroUsd: bigint
+  readonly impressions: number
+  readonly clicks: number
+  readonly leads: number
 }
 
 /**
@@ -203,16 +226,28 @@ export class ReklamaRepository {
    *
    * Dated by the lead's own time, so the window is the spend's window. Only
    * the Регистрация deals around the window are read, never every contact.
+   *
+   * One row per campaign × FORM since 2026-10-10 («Formalar»): the same scan
+   * answers both tables, so a form's kval is its campaigns' kval re-cut, never
+   * a second matching. An organic lead (no campaign) is read too — it is the
+   * form's lead, and no campaign's.
    */
-  async campaignLeads(period: Period): Promise<CampaignLeadRow[]> {
+  async campaignLeads(period: Period): Promise<FormLeadRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
-      { campaign_id: string; stage: string | null; status: string | null; leads: bigint }[]
+      {
+        campaign_id: string
+        form_id: string
+        form_name: string
+        stage: string | null
+        status: string | null
+        leads: bigint
+      }[]
     >(
       `
       WITH ml AS (
-        SELECT m."id", m."campaignId", m."createdTime", m."phoneKeys"
+        SELECT m."id", m."campaignId", m."formId", m."formName", m."createdTime", m."phoneKeys"
         FROM "meta_lead" m
-        WHERE m."createdTime" >= $1 AND m."createdTime" < $2 AND m."campaignId" <> ''
+        WHERE m."createdTime" >= $1 AND m."createdTime" < $2
       ),
       mk AS (
         SELECT ml."id", ml."createdTime", unnest(ml."phoneKeys") AS key FROM ml
@@ -250,26 +285,41 @@ export class ReklamaRepository {
         FROM nearest n
         ORDER BY n.deal_id, n.apart, n."id"
       )
-      -- One row per campaign and outcome; a lead with no deal has neither stage nor status.
+      -- One row per campaign, form and outcome; a lead with no deal has neither stage nor status.
       SELECT
         ml."campaignId" AS campaign_id,
+        ml."formId" AS form_id,
+        -- A renamed form carries its newest name on new rows only: one name per form in the answer.
+        max(ml."formName") AS form_name,
         hit.stage,
         hit.status,
         count(*)::bigint AS leads
       FROM ml
       LEFT JOIN hit ON hit."id" = ml."id"
-      GROUP BY 1, 2, 3
+      GROUP BY 1, 2, 4, 5
       `,
       period.start,
       period.end,
     )
-    const out = new Map<string, { -readonly [K in keyof CampaignLeadRow]: CampaignLeadRow[K] }>()
+    const out = new Map<string, { -readonly [K in keyof FormLeadRow]: FormLeadRow[K] }>()
     for (const r of rows) {
+      const key = `${r.campaign_id}|${r.form_id}`
       const row =
-        out.get(r.campaign_id) ??
+        out.get(key) ??
         out
-          .set(r.campaign_id, { campaignId: r.campaign_id, leads: 0, matched: 0, qualified: 0, noAnswer: 0, lowQuality: 0, duplicate: 0, open: 0 })
-          .get(r.campaign_id)!
+          .set(key, {
+            campaignId: r.campaign_id,
+            formId: r.form_id,
+            formName: r.form_name,
+            leads: 0,
+            matched: 0,
+            qualified: 0,
+            noAnswer: 0,
+            lowQuality: 0,
+            duplicate: 0,
+            open: 0,
+          })
+          .get(key)!
       const n = Number(r.leads)
       row.leads += n
       if (r.status === null) continue
@@ -278,6 +328,92 @@ export class ReklamaRepository {
       row[bucket === 'success' ? 'qualified' : bucket] += n
     }
     return [...out.values()]
+  }
+
+  /**
+   * The ads' days of the window, each under the lead form its leads came
+   * through — «Formalar»'s money.
+   *
+   * Meta's Insights row names the ad, never its form, and the ad's creative
+   * is the `ads_management` budget this app may not spend (metaImport.ts). The
+   * ad's own LEADS name the form, so `meta_lead` is the map: an ad's form is
+   * the one most of its leads of this window were filed through, else of all
+   * time (an ad that spent today and has not brought a lead yet). An ad with
+   * no lead ever read — a form on a page closed to the token, or an ad that
+   * never brought one — has `formId` null and is reported as such.
+   *
+   * `from` / `to` are the window's Tashkent days, as `campaignDays`; `period`
+   * dates the leads that decide an ad's form.
+   */
+  async formAdDays(from: string, to: string, period: Period): Promise<FormAdDayRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        date: string
+        account_id: string
+        account_name: string
+        campaign_id: string
+        campaign_name: string
+        objective: string
+        form_id: string | null
+        form_name: string | null
+        spend: bigint
+        impressions: bigint
+        clicks: bigint
+        leads: bigint
+      }[]
+    >(
+      `
+      WITH pair AS (
+        SELECT m."adId", m."formId",
+               (array_agg(m."formName" ORDER BY m."createdTime" DESC))[1] AS form_name,
+               count(*) FILTER (WHERE m."createdTime" >= $3 AND m."createdTime" < $4) AS in_window,
+               count(*) AS ever
+        FROM "meta_lead" m
+        WHERE m."adId" <> ''
+        GROUP BY 1, 2
+      ),
+      ad_form AS (
+        SELECT DISTINCT ON (p."adId") p."adId", p."formId", p.form_name
+        FROM pair p
+        ORDER BY p."adId", p.in_window DESC, p.ever DESC, p."formId"
+      )
+      SELECT
+        a."date"::text AS date,
+        a."accountId" AS account_id,
+        a."accountName" AS account_name,
+        a."campaignId" AS campaign_id,
+        a."campaignName" AS campaign_name,
+        a."objective" AS objective,
+        af."formId" AS form_id,
+        af.form_name,
+        sum(a."spendMicroUsd")::bigint AS spend,
+        sum(a."impressions")::bigint AS impressions,
+        sum(a."clicks")::bigint AS clicks,
+        sum(a."leads")::bigint AS leads
+      FROM "meta_ad_insight_daily" a
+      LEFT JOIN ad_form af ON af."adId" = a."adId"
+      WHERE a."date" >= $1::date AND a."date" <= $2::date
+      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
+      `,
+      from,
+      to,
+      period.start,
+      period.end,
+    )
+    return rows.map((r) => ({
+      date: r.date,
+      accountId: r.account_id,
+      accountName: r.account_name,
+      campaignId: r.campaign_id,
+      campaignName: r.campaign_name,
+      objective: r.objective,
+      formId: r.form_id,
+      formName: r.form_name,
+      spendMicroUsd: r.spend,
+      impressions: Number(r.impressions),
+      clicks: Number(r.clicks),
+      leads: Number(r.leads),
+    }))
   }
 
   /** When the campaign grain was last read; null means never. */

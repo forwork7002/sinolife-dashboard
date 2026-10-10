@@ -5,7 +5,7 @@ import type { Period } from '@/server/domain/period/period'
 import { leadBucket } from '@/server/domain/reklama/leadQuality'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
 import { DM_ACCOUNT_PAGES, campaignChannel } from '@/server/integrations/meta/accounts'
-import type { CampaignDayRow, LeadStageDayRow } from '@/server/repositories/reklamaRepository'
+import type { CampaignDayRow, FormAdDayRow, LeadStageDayRow } from '@/server/repositories/reklamaRepository'
 
 /*
   The repository reads `env` at module scope for APP_TIMEZONE, and `env`
@@ -416,6 +416,90 @@ describe('reklamaOverview', () => {
     expect(4 + 5 + 2 + 1 + 4).toBe(whole!.crm!.matched)
   })
 
+  it('draws one row per lead form: its ads\' money, and every lead of the form met with the portal', () => {
+    const ad = (over: Partial<FormAdDayRow>): FormAdDayRow => ({
+      date: '2026-08-01',
+      accountId: '990016692137088', // Umar - 64 · Collagen
+      accountName: 'Umar - 64',
+      campaignId: 'c1',
+      campaignName: 'Sinolife lid form',
+      objective: 'OUTCOME_LEADS',
+      formId: 'f1',
+      formName: 'Sinolife (UMAR) 777',
+      spendMicroUsd: 0n,
+      impressions: 0,
+      clicks: 0,
+      leads: 0,
+      ...over,
+    })
+    const leads = (campaignId: string, formId: string, n: number, qualified: number) => ({
+      campaignId,
+      formId,
+      formName: formId === 'f1' ? 'Sinolife (UMAR) 777' : 'Organik forma',
+      leads: n,
+      matched: n,
+      qualified,
+      noAnswer: 0,
+      lowQuality: 0,
+      duplicate: 0,
+      open: n - qualified,
+    })
+    const out = reklamaOverview({
+      window: WINDOW,
+      pages: PAGES,
+      leadRows: [],
+      campaignRows: [],
+      formAdRows: [
+        // One form under two campaigns, on two days.
+        ad({ spendMicroUsd: 40_000_000n, leads: 12, impressions: 1000, clicks: 20 }),
+        ad({ date: '2026-08-02', campaignId: 'c2', spendMicroUsd: 20_000_000n, leads: 8 }),
+        // A lead-form ad no read lead names a form for: its money is said, not spread.
+        ad({ campaignId: 'c3', formId: null, formName: null, spendMicroUsd: 5_000_000n, leads: 2 }),
+        // A DM ad and a «Sayt» lead campaign have no form to be missing.
+        ad({ campaignId: 'c4', formId: null, formName: null, objective: 'OUTCOME_ENGAGEMENT', spendMicroUsd: 9_000_000n }),
+        ad({ campaignId: 'c5', campaignName: 'Sayt-1', formId: null, formName: null, spendMicroUsd: 9_000_000n }),
+      ],
+      campaignLeadRows: [leads('c1', 'f1', 12, 3), leads('c2', 'f1', 7, 1), leads('', 'f1', 1, 1), leads('', 'f9', 2, 0)],
+      importedAt: null,
+    })
+    const [form, unknown, organic] = out.leadForms
+    expect(out.leadForms).toHaveLength(3)
+    expect(form).toMatchObject({
+      id: 'f1',
+      name: 'Sinolife (UMAR) 777',
+      targetolog: 'Umar',
+      product: 'Collagen',
+      campaigns: 2,
+      spendUsd: 60,
+      metaLeads: 20,
+      costPerLeadUsd: 3,
+      activeDays: 2,
+      lastActive: '2026-08-02',
+    })
+    // Both campaigns' leads and the organic one: 20 read, 5 kval, 60 $ ÷ 5.
+    expect(form!.crm).toMatchObject({ leadsRead: 20, matched: 20, qualified: 5, qualifiedPercent: 25, costPerQualifiedUsd: 12 })
+    expect(unknown).toMatchObject({ id: '', spendUsd: 5, metaLeads: 2, crm: null })
+    // A form with leads and no ad behind it: counted, owned by nobody, priced at nothing.
+    expect(organic).toMatchObject({ id: 'f9', targetolog: null, spendUsd: 0, campaigns: 0 })
+    expect(organic!.crm).toMatchObject({ leadsRead: 2, qualified: 0, costPerQualifiedUsd: null })
+
+    // The brand switch: the form goes with its ads' budget, the organic-only form to «Brendsiz».
+    const slice = (brand: 'Collagen' | 'Zextra' | 'none') =>
+      reklamaOverview({
+        window: WINDOW,
+        pages: PAGES,
+        leadRows: [],
+        campaignRows: [],
+        formAdRows: [ad({ spendMicroUsd: 40_000_000n, leads: 12 })],
+        campaignLeadRows: [leads('c1', 'f1', 12, 3), leads('', 'f9', 2, 0)],
+        importedAt: null,
+        brand,
+      }).leadForms.map((f) => f.id)
+    expect(slice('Collagen')).toEqual(['f1'])
+    expect(slice('Zextra')).toEqual([])
+    expect(slice('none')).toEqual(['f9'])
+  })
+
   it('sums the lead-quality buckets to the leads, with the sheet\'s % over them', () => {
     const out = build(
       [
@@ -616,6 +700,7 @@ describe('ReklamaService.overview — collagen.sinolife, the page Sobirjon #2\'s
     ],
     campaignsImportedAt: async () => null,
     campaignLeads: async () => [],
+    formAdDays: async () => [],
   }
   const service = new ReklamaService(repository as never)
 
@@ -818,5 +903,55 @@ describe('ReklamaRepository.leadStageDays — the statement it sends', () => {
     // «Проект» is read and grouped by, so the brand switch can file the lead by it (`leadBrand`).
     expect(bare).toContain(`NULLIF(btrim(d."productLine"), '') AS product_line`)
     expect(bare).toMatch(/GROUP BY 1, 2, 3, 4, 5, 6\b/)
+  })
+  it('files an ad\'s days under the form its own leads name — this window\'s first, then of all time', async () => {
+    const calls: { sql: string; params: unknown[] }[] = []
+    const prisma = {
+      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
+        calls.push({ sql, params })
+        return [
+          {
+            date: '2026-08-01',
+            account_id: 'a1',
+            account_name: 'Umar - 64',
+            campaign_id: 'c1',
+            campaign_name: 'Lid form',
+            objective: 'OUTCOME_LEADS',
+            form_id: null,
+            form_name: null,
+            spend: 5_000_000n,
+            impressions: 100n,
+            clicks: 4n,
+            leads: 2n,
+          },
+        ]
+      },
+    } as unknown as PrismaClient
+    const rows = await new ReklamaRepository(prisma).formAdDays('2026-08-01', '2026-08-02', PERIOD)
+
+    expect(rows).toEqual([
+      {
+        date: '2026-08-01',
+        accountId: 'a1',
+        accountName: 'Umar - 64',
+        campaignId: 'c1',
+        campaignName: 'Lid form',
+        objective: 'OUTCOME_LEADS',
+        formId: null,
+        formName: null,
+        spendMicroUsd: 5_000_000n,
+        impressions: 100,
+        clicks: 4,
+        leads: 2,
+      },
+    ])
+    const { sql, params } = calls[0]!
+    const named = new Set([...sql.matchAll(/\$(\d+)/g)].map((m) => Number(m[1])))
+    expect([...named].sort()).toEqual(params.map((_, i) => i + 1))
+    expect(params).toEqual(['2026-08-01', '2026-08-02', PERIOD.start, PERIOD.end])
+    // One form per ad, and an ad with no read lead is kept (LEFT JOIN), its form null.
+    expect(sql).toContain('DISTINCT ON (p."adId")')
+    expect(sql).toContain('ORDER BY p."adId", p.in_window DESC, p.ever DESC')
+    expect(sql).toContain('LEFT JOIN ad_form af')
   })
 })

@@ -35,6 +35,7 @@ import {
   type MetaProduct,
   type SideColumn,
   campaignChannel,
+  isSiteCampaign,
   ownerOf,
   sideColumn,
 } from '@/server/integrations/meta/accounts'
@@ -50,6 +51,7 @@ import {
 import type {
   CampaignDayRow,
   CampaignLeadRow,
+  FormAdDayRow,
   LeadStageDayRow,
   ReklamaRepository,
 } from '@/server/repositories/reklamaRepository'
@@ -249,6 +251,38 @@ export interface CampaignCrmDto {
 export const LEAD_COVERAGE = 0.9
 
 /**
+ * One Meta LEAD FORM over the window — «Formalar», the campaigns' table cut by
+ * the form the lead was filed through (the client, 2026-10-10: «har bitta
+ * formani alohida»). One form serves many campaigns, and a deal on the portal
+ * names its form, never its campaign — so this is the row the floor knows.
+ *
+ * The money is the form's ADS' (`ReklamaRepository.formAdDays`); `crm` is
+ * every lead of the form in the window, organic ones included.
+ */
+export interface LeadFormDto {
+  /** Meta's form id; empty for «Forma aniqlanmagan» — lead-form ads no read lead names a form for. */
+  readonly id: string
+  readonly name: string
+  /** The account that spent most through the form; null with no ad behind it in the window. */
+  readonly targetolog: string | null
+  readonly product: MetaProduct
+  readonly accounts: readonly string[]
+  /** Campaigns that spent through the form in the window. */
+  readonly campaigns: number
+  readonly spendUsd: number
+  /** Meta's own lead count on the form's ads. */
+  readonly metaLeads: number
+  readonly costPerLeadUsd: number | null
+  readonly impressions: number
+  readonly clicks: number
+  readonly ctrPercent: number | null
+  readonly activeDays: number
+  readonly lastActive: string | null
+  /** Null with no lead of the form read in the window. */
+  readonly crm: CampaignCrmDto | null
+}
+
+/**
  * A narrow side column — the client's «Навой HR» table: the month's dollars
  * at the head, then one row a day. See `sideColumn`.
  */
@@ -269,6 +303,8 @@ export interface ReklamaOverviewDto {
   readonly quality: QualityBlockDto
   /** Every campaign that spent in the window, biggest first. */
   readonly campaigns: readonly CampaignDto[]
+  /** Every lead form that spent or received a lead in the window, biggest first. */
+  readonly leadForms: readonly LeadFormDto[]
 }
 
 // ---------------------------------------------------------------------------
@@ -393,6 +429,37 @@ function formCells(a: FormAcc): FormCellsDto {
   }
 }
 
+// --- Meta leads met with the portal -------------------------------------------
+
+type LeadAcc = { -readonly [K in Exclude<keyof CampaignLeadRow, 'campaignId'>]: number }
+
+const leadZero = (): LeadAcc => ({ leads: 0, matched: 0, qualified: 0, noAnswer: 0, lowQuality: 0, duplicate: 0, open: 0 })
+
+function addLeads(into: LeadAcc, from: LeadAcc): void {
+  into.leads += from.leads
+  into.matched += from.matched
+  into.qualified += from.qualified
+  into.noAnswer += from.noAnswer
+  into.lowQuality += from.lowQuality
+  into.duplicate += from.duplicate
+  into.open += from.open
+}
+
+/** A campaign's or a form's portal columns: `read` its leads met with the portal, `ads` the money and Meta's own count. */
+function crmCells(read: LeadAcc, ads: FormAcc): CampaignCrmDto {
+  return {
+    leadsRead: read.leads,
+    matched: read.matched,
+    qualified: read.qualified,
+    qualifiedPercent: percent(read.qualified, read.matched),
+    noAnswer: read.noAnswer,
+    lowQuality: read.lowQuality,
+    duplicate: read.duplicate,
+    open: read.open,
+    costPerQualifiedUsd: read.leads >= ads.leads * LEAD_COVERAGE ? perUnit(ads.spend, read.qualified) : null,
+  }
+}
+
 const asForm = (a: FormAcc) => ({ spendMicroUsd: a.spend, leads: a.leads, impressions: a.impressions, clicks: a.clicks })
 
 const PRODUCT_ORDER: readonly MetaProduct[] = ['Collagen', 'Zextra', 'Boshqa']
@@ -424,8 +491,13 @@ export function reklamaOverview(input: {
   pages: readonly { key: string; name: string; product: TargetProduct }[]
   leadRows: readonly LeadStageDayRow[]
   campaignRows: readonly CampaignDayRow[]
-  /** Per campaign, its Meta leads met with the portal; absent = none read. */
-  campaignLeadRows?: readonly CampaignLeadRow[]
+  /**
+   * Meta's leads met with the portal, per campaign — and per form where the
+   * row names one (`ReklamaRepository.campaignLeads`); absent = none read.
+   */
+  campaignLeadRows?: readonly (CampaignLeadRow & { readonly formId?: string; readonly formName?: string })[]
+  /** The ads' days under each lead form; absent = the scan failed, and «Formalar» draws the leads alone. */
+  formAdRows?: readonly FormAdDayRow[]
   importedAt: Date | null
   brand?: BrandFilter
 }): ReklamaOverviewDto {
@@ -433,6 +505,15 @@ export function reklamaOverview(input: {
   if (brand !== 'all') {
     const leadRows = input.leadRows.filter((row) => brandMatches(brand, leadBrand(row.sourceId, null, row.productLine)))
     const pagesWithLeads = new Set(leadRows.map((row) => row.sourceId))
+    /*
+      A Meta lead is its campaign's budget's: read before the rows are
+      narrowed, so a lead whose campaign is another brand's is told apart from
+      one with no campaign at all (organic), which no budget claims.
+    */
+    const budgetOf = new Map<string, TargetProduct | null>()
+    for (const row of [...input.campaignRows, ...(input.formAdRows ?? [])]) {
+      budgetOf.set(row.campaignId, adBudgetProduct(row))
+    }
     input = {
       ...input,
       brand: 'all',
@@ -447,6 +528,8 @@ export function reklamaOverview(input: {
         .sort((a, b) => Number(brandMatches(brand, b.product)) - Number(brandMatches(brand, a.product))),
       leadRows,
       campaignRows: input.campaignRows.filter((row) => brandMatches(brand, adBudgetProduct(row))),
+      campaignLeadRows: input.campaignLeadRows?.filter((row) => brandMatches(brand, budgetOf.get(row.campaignId) ?? null)),
+      formAdRows: input.formAdRows?.filter((row) => brandMatches(brand, adBudgetProduct(row))),
     }
   }
   const days = calendarDays(input.window.from, input.window.to)
@@ -628,7 +711,12 @@ export function reklamaOverview(input: {
       if (acc.lastActive === null || row.date > acc.lastActive) acc.lastActive = row.date
     }
   }
-  const crmOf = new Map((input.campaignLeadRows ?? []).map((row) => [row.campaignId, row]))
+  // The scan answers per campaign × form: a campaign's leads are its forms' summed. An organic lead is no campaign's.
+  const crmOf = new Map<string, LeadAcc>()
+  for (const row of input.campaignLeadRows ?? []) {
+    if (row.campaignId === '') continue
+    addLeads(crmOf.get(row.campaignId) ?? crmOf.set(row.campaignId, leadZero()).get(row.campaignId)!, row)
+  }
   const campaigns: CampaignDto[] = [...byCampaign.values()]
     .filter((c) => c.total.spend > 0n)
     .sort((a, b) => Number(b.total.spend - a.total.spend))
@@ -653,20 +741,79 @@ export function reklamaOverview(input: {
         ctrPercent: percent(c.total.clicks, c.total.impressions),
         activeDays: c.days.size,
         lastActive: c.lastActive,
-        crm: read
-          ? {
-              leadsRead: read.leads,
-              matched: read.matched,
-              qualified: read.qualified,
-              qualifiedPercent: percent(read.qualified, read.matched),
-              noAnswer: read.noAnswer,
-              lowQuality: read.lowQuality,
-              duplicate: read.duplicate,
-              open: read.open,
-              costPerQualifiedUsd:
-                read.leads >= c.total.leads * LEAD_COVERAGE ? perUnit(c.total.spend, read.qualified) : null,
-            }
-          : null,
+        crm: read ? crmCells(read, c.total) : null,
+      }
+    })
+
+  // --- per lead form: the ads' money under the form their leads name, and every lead of the form.
+  interface LeadFormAcc {
+    name: string
+    total: FormAcc
+    days: Set<string>
+    lastActive: string | null
+    /** Spend per account, to name the form's owner. */
+    accounts: Map<string, { name: string; spend: bigint }>
+    campaigns: Set<string>
+    crm: LeadAcc | null
+  }
+  const byForm = new Map<string, LeadFormAcc>()
+  const formOf = (id: string, name: string): LeadFormAcc => {
+    const acc =
+      byForm.get(id) ??
+      ({ name, total: formZero(), days: new Set(), lastActive: null, accounts: new Map(), campaigns: new Set(), crm: null } satisfies LeadFormAcc)
+    byForm.set(id, acc)
+    return acc
+  }
+  for (const row of input.formAdRows ?? []) {
+    /*
+      An ad with no form named: only a lead-form campaign's is a form's money
+      gone unnamed. A DM or traffic ad has no form, and a «Sayt» lead campaign
+      sends people to the website (`isSiteCampaign`).
+    */
+    if (
+      row.formId === null &&
+      (campaignChannel(row.objective, row.campaignName, row.accountId) !== 'form' || isSiteCampaign(row.campaignName))
+    ) {
+      continue
+    }
+    const acc = formOf(row.formId ?? '', row.formName ?? '')
+    addForm(acc.total, row)
+    if (row.spendMicroUsd > 0n) {
+      acc.days.add(row.date)
+      if (acc.lastActive === null || row.date > acc.lastActive) acc.lastActive = row.date
+      acc.campaigns.add(row.campaignId)
+      const account = acc.accounts.get(row.accountId) ?? { name: row.accountName, spend: 0n }
+      account.spend += row.spendMicroUsd
+      acc.accounts.set(row.accountId, account)
+    }
+  }
+  for (const row of input.campaignLeadRows ?? []) {
+    if (row.formId === undefined) continue
+    const acc = formOf(row.formId, row.formName ?? '')
+    addLeads((acc.crm ??= leadZero()), row)
+  }
+  const leadForms: LeadFormDto[] = [...byForm.entries()]
+    .filter(([, f]) => f.total.spend > 0n || (f.crm?.leads ?? 0) > 0)
+    .sort(([, a], [, b]) => Number(b.total.spend - a.total.spend) || (b.crm?.leads ?? 0) - (a.crm?.leads ?? 0))
+    .map(([id, f]) => {
+      const spenders = [...f.accounts.entries()].sort(([, a], [, b]) => Number(b.spend - a.spend))
+      const owner = spenders[0] ? ownerOf(spenders[0][0], spenders[0][1].name) : null
+      return {
+        id,
+        name: f.name,
+        targetolog: owner?.targetolog ?? null,
+        product: owner?.product ?? 'Boshqa',
+        accounts: spenders.map(([, a]) => a.name),
+        campaigns: f.campaigns.size,
+        spendUsd: usd(f.total.spend),
+        metaLeads: f.total.leads,
+        costPerLeadUsd: perUnit(f.total.spend, f.total.leads),
+        impressions: f.total.impressions,
+        clicks: f.total.clicks,
+        ctrPercent: percent(f.total.clicks, f.total.impressions),
+        activeDays: f.days.size,
+        lastActive: f.lastActive,
+        crm: f.crm ? crmCells(f.crm, f.total) : null,
       }
     })
 
@@ -730,6 +877,7 @@ export function reklamaOverview(input: {
         .sort((a, b) => b.leads - a.leads || a.stage.localeCompare(b.stage, 'ru')),
     },
     campaigns,
+    leadForms,
   }
 }
 
@@ -879,7 +1027,7 @@ const REKLAMA_SOURCE_IDS: readonly string[] = [
 
 const leadCache = ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE)
 /** The campaigns' kval: Meta's leads arrive hourly, the deals' stages by the minute — the lead scan's own clock. */
-const campaignLeadCache = ttlCache<CampaignLeadRow[] | undefined>(120_000, LIVE_CACHE)
+const campaignLeadCache = ttlCache<Awaited<ReturnType<ReklamaRepository['campaignLeads']>> | undefined>(120_000, LIVE_CACHE)
 
 /** Logs a failed per-campaign scan and answers `fallback` in its place. */
 function scanFailed<T>(scan: string, fallback: T) {
@@ -911,7 +1059,7 @@ export class ReklamaService {
     }
     const key = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
 
-    const [leadRows, named, campaignRows, campaignLeadRows, importedAt] = await Promise.all([
+    const [leadRows, named, campaignRows, campaignLeadRows, formAdRows, importedAt] = await Promise.all([
       leadCache.get(key, () => this.repository.leadStageDays(period, REKLAMA_SOURCE_IDS)),
       this.repository.sources(REKLAMA_SOURCE_IDS),
       this.repository.campaignDays(window.from, window.to),
@@ -924,9 +1072,11 @@ export class ReklamaService {
         load of a long window. The failure stands for the memo's two minutes.
       */
       campaignLeadCache.get(key, () => this.repository.campaignLeads(period).catch(scanFailed('campaign leads', undefined))),
+      // «Formalar»' money, on the same terms: without it the forms draw their leads alone.
+      this.repository.formAdDays(window.from, window.to, period).catch(scanFailed('form ads', undefined)),
       this.repository.campaignsImportedAt(),
     ])
 
-    return { window, pages: orderedPages(named), leadRows, campaignRows, campaignLeadRows, importedAt }
+    return { window, pages: orderedPages(named), leadRows, campaignRows, campaignLeadRows, formAdRows, importedAt }
   }
 }

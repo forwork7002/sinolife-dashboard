@@ -17,6 +17,7 @@ import { t } from '@/lib/messages'
 import { CampaignSection } from './CampaignSection'
 import { DmSection } from './DmSection'
 import { FormSection } from './FormSection'
+import { LeadFormSection } from './LeadFormSection'
 import { QualitySection } from './QualitySection'
 import type { ReklamaOverviewDto } from './reklamaApi'
 import type { Status } from './reklamaUi'
@@ -28,7 +29,8 @@ import type { Status } from './reklamaUi'
  * client analysed ads in: «shu jadvallar orqali men analysis qilar edim endi
  * sen menga shuni reklama samarasi boʻlimiga chiqarishing kerak». This is the
  * three ad sheets — «DM», «Отчёт Т» and lead quality — each as a table of
- * totals and a table of days, the way the sheets read, then every campaign.
+ * totals and a table of days, the way the sheets read, then every lead form
+ * (2026-10-10) and every campaign.
  *
  * THE TWO OTHER TABS MOVED ON 2026-09-25 to their own section, «Lidlar»
  * (`features/leads`): «Sotuv · ROP» (removed 2026-10-01) and «Lid
@@ -88,6 +90,7 @@ export function ReklamaPage() {
             <DmSection dm={data?.dm} status={status} />
             <FormSection form={data?.form} status={status} />
             <QualitySection quality={data?.quality} status={status} />
+            <LeadFormSection forms={data?.leadForms} status={status} />
             <CampaignSection campaigns={data?.campaigns} status={status} />
           </>
         )}
