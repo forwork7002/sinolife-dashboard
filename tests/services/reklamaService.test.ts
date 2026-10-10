@@ -18,7 +18,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { calendarDays, reklamaOverview, ReklamaService, sideColumnsOf, targetDm } = await import('@/server/services/reklamaService')
+const { calendarDays, reklamaOverview, ReklamaService, sideColumnsOf, targetDm, withFormKval } = await import('@/server/services/reklamaService')
 const { ReklamaRepository } = await import('@/server/repositories/reklamaRepository')
 
 const PAGES = [
@@ -660,6 +660,70 @@ describe('ReklamaService.overview — collagen.sinolife, the page Sobirjon #2\'s
 
   it('names each such page\'s product as the portal\'s source map does', () => {
     for (const [page, product] of DM_ACCOUNT_PAGES) expect(LEAD_SOURCE_BRAND[page]).toBe(product)
+  })
+
+  it('draws the sheet\'s own blocks — sinogummy, sinolif_tg — with their leads, their targetolog and no DM money', async () => {
+    const sheet = new ReklamaService({
+      ...repository,
+      leadStageDays: async (_: Period, ids: readonly string[]) => {
+        asked.leads = ids
+        return [{ day: '2026-08-01', sourceId: 'UC_KX2114', source: 'sinogummy', stage: 'Сделка успешна', status: 'WON', productLine: null, leads: 3 }]
+      },
+      sources: async () => [
+        { externalId: 'UC_1X1J24', name: 'sinolifeuz' },
+        { externalId: 'UC_NBCV5K', name: 'collagen.sinolife' },
+        { externalId: 'UC_KX2114', name: 'sinogummy' },
+        { externalId: 'UC_Z1OF0D', name: 'sinolif_tg' },
+      ],
+    } as never)
+    // Another window, so the lead memo of the cases around this one is not what answers.
+    const out = await sheet.overview({ ...PERIOD, end: new Date(PERIOD.end.getTime() + 86_400_000) }, 'Asia/Tashkent')
+    expect(asked.leads).toEqual(expect.arrayContaining(['UC_KX2114', 'UC_Z1OF0D']))
+    expect(out.dm.pages.map((p) => [p.name, p.targetolog])).toEqual([
+      ['sinolifeuz', null],
+      ['collagen.sinolife', 'Sobirjon'],
+      ['sinogummy', 'Eldor'],
+      ['sinolif_tg', 'TG'],
+    ])
+    expect(out.dm.pages[2]).toMatchObject({ carriesDmSpend: false, total: { leads: 3, qualified: 3, spendUsd: 0 } })
+    // Its kval is in «Итог»'s count, never in the price the DM money is divided by.
+    expect(out.dm.total).toMatchObject({ qualified: 3, costPerQualifiedUsd: null })
+  })
+})
+
+describe('withFormKval — «Отчёт Т» with «Lidlar»\'s kval (2026-10-10)', () => {
+  const overview = reklamaOverview({
+    window: WINDOW,
+    pages: PAGES,
+    leadRows: [],
+    campaignRows: [
+      campaign({ accountId: '990016692137088', accountName: 'Umar - 64', spendMicroUsd: 90_000_000n, leads: 60 }),
+      campaign({ accountId: '440763388459898', accountName: 'Zextra Eldor', spendMicroUsd: 10_000_000n, leads: 4 }),
+    ],
+    importedAt: null,
+  })
+
+  it('reads nothing before the forms are met', () => {
+    expect(overview.form.qualified).toBeNull()
+    expect(overview.form.owners.map((o) => o.qualified)).toEqual([null, null])
+    expect(withFormKval(overview, null)).toBe(overview)
+  })
+
+  it('meets each targetolog on the owner key; one with money and no form lead is 0, and «Jami» is every form\'s', () => {
+    const out = withFormKval(overview, {
+      owners: [
+        { key: 'Collagen|Umar', outcome: { success: 21 } },
+        // A form no targetolog is read from: in «Jami», on no row here.
+        { key: 'form|Sinolife umumiy', outcome: { success: 2 } },
+      ],
+      outcome: { success: 23 },
+    })
+    expect(out.form.owners.map((o) => [o.key, o.qualified])).toEqual([
+      ['Collagen|Umar', 21],
+      ['Zextra|Элдор', 0],
+    ])
+    expect(out.form.qualified).toBe(23)
+    expect(out.form.total).toEqual(overview.form.total)
   })
 })
 

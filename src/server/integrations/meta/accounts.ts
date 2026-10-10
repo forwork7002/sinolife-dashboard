@@ -208,6 +208,34 @@ export const DM_ACCOUNT_PAGES: ReadonlyMap<string, TargetProduct> = new Map(
 )
 
 /**
+ * Pages the client's «DM» sheet draws as blocks of their own though no ad
+ * page list names them and no DM money is written to them — read off the
+ * user's screenshot of the sheet on 2026-10-10 («sinogummy», «sinolife_tg»
+ * beside collagen.sinolife and the Zextra pages). They join the Reklama
+ * sheets only, with their Bitrix24 leads and kval, like «sinolife_otziv».
+ * Both are Sinolife's own pages, so they sort with Collagen's; their leads
+ * keep whatever brand «Проект» gives them (`LEAD_SOURCE_BRAND` is untouched,
+ * so RNP and «Lidlar» file them as before).
+ */
+export const DM_SHEET_PAGES: ReadonlyMap<string, TargetProduct> = new Map<string, TargetProduct>([
+  ['UC_KX2114', 'Collagen'], // sinogummy
+  ['UC_Z1OF0D', 'Collagen'], // sinolif_tg
+])
+
+/**
+ * The targetolog the sheet prints on a page's block (the black chip beside
+ * the page name), as the sheet spells it. Only the blocks legible on the
+ * 2026-10-10 screenshot; a page missing here draws no chip rather than a
+ * guessed name.
+ */
+export const DM_PAGE_TARGETOLOG: Readonly<Record<string, string>> = Object.freeze({
+  UC_NBCV5K: 'Sobirjon', // collagen.sinolife
+  UC_KX2114: 'Eldor', // sinogummy
+  UC_Z1OF0D: 'TG', // sinolif_tg
+  UC_LBSZDU: 'Umar', // zextra.sinolife
+})
+
+/**
  * The narrow columns set beside the ad sheets — the client's own side table
  * («Сентябрь 269,0$ / Навой HR», one row a day). Checked 2026-09-28: the
  * sheet's «Навой HR» 02–18.09 is «EX - Sinolife (vakansiya) - DM - 23.04» on

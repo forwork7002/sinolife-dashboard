@@ -39,6 +39,7 @@ const dm: DmBlockDto = {
       name: 'sinolifeuz',
       product: 'Collagen',
       carriesDmSpend: true,
+      targetolog: null,
       total: cells({ leads: 3732, qualified: 649, spendUsd: 2685, costPerQualifiedUsd: 4.14 }),
       days: [{ date: '2026-08-01', ...cells({ leads: 171, qualified: 31 }) }],
     },
@@ -47,6 +48,7 @@ const dm: DmBlockDto = {
       name: 'sinolife_otziv',
       product: 'Collagen',
       carriesDmSpend: false,
+      targetolog: null,
       total: cells({ leads: 409, qualified: 93 }),
       days: [],
     },
@@ -79,6 +81,17 @@ describe('DmSheet', () => {
     const day2 = screen.getByRole('rowheader', { name: '02.08' }).closest('tr')!
     // Итог has 224 leads; sinolifeuz and sinolife_otziv have no row on 02.08.
     expect(within(day2).getAllByText('—').length).toBeGreaterThanOrEqual(10)
+  })
+
+  it('signs a page with the targetolog the sheet names on its block, and no other', () => {
+    const signed: DmBlockDto = {
+      ...dm,
+      pages: [dm.pages[0]!, { ...dm.pages[1]!, key: 'UC_KX2114', name: 'sinogummy', targetolog: 'Eldor' }],
+    }
+    render(<DmSheet dm={signed} status="ready" />)
+    const groups = screen.getAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup')
+    expect(within(groups[2]!).getByTitle('Targetolog: Eldor').textContent).toBe('Eldor')
+    expect(screen.getAllByTitle(/^Targetolog: /)).toHaveLength(1)
   })
 
   it('says so when the window has no day', () => {

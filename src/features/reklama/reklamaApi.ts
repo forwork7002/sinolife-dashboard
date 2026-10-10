@@ -31,6 +31,7 @@ export interface DmPageDto {
   readonly name: string
   readonly product: TargetProduct
   readonly carriesDmSpend: boolean
+  readonly targetolog: string | null
   readonly total: DmCellsDto
   readonly days: readonly DmDayDto[]
 }
@@ -65,11 +66,13 @@ export interface FormOwnerDto {
   readonly total: FormCellsDto
   readonly dmSpendUsd: number
   readonly dmConversations: number
+  readonly qualified: number | null
   readonly days: readonly FormDayDto[]
 }
 
 export interface FormBlockDto {
   readonly total: FormCellsDto
+  readonly qualified: number | null
   readonly days: readonly FormDayDto[]
   readonly owners: readonly FormOwnerDto[]
 }

@@ -29,6 +29,8 @@ import {
   DM_ACCOUNT_PAGES,
   DM_PAGE_OF_ACCOUNT,
   DM_PAGE_OF_PRODUCT,
+  DM_PAGE_TARGETOLOG,
+  DM_SHEET_PAGES,
   adBudgetProduct,
   type MetaProduct,
   type SideColumn,
@@ -90,6 +92,8 @@ export interface DmPageDto {
   readonly product: TargetProduct
   /** True for the page a product's DM money is shown against. */
   readonly carriesDmSpend: boolean
+  /** The targetolog the client's sheet names on this page's block (`DM_PAGE_TARGETOLOG`), or null. */
+  readonly targetolog: string | null
   readonly total: DmCellsDto
   readonly days: readonly DmDayDto[]
 }
@@ -134,11 +138,15 @@ export interface FormOwnerDto {
   /** The same person's DM campaigns, which the sheet keeps in its own block. */
   readonly dmSpendUsd: number
   readonly dmConversations: number
+  /** Kval of the Регистрация leads this targetolog's CRM forms opened (`withFormKval`); null = not read. */
+  readonly qualified: number | null
   readonly days: readonly FormDayDto[]
 }
 
 export interface FormBlockDto {
   readonly total: FormCellsDto
+  /** Every form lead's kval — «Lidlar»'s «Targetologlar» «Jami»; null = not read. */
+  readonly qualified: number | null
   readonly days: readonly FormDayDto[]
   readonly owners: readonly FormOwnerDto[]
 }
@@ -555,6 +563,7 @@ export function reklamaOverview(input: {
       name: page.name,
       product: page.product,
       carriesDmSpend,
+      targetolog: DM_PAGE_TARGETOLOG[page.key] ?? null,
       total: dmCells(total),
       days: pageDays,
     }
@@ -681,6 +690,7 @@ export function reklamaOverview(input: {
       total: formCells(o.total),
       dmSpendUsd: usd(o.dmSpend),
       dmConversations: o.dmConversations,
+      qualified: null,
       days: days.map((date, i) => {
         const cell = o.days.get(date) ?? formZero()
         addForm(formTotalDays[i]!, asForm(cell))
@@ -707,6 +717,7 @@ export function reklamaOverview(input: {
     },
     form: {
       total: formCells(formTotal),
+      qualified: null,
       days: days.map((date, i) => ({ date, ...formCells(formTotalDays[i]!) })),
       owners: formOwners,
     },
@@ -747,6 +758,34 @@ export function sideColumnsOf(rows: readonly CampaignDayRow[], days: readonly st
 }
 
 /**
+ * «Отчёт Т» with each targetolog's kval beside their spend (the user,
+ * 2026-10-10: «kval soni chiqarib bersin»). Meta names no deal, so the kval
+ * is «Lidlar»'s: the Регистрация leads the targetolog's CRM forms opened,
+ * «Сделка успешна» now — `forms` is that screen's own block, met on the owner
+ * key both build from `ownerOf`, so the two screens print one figure. A
+ * targetolog with money and no form lead reads 0; `forms` null (the scan
+ * failed) leaves every kval unread rather than 0.
+ */
+export function withFormKval(
+  overview: ReklamaOverviewDto,
+  forms: {
+    readonly owners: readonly { readonly key: string; readonly outcome: { readonly success: number } }[]
+    readonly outcome: { readonly success: number }
+  } | null,
+): ReklamaOverviewDto {
+  if (forms === null) return overview
+  const kval = new Map(forms.owners.map((o) => [o.key, o.outcome.success]))
+  return {
+    ...overview,
+    form: {
+      ...overview.form,
+      qualified: forms.outcome.success,
+      owners: overview.form.owners.map((o) => ({ ...o, qualified: kval.get(o.key) ?? 0 })),
+    },
+  }
+}
+
+/**
  * The target pages in the order the sheet reads them: Collagen's first, then
  * Zextra's, each by the portal's name.
  */
@@ -754,7 +793,8 @@ function orderedPages(named: readonly { externalId: string; name: string }[]) {
   const products: readonly TargetProduct[] = ['Collagen', 'Zextra']
   return named
     .flatMap((s) => {
-      const product = TARGET_SOURCE_PRODUCT[s.externalId] ?? DM_ACCOUNT_PAGES.get(s.externalId)
+      const product =
+        TARGET_SOURCE_PRODUCT[s.externalId] ?? DM_ACCOUNT_PAGES.get(s.externalId) ?? DM_SHEET_PAGES.get(s.externalId)
       return product ? [{ key: s.externalId, name: s.name, product }] : []
     })
     .sort(
@@ -824,8 +864,13 @@ export function targetDm(
   return { importedAt: slice.importedAt, dmSpendUsd: slice.spend.dmUsd, dm: slice.dm, products }
 }
 
-/** The ad pages, and the pages an account's DM money goes to (`DM_ACCOUNT_PAGES`) — this screen's alone. */
-const REKLAMA_SOURCE_IDS: readonly string[] = [...new Set([...TARGET_SOURCE_IDS, ...DM_ACCOUNT_PAGES.keys()])]
+/**
+ * The ad pages, the pages an account's DM money goes to (`DM_ACCOUNT_PAGES`) and the sheet's other blocks
+ * (`DM_SHEET_PAGES`) — this screen's alone.
+ */
+const REKLAMA_SOURCE_IDS: readonly string[] = [
+  ...new Set([...TARGET_SOURCE_IDS, ...DM_ACCOUNT_PAGES.keys(), ...DM_SHEET_PAGES.keys()]),
+]
 
 /*
   A memo in front of the lead scan, keyed by the window. Company-wide by

@@ -28,7 +28,14 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
   const days = chosen ? chosen.days : form?.days
   const total = chosen ? chosen.total : form?.total
 
-  type OwnerRow = { key: string; owner: FormOwnerDto | null; cells: FormCellsDto; dmSpend: number; dmConversations: number }
+  type OwnerRow = {
+    key: string
+    owner: FormOwnerDto | null
+    cells: FormCellsDto
+    qualified: number | null
+    dmSpend: number
+    dmConversations: number
+  }
   // No targetolog spent anything: the empty state, not a «Jami» row of dashes.
   const ownerRows: OwnerRow[] = form && owners.length > 0
     ? [
@@ -36,6 +43,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
           key: o.key,
           owner: o,
           cells: o.total,
+          qualified: o.qualified,
           dmSpend: o.dmSpendUsd,
           dmConversations: o.dmConversations,
         })),
@@ -43,6 +51,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
           key: 'total',
           owner: null,
           cells: form.total,
+          qualified: form.qualified,
           dmSpend: owners.reduce((n, o) => n + o.dmSpendUsd, 0),
           dmConversations: owners.reduce((n, o) => n + o.dmConversations, 0),
         },
@@ -61,7 +70,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
       <TableCard
         title="Targetologlar — davr boʻyicha"
         hint="DM ustunlari — shu targetologning DM kampaniyalari; ular yuqoridagi DM jadvaliga ham kiradi."
-        footer="Targetolog boʻyicha Bitrix24 lid va kval — «Lidlar» boʻlimining «Lid manbalari» jadvalida: ular targetologning CRM-formasi nomidan olinadi."
+        footer="Kval — targetologning CRM-formalari ochgan Регистрация lidlaridan «Сделка успешна» boʻlgani, «Lidlar» boʻlimidagi bilan bir xil; «Jami»ga targetologi aniqlanmagan formalar ham kiradi."
       >
         <DataTable<OwnerRow>
           columns={ownerColumns}
@@ -69,7 +78,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
           rowKey={(r) => r.key}
           status={status}
           emptyTitle="Bu davrda lid-forma sarfi yoʻq"
-          minWidth={1180}
+          minWidth={1260}
           maxHeight="none"
           stickyColumns={1}
           stickyLastRow
@@ -105,7 +114,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
 }
 
 const formColumns = <R,>(pick: (row: R) => FormCellsDto): Column<R>[] => [
-  { key: 'spend', header: 'Sarf', align: 'right', numeric: true, render: (r) => money(pick(r).spendUsd) },
+  { key: 'spend', header: 'Sarf', align: 'right', numeric: true, render: (r) => <Spend value={pick(r).spendUsd} /> },
   { key: 'leads', header: 'Meta lid', align: 'right', numeric: true, render: (r) => count(pick(r).metaLeads) },
   {
     key: 'cpl',
@@ -120,10 +129,41 @@ const formColumns = <R,>(pick: (row: R) => FormCellsDto): Column<R>[] => [
   { key: 'cpm', header: 'CPM', align: 'right', numeric: true, render: (r) => money(pick(r).cpmUsd) },
 ]
 
+/** A spend figure — the sheet's money columns, bold and in the accent ink (the user, 2026-10-10). */
+function Spend({ value }: { value: number }) {
+  return value === 0 ? (
+    <span style={muted}>—</span>
+  ) : (
+    <span className="font-semibold" style={{ color: 'var(--accent)' }}>
+      {money(value)}
+    </span>
+  )
+}
+
+/** «Отчёт Т»'s figures with the targetolog's kval after Meta's own lead count. */
+const ownerFigures: Column<{ cells: FormCellsDto; qualified: number | null }>[] = (() => {
+  const figures = formColumns<{ cells: FormCellsDto; qualified: number | null }>((r) => r.cells)
+  const at = figures.findIndex((c) => c.key === 'leads') + 1
+  return [
+    ...figures.slice(0, at),
+    {
+      key: 'qualified',
+      header: 'Kval',
+      align: 'right',
+      numeric: true,
+      // Unread (the scan failed) is a dash; a read 0 is a measurement and prints.
+      render: (r) =>
+        r.qualified === null ? <span style={muted}>—</span> : <span className="font-semibold">{formatNumber(r.qualified)}</span>,
+    },
+    ...figures.slice(at),
+  ]
+})()
+
 const ownerColumns: readonly Column<{
   key: string
   owner: FormOwnerDto | null
   cells: FormCellsDto
+  qualified: number | null
   dmSpend: number
   dmConversations: number
 }>[] = [
@@ -153,8 +193,8 @@ const ownerColumns: readonly Column<{
         </span>
       ),
   },
-  ...formColumns<{ cells: FormCellsDto }>((r) => r.cells),
-  { key: 'dmSpend', header: 'DM sarfi', align: 'right', numeric: true, render: (r) => money(r.dmSpend) },
+  ...ownerFigures,
+  { key: 'dmSpend', header: 'DM sarfi', align: 'right', numeric: true, render: (r) => <Spend value={r.dmSpend} /> },
   {
     key: 'dmConversations',
     header: 'DM murojat',

@@ -11,7 +11,8 @@ import { type Status, muted } from './reklamaUi'
  * The «DM» sheet's day grid, as the client keeps it: a date column, then
  * «Итог» and every page side by side, each «Кол лид · Кол квал · Квал % ·
  * Реклама · Цена за квал», the period's total above the days, the blocks
- * parted by a thick bar (the sheet's orange column).
+ * parted by a thick bar (the sheet's orange column). A page the sheet signs
+ * with its targetolog carries that name as the sheet's dark chip.
  *
  * Every figure is the server's — the page totals and «Итог» are never the
  * days re-added here, so this grid and the page table above it agree.
@@ -37,6 +38,7 @@ interface Block {
   readonly key: string
   readonly name: string
   readonly tone: string | null
+  readonly targetolog: string | null
   readonly total: DmCellsDto
   readonly byDate: ReadonlyMap<string, DmCellsDto>
 }
@@ -58,11 +60,12 @@ export function DmSheet({ dm, status }: { dm: DmBlockDto | undefined; status: St
   }
 
   const blocks: Block[] = [
-    { key: 'total', name: 'Итог', tone: null, total: dm.total, byDate: new Map(dm.days.map((d) => [d.date, d])) },
+    { key: 'total', name: 'Итог', tone: null, targetolog: null, total: dm.total, byDate: new Map(dm.days.map((d) => [d.date, d])) },
     ...dm.pages.map((p) => ({
       key: p.key,
       name: p.name,
       tone: PRODUCT_TONE[p.product],
+      targetolog: p.targetolog,
       total: p.total,
       byDate: new Map(p.days.map((d) => [d.date, d])),
     })),
@@ -89,7 +92,18 @@ export function DmSheet({ dm, status }: { dm: DmBlockDto | undefined; status: St
                   background: b.tone ? `color-mix(in oklab, ${b.tone} 28%, var(--surface-raised))` : HEAD_TINT,
                 }}
               >
-                {b.name}
+                <span className="inline-flex items-center gap-2">
+                  {b.name}
+                  {b.targetolog && (
+                    <span
+                      title={`Targetolog: ${b.targetolog}`}
+                      className="rounded px-1.5 py-0.5 text-[11px] leading-none font-semibold"
+                      style={{ background: 'var(--ink-primary)', color: 'var(--surface-raised)' }}
+                    >
+                      {b.targetolog}
+                    </span>
+                  )}
+                </span>
               </th>
             ))}
           </tr>
