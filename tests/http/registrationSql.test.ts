@@ -26,19 +26,13 @@ describe('distributedDaysSql', () => {
     expect(sql).toContain(`(p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`)
   })
 
-  it('reads «ROP KVAL LID» first, then «РОП (Первичка)», then — out of Регистрация only — the seller\'s team (2026-10-07)', () => {
+  it('reads the ROP from «РОП (Первичка)» alone — the head, then the unit they sit in (back to it 2026-10-13)', () => {
     const team = sql.slice(sql.indexOf('COALESCE('), sql.indexOf(') AS rop'))
-    const kval = team.indexOf('k."id"')
-    const field = team.indexOf('h."headId" = d."leadRopEmployeeId"')
-    const seller = team.indexOf('ad."id" = a."departmentId"')
-    expect(kval).toBeGreaterThan(-1)
-    expect(field).toBeGreaterThan(kval)
-    expect(seller).toBeGreaterThan(field)
-    expect(team.slice(seller)).toContain(`p."role" IS DISTINCT FROM 'LEAD'`)
-    // The Регистрация WON copy carries «ROP KVAL LID» and the hand-out day too — never credited (13.10).
-    expect(team.slice(0, field)).toContain(`CASE WHEN p."role" IS DISTINCT FROM 'LEAD' THEN`)
-    expect(sql).toContain('LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"')
-    expect(sql).toContain('LEFT JOIN "employee" a ON a."id" = d."employeeId"')
+    expect(team.indexOf('h."headId" = d."leadRopEmployeeId"')).toBeGreaterThan(-1)
+    expect(team).toContain('dep."name"')
+    // Neither «ROP KVAL LID» nor the seller's team: the first counted the desk's copy twice (13.10).
+    expect(sql).not.toContain('ropKvalLidEmployeeId')
+    expect(sql).not.toContain('a."departmentId"')
   })
 
   it('names the ROP exactly as «RNP jadvali» does', () => {

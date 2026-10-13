@@ -167,11 +167,9 @@ export class RnpRepository {
 
   /**
    * THE ROP COMES FROM `RegistrationRepository.leadRopSql`, the one rule
-   * «Lidlar» reads too: «ROP KVAL LID» first (the portal's stamp, from
-   * 2026-10-07), then the team «РОП (Первичка)» heads or sits in, then — when
-   * that field holds user 10 or nothing on a deal already out of Регистрация —
-   * the team of the seller it sits with. A person heading TWO ROP units counts
-   * in the one they sit in (2026-10-02). Anything else is «Taqsimlanmagan».
+   * «Lidlar» reads too: the team «РОП (Первичка)» heads or sits in (back to
+   * that alone on 2026-10-13). A person heading TWO ROP units counts in the
+   * one they sit in (2026-10-02). Anything else is «Taqsimlanmagan».
    *
    * EVERY PIPELINE, as the client counts it (2026-09-30): Bitrix24's deal list
    * filtered by «Лид таркатилган сана» and «РОП (Первичка)», nothing else — a

@@ -70,40 +70,28 @@ export class RegistrationRepository {
   /**
    * The ROP a handed-out deal went to — ONE rule for «Lidlar» and /rnp
    * (`RnpRepository.leadDaysSql` reads it too), so the two never disagree:
+   * the team the «РОП (Первичка)» person heads — of two, the one they sit
+   * in — then the team they sit in, else null («Taqsimlanmagan»). The
+   * client's portal filter (2026-09-30).
    *
-   * 1. «ROP KVAL LID» (`k`, from 2026-10-07): the portal's own stamp of the
-   *    ROP the deal was handed to, kept when the ROP passes it on — the field
-   *    the client added because «РОП (Первичка)» drifted (on 07.10, 22 deals
-   *    named 17604 there and Asliddin here). Read like Безквал's owner — but
-   *    never on a Регистрация deal: the portal stamps it on the desk's WON
-   *    copy too, which also carries the hand-out day, so that copy and the
-   *    Первичка deal it became were both credited (13.10: Azizbek 39, the
-   *    portal 26; the 13 extra were the copies).
-   * 2. «РОП (Первичка)» (`e`): the team that person heads — of two, the one
-   *    they sit in — then the team they sit in.
-   * 3. Neither names a ROP — the field holds user 10, the registration desk's
-   *    head, or nothing — yet the deal is OUT of Регистрация with a seller:
-   *    that seller's team (`a`). On 04.10 the field named user 10 on 499
-   *    handed-out deals; 92 of the fresh ones sat with Azizbek's sellers, and
-   *    the group read 85 where the team had taken 177. A Регистрация deal is
-   *    a registrar's, never a seller's, so it stays null («Taqsimlanmagan»).
+   * BACK TO THAT RULE ON 2026-10-13 (the user: «avval qanday tortilgan
+   * bo'lsa, eskisiga qaytarish kerak»). From 07.10 «ROP KVAL LID» came first,
+   * then the seller's team: the field also sits on the desk's WON copy, which
+   * carries the hand-out day too, so a lead counted twice (13.10: Azizbek 39
+   * where the portal had 26), and it names another ROP than «РОП (Первичка)»
+   * on ~40% of the day's deals (Sevinch for Maftuna, Asliddin for Sadriddin).
    *
-   * Reads `d`, `p`, `e`, `dep`, `k` and `a` from `handedOutJoinsSql`.
+   * Reads `d`, `e` and `dep` from `handedOutJoinsSql`.
    */
   static leadRopSql(): string {
     return `COALESCE(
-            CASE WHEN p."role" IS DISTINCT FROM 'LEAD' THEN ${RegistrationRepository.bezkvalOwnerRopSql('k')} END,
             (SELECT ${InsightsRepository.ropNameSql('h."name"')}
                FROM "department" h
               WHERE h."headId" = d."leadRopEmployeeId" AND h."isActive"
                 AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
               ORDER BY (h."id" = e."departmentId") DESC, h."name"
               LIMIT 1),
-            ${InsightsRepository.ropNameSql('dep."name"')},
-            (SELECT ${InsightsRepository.ropNameSql('ad."name"')}
-               FROM "department" ad
-              WHERE ad."id" = a."departmentId" AND ad."isActive"
-                AND p."role" IS DISTINCT FROM 'LEAD')
+            ${InsightsRepository.ropNameSql('dep."name"')}
           )`
   }
 
@@ -111,9 +99,7 @@ export class RegistrationRepository {
   static handedOutJoinsSql(): string {
     return `LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
         LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"
-        LEFT JOIN "department" dep ON dep."id" = e."departmentId"
-        LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"
-        LEFT JOIN "employee" a ON a."id" = d."employeeId"`
+        LEFT JOIN "department" dep ON dep."id" = e."departmentId"`
   }
 
   /** The handed-out deals whose «Лид таркатилган сана» matches `dayPredicate`; see `distributedDaysSql`. */
