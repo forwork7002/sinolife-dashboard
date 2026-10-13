@@ -8,6 +8,7 @@ import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type MoneyDto, apiGet } from '@/lib/api'
 import { formatDate, formatDuration, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
+import { Access } from './GroupPlanCard'
 import { DayPicker } from './LeadSplitCards'
 import { ROP_COLORS } from './ropColors'
 import type { RopReportCellsDto, RopReportDto, RopReportGroupDto } from './leadSplitApi'
@@ -23,6 +24,8 @@ import type { RopReportCellsDto, RopReportDto, RopReportGroupDto } from './leadS
  * «План» is 500 000 soʻm per lead, computed on the server (it was typed per
  * seller until 2026-10-02). «Отклонение» is План − Факт-1 as the client
  * writes it, marked ✅ when Факт-1 reached the plan and 🔴 when it fell short.
+ * «Dostup» (2026-10-13, the user: «qizilarga ruxsat emas»): a seller whose
+ * Отклонение is red may not take more leads — «Ruxsat emas», else «Ruxsat».
  */
 
 const NOBODY = '∅'
@@ -33,7 +36,7 @@ const td = 'tabular px-3 py-2 text-right whitespace-nowrap'
 /** The pinned name column: opaque, so the figures scroll under it on a phone. */
 const pin = 'sticky left-0 z-[1] text-left'
 
-const COLUMNS = ['Лид сони', 'План', 'Факт-1 ПР', 'Отклонение', 'Транз-1', 'Конверсия', 'Факт-2 ПР', 'Транз-2', 'Дозвон', 'Длительность'] as const
+const COLUMNS = ['Лид сони', 'План', 'Факт-1 ПР', 'Отклонение', 'Транз-1', 'Конверсия', 'Факт-2 ПР', 'Транз-2', 'Дозвон', 'Длительность', 'Dostup'] as const
 
 /** The split's colour for a team it has; a team it lacks takes the next unused slot, the no-team group grey. */
 function groupColor(rop: string | null, index: number, colors: ReadonlyMap<string, string>): string {
@@ -75,7 +78,7 @@ export function RopReport({
             Лид сони — shu kuni tarqatilgan lidlar («Лид таркатилган сана»), bitim kimda boʻlsa oʻsha sotuvchiga. Факт-1 / Факт-2 — Sotuvchilar
             reytingidagi hisob (tasdiqlash navbatiga kelgan kun). План = 500 000 × Лид сони. Отклонение = План − Факт-1: ✅ Факт-1 rejaga yetdi,
             🔴 kam. Конверсия = Транз-1 ÷ Лид сони. Дозвон — shu kuni ulangan qoʻngʻiroqlar, Длительность — ularning suhbat vaqti («Qoʻngʻiroqlar»
-            bilan bir xil).
+            bilan bir xil). Dostup — Отклонение qizil (🔴) boʻlsa «Ruxsat emas», aks holda «Ruxsat».
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -106,7 +109,7 @@ function ReportTable({ data, colors }: { data: RopReportDto; colors: ReadonlyMap
   return (
     <div className="flex flex-col gap-3">
       <div className="overflow-x-auto rounded-[var(--radius-panel-sm)] border" style={{ borderColor: 'var(--border)' }}>
-        <table className="w-full min-w-[1120px] border-separate border-spacing-0 text-sm">
+        <table className="w-full min-w-[1220px] border-separate border-spacing-0 text-sm">
           <thead>
             <tr style={{ background: 'var(--surface-sunken)' }}>
               <th className={`eyebrow ${pin} min-w-[200px] border-b px-3 py-2.5 font-[550] whitespace-nowrap`} style={{ background: 'var(--surface-sunken)', borderColor: 'var(--border)' }}>
@@ -179,6 +182,9 @@ function Group({ group, color }: { group: RopReportGroupDto; color: string }) {
             </span>
           </th>
           <Cells cells={s} />
+          <td className={`${td} border-b`} style={{ borderColor: 'var(--border)' }}>
+            {s.employeeId === NOBODY ? <span style={muted}>—</span> : <Access allowed={mayTakeLeads(s)} />}
+          </td>
         </tr>
       ))}
       <TotalRow label="Umumiy" cells={group.total} tint={color} />
@@ -198,6 +204,7 @@ function TotalRow({ label, cells, tint, strong = false }: { label: string; cells
         {label}
       </th>
       <Cells cells={cells} total />
+      <td className={`${td} border-b`} style={{ borderColor: 'var(--border-strong)' }} />
     </tr>
   )
 }
@@ -265,6 +272,9 @@ function Deviation({ cells }: { cells: RopReportCellsDto }) {
     </span>
   )
 }
+
+/** Dostup: a red Отклонение (Факт-1 short of План) closes it — the same test `Deviation` paints by. */
+const mayTakeLeads = (cells: RopReportCellsDto): boolean => BigInt(cells.deviation.amountMinor) <= 0n
 
 function Conversion({ value }: { value: number | null }) {
   if (value === null) return <span style={muted}>—</span>

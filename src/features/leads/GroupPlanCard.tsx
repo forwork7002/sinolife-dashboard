@@ -9,19 +9,19 @@ import { type MoneyDto, apiGet } from '@/lib/api'
 import { formatDate, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 import { DayPicker } from './LeadSplitCards'
-import type { GroupPlanCellsDto, GroupPlanDto, GroupPlanGroupDto } from './leadSplitApi'
+import type { GroupPlanCellsDto, GroupPlanDto, GroupPlanRowDto } from './leadSplitApi'
 
 /**
- * «Guruhlar» — the client's seller sheet (2026-10-03), from the first of the
- * chosen day's month to that day: every ROP team seller by seller, the team's
- * «Jami» under it and the company's at the foot. The sheet's columns, in its
- * order; Qarz green above zero («ortiqcha»), red below. The definitions are
- * in `server/domain/registration/groupPlan.ts`.
+ * «Guruhlar» — the client's sheet (2026-10-03), from the first of the chosen
+ * day's month to that day: one row per ROP since 2026-10-13 (seller by seller
+ * before), «Jami» at the foot. The sheet's columns, in its order; Qarz green
+ * above zero («ortiqcha»), red below, and a red Qarz is «Ruxsat emas». The
+ * definitions are in `server/domain/registration/groupPlan.ts`.
  */
 
 const muted = { color: 'var(--ink-muted)' } as const
 
-const COLUMNS = ['Usp soni', 'Reja (Avto)', 'Buyurtma summasi', 'Bajarilish %', 'Qarz', 'Dostup'] as const
+const COLUMNS = ['Usp soni (без квал)', 'Reja (Avto)', 'Buyurtma summasi', 'Bajarilish %', 'Qarz', 'Dostup'] as const
 
 const th = 'eyebrow border-b px-3 py-2.5 text-right font-[550] whitespace-nowrap'
 const td = 'tabular border-b px-3 py-2 text-right whitespace-nowrap'
@@ -49,9 +49,10 @@ export function GroupPlanCard({ day, onDay }: { day: string; onDay: (day: string
             Guruhlar{data ? ` · ${formatDate(data.from)} – ${formatDate(data.to)}` : ''}
           </h2>
           <p className="mt-0.5 max-w-3xl text-xs" style={muted}>
-            Oy boshidan tanlangan kungacha. Usp soni — sotuvchiga tarqatilgan kval lidlar («Лид таркатилган сана»). Reja (Avto) = 500 000 ×
-            Usp soni. Buyurtma summasi — Факт-1 (ROP otchetdagi kabi). Bajarilish % = Buyurtma ÷ Reja. Qarz = Buyurtma − Reja: yashil — rejadan
-            ortiq, qizil — qarz. Dostup — qarz chegarasi hali belgilanmagan, hammaga ruxsat.
+            Oy boshidan tanlangan kungacha, har bir ROP bitta qator. Usp soni — ROP jamoasining без квал lidlari: Регистрация voronkasida
+            yaratilgan va shu ROPga biriktirilgan barcha bitimlar (RNP jadvalidagi «без квал» bilan bir xil). Reja (Avto) = 200 000 × Usp soni.
+            Buyurtma summasi — jamoaning Факт-1 (ROP otchetdagi kabi). Bajarilish % = Buyurtma ÷ Reja. Qarz = Buyurtma − Reja: yashil — rejadan
+            ortiq, qizil — qarz. Dostup — qarz (qizil) boʻlsa «Ruxsat emas», aks holda «Ruxsat».
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -63,12 +64,12 @@ export function GroupPlanCard({ day, onDay }: { day: string; onDay: (day: string
           <ErrorState message={report.error instanceof Error ? report.error.message : undefined} onRetry={() => void report.refetch()} />
         ) : !data ? (
           <LoadingSkeleton rows={8} />
-        ) : data.groups.length === 0 ? (
+        ) : data.rows.length === 0 ? (
           <p
             className="rounded-[var(--radius-panel-sm)] border border-dashed px-3 py-3 text-xs"
             style={{ borderColor: 'var(--border-strong)', color: 'var(--ink-secondary)' }}
           >
-            Bu oyda hali hech kimga kval lid tarqatilmagan va buyurtma yoʻq.
+            Bu oyda hali hech bir ROPda без квал lid ham, buyurtma ham yoʻq.
           </p>
         ) : (
           <PlanTable data={data} />
@@ -88,7 +89,7 @@ function PlanTable({ data }: { data: GroupPlanDto }) {
               className={`eyebrow ${pin} min-w-[200px] border-b px-3 py-2.5 font-[550] whitespace-nowrap`}
               style={{ background: 'var(--surface-sunken)', borderColor: 'var(--border)' }}
             >
-              Mutahasis
+              ROP
             </th>
             {COLUMNS.map((c) => (
               <th key={c} className={th} style={{ borderColor: 'var(--border)' }}>
@@ -97,58 +98,37 @@ function PlanTable({ data }: { data: GroupPlanDto }) {
             ))}
           </tr>
         </thead>
-        {data.groups.map((g) => (
-          <Group key={g.rop ?? '∅'} group={g} />
-        ))}
+        <tbody>
+          {data.rows.map((r) => (
+            <Row key={r.rop} row={r} />
+          ))}
+        </tbody>
         <tfoot>
-          <TotalRow label="Jami · barcha guruhlar" cells={data.total} strong />
+          <TotalRow label="Jami · barcha ROPlar" cells={data.total} strong />
         </tfoot>
       </table>
     </div>
   )
 }
 
-function Group({ group }: { group: GroupPlanGroupDto }) {
+function Row({ row }: { row: GroupPlanRowDto }) {
+  const name = row.fullName ?? `${row.rop} guruhi`
   return (
-    <tbody>
-      <tr>
-        <th
-          colSpan={COLUMNS.length + 1}
-          scope="rowgroup"
-          className="border-b px-3 pt-4 pb-2 text-left"
-          style={{ borderColor: 'var(--border)', background: 'color-mix(in oklab, var(--accent) 12%, var(--surface-raised))' }}
-        >
-          <span className="sticky left-3 inline-flex items-center gap-2">
-            <span className="text-[13px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
-              {group.rop ? `${group.rop} guruhi` : 'Jamoasiz'}
-            </span>
-            <span className="text-xs font-normal" style={muted}>
-              {group.rop
-                ? `${formatNumber(group.sellers.filter((s) => s.mayTakeLeads !== null).length)} kishi`
-                : 'ROP jamoasi koʻrsatilmagan lid va buyurtmalar'}
-            </span>
-          </span>
-        </th>
-      </tr>
-      {group.sellers.map((s) => (
-        <tr key={s.employeeId}>
-          <th
-            scope="row"
-            className={`${pin} border-b px-3 py-2 font-medium whitespace-nowrap`}
-            style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
-          >
-            <span className="block max-w-[240px] truncate" title={s.fullName}>
-              {s.fullName}
-            </span>
-          </th>
-          <Cells cells={s} />
-          <td className={td} style={{ borderColor: 'var(--border)' }}>
-            <Access allowed={s.mayTakeLeads} />
-          </td>
-        </tr>
-      ))}
-      <TotalRow label="Jami" cells={group.total} />
-    </tbody>
+    <tr>
+      <th
+        scope="row"
+        className={`${pin} border-b px-3 py-2 font-medium whitespace-nowrap`}
+        style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)', color: 'var(--ink-primary)' }}
+      >
+        <span className="block max-w-[240px] truncate" title={`${name} · ${row.rop} guruhi`}>
+          {name}
+        </span>
+      </th>
+      <Cells cells={row} />
+      <td className={td} style={{ borderColor: 'var(--border)' }}>
+        <Access allowed={row.mayTakeLeads} />
+      </td>
+    </tr>
   )
 }
 
@@ -212,15 +192,15 @@ function Debt({ debt }: { debt: MoneyDto }) {
   )
 }
 
-function Access({ allowed }: { allowed: boolean | null }) {
-  if (allowed === null) return <span style={muted}>—</span>
+/** Dostup — «Ruxsat» green, «Ruxsat emas» red; «ROP otchet» draws the same chip. */
+export function Access({ allowed }: { allowed: boolean }) {
   const tone = allowed ? GOOD : BAD
   return (
     <span
       className="inline-block rounded-md px-2 py-0.5 text-xs font-medium"
       style={{ background: `color-mix(in oklab, ${tone} 18%, transparent)`, color: `color-mix(in oklab, ${tone} 75%, var(--ink-primary))` }}
     >
-      {allowed ? 'Ruxsat' : 'Ruxsat yoʻq'}
+      {allowed ? 'Ruxsat' : 'Ruxsat emas'}
     </span>
   )
 }

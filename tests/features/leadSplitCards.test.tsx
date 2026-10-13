@@ -270,4 +270,15 @@ describe('LeadSplitCards', () => {
     expect(screen.queryByRole('button', { name: 'Rejani kiritish' })).toBeNull()
     expect(screen.queryByText('Лид руч')).toBeNull()
   })
+
+  it('closes «ROP otchet»\'s Dostup on a red Отклонение only (2026-10-13)', async () => {
+    data = fixture()
+    await draw()
+    await waitFor(() => expect(screen.getByText('Asliddin guruhi')).toBeTruthy())
+    const row = (name: string) => screen.getByText(name).closest('tr')!
+    expect(screen.getByText('Dostup')).toBeTruthy()
+    expect(within(row('Sardor Davlatov')).getByText('Ruxsat emas')).toBeTruthy()
+    expect(within(row('Asliddin Karimberdiyev')).getByText('Ruxsat')).toBeTruthy()
+    expect(within(row('Umumiy')).queryByText(/Ruxsat/)).toBeNull()
+  })
 })

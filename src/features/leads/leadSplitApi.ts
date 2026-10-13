@@ -93,9 +93,9 @@ export interface RopReportDto {
 */
 
 export interface GroupPlanCellsDto {
-  /** Usp soni — kval leads handed to the seller. */
+  /** Usp soni — the ROP team's без квал. */
   readonly leads: number
-  /** Reja (Avto) — 500 000 × leads. */
+  /** Reja (Avto) — 200 000 × leads. */
   readonly plan: MoneyDto
   /** Buyurtma summasi — Факт-1. */
   readonly orders: MoneyDto
@@ -105,23 +105,18 @@ export interface GroupPlanCellsDto {
   readonly debt: MoneyDto
 }
 
-export interface GroupPlanSellerDto extends GroupPlanCellsDto {
-  readonly employeeId: string
-  readonly fullName: string
-  /** Dostup; null on the «Hech kimga biriktirilmagan» row. */
-  readonly mayTakeLeads: boolean | null
-}
-
-export interface GroupPlanGroupDto {
-  /** Null: the leads and orders that name no team. */
-  readonly rop: string | null
-  readonly sellers: readonly GroupPlanSellerDto[]
-  readonly total: GroupPlanCellsDto
+export interface GroupPlanRowDto extends GroupPlanCellsDto {
+  /** The ROP team. */
+  readonly rop: string
+  /** The team's head; null when the roster has none. */
+  readonly fullName: string | null
+  /** Dostup: false on a red Qarz. */
+  readonly mayTakeLeads: boolean
 }
 
 export interface GroupPlanDto {
   readonly from: string
   readonly to: string
-  readonly groups: readonly GroupPlanGroupDto[]
+  readonly rows: readonly GroupPlanRowDto[]
   readonly total: GroupPlanCellsDto
 }

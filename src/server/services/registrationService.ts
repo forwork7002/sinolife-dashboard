@@ -36,6 +36,9 @@ const faktCache = ttlCache<SellerFaktDayRow[]>(120_000, LIVE_CACHE)
 */
 const splitDaysCache = ttlCache<{ rows: DistributedDayRow[]; bezkval: BezkvalDayRow[] }>(120_000, LIVE_CACHE)
 
+/* «Guruhlar»' month of «Безквал», the same statement on the same terms; brand applied after. */
+const monthBezkvalCache = ttlCache<BezkvalDayRow[]>(120_000, LIVE_CACHE)
+
 /**
  * «Registratsiya» — one day's handed-out leads per ROP and the day's split,
  * «ROP otchet», the same day seller by seller, and «Guruhlar», that sheet
@@ -74,11 +77,17 @@ export class RegistrationService {
     return this.sellerSheet({ from: input.day, to: input.day, timeZone: input.timeZone, now: input.now, calls: true, brand: input.brand })
   }
 
-  /** «Guruhlar» — the first of the day's month to the day. See groupPlan.ts. */
+  /** «Guruhlar» — the first of the day's month to the day, one row per ROP. See groupPlan.ts. */
   async groupPlan(input: { day: string; timeZone: string; now: Date; brand?: BrandFilter }): Promise<GroupPlanDto> {
     const from = monthStart(input.day)
-    const report = await this.sellerSheet({ from, to: input.day, timeZone: input.timeZone, now: input.now, calls: false, brand: input.brand })
-    return buildGroupPlan({ from, report })
+    const brand = input.brand ?? 'all'
+    const [report, bezkval] = await Promise.all([
+      this.sellerSheet({ from, to: input.day, timeZone: input.timeZone, now: input.now, calls: false, brand }),
+      monthBezkvalCache.get(`${from}:${input.day}:${input.timeZone}`, () => this.repository.bezkvalDays(from, input.day, input.timeZone)),
+    ])
+    // The report keeps its groups by `teamBrand`; the без квал rows go the same way.
+    const kept = brand === 'all' ? bezkval : bezkval.filter((r) => brandMatches(brand, teamBrand(r.rop)))
+    return buildGroupPlan({ from, report, bezkval: kept })
   }
 
   /**
