@@ -2,6 +2,7 @@ import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import { CALL_DATA_FLOOR, callWindowStart } from '@/lib/callQuality'
 import type { Period } from '@/server/domain/period/period'
+import { LEAD_TILE_SOURCES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 
@@ -110,7 +111,7 @@ export class LeadSourcesRepository {
         second pass over the window (as RNP's \`registrationDaysSql\`).
       */
       WITH reg AS MATERIALIZED (
-        SELECT d."id" AS id, d."createdAtSource" AS created, d."title" AS title, ${sourceDescriptionSql('d')} AS sd,
+        SELECT d."id" AS id, d."createdAtSource" AS created, d."title" AS title, d."customerId" AS customer, ${sourceDescriptionSql('d')} AS sd,
                ${replayActSql(sourceDescriptionSql('d'))} AS act,
                d."sourceId", d."stageId", d."status", d."aiQualifiedAt", NULLIF(btrim(d."productLine"), '') AS product_line
         FROM "deal" d
@@ -123,7 +124,30 @@ export class LeadSourcesRepository {
         robot opened its deal — is no lead of the day it was opened (05.10:
         1 071 of them). The same rule as «RNP jadvali» (\`replayedCteSql\`).
       */
-      ${replayedCteSql('(SELECT r.id, r.created, r.act FROM reg r) q0', '$1')}
+      ${replayedCteSql('(SELECT r.id, r.created, r.act FROM reg r) q0', '$1')},
+      /*
+        THE TELEGRAM BOT'S EXTRA DEALS: it opens one deal per message the
+        «Телеграм группа заявка» chat gets, so two messages about one client
+        open two deals (13.10: 1119280 + 1119282, one contact, 16 s apart;
+        10.10: 1100740 + 1100760), and a message with a broken number still
+        opens one, titled «⚠️ NOMER XATO» (13.10: 1118354). The chat counts
+        each client once and the broken number not at all — the tile ran 1–2
+        over it (2026-10-13). So a Telegram client counts once a day: the
+        kval deal if any, else the first; a «NOMER XATO» deal never.
+      */
+      telegram_extra AS (
+        SELECT x.id
+        FROM (
+          SELECT r.id, r.broken,
+                 row_number() OVER (
+                   PARTITION BY COALESCE(r.customer, r.id), (r.created AT TIME ZONE 'UTC' AT TIME ZONE $3)::date
+                   ORDER BY r.broken, (r."status" = 'WON') DESC, r.created, r.id
+                 ) AS n
+          FROM (SELECT r0.*, (r0.title LIKE '%NOMER XATO%') AS broken FROM reg r0) r
+          JOIN "sales_source" s ON s."id" = r."sourceId" AND s."externalId" = ANY($4::text[])
+        ) x
+        WHERE x.n > 1 OR x.broken
+      )
       SELECT
         /*
           ::text, never a bare ::date — node-postgres builds a DATE at LOCAL
@@ -150,11 +174,13 @@ export class LeadSourcesRepository {
       LEFT JOIN "sales_source" s ON s."id" = r."sourceId"
       LEFT JOIN form_alias fa ON fa.sd = r.sd
       WHERE NOT EXISTS (SELECT 1 FROM replayed rp WHERE rp.id = r.id)
+        AND NOT EXISTS (SELECT 1 FROM telegram_extra te WHERE te.id = r.id)
       GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
       `,
       period.start,
       period.end,
       this.tz,
+      [...LEAD_TILE_SOURCES.telegram],
     )
     return rows.map((r) => ({
       day: r.day,
