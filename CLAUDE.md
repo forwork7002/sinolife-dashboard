@@ -608,7 +608,7 @@ Per-screen traps worth knowing before you touch one:
     335–343, the P&L cost lines 411–415 / 438–442, a group's «без квал»,
     Zextra's lead count; «без квал» / «квал %» ARE filled since 2026-10-09 —
     «Lidlar»'s «Безквал» of the group's ROP team, `RnpRepository.bezkvalDays`
-    → `reg:bezkval:<g>` / `reg:bezkval_pct:<g>` = квал ÷ без квал) are NOT filled from the sheet — they keep their place
+    → `reg:bezkval:<g>` / `reg:bezkval_pct:<g>` = квал ÷ без квал; since 2026-10-13 the user's rule «без квал = every Регистрация deal, kval or not» is drawn whole: `reg:bezkval:other` (teams with no group row), `reg:bezkval:none` (no ROP) and `reg:bezkval:total`, so groups + other + none = total — 12.10 on the portal: 990 + 174 + 502 = 1 666) are NOT filled from the sheet — they keep their place
     empty and hatched (HR was later removed, the cost lines became typed, see
     below) — and a ROP's early leads stay muted rather than being filled from
     the sheet. `rnp_manual_day` and its

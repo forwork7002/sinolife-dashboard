@@ -847,9 +847,17 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   }
   // Only the group rows read it, so a team is not made for it: `intakeOf` answers zeros for the rest.
   const intake = new Map<string, number[]>()
+  // Безквал is every Регистрация deal, kval or not (the user, 2026-10-13): these two keep the ones no group holds.
+  const intakeTotal = zeros()
+  const intakeNoRop = zeros()
   for (const r of input.bezkval) {
     const i = at.get(r.day)
-    if (i === undefined || r.rop === null) continue
+    if (i === undefined) continue
+    intakeTotal[i]! += r.leads
+    if (r.rop === null) {
+      intakeNoRop[i]! += r.leads
+      continue
+    }
     const rop = canonical(r.rop)
     const counts = intake.get(rop) ?? zeros()
     counts[i]! += r.leads
@@ -1097,6 +1105,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   const intakeOf = (rop: string) => intake.get(rop) ?? zeros()
   const otherTeams = total((t) => t.leads, (rop) => !groupTeams.has(rop))
   const otherNames = teamNames.filter((rop) => !groupTeams.has(rop) && sum(grid.get(rop)!.leads) > 0).map(labelOf)
+  const otherIntakeTeams = [...intake.keys()].filter((rop) => !groupTeams.has(rop) && sum(intake.get(rop)!) > 0)
+  const otherIntake = zeros().map((_, i) => otherIntakeTeams.reduce((acc, rop) => acc + intake.get(rop)![i]!, 0))
   /*
     The same row cut by brand, for the brand switch only: the «Boshqa» teams
     are of both brands and of neither (Шохжахон, Маржона, Baza are Collagen;
@@ -1132,7 +1142,10 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
         additive(clock, { key: `reg:group:${g}:qualified`, label: `${g} guruh — квал`, unit: 'count', ...planned(g, 'reg_group_qualified'), hint: `${labelOf(GROUP_TEAM[g])} jamoasiga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha; ROP blokidagi «Квал лид сони» bilan bir xil.`, sheet: sh(GROUP_SHEET_ROW[g]!, `${g} guruh — квал`) }, handedTo(GROUP_TEAM[g])),
         ratio(clock, { key: `reg:bezkval_pct:${g}`, label: `${g} guruh — квал %`, unit: 'percent', hint: 'квал ÷ без квал × 100. Квал tarqatilgan kuni, без квал yaratilgan kuni boʻyicha sanaladi, shuning uchun bir kunlik foiz 100% dan oshishi mumkin; oylik ustun aniqroq.', sheet: sh(GROUP_SHEET_ROW[g]! + 1, `${g} guruh — квал %`) }, handedTo(GROUP_TEAM[g]), intakeOf(GROUP_TEAM[g]), 100),
       ]),
+      additive(clock, { key: 'reg:bezkval:other', label: 'Boshqa jamoalar — без квал', unit: 'count', hint: `Регистрация voronkasida shu kuni yaratilgan va guruh qatori yoʻq ROP jamoalariga biriktirilgan bitimlar — «ROP KVAL LID» boʻyicha, har qanday bosqichda: ${otherIntakeTeams.length > 0 ? otherIntakeTeams.map(labelOf).join(', ') : 'bu oy yoʻq'}.` }, otherIntake),
       additive(clock, { key: 'reg:group:none:qualified', label: 'Boshqa jamoalar — квал', unit: 'count', hint: `Guruh qatori yoʻq ROP jamoalariga tarqatilgan lidlar — «Лид таркатилган сана» boʻyicha: ${otherNames.length > 0 ? otherNames.join(', ') : 'bu oy yoʻq'}.` }, otherTeams),
+      additive(clock, { key: 'reg:bezkval:none', label: 'ROP biriktirilmagan — без квал', unit: 'count', hint: 'Регистрация voronkasida shu kuni yaratilgan, lekin hech bir ROPga biriktirilmagan bitimlar («ROP KVAL LID» boʻsh, «Ответственный» ROP emas) — hech bir guruhga kirmaydi.' }, intakeNoRop),
+      additive(clock, { key: 'reg:bezkval:total', label: 'Жами без квал (Регистрация)', unit: 'count', tone: 'total', hint: 'Регистрация voronkasiga shu kuni tushgan BARCHA bitimlar — kvallari ham, kval boʻlmaganlari ham, har qanday bosqichda («Дубликат (лид)» va «Qayta zayavka» ham). Guruhlar + «Boshqa jamoalar» + «ROP biriktirilmagan» = shu qator.' }, intakeTotal),
       ...otherBrandRows,
       additive(clock, { key: 'reg:distributed', label: 'РОП ларга тарқатилди', unit: 'count', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: '«Лид таркатилган сана» shu kun va «РОП (Первичка)» ROP jamoasi boʻlgan bitimlar, shu sanadan oldingi 30 kun ichida yaratilganlari.' }, ropLeads),
       additive(clock, { key: 'reg:undistributed', label: UNDISTRIBUTED, unit: 'count', better: 'down', reliableFrom: LEAD_ROP_RELIABLE_FROM, hint: 'Tarqatilgan sanasi bor, lekin «РОП (Первичка)» da ROP emas (masalan Регистрация boshligʻi) yoki boʻsh.' }, undistributed),

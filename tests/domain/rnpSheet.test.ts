@@ -513,6 +513,25 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     expect(d.lines.find((l) => l.row === 52)).toMatchObject({ kind: 'value', sub: 'квал %', key: 'reg:bezkval_pct:Sevinch' })
   })
 
+  it('counts every Регистрация deal as без квал: groups + other teams + no ROP = «Жами без квал» (2026-10-13)', () => {
+    const d = dto()
+    expect(on(row(d, 'registration', 'reg:bezkval:other'), '2026-09-02')).toBe(30)
+    expect(row(d, 'registration', 'reg:bezkval:other').hint).toContain('Шохжахон РОП')
+    expect(on(row(d, 'registration', 'reg:bezkval:none'), '2026-09-02')).toBe(400)
+    const total = row(d, 'registration', 'reg:bezkval:total')
+    expect(on(total, '2026-09-02')).toBe(190 + 52 + 30 + 400)
+    expect(total.fact).toBe(200 + 52 + 30 + 400)
+    const groups = d.blocks
+      .find((b) => b.id === 'registration')!
+      .rows.filter((r) => /^reg:bezkval:(?!other$|none$|total$)/.test(r.key))
+      .reduce((acc, r) => acc + (on(r, '2026-09-02') ?? 0), 0)
+    expect(groups + 30 + 400).toBe(on(total, '2026-09-02'))
+    // On the page, after the groups: other teams, then no ROP, then the total, on «Hammasi» only.
+    const keys = d.lines.flatMap((l) => (l.kind === 'value' && l.key?.startsWith('reg:bezkval:') && !/_pct/.test(l.key) && l.row === null ? [l.key] : []))
+    expect(keys).toEqual(['reg:bezkval:other', 'reg:bezkval:none', 'reg:bezkval:total'])
+    expect(d.lines.filter((l) => l.kind === 'value' && keys.includes(l.key ?? '')).every((l) => l.brand === undefined)).toBe(true)
+  })
+
   it('counts a group\'s kval as the leads handed to the team it is named after — the series of its «Квал лид сони» (2026-10-02)', () => {
     const d = dto()
     expect(on(row(d, 'registration', 'reg:group:Sevinch:qualified'), '2026-09-02')).toBe(57)

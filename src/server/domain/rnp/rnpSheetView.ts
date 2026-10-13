@@ -163,13 +163,18 @@ export function sheetLines(blocks: readonly RnpBlockDto[], options: { month: str
   const addedLogistics = added('logistics', 'lg', 'section')
   // The leads handed to teams no «guruh» row is named after («Boshqa jamoalar — квал»), and its cut per brand.
   const registrationRows = blocks.find((b) => b.kind === 'registration')?.rows ?? []
+  // Then the Регистрация deals no group holds, and all of them («Жами без квал», the user's 2026-10-13 rule).
+  const keyed = (key: string) => registrationRows.filter((r) => r.key === key).map(valueLine)
   const otherTeams = [
-    ...registrationRows.filter((r) => r.key === 'reg:group:none:qualified').map(valueLine),
+    ...keyed('reg:bezkval:other'),
+    ...keyed('reg:group:none:qualified'),
     ...(['Collagen', 'Zextra', 'none'] as const).flatMap((b) =>
       registrationRows
         .filter((r) => r.key === `reg:group:none:qualified:${b}`)
         .map((r): RnpLine => ({ ...valueLine(r), brand: b, brandOnly: true })),
     ),
+    ...keyed('reg:bezkval:none'),
+    ...keyed('reg:bezkval:total'),
   ]
 
   /*
