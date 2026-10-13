@@ -74,7 +74,11 @@ export class RegistrationRepository {
    * 1. «ROP KVAL LID» (`k`, from 2026-10-07): the portal's own stamp of the
    *    ROP the deal was handed to, kept when the ROP passes it on — the field
    *    the client added because «РОП (Первичка)» drifted (on 07.10, 22 deals
-   *    named 17604 there and Asliddin here). Read like Безквал's owner.
+   *    named 17604 there and Asliddin here). Read like Безквал's owner — but
+   *    never on a Регистрация deal: the portal stamps it on the desk's WON
+   *    copy too, which also carries the hand-out day, so that copy and the
+   *    Первичка deal it became were both credited (13.10: Azizbek 39, the
+   *    portal 26; the 13 extra were the copies).
    * 2. «РОП (Первичка)» (`e`): the team that person heads — of two, the one
    *    they sit in — then the team they sit in.
    * 3. Neither names a ROP — the field holds user 10, the registration desk's
@@ -88,7 +92,7 @@ export class RegistrationRepository {
    */
   static leadRopSql(): string {
     return `COALESCE(
-            ${RegistrationRepository.bezkvalOwnerRopSql('k')},
+            CASE WHEN p."role" IS DISTINCT FROM 'LEAD' THEN ${RegistrationRepository.bezkvalOwnerRopSql('k')} END,
             (SELECT ${InsightsRepository.ropNameSql('h."name"')}
                FROM "department" h
               WHERE h."headId" = d."leadRopEmployeeId" AND h."isActive"
@@ -117,7 +121,7 @@ export class RegistrationRepository {
     return `FROM "deal" d
         ${RegistrationRepository.handedOutJoinsSql()}
         WHERE d."leadDistributedOn" ${dayPredicate}
-          AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL OR d."ropKvalLidEmployeeId" IS NOT NULL)`
+          AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`
   }
 
   /** «Безквал»: `from` / `to` are inclusive `YYYY-MM-DD` in `timeZone`. */

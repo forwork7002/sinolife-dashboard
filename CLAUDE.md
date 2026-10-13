@@ -949,6 +949,11 @@ Per-screen traps worth knowing before you touch one:
   and comes FIRST — so a deal a seller opened for themselves counts for
   their ROP (06.10: 122 such deals); the guesses below are only the fallback
   for rows the sync has not re-read yet.
+  The HAND-OUT rule (`leadRopSql`: /rnp «Квал лид сони», Lidlar «Квал»,
+  ROP otchet, Guruhlar) reads it too, but never on a Регистрация deal: the
+  desk's WON copy carries the field AND «Лид таркатилган сана», so both it
+  and the Первичка deal it became were credited (13.10: Azizbek 39 against
+  the portal's 26). Fixed 2026-10-13.
   `bezkvalDaysSql` order: «ROP KVAL LID»'s team (same head / «… rop» rule) →
   today's owner's ROP (head / «… rop» registrar) →
   a deal someone ELSE opened, now with a seller whose PRIMARY unit is a ROP
