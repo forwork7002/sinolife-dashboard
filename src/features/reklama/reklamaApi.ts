@@ -66,13 +66,18 @@ export interface FormOwnerDto {
   readonly total: FormCellsDto
   readonly dmSpendUsd: number
   readonly dmConversations: number
+  readonly dmLeads: number
+  readonly dmQualified: number
+  readonly dmShared: boolean
   readonly qualified: number | null
+  readonly formLeads: number | null
   readonly days: readonly FormDayDto[]
 }
 
 export interface FormBlockDto {
   readonly total: FormCellsDto
   readonly qualified: number | null
+  readonly formLeads: number | null
   readonly days: readonly FormDayDto[]
   readonly owners: readonly FormOwnerDto[]
 }

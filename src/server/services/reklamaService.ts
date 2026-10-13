@@ -23,6 +23,7 @@
  * page's days sum to its total and the pages to the grand total, to the cent.
  */
 
+import { apportion } from '@/lib/apportion'
 import { TARGET_SOURCE_IDS, TARGET_SOURCE_PRODUCT } from '@/server/integrations/crm/bitrix24/mapping'
 import {
   type CampaignChannel,
@@ -140,8 +141,21 @@ export interface FormOwnerDto {
   /** The same person's DM campaigns, which the sheet keeps in its own block. */
   readonly dmSpendUsd: number
   readonly dmConversations: number
+  /**
+   * The Регистрация leads and kval of the page(s) this targetolog's DM money
+   * goes to — the «DM» sheet's «Кол лид» / «Кол квал». A page one targetolog
+   * runs DM on is theirs whole; a page several do (sinolifeuz) is split by
+   * each one's Meta conversations on it, day by day (`dmShared`), because a
+   * DM deal carries no ad, campaign or UTM (checked on the portal 2026-10-13).
+   */
+  readonly dmLeads: number
+  readonly dmQualified: number
+  /** Some of `dmLeads` came from a page shared with another targetolog, split by conversations. */
+  readonly dmShared: boolean
   /** Kval of the Регистрация leads this targetolog's CRM forms opened (`withFormKval`); null = not read. */
   readonly qualified: number | null
+  /** Those Регистрация leads — «Lidlar»'s «Bitrix лид», kval %'s divisor; null = not read. */
+  readonly formLeads: number | null
   readonly days: readonly FormDayDto[]
 }
 
@@ -149,6 +163,8 @@ export interface FormBlockDto {
   readonly total: FormCellsDto
   /** Every form lead's kval — «Lidlar»'s «Targetologlar» «Jami»; null = not read. */
   readonly qualified: number | null
+  /** Every form's Регистрация leads; null = not read. */
+  readonly formLeads: number | null
   readonly days: readonly FormDayDto[]
   readonly owners: readonly FormOwnerDto[]
 }
@@ -574,6 +590,8 @@ export function reklamaOverview(input: {
     days: Map<string, FormAcc>
   }
   const owners = new Map<string, OwnerAcc>()
+  // Each targetolog's DM conversations and money per page per day — whose a DM page's leads are.
+  const dmOwners = new Map<string, Map<string, Map<string, { conversations: number; spend: bigint }>>>()
 
   for (const row of input.campaignRows) {
     const channel = campaignChannel(row.objective, row.campaignName, row.accountId)
@@ -590,6 +608,12 @@ export function reklamaOverview(input: {
         const d = cellOf(dm, page, row.date, dmZero)
         d.spend += row.spendMicroUsd
         d.conversations += row.conversations
+        const byOwner = cellOf(dmOwners, page, row.date, () => new Map<string, { conversations: number; spend: bigint }>())
+        const ownerKey = `${owner.product}|${owner.targetolog}`
+        const share = byOwner.get(ownerKey) ?? { conversations: 0, spend: 0n }
+        share.conversations += row.conversations
+        share.spend += row.spendMicroUsd
+        byOwner.set(ownerKey, share)
       }
     }
 
@@ -651,6 +675,11 @@ export function reklamaOverview(input: {
       days: pageDays,
     }
   })
+
+  const ownerDm = dmLeadsByOwner(
+    dmPages.filter((p) => p.carriesDmSpend),
+    dmOwners,
+  )
 
   // DM money on a page the sheet does not draw (a `DM_PAGE_OF_ACCOUNT` page missing from `sales_source`) is
   // reported as unattributed, never lost from the page totals while «DM sarfi» still counts it.
@@ -837,7 +866,11 @@ export function reklamaOverview(input: {
       total: formCells(o.total),
       dmSpendUsd: usd(o.dmSpend),
       dmConversations: o.dmConversations,
+      dmLeads: ownerDm.get(o.key)?.leads ?? 0,
+      dmQualified: ownerDm.get(o.key)?.qualified ?? 0,
+      dmShared: ownerDm.get(o.key)?.shared ?? false,
       qualified: null,
+      formLeads: null,
       days: days.map((date, i) => {
         const cell = o.days.get(date) ?? formZero()
         addForm(formTotalDays[i]!, asForm(cell))
@@ -865,6 +898,7 @@ export function reklamaOverview(input: {
     form: {
       total: formCells(formTotal),
       qualified: null,
+      formLeads: null,
       days: days.map((date, i) => ({ date, ...formCells(formTotalDays[i]!) })),
       owners: formOwners,
     },
@@ -906,6 +940,75 @@ export function sideColumnsOf(rows: readonly CampaignDayRow[], days: readonly st
 }
 
 /**
+ * Whose a DM page's Регистрация leads and kval are (the user, 2026-10-13: DM
+ * lid, kval and their prices per targetolog). Meta counts each targetolog's
+ * conversations on the page; the portal counts the page's leads; nothing
+ * joins the two per deal — a DM deal carries no ad, campaign or UTM. So a
+ * page one targetolog ran DM on in the window is theirs whole, and a page
+ * several did is split by their conversations: each day's leads by that
+ * day's shares (money when the day has no conversation), a day nobody
+ * advertised by the window's shares, then the page's window total
+ * `apportion`ed on those weights — so the targetologs' figures add up to
+ * the page's, to the lead. A page with no targetolog's DM in the window
+ * (organic only) is nobody's.
+ */
+export function dmLeadsByOwner(
+  pages: readonly DmPageDto[],
+  dmOwners: ReadonlyMap<string, ReadonlyMap<string, ReadonlyMap<string, { conversations: number; spend: bigint }>>>,
+): Map<string, { leads: number; qualified: number; shared: boolean }> {
+  const out = new Map<string, { leads: number; qualified: number; shared: boolean }>()
+  const shareOf = (byOwner: ReadonlyMap<string, { conversations: number; spend: bigint }>): Map<string, number> => {
+    const conversations = [...byOwner.values()].reduce((n, s) => n + s.conversations, 0)
+    const spend = [...byOwner.values()].reduce((n, s) => n + s.spend, 0n)
+    const shares = new Map<string, number>()
+    for (const [owner, s] of byOwner) {
+      const share =
+        conversations > 0 ? s.conversations / conversations : spend > 0n ? Number(s.spend) / Number(spend) : 0
+      if (share > 0) shares.set(owner, share)
+    }
+    return shares
+  }
+  for (const page of pages) {
+    const byDay = dmOwners.get(page.key)
+    if (byDay === undefined) continue
+    const window = new Map<string, { conversations: number; spend: bigint }>()
+    for (const byOwner of byDay.values()) {
+      for (const [owner, s] of byOwner) {
+        const acc = window.get(owner) ?? { conversations: 0, spend: 0n }
+        acc.conversations += s.conversations
+        acc.spend += s.spend
+        window.set(owner, acc)
+      }
+    }
+    const windowShares = shareOf(window)
+    if (windowShares.size === 0) continue
+    const weights = new Map<string, { leads: number; qualified: number }>()
+    for (const day of page.days) {
+      if (day.leads === 0) continue
+      const onDay = byDay.get(day.date)
+      const dayShares = onDay ? shareOf(onDay) : new Map<string, number>()
+      for (const [owner, share] of dayShares.size > 0 ? dayShares : windowShares) {
+        const w = weights.get(owner) ?? { leads: 0, qualified: 0 }
+        w.leads += day.leads * share
+        w.qualified += day.qualified * share
+        weights.set(owner, w)
+      }
+    }
+    const owners = [...windowShares.keys()]
+    const leads = apportion(page.total.leads, owners.map((o) => weights.get(o)?.leads ?? 0))
+    const qualified = apportion(page.total.qualified, owners.map((o) => weights.get(o)?.qualified ?? 0))
+    owners.forEach((owner, i) => {
+      const acc = out.get(owner) ?? { leads: 0, qualified: 0, shared: false }
+      acc.leads += leads[i]!
+      acc.qualified += qualified[i]!
+      acc.shared ||= owners.length > 1
+      out.set(owner, acc)
+    })
+  }
+  return out
+}
+
+/**
  * «Отчёт Т» with each targetolog's kval beside their spend (the user,
  * 2026-10-10: «kval soni chiqarib bersin»). Meta names no deal, so the kval
  * is «Lidlar»'s: the Регистрация leads the targetolog's CRM forms opened,
@@ -917,18 +1020,23 @@ export function sideColumnsOf(rows: readonly CampaignDayRow[], days: readonly st
 export function withFormKval(
   overview: ReklamaOverviewDto,
   forms: {
-    readonly owners: readonly { readonly key: string; readonly outcome: { readonly success: number } }[]
-    readonly outcome: { readonly success: number }
+    readonly owners: readonly { readonly key: string; readonly outcome: { readonly success: number; readonly leads: number } }[]
+    readonly outcome: { readonly success: number; readonly leads: number }
   } | null,
 ): ReklamaOverviewDto {
   if (forms === null) return overview
-  const kval = new Map(forms.owners.map((o) => [o.key, o.outcome.success]))
+  const read = new Map(forms.owners.map((o) => [o.key, o.outcome]))
   return {
     ...overview,
     form: {
       ...overview.form,
       qualified: forms.outcome.success,
-      owners: overview.form.owners.map((o) => ({ ...o, qualified: kval.get(o.key) ?? 0 })),
+      formLeads: forms.outcome.leads,
+      owners: overview.form.owners.map((o) => ({
+        ...o,
+        qualified: read.get(o.key)?.success ?? 0,
+        formLeads: read.get(o.key)?.leads ?? 0,
+      })),
     },
   }
 }

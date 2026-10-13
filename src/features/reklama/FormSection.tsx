@@ -28,14 +28,6 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
   const days = chosen ? chosen.days : form?.days
   const total = chosen ? chosen.total : form?.total
 
-  type OwnerRow = {
-    key: string
-    owner: FormOwnerDto | null
-    cells: FormCellsDto
-    qualified: number | null
-    dmSpend: number
-    dmConversations: number
-  }
   // No targetolog spent anything: the empty state, not a «Jami» row of dashes.
   const ownerRows: OwnerRow[] = form && owners.length > 0
     ? [
@@ -44,16 +36,24 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
           owner: o,
           cells: o.total,
           qualified: o.qualified,
+          formLeads: o.formLeads,
           dmSpend: o.dmSpendUsd,
           dmConversations: o.dmConversations,
+          dmLeads: o.dmLeads,
+          dmQualified: o.dmQualified,
+          dmShared: o.dmShared,
         })),
         {
           key: 'total',
           owner: null,
           cells: form.total,
           qualified: form.qualified,
+          formLeads: form.formLeads,
           dmSpend: owners.reduce((n, o) => n + o.dmSpendUsd, 0),
           dmConversations: owners.reduce((n, o) => n + o.dmConversations, 0),
+          dmLeads: owners.reduce((n, o) => n + o.dmLeads, 0),
+          dmQualified: owners.reduce((n, o) => n + o.dmQualified, 0),
+          dmShared: false,
         },
       ]
     : []
@@ -69,8 +69,8 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
 
       <TableCard
         title="Targetologlar — davr boʻyicha"
-        hint="DM ustunlari — shu targetologning DM kampaniyalari; ular yuqoridagi DM jadvaliga ham kiradi."
-        footer="Kval — targetologning CRM-formalari ochgan Регистрация lidlaridan «Сделка успешна» boʻlgani, «Lidlar» boʻlimidagi bilan bir xil; «Jami»ga targetologi aniqlanmagan formalar ham kiradi."
+        hint="Lid-forma: Kval narxi = sarf ÷ kval, Kval % = kval ÷ Bitrix24 lid. DM: sarf va murojat — targetologning DM kampaniyalari (Meta), lid va kval — DM pul ketgan sahifaning Регистрация lidlari (Bitrix24)."
+        footer="Kval — targetologning CRM-formalari ochgan Регистрация lidlaridan «Сделка успешна» boʻlgani, «Lidlar» boʻlimidagi bilan bir xil; «Jami»ga targetologi aniqlanmagan formalar ham kiradi. DM lidda reklama yoki kampaniya izi yoʻq, shuning uchun bir nechta targetolog DM qiladigan sahifa (sinolifeuz) lidlari har kuni ularning Meta murojatlari ulushiga koʻra boʻlinadi — bunday raqam «≈» bilan; yolgʻiz targetologning sahifasi (zextrauzb, collagen.sinolife) aniq."
       >
         <DataTable<OwnerRow>
           columns={ownerColumns}
@@ -78,7 +78,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
           rowKey={(r) => r.key}
           status={status}
           emptyTitle="Bu davrda lid-forma sarfi yoʻq"
-          minWidth={1260}
+          minWidth={1900}
           maxHeight="none"
           stickyColumns={1}
           stickyLastRow
@@ -140,12 +140,40 @@ function Spend({ value }: { value: number }) {
   )
 }
 
-/** «Отчёт Т»'s figures with the targetolog's kval after Meta's own lead count. */
-const ownerFigures: Column<{ cells: FormCellsDto; qualified: number | null }>[] = (() => {
-  const figures = formColumns<{ cells: FormCellsDto; qualified: number | null }>((r) => r.cells)
-  const at = figures.findIndex((c) => c.key === 'leads') + 1
+interface OwnerRow {
+  key: string
+  owner: FormOwnerDto | null
+  cells: FormCellsDto
+  qualified: number | null
+  formLeads: number | null
+  dmSpend: number
+  dmConversations: number
+  dmLeads: number
+  dmQualified: number
+  dmShared: boolean
+}
+
+/** A ratio over a read count — null while either side is unread or the divisor is 0. */
+const ratio = (numerator: number | null, denominator: number | null): number | null =>
+  numerator === null || denominator === null || denominator === 0 ? null : numerator / denominator
+
+/** A DM lid / kval count; split off a shared page it is marked «≈» (see the table's footer). */
+function DmCount({ value, shared }: { value: number; shared: boolean }) {
+  if (value === 0) return <span style={muted}>—</span>
+  return shared ? (
+    <span title="Umumiy sahifa — Meta murojatlari ulushiga koʻra boʻlingan">≈ {formatNumber(value)}</span>
+  ) : (
+    <>{formatNumber(value)}</>
+  )
+}
+
+/** «Отчёт Т»'s figures with the targetolog's kval, its price and its share of the Bitrix24 leads. */
+const ownerFigures: Column<OwnerRow>[] = (() => {
+  const figures = formColumns<OwnerRow>((r) => r.cells)
+  const leadsAt = figures.findIndex((c) => c.key === 'leads') + 1
+  const cplAt = figures.findIndex((c) => c.key === 'cpl') + 1
   return [
-    ...figures.slice(0, at),
+    ...figures.slice(0, leadsAt),
     {
       key: 'qualified',
       header: 'Kval',
@@ -155,18 +183,33 @@ const ownerFigures: Column<{ cells: FormCellsDto; qualified: number | null }>[] 
       render: (r) =>
         r.qualified === null ? <span style={muted}>—</span> : <span className="font-semibold">{formatNumber(r.qualified)}</span>,
     },
-    ...figures.slice(at),
+    ...figures.slice(leadsAt, cplAt),
+    {
+      key: 'cpq',
+      header: 'Kval narxi',
+      align: 'right',
+      numeric: true,
+      render: (r) => <span className="font-medium">{money(ratio(r.cells.spendUsd, r.qualified))}</span>,
+    },
+    {
+      key: 'qualifiedPercent',
+      header: 'Kval %',
+      align: 'right',
+      numeric: true,
+      render: (r) => {
+        const share = ratio(r.qualified, r.formLeads)
+        return (
+          <span title={r.formLeads === null ? undefined : `${formatNumber(r.qualified ?? 0)} kval ÷ ${formatNumber(r.formLeads)} Bitrix24 lid`}>
+            {pct(share === null ? null : share * 100)}
+          </span>
+        )
+      },
+    },
+    ...figures.slice(cplAt),
   ]
 })()
 
-const ownerColumns: readonly Column<{
-  key: string
-  owner: FormOwnerDto | null
-  cells: FormCellsDto
-  qualified: number | null
-  dmSpend: number
-  dmConversations: number
-}>[] = [
+const ownerColumns: readonly Column<OwnerRow>[] = [
   {
     key: 'who',
     header: 'Targetolog',
@@ -194,13 +237,50 @@ const ownerColumns: readonly Column<{
       ),
   },
   ...ownerFigures,
+  // DM, in the client's order: sarf · murojat · lid · kval · lid narxi · kval narxi · kval %.
   { key: 'dmSpend', header: 'DM sarfi', align: 'right', numeric: true, render: (r) => <Spend value={r.dmSpend} /> },
+  { key: 'dmConversations', header: 'DM murojat', align: 'right', numeric: true, render: (r) => count(r.dmConversations) },
   {
-    key: 'dmConversations',
-    header: 'DM murojat',
+    key: 'dmLeads',
+    header: 'DM lid',
     align: 'right',
     numeric: true,
-    render: (r) => (r.dmConversations === 0 ? <span style={muted}>—</span> : formatNumber(r.dmConversations)),
+    render: (r) => <DmCount value={r.dmLeads} shared={r.dmShared} />,
+  },
+  {
+    key: 'dmQualified',
+    header: 'DM kval',
+    align: 'right',
+    numeric: true,
+    render: (r) => (
+      <span className="font-semibold">
+        <DmCount value={r.dmQualified} shared={r.dmShared} />
+      </span>
+    ),
+  },
+  {
+    key: 'dmCpl',
+    header: 'DM lid narxi',
+    align: 'right',
+    numeric: true,
+    render: (r) => money(ratio(r.dmSpend, r.dmLeads)),
+  },
+  {
+    key: 'dmCpq',
+    header: 'DM kval narxi',
+    align: 'right',
+    numeric: true,
+    render: (r) => <span className="font-medium">{money(ratio(r.dmSpend, r.dmQualified))}</span>,
+  },
+  {
+    key: 'dmQualifiedPercent',
+    header: 'DM kval %',
+    align: 'right',
+    numeric: true,
+    render: (r) => {
+      const share = ratio(r.dmQualified, r.dmLeads)
+      return pct(share === null ? null : share * 100)
+    },
   },
 ]
 

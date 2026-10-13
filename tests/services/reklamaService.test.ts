@@ -791,24 +791,101 @@ describe('withFormKval — «Отчёт Т» with «Lidlar»\'s kval (2026-10-10
   it('reads nothing before the forms are met', () => {
     expect(overview.form.qualified).toBeNull()
     expect(overview.form.owners.map((o) => o.qualified)).toEqual([null, null])
+    expect(overview.form.owners.map((o) => o.formLeads)).toEqual([null, null])
     expect(withFormKval(overview, null)).toBe(overview)
   })
 
   it('meets each targetolog on the owner key; one with money and no form lead is 0, and «Jami» is every form\'s', () => {
     const out = withFormKval(overview, {
       owners: [
-        { key: 'Collagen|Umar', outcome: { success: 21 } },
+        { key: 'Collagen|Umar', outcome: { success: 21, leads: 70 } },
         // A form no targetolog is read from: in «Jami», on no row here.
-        { key: 'form|Sinolife umumiy', outcome: { success: 2 } },
+        { key: 'form|Sinolife umumiy', outcome: { success: 2, leads: 9 } },
       ],
-      outcome: { success: 23 },
+      outcome: { success: 23, leads: 79 },
     })
-    expect(out.form.owners.map((o) => [o.key, o.qualified])).toEqual([
-      ['Collagen|Umar', 21],
-      ['Zextra|Элдор', 0],
+    expect(out.form.owners.map((o) => [o.key, o.qualified, o.formLeads])).toEqual([
+      ['Collagen|Umar', 21, 70],
+      ['Zextra|Элдор', 0, 0],
     ])
     expect(out.form.qualified).toBe(23)
+    expect(out.form.formLeads).toBe(79)
     expect(out.form.total).toEqual(overview.form.total)
+  })
+})
+
+describe('DM lid and kval per targetolog (2026-10-13)', () => {
+  const timur = { accountId: '918980186027789', accountName: 'Timuro - Sinolife 32' }
+  const sobirjonZ = { accountId: '4401744916740587', accountName: 'Zextra Sobirjon' }
+  const owner = (out: ReturnType<typeof reklamaOverview>, key: string) => out.form.owners.find((o) => o.key === key)!
+
+  it('gives a page one targetolog ran DM on to that targetolog whole', () => {
+    const out = reklamaOverview({
+      window: WINDOW,
+      pages: PAGES,
+      leadRows: [
+        lead('2026-08-01', 'UC_A8LE21', 'Сделка успешна', 'WON', 6),
+        lead('2026-08-02', 'UC_A8LE21', 'Недозвон', 'LOST', 14),
+      ],
+      campaignRows: [campaign({ ...sobirjonZ, spendMicroUsd: 40_000_000n, conversations: 80 })],
+      importedAt: null,
+    })
+    expect(owner(out, 'Zextra|Sobirjon')).toMatchObject({ dmLeads: 20, dmQualified: 6, dmShared: false, dmSpendUsd: 40 })
+  })
+
+  it('splits a shared page by each day\'s conversations, and the parts add up to the page', () => {
+    const out = reklamaOverview({
+      window: WINDOW,
+      pages: PAGES,
+      leadRows: [
+        lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 30),
+        lead('2026-08-01', 'UC_1X1J24', 'Недозвон', 'LOST', 30),
+        lead('2026-08-02', 'UC_1X1J24', 'Сделка успешна', 'WON', 10),
+        lead('2026-08-02', 'UC_1X1J24', 'Недозвон', 'LOST', 10),
+      ],
+      campaignRows: [
+        // 01.08: Umar 3/4 of the conversations, Timur 1/4. 02.08: Timur alone.
+        campaign({ spendMicroUsd: 30_000_000n, conversations: 300 }),
+        campaign({ ...timur, spendMicroUsd: 10_000_000n, conversations: 100 }),
+        campaign({ ...timur, date: '2026-08-02', spendMicroUsd: 10_000_000n, conversations: 50 }),
+      ],
+      importedAt: null,
+    })
+    expect(owner(out, 'Collagen|Umar')).toMatchObject({ dmLeads: 45, dmQualified: 23, dmShared: true })
+    expect(owner(out, 'Collagen|Timur')).toMatchObject({ dmLeads: 35, dmQualified: 17, dmShared: true })
+    const uz = out.dm.pages.find((p) => p.key === 'UC_1X1J24')!.total
+    expect(owner(out, 'Collagen|Umar').dmLeads + owner(out, 'Collagen|Timur').dmLeads).toBe(uz.leads)
+    expect(owner(out, 'Collagen|Umar').dmQualified + owner(out, 'Collagen|Timur').dmQualified).toBe(uz.qualified)
+  })
+
+  it('reads a day nobody advertised by the window\'s shares, and a page with no DM money as nobody\'s', () => {
+    const out = reklamaOverview({
+      window: WINDOW,
+      pages: PAGES,
+      leadRows: [
+        lead('2026-08-02', 'UC_1X1J24', 'Сделка успешна', 'WON', 8),
+        // sinolife_otziv carries no DM money: its leads are no targetolog's DM.
+        lead('2026-08-01', 'UC_0FMQ5Q', 'Сделка успешна', 'WON', 50),
+      ],
+      campaignRows: [
+        campaign({ spendMicroUsd: 30_000_000n, conversations: 300 }),
+        campaign({ ...timur, spendMicroUsd: 10_000_000n, conversations: 100 }),
+      ],
+      importedAt: null,
+    })
+    expect(owner(out, 'Collagen|Umar')).toMatchObject({ dmLeads: 6, dmQualified: 6 })
+    expect(owner(out, 'Collagen|Timur')).toMatchObject({ dmLeads: 2, dmQualified: 2 })
+  })
+
+  it('leaves a targetolog with no DM at 0, unshared', () => {
+    const out = reklamaOverview({
+      window: WINDOW,
+      pages: PAGES,
+      leadRows: [lead('2026-08-01', 'UC_1X1J24', 'Сделка успешна', 'WON', 8)],
+      campaignRows: [campaign({ objective: 'OUTCOME_LEADS', campaignName: '10/08 B', spendMicroUsd: 5_000_000n, leads: 3 })],
+      importedAt: null,
+    })
+    expect(owner(out, 'Collagen|Umar')).toMatchObject({ dmLeads: 0, dmQualified: 0, dmShared: false })
   })
 })
 
