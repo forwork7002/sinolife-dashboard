@@ -21,7 +21,7 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { NOT_STATED } = await import('@/server/repositories/targetRepository')
-const { TargetService, countersDto, fillDays, metaBlock, resetTargetCaches } = await import(
+const { TargetService, countersDto, fillDays, metaBlock, resetTargetCaches, withTargetologLeads } = await import(
   '@/server/services/targetService'
 )
 
@@ -287,5 +287,85 @@ describe('metaBlock — the «Лид база» sheet', () => {
     })
     expect(noRate.total.roas).toBeNull()
     expect(noRate.total.costPerBitrixLeadUsd).toBeNull()
+  })
+})
+
+describe('withTargetologLeads — the cards\' kval, kval % and FAKT 1 clients', () => {
+  const row = (accountId: string, accountName: string, micro: bigint) => ({
+    accountId,
+    accountName,
+    date: '2026-08-01',
+    spendMicroUsd: micro,
+    impressions: 1000,
+    clicks: 10,
+    leads: 5,
+  })
+  const meta = metaBlock({
+    rows: [
+      row('2804901113001448', 'Collagen Sobirjon #2', 44_460_000n),
+      row('4401744916740587', 'Zextra Sobirjon', 107_500_000n),
+      row('926218346480236', 'Zextra Kamron 1', 221_930_000n),
+      row('999', 'Yangi akkaunt', 5_000_000n),
+    ],
+    importedAt: null,
+    window: { from: '2026-08-01', to: '2026-08-01' },
+    sources: [],
+    productOfSource: new Map(),
+    usdRate: null,
+  })
+  const overview = { meta } as Parameters<typeof withTargetologLeads>[0]
+  const owner = (targetolog: string, product: 'Collagen' | 'Zextra', formUsd: number, leads: number, success: number, fakt1Clients: number | null) => ({
+    targetolog,
+    product,
+    formUsd,
+    outcome: { leads, success },
+    fakt1Clients,
+  })
+  const forms = {
+    owners: [
+      owner('Sobirjon', 'Collagen', 40, 20, 8, 3),
+      owner('Sobirjon', 'Zextra', 100.5, 30, 10, 4),
+      // A form nobody's Meta account maps to: no card to land on.
+      owner('Sinolife filtr forma 3', 'Collagen', 0, 9, 2, 1),
+    ],
+    // One client of both Sobirjon forms: 6 people, not 7.
+    fakt1Targetologs: [{ targetolog: 'Sobirjon', clients: 6 }],
+  }
+  const card = (dto: ReturnType<typeof withTargetologLeads>, who: string) =>
+    dto.meta.targetologs.find((t) => t.targetolog === who)!.bitrix
+
+  it('sums the person\'s forms over both products and prices kval and clients on «Rasxod $»', () => {
+    const sobirjon = card(withTargetologLeads(overview, forms, 'all'), 'Sobirjon')!
+    expect(sobirjon).toMatchObject({ formUsd: 140.5, leads: 50, qualified: 18, clients: 6 })
+    expect(sobirjon.qualifiedPercent).toBeCloseTo(36, 6)
+    expect(sobirjon.costPerQualifiedUsd).toBeCloseTo(140.5 / 18, 6)
+    expect(sobirjon.costPerClientUsd).toBeCloseTo(140.5 / 6, 6)
+  })
+
+  it('cuts to one product\'s forms, as the card\'s money is cut to its accounts', () => {
+    const zextra = card(withTargetologLeads(overview, forms, 'Zextra'), 'Sobirjon')!
+    expect(zextra).toMatchObject({ formUsd: 100.5, leads: 30, qualified: 10, clients: 4 })
+  })
+
+  it('reads 0 leads and no price for a person with money and no form lead', () => {
+    const kamron = card(withTargetologLeads(overview, forms, 'all'), 'Kamron')!
+    expect(kamron).toMatchObject({ formUsd: 0, leads: 0, qualified: 0, qualifiedPercent: null, clients: 0 })
+    expect(kamron.costPerQualifiedUsd).toBeNull()
+    expect(kamron.costPerClientUsd).toBeNull()
+  })
+
+  it('leaves the clients unread, never 0, when the phone match did not answer', () => {
+    const unread = withTargetologLeads(
+      overview,
+      { owners: forms.owners.map((o) => ({ ...o, fakt1Clients: null })), fakt1Targetologs: null },
+      'all',
+    )
+    expect(card(unread, 'Sobirjon')).toMatchObject({ qualified: 18, clients: null, costPerClientUsd: null })
+    expect(card(withTargetologLeads(overview, { ...forms, fakt1Targetologs: null, owners: forms.owners.map((o) => ({ ...o, fakt1Clients: null })) }, 'Zextra'), 'Sobirjon')!.clients).toBeNull()
+  })
+
+  it('leaves every card unread when the forms scan failed', () => {
+    const dto = withTargetologLeads(overview, null, 'all')
+    expect(dto.meta.targetologs.every((t) => t.bitrix === null)).toBe(true)
   })
 })

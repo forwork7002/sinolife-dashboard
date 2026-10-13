@@ -151,6 +151,39 @@ export interface MetaTargetologDto extends MetaMetricsDto {
     readonly metaLeads: number
   }[]
   readonly accounts: readonly string[]
+  /** What this person's lead forms brought into Bitrix24 (`withTargetologLeads`); null = not read. */
+  readonly bitrix: TargetologBitrixDto | null
+}
+
+/**
+ * ONE TARGETOLOG'S LEADS IN BITRIX24 — «Lidlar» → «Targetologlar», to the
+ * lead (the client, 2026-10-13: «1 klik narxi o'rniga 1 ta kval narxi, 1 ta
+ * mijoz narxi, kval % hamma targetologlarga»). Meta names no deal, so a lead
+ * is this person's when the CRM form that opened it carries their name
+ * (`formOwner`) — the rule «Отчёт Т» and that tab already print, so the
+ * screens cannot disagree. The money is the same tab's «Rasxod $»: the
+ * lead-form campaigns less «Sayt», the only money whose leads arrive through
+ * a form; the card's headline (DM, SMS, HR in it) would price a kval with
+ * money that never could have produced one.
+ */
+export interface TargetologBitrixDto {
+  /** «Rasxod $»: lead-form campaigns, «Sayt» out — what the two prices divide. */
+  readonly formUsd: number
+  /** Регистрация deals the person's CRM forms opened — «Bitrix лид». */
+  readonly leads: number
+  /** Of those, «Сделка успешна» now — «кв лид». */
+  readonly qualified: number
+  /** qualified ÷ leads — that tab's «%». */
+  readonly qualifiedPercent: number | null
+  /** formUsd ÷ qualified — «кв лид $». */
+  readonly costPerQualifiedUsd: number | null
+  /**
+   * «Факт1 мижоз»: distinct clients (by phone) of those leads with a FAKT 1
+   * order in the window. Null while the phone match is not read.
+   */
+  readonly clients: number | null
+  /** formUsd ÷ clients. */
+  readonly costPerClientUsd: number | null
 }
 
 /**
@@ -499,6 +532,7 @@ export function metaBlock(input: {
           metaLeads: a.leads,
         })),
         accounts: [...new Set(p.parts.flatMap((a) => [...a.accounts]))].sort(),
+        bitrix: null,
       })),
     owners: ordered.map((a) => ({
       ...a.column,
@@ -509,6 +543,74 @@ export function metaBlock(input: {
     total: productTotals(null),
     productsTotal: productTotals(drawn),
     usdRate: input.usdRate,
+  }
+}
+
+/** The slice of «Lidlar»'s `forms` block the cards read — what `LeadSourcesService.targetologForms` answers. */
+export interface TargetologFormsInput {
+  readonly owners: readonly {
+    readonly targetolog: string
+    readonly product: MetaProduct
+    readonly formUsd: number
+    readonly outcome: { readonly leads: number; readonly success: number }
+    readonly fakt1Clients: number | null
+  }[]
+  readonly fakt1Targetologs: readonly { readonly targetolog: string; readonly clients: number }[] | null
+}
+
+/**
+ * Each card's `bitrix`, from «Lidlar»'s `forms` block over the same window,
+ * met on the person's name — both sides take it from `ownerOf` /
+ * `formOwner`, as `withFormKval` meets «Отчёт Т». Under one product only
+ * that product's forms count, as only its accounts' money does. A person
+ * with money and no form lead reads 0 leads and no price; `forms` null (the
+ * scan failed) leaves every card's `bitrix` null — unread, never 0.
+ */
+export function withTargetologLeads(
+  overview: TargetOverviewDto,
+  forms: TargetologFormsInput | null,
+  product: TargetProductFilter,
+): TargetOverviewDto {
+  if (forms === null) return overview
+  const people = new Map<string, { formUsd: number; leads: number; success: number; clients: number | null }>()
+  for (const o of forms.owners) {
+    if (product !== 'all' && o.product !== product) continue
+    const acc = people.get(o.targetolog) ?? { formUsd: 0, leads: 0, success: 0, clients: 0 }
+    acc.formUsd += o.formUsd
+    acc.leads += o.outcome.leads
+    acc.success += o.outcome.success
+    acc.clients = acc.clients === null || o.fakt1Clients === null ? null : acc.clients + o.fakt1Clients
+    people.set(o.targetolog, acc)
+  }
+  // Both products: the distinct count, so a client of a Collagen and a Zextra form is one.
+  const distinct =
+    product === 'all' && forms.fakt1Targetologs !== null
+      ? new Map(forms.fakt1Targetologs.map((t) => [t.targetolog, t.clients]))
+      : null
+  const cents = (n: number) => Math.round(n * 100) / 100
+  return {
+    ...overview,
+    meta: {
+      ...overview.meta,
+      targetologs: overview.meta.targetologs.map((t) => {
+        const acc = people.get(t.targetolog) ?? { formUsd: 0, leads: 0, success: 0, clients: 0 }
+        const clients =
+          forms.fakt1Targetologs === null ? null : distinct ? (distinct.get(t.targetolog) ?? 0) : acc.clients
+        const formUsd = cents(acc.formUsd)
+        return {
+          ...t,
+          bitrix: {
+            formUsd,
+            leads: acc.leads,
+            qualified: acc.success,
+            qualifiedPercent: percent(acc.success, acc.leads),
+            costPerQualifiedUsd: formUsd > 0 ? ratio(formUsd, acc.success) : null,
+            clients,
+            costPerClientUsd: formUsd > 0 && clients !== null ? ratio(formUsd, clients) : null,
+          },
+        }
+      }),
+    },
   }
 }
 

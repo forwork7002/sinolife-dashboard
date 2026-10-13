@@ -101,6 +101,20 @@ export interface MetaTargetologDto extends MetaMetricsDto {
     readonly metaLeads: number
   }[]
   readonly accounts: readonly string[]
+  /** This person's lead forms in Bitrix24 — «Lidlar» → «Targetologlar»'s figures; null = not read. */
+  readonly bitrix: TargetologBitrixDto | null
+}
+
+/** «Rasxod $» (lead forms, «Sayt» out) and what the person's CRM forms opened in Регистрация. */
+export interface TargetologBitrixDto {
+  readonly formUsd: number
+  readonly leads: number
+  readonly qualified: number
+  readonly qualifiedPercent: number | null
+  readonly costPerQualifiedUsd: number | null
+  /** «Факт1 мижоз»; null while the phone match is not read. */
+  readonly clients: number | null
+  readonly costPerClientUsd: number | null
 }
 
 /** One product (or both, as the total): Meta's delivery and the pages' results. */

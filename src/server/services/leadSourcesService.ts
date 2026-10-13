@@ -142,6 +142,12 @@ export interface FormOwnerDto extends FormExpenseDto {
   readonly costPerLeadUsd: number | null
   /** spend ÷ kval. */
   readonly costPerSuccessUsd: number | null
+  /**
+   * «Факт1 мижоз» of these forms' leads — distinct clients (by phone) with a
+   * FAKT 1 order in the window, `SourceRowDto.fakt1Clients`' rule. Null while
+   * the phone match is not read.
+   */
+  readonly fakt1Clients: number | null
   readonly days: readonly FormDayDto[]
 }
 
@@ -261,6 +267,12 @@ export interface LeadSourcesOverviewDto {
     readonly outcome: LeadOutcomeDto
     /** «Ген лид» typed in by hand — no form names a targetolog — so the table's «Jami» is every «Ген лид». */
     readonly manual: LeadOutcomeDto
+    /**
+     * «Факт1 мижоз» per targetolog across both products — distinct, so a
+     * client who left a Collagen and a Zextra lead is one, which the owners'
+     * `fakt1Clients` summed would count twice. Null while not read.
+     */
+    readonly fakt1Targetologs: readonly { readonly targetolog: string; readonly clients: number }[] | null
     /**
      * «Bogʻlanmagan sarf»: the ad budget's money no lead form took — message
      * and other campaigns of the Collagen / Zextra accounts — by account,
@@ -645,6 +657,8 @@ export function leadSourcesOverview(all: {
   const fakt1Sources = new Map<string, Set<string>>()
   const fakt1Channels = new Map<LeadChannel, Set<string>>(LEAD_CHANNELS.map((c) => [c, new Set<string>()]))
   const fakt1All = new Set<string>()
+  const fakt1Owners = new Map<string, Set<string>>()
+  const fakt1People = new Map<string, Set<string>>()
   const fakt1Ready = input.fakt1 !== null
   for (const row of input.fakt1 ?? []) {
     const form = formNameOf(row.formTitle)
@@ -653,6 +667,12 @@ export function leadSourcesOverview(all: {
     fakt1Channels.get(leadChannel(row.sourceId, form, LEAD_SOURCE_VOCABULARY))!.add(row.client)
     // The whole is «Jami»'s: a client of an «Исход» lead alone is not in it.
     if (countedSource(row.sourceId)) fakt1All.add(row.client)
+    // And onto the form's owner, as the lead's row above lands its kval.
+    if (form !== null) {
+      const owner = ownerOfForm(form)
+      mapGet(fakt1Owners, owner.key, () => new Set<string>()).add(row.client)
+      mapGet(fakt1People, owner.targetolog, () => new Set<string>()).add(row.client)
+    }
   }
 
   /*
@@ -703,6 +723,7 @@ export function leadSourcesOverview(all: {
       reachPercent: percent(outcome.leads, o.metaLeads),
       costPerLeadUsd: perUnit(o.spend, outcome.leads),
       costPerSuccessUsd: perUnit(o.spend, outcome.success),
+      fakt1Clients: fakt1Ready ? (fakt1Owners.get(o.key)?.size ?? 0) : null,
       days: days.map((date) => formDayCells(date, o.days.get(date) ?? formDayZero())),
     }
   }
@@ -862,6 +883,11 @@ export function leadSourcesOverview(all: {
       metaLeads: metaFormLeads,
       outcome: outcomeCells(formOutcome),
       manual: outcomeCells(manual),
+      fakt1Targetologs: fakt1Ready
+        ? [...fakt1People]
+            .map(([targetolog, clients]) => ({ targetolog, clients: clients.size }))
+            .sort((a, b) => a.targetolog.localeCompare(b.targetolog, 'ru'))
+        : null,
       unlinked: {
         spendUsd: usd(unlinkedSpend),
         accounts: [...unlinked.values()]
@@ -1087,14 +1113,7 @@ export class LeadSourcesService {
 
     // Started first, raced last: the budget counts from the start, never cutting it short of the other scans.
     const started = Date.now()
-    const fakt1Scan = fakt1Cache.get(key, () =>
-      this.insights.leadFakt1Clients(period).catch((error: unknown) => {
-        void import('@/server/logging/logger').then(({ logger }) =>
-          logger.warn({ err: error }, '«Факт1 мижоз» scan failed; Lidlar shows the tab without it'),
-        )
-        throw error
-      }),
-    )
+    const fakt1Scan = this.fakt1Scan(period)
     const [registration, scans, campaigns, importedAt] = await Promise.all([
       this.registrationDays(period),
       scanCache.get(key, () => this.scans(period)),
@@ -1143,12 +1162,15 @@ export class LeadSourcesService {
    * The `forms` block alone — «Targetologlar · kunlik». It reads only the
    * Регистрация deals and the Meta campaigns, so the other scans are not run:
    * the block is the overview's to the lead (same rows, same fold, the same
-   * brand narrowing — `ofBrand`).
+   * brand narrowing — `ofBrand`). With `fakt1`, «Факт1 мижоз» is read too
+   * («Target tahlili»'s cards), waited for as `overview` waits; without it the
+   * owners' `fakt1Clients` are null — unread, never 0.
    */
   async targetologForms(
     period: Period,
     timeZone: string,
     brand: BrandFilter = 'all',
+    options: { readonly fakt1?: boolean } = {},
   ): Promise<
     Pick<LeadSourcesOverviewDto, 'forms' | 'importedAt'> & {
       readonly manual: readonly ManualSpendDto[]
@@ -1157,18 +1179,22 @@ export class LeadSourcesService {
     }
   > {
     const window = periodWindow(period, timeZone)
+    const started = Date.now()
+    const fakt1Scan = options.fakt1 ? this.fakt1Scan(period) : null
     const [registration, campaigns, importedAt, typed] = await Promise.all([
       this.registrationDays(period),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),
       this.meta.manualSpend(window.from, window.to),
     ])
+    const fakt1 =
+      fakt1Scan === null ? null : await within(fakt1Scan, Math.max(FAKT1_GRACE_MS, FAKT1_WAIT_MS - (Date.now() - started)))
     const { forms, importedAt: imported } = leadSourcesOverview({
       window,
       registration,
       triage: [],
       campaigns,
-      fakt1: [],
+      fakt1,
       qualified: [],
       aiQualified: [],
       sarafan: { leads: 0, qualified: 0 },
@@ -1193,6 +1219,18 @@ export class LeadSourcesService {
   /** Save the hand-typed ad money of «Targetologlar · kunlik» (`POST /reklama/manual-spend`). */
   saveManualSpend: ReklamaRepository['saveManualSpend'] = async (cells, by) => {
     await this.meta.saveManualSpend(cells, by)
+  }
+
+  /** «Факт1 мижоз»'s phone match through its memo; a failure is logged and evicted, so the next reader retries. */
+  private fakt1Scan(period: Period): Promise<LeadFakt1ClientRow[]> {
+    return fakt1Cache.get(windowKey(period), () =>
+      this.insights.leadFakt1Clients(period).catch((error: unknown) => {
+        void import('@/server/logging/logger').then(({ logger }) =>
+          logger.warn({ err: error }, '«Факт1 мижоз» scan failed; Lidlar shows the tab without it'),
+        )
+        throw error
+      }),
+    )
   }
 
   private registrationDays(period: Period): Promise<RegistrationDayRow[]> {

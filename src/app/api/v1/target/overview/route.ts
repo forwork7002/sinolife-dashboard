@@ -1,7 +1,9 @@
 import { toPeriodDto } from '@/server/domain/period/period'
 import { getHandler, periodFrom } from '@/server/http/handler'
 import { targetOverviewQuerySchema } from '@/server/http/queryParams'
-import { targetService } from '@/server/services/container'
+import { logger } from '@/server/logging/logger'
+import { leadSourcesService, targetService } from '@/server/services/container'
+import { withTargetologLeads } from '@/server/services/targetService'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +28,25 @@ const ACCESS = { permission: 'analytics:read:all', section: 'target' } as const
  */
 export const GET = getHandler(ACCESS, targetOverviewQuerySchema, async (ctx) => {
   const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
-  const data = await targetService.overview(period, ctx.query.scope, ctx.query.product, ctx.timeZone)
-  return { data, meta: { period: toPeriodDto(period) } }
+  /*
+    The targetolog cards' kval, kval % and «Факт1 мижоз» are «Lidlar»'s `forms`
+    block over the same window (`withTargetologLeads`) — read under «Hammasi»
+    and cut to the product by the form's owner, as the cards' money is cut by
+    the account's. An addition to the cards, never their price: a failed scan
+    is logged and the cards draw without those lines. No `leads` gate as on
+    «Reklama samarasi»: this screen already lists every targetolog's leads,
+    orders and money, phones included, so counts per person add nothing.
+  */
+  const formsScan = leadSourcesService.targetologForms(period, ctx.timeZone, 'all', { fakt1: true }).then(
+    (answer) => answer.forms,
+    (error: unknown) => {
+      logger.warn({ err: error }, 'Target tahlili kval scan failed; the targetolog cards draw without it')
+      return null
+    },
+  )
+  const [overview, forms] = await Promise.all([
+    targetService.overview(period, ctx.query.scope, ctx.query.product, ctx.timeZone),
+    formsScan,
+  ])
+  return { data: withTargetologLeads(overview, forms, ctx.query.product), meta: { period: toPeriodDto(period) } }
 })

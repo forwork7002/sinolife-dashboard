@@ -68,6 +68,8 @@ export interface FormOwnerDto extends FormExpenseDto {
   readonly reachPercent: number | null
   readonly costPerLeadUsd: number | null
   readonly costPerSuccessUsd: number | null
+  /** «Факт1 мижоз» of these forms' leads; null while not read. */
+  readonly fakt1Clients: number | null
   readonly days: readonly FormDayDto[]
 }
 
@@ -159,6 +161,8 @@ export interface LeadSourcesOverviewDto {
     readonly outcome: LeadOutcomeDto
     /** «Ген лид» typed in by hand, no form. */
     readonly manual: LeadOutcomeDto
+    /** «Факт1 мижоз» per targetolog across both products, distinct; null while not read. */
+    readonly fakt1Targetologs: readonly { readonly targetolog: string; readonly clients: number }[] | null
     /** Ad-budget money on no lead form, by account. */
     readonly unlinked: {
       readonly spendUsd: number

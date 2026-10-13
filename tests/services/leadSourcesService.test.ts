@@ -448,6 +448,45 @@ describe('leadSourcesOverview', () => {
     expect(data.totals.fakt1Clients).toBe(3)
   })
 
+  it('puts «Факт1 мижоз» on the form owner and on the person, distinct — «Target tahlili»\'s cards', () => {
+    expect(data.forms.owners.find((o) => o.key === 'Collagen|Umar')!.fakt1Clients).toBe(2)
+    expect(data.forms.fakt1Targetologs).toEqual([{ targetolog: 'Umar', clients: 2 }])
+
+    const both = leadSourcesOverview({
+      window: WINDOW,
+      importedAt: null,
+      registration: [reg({ formTitle: UMAR_FORM }), reg({ formTitle: 'Заполнение CRM-формы "Zextra Umar 64"' })],
+      triage: [],
+      campaigns: [],
+      // One client who filled Umar's Collagen form AND his Zextra form: one per product, one for the person.
+      fakt1: [fakt1({}), fakt1({ formTitle: 'Заполнение CRM-формы "Zextra Umar 64"' })],
+      qualified: [],
+      aiQualified: [],
+      sarafan: NO_SARAFAN,
+    })
+    expect(both.forms.owners.map((o) => [o.key, o.fakt1Clients])).toEqual([
+      ['Collagen|Umar', 1],
+      ['Zextra|Umar', 1],
+    ])
+    expect(both.forms.fakt1Targetologs).toEqual([{ targetolog: 'Umar', clients: 1 }])
+  })
+
+  it('reads «Факт1 мижоз» as unread, never 0, when the phone match did not answer', () => {
+    const unread = leadSourcesOverview({
+      window: WINDOW,
+      importedAt: null,
+      registration: [reg({ formTitle: UMAR_FORM })],
+      triage: [],
+      campaigns: [],
+      fakt1: null,
+      qualified: [],
+      aiQualified: [],
+      sarafan: NO_SARAFAN,
+    })
+    expect(unread.forms.owners[0]!.fakt1Clients).toBeNull()
+    expect(unread.forms.fakt1Targetologs).toBeNull()
+  })
+
   it('lists every DM page in the portal order, a quiet one at zero', () => {
     expect(data.dm.pages.map((p) => p.name)).toEqual([
       'sinolif_tg',
@@ -696,8 +735,20 @@ describe('LeadSourcesService.targetologForms', () => {
     expect(umar.metaLeads).toBe(8)
     expect(umar.outcome.leads).toBe(5)
 
+    // Without the phone match «Факт1 мижоз» is unread, never 0 — and everything else is the overview's.
+    expect(umar.fakt1Clients).toBeNull()
+    expect(alone.forms.fakt1Targetologs).toBeNull()
     const whole = await service(false).overview(period, 'Asia/Tashkent')
-    expect(alone.forms).toEqual(whole.forms)
+    const unread = {
+      ...whole.forms,
+      owners: whole.forms.owners.map((o) => ({ ...o, fakt1Clients: null })),
+      expenseOwners: whole.forms.expenseOwners.map((o) => ({ ...o, fakt1Clients: null })),
+      fakt1Targetologs: null,
+    }
+    expect(alone.forms).toEqual(unread)
+    // «Target tahlili» asks for it, and gets the overview's block to the client.
+    const withFakt1 = await service(false).targetologForms(period, 'Asia/Tashkent', 'all', { fakt1: true })
+    expect(withFakt1.forms).toEqual(whole.forms)
   })
 })
 

@@ -157,7 +157,11 @@ const OWNER_COLUMNS: readonly Column<MetaOwnerDto>[] = [
  * the block, because it is the first question the client asks of it.
  *
  * The spend is the headline; under it, what the money bought on Meta's own
- * count (leads, clicks, impressions) and what each of those cost. A person who
+ * count (leads, clicks, impressions), and — from Bitrix24, «Lidlar» →
+ * «Targetologlar»'s figures (`bitrix`, 2026-10-13) — the leads their forms
+ * opened, the kval, kval % and FAKT 1 clients, each kval and client priced on
+ * «Rasxod $», never on the headline (DM, SMS and HR money brings no form
+ * lead). «1 klik narxi» made way for them at the client's word. A person who
  * runs both products gets a thin split bar, so Sobirjon's Zextra and Collagen
  * are one card and still two numbers. Biggest spender first, as the server
  * sent them.
@@ -173,7 +177,7 @@ function TargetologCards({
     return (
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="skeleton h-[200px] rounded-[var(--radius-panel)]" />
+          <div key={i} className="skeleton h-[300px] rounded-[var(--radius-panel)]" />
         ))}
       </div>
     )
@@ -254,11 +258,42 @@ function TargetologCards({
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
             <Metric label="Meta leadlari" value={formatNumber(p.metaLeads)} />
             <Metric label="1 lead narxi" value={usd(p.metaCplUsd)} strong />
+            <Metric
+              label="Bitrix lid"
+              value={p.bitrix ? formatNumber(p.bitrix.leads) : '—'}
+              hint="Targetolog CRM-formalari Bitrix24 Регистрация ga ochgan lidlar"
+            />
+            <Metric
+              label="Kval %"
+              value={formatPercent(p.bitrix?.qualifiedPercent ?? null)}
+              hint="Kval lid ÷ Bitrix lid"
+            />
+            <Metric
+              label="Kval lid"
+              value={p.bitrix ? formatNumber(p.bitrix.qualified) : '—'}
+              hint="Bitrix lidlardan «Сделка успешна» boʻlgani"
+            />
+            <Metric
+              label="1 ta kval narxi"
+              value={usd(p.bitrix?.costPerQualifiedUsd ?? null)}
+              strong
+              hint={rasxodHint(p.bitrix?.formUsd, 'Kval lid')}
+            />
+            <Metric
+              label="Mijoz (FAKT 1)"
+              value={p.bitrix?.clients != null ? formatNumber(p.bitrix.clients) : '—'}
+              hint="Shu lidlardan davr ichida FAKT 1 buyurtma bergan mijozlar (telefon boʻyicha, har biri bir marta)"
+            />
+            <Metric
+              label="1 ta mijoz narxi"
+              value={usd(p.bitrix?.costPerClientUsd ?? null)}
+              strong
+              hint={rasxodHint(p.bitrix?.formUsd, 'Mijoz')}
+            />
             <Metric label="Kliklar" value={formatNumber(p.clicks)} />
-            <Metric label="1 klik narxi" value={usd(p.cpcUsd)} />
+            <Metric label="CTR" value={formatPercent(p.ctrPercent)} />
             <Metric label="Koʻrsatishlar" value={formatNumber(p.impressions)} />
             <Metric label="1 000 koʻrsatish" value={usd(p.cpmUsd)} />
-            <Metric label="CTR" value={formatPercent(p.ctrPercent)} />
           </dl>
         </Card>
       ))}
@@ -266,10 +301,36 @@ function TargetologCards({
   )
 }
 
-function Metric({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+/** The two prices divide «Rasxod $» — lead-form money, «Sayt» out — as «Lidlar» → «Targetologlar» does. */
+function rasxodHint(formUsd: number | undefined, of: string): string {
+  const money = formUsd === undefined ? 'lid-forma kampaniyalari sarfi' : `lid-forma kampaniyalari sarfi (${usd(formUsd, true)})`
+  return `Rasxod $ ÷ ${of}: ${money}, Sayt, DM/SMS va HR kirmaydi — «Lidlar → Targetologlar» dagi «кв лид $» bilan bir xil`
+}
+
+function Metric({
+  label,
+  value,
+  strong = false,
+  hint,
+}: {
+  label: string
+  value: string
+  strong?: boolean
+  hint?: string
+}) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <dt style={muted}>{label}</dt>
+      <dt style={muted}>
+        {hint ? (
+          <Tooltip content={hint}>
+            <span tabIndex={0} className="focusable cursor-help rounded-[var(--radius-panel-sm)] underline decoration-dotted underline-offset-2">
+              {label}
+            </span>
+          </Tooltip>
+        ) : (
+          label
+        )}
+      </dt>
       <dd
         className="tabular-nums"
         style={{ color: 'var(--ink-primary)', fontWeight: strong ? 600 : 400 }}
