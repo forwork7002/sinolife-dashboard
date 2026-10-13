@@ -18,12 +18,14 @@ import {
   TARGET_SOURCE_IDS,
   TARGET_SOURCE_PRODUCT,
 } from '@/server/integrations/crm/bitrix24/mapping'
-import { type MetaProduct, ownerOf } from '@/server/integrations/meta/accounts'
+import { type MetaProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import {
   NOT_STATED,
+  type MetaCampaignTotalRow,
   type TargetCountersRow,
+  type TargetFormRow,
   type TargetGroupRow,
   type MetaSpendRow,
   type TargetLeadRow,
@@ -32,6 +34,7 @@ import {
 import { TARGET_PRODUCTS, type TargetProductFilter, type TargetScope } from '@/server/domain/types'
 
 import type { MarketingRepository } from '@/server/repositories/marketingRepository'
+import { leadBrand } from './rnpService'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -201,7 +204,23 @@ export interface MetaProductDto extends MetaProductTotalsDto {
  * pages in Bitrix24 on the right, and the costs that divide one by the other.
  */
 export interface MetaProductTotalsDto extends MetaMetricsDto {
-  /** Регистрация leads from this product's target pages. */
+  /**
+   * Meta's leads from the LEAD-FORM campaigns alone (`campaignChannel`
+   * 'form') — the figure a form fill in Bitrix24 answers. `metaLeads` beside
+   * it is the accounts' whole `lead` action, hiring forms included.
+   */
+  readonly metaFormLeads: number
+  /** Those campaigns' spend ÷ their leads. */
+  readonly metaFormCplUsd: number | null
+  /** Conversations Meta counted on the DM (message) campaigns. */
+  readonly metaConversations: number
+  /** Регистрация leads that name one of this product's Meta lead forms («Ген лид»). */
+  readonly bitrixFormLeads: number
+  /** Регистрация leads from this product's target pages (DM). */
+  readonly bitrixPageLeads: number
+  /** bitrixFormLeads ÷ metaFormLeads — how much of what Meta counted reached the portal. */
+  readonly formReachPercent: number | null
+  /** Every Регистрация lead of the product: its forms' plus its pages'. */
   readonly bitrixLeads: number
   /** …of which the registrar passed on («Сделка успешна»). */
   readonly bitrixLeadWon: number
@@ -391,6 +410,10 @@ export function metaBlock(input: {
   window: { from: string; to: string }
   sources: readonly TargetGroupRow[]
   productOfSource: ReadonlyMap<string, MetaProduct | undefined>
+  /** The lead-form leads and their sales (`TargetRepository.formLeads`). */
+  forms?: readonly TargetFormRow[]
+  /** Meta per campaign over the window (`TargetRepository.metaCampaigns`). */
+  campaigns?: readonly MetaCampaignTotalRow[]
   usdRate: number | null
 }): MetaBlockDto {
   interface Acc {
@@ -445,6 +468,22 @@ export function metaBlock(input: {
       return { date, total: usd(total), cells: columns.map((c) => usd(cells.get(c.key) ?? 0n)) }
     })
 
+  /*
+    A form lead is the product its «Проект» / form says (`leadBrand`, as on
+    «Lidlar»). A deal on a target page is the page's, counted in `sources`
+    already, so it never counts here a second time.
+  */
+  const forms = (input.forms ?? []).flatMap((row) => {
+    if (row.sourceId !== null && TARGET_SOURCE_PRODUCT[row.sourceId] !== undefined) return []
+    const product = leadBrand(row.sourceId, row.formTitle, row.productLine)
+    return product === null ? [] : [{ row, product }]
+  })
+  const campaigns = (input.campaigns ?? []).map((c) => ({
+    ...c,
+    product: ownerOf(c.accountId, c.accountName).product,
+    channel: campaignChannel(c.objective, c.campaignName, c.accountId),
+  }))
+
   /** The owners and pages of `products`; null is every owner, «Boshqa» included. */
   const productTotals = (products: readonly MetaProduct[] | null): MetaProductTotalsDto => {
     const accs = ordered.filter((a) => products === null || products.includes(a.column.product))
@@ -453,13 +492,21 @@ export function metaBlock(input: {
       const p = input.productOfSource.get(s.key)
       return p !== undefined && (products === null || products.includes(p))
     })
-    const sum = (pick: (s: TargetGroupRow) => number) => sources.reduce((n, s) => n + pick(s), 0)
-    const bitrixLeads = sum((s) => s.leads)
+    const ownForms = forms.filter((f) => products === null || products.includes(f.product)).map((f) => f.row)
+    const ownCampaigns = campaigns.filter((c) => products === null || products.includes(c.product))
+    const formCampaigns = ownCampaigns.filter((c) => c.channel === 'form')
+    const formSpend = formCampaigns.reduce((n, c) => n + c.spendMicroUsd, 0n)
+    const metaFormLeads = formCampaigns.reduce((n, c) => n + c.leads, 0)
+    const rows: readonly TargetCountersRow[] = [...sources, ...ownForms]
+    const sum = (pick: (s: TargetCountersRow) => number) => rows.reduce((n, s) => n + pick(s), 0)
+    const bitrixPageLeads = sources.reduce((n, s) => n + s.leads, 0)
+    const bitrixFormLeads = ownForms.reduce((n, s) => n + s.leads, 0)
+    const bitrixLeads = bitrixPageLeads + bitrixFormLeads
     const orders = sum((s) => s.orders)
     const delivered = sum((s) => s.delivered)
     const returned = sum((s) => s.returned)
-    const deliveredMinor = sources.reduce((n, s) => n + s.deliveredMinor, 0n)
-    const orderedMinor = sources.reduce((n, s) => n + s.orderedMinor, 0n)
+    const deliveredMinor = rows.reduce((n, s) => n + s.deliveredMinor, 0n)
+    const orderedMinor = rows.reduce((n, s) => n + s.orderedMinor, 0n)
     const dollars = Number(spend) / MICRO
     const spendUzs = input.usdRate !== null ? dollars * input.usdRate : 0
     return {
@@ -469,6 +516,12 @@ export function metaBlock(input: {
         accs.reduce((n, a) => n + a.impressions, 0),
         accs.reduce((n, a) => n + a.clicks, 0),
       ),
+      metaFormLeads,
+      metaFormCplUsd: ratio(Number(formSpend) / MICRO, metaFormLeads),
+      metaConversations: ownCampaigns.filter((c) => c.channel === 'dm').reduce((n, c) => n + c.conversations, 0),
+      bitrixFormLeads,
+      bitrixPageLeads,
+      formReachPercent: percent(bitrixFormLeads, metaFormLeads),
       bitrixLeads,
       bitrixLeadWon: sum((s) => s.leadWon),
       orders,
@@ -647,10 +700,13 @@ function leadDto(row: TargetLeadRow): TargetLeadDto {
   a narrowed account — so no employee scope reaches it.
 */
 const summaryCache = ttlCache<Awaited<ReturnType<TargetRepository['summary']>>>(120_000, LIVE_CACHE)
+/** The lead-form scan, keyed by the window alone — it takes no source scope. */
+const formCache = ttlCache<Awaited<ReturnType<TargetRepository['formLeads']>>>(120_000, LIVE_CACHE)
 
 /** Test seam: module-level, so shared between test files inside one worker. */
 export function resetTargetCaches(): void {
   summaryCache.clear()
+  formCache.clear()
 }
 
 /** What `/target/leads` narrows by, already validated by `targetLeadsQuerySchema`. */
@@ -701,11 +757,14 @@ export class TargetService {
       to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),
     }
 
-    const [summary, targetSources, snapshot, metaRows, metaImportedAt] = await Promise.all([
+    const formKey = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
+    const [summary, formRows, targetSources, snapshot, metaRows, campaignRows, metaImportedAt] = await Promise.all([
       summaryCache.get(key, () => this.repository.summary({ period, sourceIds })),
+      formCache.get(formKey, () => this.repository.formLeads(period)),
       this.repository.targetSources(TARGET_SOURCE_IDS),
       this.marketing.snapshot(),
       this.repository.metaSpend(window.from, window.to),
+      this.repository.metaCampaigns(window.from, window.to),
       this.repository.metaImportedAt(),
     ])
 
@@ -745,6 +804,15 @@ export class TargetService {
         window,
         sources: summary.sources,
         productOfSource,
+        // The lead forms and their campaigns, one product's when one is asked for.
+        forms:
+          product === 'all'
+            ? formRows
+            : formRows.filter((f) => leadBrand(f.sourceId, f.formTitle, f.productLine) === product),
+        campaigns:
+          product === 'all'
+            ? campaignRows
+            : campaignRows.filter((c) => ownerOf(c.accountId, c.accountName).product === product),
         // Micro-soʻm per dollar, as the ledger stores it.
         usdRate: snapshot ? Number(snapshot.usdRateMicro) / 1_000_000 : null,
       }),

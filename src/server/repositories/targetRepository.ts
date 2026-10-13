@@ -31,6 +31,8 @@ import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import type { Period } from '@/server/domain/period/period'
 
+import { formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
+
 /** A money column as Postgres returns it: text, to survive the driver. */
 function money(value: string | null | undefined): bigint {
   return value === null || value === undefined ? 0n : BigInt(value)
@@ -104,6 +106,30 @@ export interface MetaSpendRow {
   readonly clicks: number
   /** Meta's own lead count. */
   readonly leads: number
+}
+
+/**
+ * The Meta lead-form leads of a window and the sales deals they became, by
+ * form (`TargetRepository.formLeads`). The brand is decided in the service
+ * (`leadBrand`: «Проект» first, then the source, then the form's name).
+ */
+export interface TargetFormRow extends TargetCountersRow {
+  readonly formTitle: string
+  readonly sourceId: string | null
+  readonly productLine: string | null
+}
+
+/** One Meta campaign over a window, summed (`TargetRepository.metaCampaigns`). */
+export interface MetaCampaignTotalRow {
+  readonly accountId: string
+  readonly accountName: string
+  readonly campaignName: string
+  readonly objective: string
+  readonly spendMicroUsd: bigint
+  /** The `lead` action — what a lead-form campaign counts. */
+  readonly leads: number
+  /** Conversations started — what a DM campaign counts. */
+  readonly conversations: number
 }
 
 export interface TargetLeadFilter extends TargetWindow {
@@ -538,6 +564,118 @@ export class TargetRepository {
     return latest._max.importedAt
   }
 
+  /**
+   * THE LEAD-FORM HALF OF «COLLAGEN VA ZEXTRA» — every deal created in the
+   * window that names a Meta lead form, grouped by form, source and «Проект».
+   *
+   * Meta's «lead» is a form fill, and a form fill lands in Регистрация as
+   * «Ген лид» (`REPEAT_SALE`), never on a target page's SOURCE_ID — so the
+   * page summary above cannot see it. Measured on the portal 01–13.10.2026:
+   * 1 211 Collagen and 54 Zextra page leads against 12 723 «Ген лид». The
+   * sales deal the portal opens from a form lead carries the same title,
+   * SOURCE_DESCRIPTION and «Проект» (read off 50 of them that day), so the
+   * sales side is cut the way the page summary cuts it: by its own copied
+   * fields, never by a join. The form is read as «Lidlar» reads it
+   * (`leadFormTitleSql`, one home), and a late «Qayta zayavka» copy is no
+   * lead of its day (`replayedCteSql`) — so these figures are «Lidlar»'s.
+   */
+  async formLeads(period: Period): Promise<TargetFormRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<
+      {
+        form_title: string
+        source_id: string | null
+        product_line: string | null
+        leads: bigint
+        lead_customers: bigint
+        lead_won: bigint
+        sales: bigint
+        orders: bigint
+        ordered_minor: string | null
+        delivered: bigint
+        delivered_minor: string | null
+        returned: bigint
+        returned_minor: string | null
+      }[]
+    >(
+      `
+      WITH win AS MATERIALIZED (
+        SELECT d."id" AS id, d."createdAtSource" AS created, d."title" AS title, ${sourceDescriptionSql('d')} AS sd,
+               ${replayActSql(sourceDescriptionSql('d'))} AS act,
+               d."sourceId", d."status"::text AS status, d."amountMinor" AS amount, d."customerId" AS customer_id,
+               NULLIF(btrim(d."productLine"), '') AS product_line,
+               p."role"::text AS role
+        FROM "deal" d
+        JOIN "pipeline" p ON p."id" = d."pipelineId"
+        WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
+          AND p."role" IN ('LEAD', 'QUALIFICATION', 'CONFIRMATION', 'REVENUE')
+      ),
+      ${formAliasOverSql(`(SELECT w.sd, w.title FROM win w WHERE w.role = 'LEAD') fd`)},
+      ${replayedCteSql(`(SELECT w.id, w.created, w.act FROM win w WHERE w.role = 'LEAD') q0`, '$1')},
+      f AS (
+        SELECT w.*, s."externalId" AS source_id,
+               ${leadFormTitleSql('w.title', 'w.sd', 's."externalId"', 'fa.title')} AS form_title
+        FROM win w
+        LEFT JOIN "sales_source" s ON s."id" = w."sourceId"
+        LEFT JOIN form_alias fa ON fa.sd = w.sd
+        WHERE NOT EXISTS (SELECT 1 FROM replayed rp WHERE rp.id = w.id)
+      )
+      SELECT
+        form_title, source_id, product_line,
+        count(*) FILTER (WHERE role = 'LEAD')::bigint AS leads,
+        count(DISTINCT customer_id) FILTER (WHERE role = 'LEAD')::bigint AS lead_customers,
+        count(*) FILTER (WHERE role = 'LEAD' AND status = 'WON')::bigint AS lead_won,
+        count(*) FILTER (WHERE role <> 'LEAD')::bigint AS sales,
+        count(*) FILTER (WHERE role IN ('CONFIRMATION', 'REVENUE'))::bigint AS orders,
+        COALESCE(sum(amount) FILTER (WHERE role IN ('CONFIRMATION', 'REVENUE')), 0)::text AS ordered_minor,
+        count(*) FILTER (WHERE role = 'REVENUE' AND status = 'WON')::bigint AS delivered,
+        COALESCE(sum(amount) FILTER (WHERE role = 'REVENUE' AND status = 'WON'), 0)::text AS delivered_minor,
+        count(*) FILTER (WHERE role = 'REVENUE' AND status = 'LOST')::bigint AS returned,
+        COALESCE(sum(amount) FILTER (WHERE role = 'REVENUE' AND status = 'LOST'), 0)::text AS returned_minor
+      FROM f
+      WHERE form_title IS NOT NULL
+      GROUP BY 1, 2, 3
+      `,
+      period.start,
+      period.end,
+    )
+    return rows.map((r) => ({
+      formTitle: r.form_title,
+      sourceId: r.source_id,
+      productLine: r.product_line,
+      leads: int(r.leads),
+      leadCustomers: int(r.lead_customers),
+      leadWon: int(r.lead_won),
+      sales: int(r.sales),
+      orders: int(r.orders),
+      orderedMinor: money(r.ordered_minor),
+      delivered: int(r.delivered),
+      deliveredMinor: money(r.delivered_minor),
+      returned: int(r.returned),
+      returnedMinor: money(r.returned_minor),
+    }))
+  }
+
+  /**
+   * Meta per campaign over a window of calendar days, summed — the objective
+   * and the name are what `campaignChannel` reads to tell a lead form from a
+   * DM, a hiring or another campaign. Bare dates, as `metaSpend`.
+   */
+  async metaCampaigns(from: string, to: string): Promise<MetaCampaignTotalRow[]> {
+    const rows = await this.prisma.metaCampaignDaily.groupBy({
+      by: ['accountId', 'accountName', 'campaignName', 'objective'],
+      where: { date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${to}T00:00:00Z`) } },
+      _sum: { spendMicroUsd: true, leads: true, conversations: true },
+    })
+    return rows.map((r) => ({
+      accountId: r.accountId,
+      accountName: r.accountName,
+      campaignName: r.campaignName,
+      objective: r.objective,
+      spendMicroUsd: r._sum.spendMicroUsd ?? 0n,
+      leads: r._sum.leads ?? 0,
+      conversations: r._sum.conversations ?? 0,
+    }))
+  }
 }
 
 /** A search term as a LIKE literal: its own % and _ are text, not wildcards. */

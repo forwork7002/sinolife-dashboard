@@ -119,6 +119,18 @@ export interface TargetologBitrixDto {
 
 /** One product (or both, as the total): Meta's delivery and the pages' results. */
 export interface MetaProductTotalsDto extends MetaMetricsDto {
+  /** Meta's leads from the lead-form campaigns alone (hiring left out). */
+  readonly metaFormLeads: number
+  readonly metaFormCplUsd: number | null
+  /** Conversations Meta counted on the DM campaigns. */
+  readonly metaConversations: number
+  /** Регистрация leads naming one of the product's Meta lead forms. */
+  readonly bitrixFormLeads: number
+  /** Регистрация leads from the product's target pages (DM). */
+  readonly bitrixPageLeads: number
+  /** bitrixFormLeads ÷ metaFormLeads, %. */
+  readonly formReachPercent: number | null
+  /** bitrixFormLeads + bitrixPageLeads. */
   readonly bitrixLeads: number
   readonly bitrixLeadWon: number
   readonly orders: number

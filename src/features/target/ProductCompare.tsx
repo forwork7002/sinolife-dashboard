@@ -275,6 +275,34 @@ function ShareBars({ products }: { products: readonly MetaProductTotalsWithName[
   )
 }
 
+/**
+ * «Yetib keldi»: of the leads Meta counted on the lead forms, the share that
+ * reached Bitrix24 as a form lead. Under 90 % something is losing leads — a
+ * form not linked to the portal, most often (the «Lidlar» · «Targetologlar»
+ * table names the targetolog).
+ */
+function ReachChip({ percent, meta }: { percent: number | null; meta: number }) {
+  if (percent === null) return null
+  const tone = percent >= 90 ? 'var(--status-good)' : percent >= 70 ? 'var(--status-warning)' : 'var(--status-critical)'
+  return (
+    <Tooltip
+      content={
+        <span className="tabular">
+          Meta {formatNumber(meta)} forma leadidan {formatPercent(percent, 0)}i Bitrix24 ga tushgan
+        </span>
+      }
+    >
+      <span
+        tabIndex={0}
+        className="focusable rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+        style={{ background: `color-mix(in oklab, ${tone} 12%, transparent)`, color: tone }}
+      >
+        {formatPercent(percent, 0)} yetib keldi
+      </span>
+    </Tooltip>
+  )
+}
+
 type MetaProductTotalsWithName = MetaProductTotalsDto & {
   readonly product: MetaProduct
 }
@@ -374,12 +402,27 @@ function ProductColumn({
         <div>
           <p className="eyebrow mt-3">Reklama · Meta</p>
           <dl className="mt-1 divide-y" style={{ borderColor: 'var(--border)' }}>
-            {row('Meta leadlari', formatNumber(product.metaLeads))}
-            {row('1 Meta lead narxi', usd(product.metaCplUsd), {
-              mine: product.metaCplUsd,
-              theirs: rival?.metaCplUsd ?? null,
+            {row(
+              'Meta leadlari · forma',
+              <Tooltip
+                content={
+                  <span className="tabular">
+                    Lead-forma kampaniyalari ({formatNumber(product.metaFormLeads)}). Akkauntlarning barcha «lead»
+                    lari {formatNumber(product.metaLeads)} — farqi vakansiya va boshqa kampaniyalar
+                  </span>
+                }
+              >
+                <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">
+                  {formatNumber(product.metaFormLeads)}
+                </span>
+              </Tooltip>,
+            )}
+            {row('1 Meta lead narxi', usd(product.metaFormCplUsd), {
+              mine: product.metaFormCplUsd,
+              theirs: rival?.metaFormCplUsd ?? null,
               better: 'low',
             })}
+            {row('DM yozishmalar', formatNumber(product.metaConversations))}
             {row('Kliklar', `${formatNumber(product.clicks)} · ${usd(product.cpcUsd)} / klik`)}
             {row('CTR', formatPercent(product.ctrPercent))}
           </dl>
@@ -387,7 +430,15 @@ function ProductColumn({
         <div>
           <p className="eyebrow mt-3">Natija · Bitrix24</p>
           <dl className="mt-1 divide-y" style={{ borderColor: 'var(--border)' }}>
-            {row('Leadlar', formatNumber(product.bitrixLeads))}
+            {row(
+              'Forma leadlari',
+              <span className="inline-flex items-baseline gap-2">
+                <ReachChip percent={product.formReachPercent} meta={product.metaFormLeads} />
+                <span>{formatNumber(product.bitrixFormLeads)}</span>
+              </span>,
+            )}
+            {row('DM sahifa leadlari', formatNumber(product.bitrixPageLeads))}
+            {row('Leadlar · jami', formatNumber(product.bitrixLeads), undefined, true)}
             {row(
               'Kval lidlar',
               `${formatNumber(product.bitrixLeadWon)} · ${formatPercent(

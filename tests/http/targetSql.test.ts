@@ -249,3 +249,61 @@ describe('the lead list statements', () => {
     expect(rows[1]!.sale).toBeNull()
   })
 })
+
+describe('the lead-form statement («Collagen va Zextra», 2026-10-13)', () => {
+  it('binds exactly the parameters it names', async () => {
+    const { calls, repository } = recorder(() => [])
+    await repository.formLeads(PERIOD)
+    const [call] = calls
+    expect(placeholders(call!.sql)).toEqual(new Set([1, 2]))
+    expect(call!.params).toEqual([PERIOD.start, PERIOD.end])
+  })
+
+  it('reads the forms as «Lidlar» does, drops the late «Qayta zayavka» copies and never reads База', async () => {
+    const { calls, repository } = recorder(() => [])
+    await repository.formLeads(PERIOD)
+    const sql = calls[0]!.sql
+    expect(sql).toContain('form_alias AS MATERIALIZED')
+    expect(sql).toContain('replayed AS (')
+    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM replayed rp WHERE rp\.id = w\.id\)/)
+    expect(sql).toContain(`p."role" IN ('LEAD', 'QUALIFICATION', 'CONFIRMATION', 'REVENUE')`)
+    expect(sql).not.toContain('RETENTION')
+    expect(sql).toContain('WHERE form_title IS NOT NULL')
+  })
+
+  it('shapes a row: counts as numbers, money as bigint', async () => {
+    const { repository } = recorder(() => [
+      {
+        form_title: 'Заполнение CRM-формы "Umar-collagen Collagen (UMAR)"',
+        source_id: 'REPEAT_SALE',
+        product_line: 'Collagen',
+        leads: 12n,
+        lead_customers: 11n,
+        lead_won: 4n,
+        sales: 4n,
+        orders: 3n,
+        ordered_minor: '90000000',
+        delivered: 1n,
+        delivered_minor: '30000000',
+        returned: 0n,
+        returned_minor: '0',
+      },
+    ])
+    const [row] = await repository.formLeads(PERIOD)
+    expect(row).toEqual({
+      formTitle: 'Заполнение CRM-формы "Umar-collagen Collagen (UMAR)"',
+      sourceId: 'REPEAT_SALE',
+      productLine: 'Collagen',
+      leads: 12,
+      leadCustomers: 11,
+      leadWon: 4,
+      sales: 4,
+      orders: 3,
+      orderedMinor: 90_000_000n,
+      delivered: 1,
+      deliveredMinor: 30_000_000n,
+      returned: 0,
+      returnedMinor: 0n,
+    })
+  })
+})

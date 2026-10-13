@@ -107,6 +107,8 @@ describe('TargetService.overview', () => {
         { externalId: 'UC_A8LE21', name: 'zextrauzb' },
       ],
       metaSpend: async () => [],
+      metaCampaigns: async () => [],
+      formLeads: async () => [],
       metaImportedAt: async () => null,
     } as unknown as TargetRepository
     const marketing = { snapshot: async () => null } as unknown as MarketingRepository
@@ -239,6 +241,79 @@ describe('metaBlock — the «Лид база» sheet', () => {
       expect(none.products.map((p) => p.product)).toEqual(['Boshqa'])
       expect(none.productsTotal).toMatchObject({ spendUsd: 0, bitrixLeads: 0, orders: 0, costPerBitrixLeadUsd: null })
       expect(none.total.bitrixLeads).toBe(500)
+    })
+  })
+
+  describe('Meta\'s lead forms against the form leads that reached Bitrix24 (2026-10-13)', () => {
+    /*
+      On «Shu oy» 01–13.10 the card read Meta 11 041 leads against 1 200
+      Bitrix24 leads: the Bitrix24 half counted the DM pages alone, and a form
+      fill lands as «Ген лид», never on a page (12 723 of them that window).
+    */
+    const campaign = (accountId: string, accountName: string, campaignName: string, objective: string, spend: bigint, leads: number, conversations = 0) => ({
+      accountId,
+      accountName,
+      campaignName,
+      objective,
+      spendMicroUsd: spend,
+      leads,
+      conversations,
+    })
+    const form = (formTitle: string, over: Partial<TargetCountersRow>, productLine: string | null = null, sourceId: string | null = 'REPEAT_SALE') => ({
+      formTitle,
+      sourceId,
+      productLine,
+      ...ZERO,
+      ...over,
+    })
+    const paired = metaBlock({
+      rows,
+      importedAt: new Date('2026-10-13T06:00:00Z'),
+      window: { from: '2026-10-01', to: '2026-10-13' },
+      sources: [
+        { key: 'sinolifeuz', ...ZERO, leads: 400, leadWon: 40, orders: 10, deliveredMinor: 1_000_000_000n },
+        { key: 'zextrauzb', ...ZERO, leads: 100 },
+      ],
+      productOfSource: new Map([
+        ['sinolifeuz', 'Collagen' as const],
+        ['zextrauzb', 'Zextra' as const],
+      ]),
+      forms: [
+        form('Заполнение CRM-формы "Umar-collagen Collagen (UMAR)"', { leads: 900, leadWon: 200, orders: 60, deliveredMinor: 3_000_000_000n }, 'Collagen'),
+        form('Заполнение CRM-формы "Umar-zextra UMAR (zextra-1)"', { leads: 70, leadWon: 5, orders: 2 }, 'Zextra'),
+        // A deal on a target page is the page's — counted in `sources` already.
+        form('Заполнение CRM-формы "Eldor-collagen x"', { leads: 999 }, null, 'UC_1X1J24'),
+      ],
+      campaigns: [
+        campaign('990016692137088', 'Umar - 64', 'Collagen form', 'OUTCOME_LEADS', 150_000_000n, 1_000),
+        campaign('990016692137088', 'Umar - 64', 'Sms-1', 'OUTCOME_ENGAGEMENT', 50_000_000n, 0, 320),
+        // A hiring form is no customer's lead.
+        campaign('1312865112943517', 'Umar 63', 'EX - Sinolife (vakansiya)', 'OUTCOME_LEADS', 10_000_000n, 55),
+        campaign('926218346480236', 'Zextra Kamron 1', 'Zextra form', 'OUTCOME_LEADS', 80_000_000n, 80),
+      ],
+      usdRate: 12_000,
+    })
+    const collagen = paired.products.find((p) => p.product === 'Collagen')!
+    const zextra = paired.products.find((p) => p.product === 'Zextra')!
+
+    it('counts Meta\'s lead-form campaigns alone — not the hiring forms, not the DM', () => {
+      expect(collagen.metaFormLeads).toBe(1_000)
+      expect(collagen.metaFormCplUsd).toBeCloseTo(150 / 1_000, 6)
+      expect(collagen.metaConversations).toBe(320)
+      expect(zextra.metaFormLeads).toBe(80)
+    })
+
+    it('sets the form leads that reached Bitrix24 beside them, and the pages apart', () => {
+      expect(collagen).toMatchObject({ bitrixFormLeads: 900, bitrixPageLeads: 400, bitrixLeads: 1_300 })
+      expect(collagen.formReachPercent).toBeCloseTo(90, 6)
+      expect(zextra).toMatchObject({ bitrixFormLeads: 70, bitrixPageLeads: 100, bitrixLeads: 170 })
+    })
+
+    it('carries the form leads\' kval, orders and money into the product\'s results', () => {
+      expect(collagen).toMatchObject({ bitrixLeadWon: 240, orders: 70 })
+      expect(collagen.deliveredMoney.amountMinor).toBe('4000000000')
+      expect(collagen.costPerBitrixLeadUsd).toBeCloseTo(452.63 / 1_300, 6)
+      expect(paired.productsTotal.bitrixLeads).toBe(1_470)
     })
   })
 
