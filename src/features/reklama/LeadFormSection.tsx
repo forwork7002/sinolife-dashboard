@@ -3,12 +3,11 @@
 import { useMemo, useState } from 'react'
 
 import { type Column, DataTable } from '@/components/ui/DataTable'
-import { SectionHeader } from '@/components/ui/Stat'
 import { formatDate, formatNumber } from '@/lib/format'
 import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
 
 import type { LeadFormDto } from './reklamaApi'
-import { type Status, TableCard, count, money, muted, pct } from './reklamaUi'
+import { type Status, count, money, muted, pct } from './reklamaUi'
 
 /**
  * Formalar — «Kampaniyalar»'s table with a Meta LEAD FORM on each row.
@@ -54,7 +53,14 @@ const SORTERS: Readonly<Record<SortKey, (f: LeadFormDto) => number | string | nu
   last: (f) => f.lastActive,
 }
 
-export function LeadFormSection({ forms, status }: { forms: readonly LeadFormDto[] | undefined; status: Status }) {
+/**
+ * The forms table alone — drawn as the «Formalar · Meta» tab of «Lid sifati»
+ * (2026-10-13, the user: «ikkisini birlashtirib yubor»). When the window has
+ * lead-form money and not one form's Meta lead was read (`crm` null on every
+ * row), the token behind the hourly Meta pass cannot open the forms' pages —
+ * the table would be one «Forma aniqlanmagan» row of dashes, so it says that.
+ */
+export function LeadFormTable({ forms, status }: { forms: readonly LeadFormDto[] | undefined; status: Status }) {
   const [sort, setSort] = useState<SortKey>('spend')
   const [order, setOrder] = useState<'asc' | 'desc'>('desc')
 
@@ -81,34 +87,45 @@ export function LeadFormSection({ forms, status }: { forms: readonly LeadFormDto
     }
   }
 
+  const unread = status === 'ready' && rows.length > 0 && rows.every((f) => f.crm === null)
+
   return (
-    <section className="flex min-w-0 flex-col gap-3">
-      <SectionHeader
-        title="Formalar · Meta"
-        hint="Har bir lid-forma alohida qator: shu forma orqali ishlagan reklamalarning sarfi, Meta lidi va lid narxi (CPL). Lid va undan keyingi ustunlar — formaning Meta lidi telefon boʻyicha Bitrix24 bitimiga ulangani: Kval — «Сделка успешна», qolganlari — bitim hozir turgan bosqich; kval narxi = sarf ÷ kval."
+    <>
+      {unread && (
+        <div
+          role="status"
+          className="mx-5 mb-3 rounded-[var(--radius-panel-sm)] px-4 py-3 text-xs leading-relaxed"
+          style={{
+            background: 'color-mix(in oklab, var(--status-warning) 10%, transparent)',
+            boxShadow: 'inset 0 0 0 1px color-mix(in oklab, var(--status-warning) 35%, transparent)',
+            color: 'var(--ink-secondary)',
+          }}
+        >
+          <strong className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
+            Meta’dan forma lidlari oʻqilmayapti.
+          </strong>{' '}
+          Sarf va Meta lidi bor, lekin birorta lid qaysi formadan kelgani oʻqilmadi — shuning uchun hammasi «Forma
+          aniqlanmagan» qatorida, Lid va Kval ustunlari «—». Sabab: serverdagi Meta tokeni lid-forma sahifalarini
+          koʻrmayapti (leads_retrieval ruxsati va sahifalarga kirish kerak). Token yangilansa, har bir forma keyingi
+          soatlik yangilanishda alohida qator boʻlib chiqadi.
+        </div>
+      )}
+      <DataTable<LeadFormDto>
+        columns={columns}
+        rows={rows}
+        rowKey={(f) => f.id || 'unknown'}
+        status={status}
+        emptyTitle="Bu davrda lid-forma maʼlumoti yoʻq"
+        minWidth={1680}
+        maxHeight="70dvh"
+        stickyColumns={1}
+        sort={sort}
+        order={order}
+        onSort={onSort}
+        initialRows={30}
+        moreLabel={(hidden) => `Yana ${formatNumber(hidden)} ta forma`}
       />
-      <TableCard
-        title={`Formalar — ${formatNumber(rows.length)} ta`}
-        hint="Ustun sarlavhasini bosib saralang."
-        footer="Forma Meta’dan olinadi: har bir lid qaysi forma va qaysi reklamadan kelganini Meta oʻzi aytadi, reklamaning sarfi oʻsha formaga yoziladi. «Forma aniqlanmagan» — lid-forma reklamasining sarfi, lekin undan hali birorta lid oʻqilmagan (forma sahifasi ochilmagan yoki reklama lid bermagan)."
-      >
-        <DataTable<LeadFormDto>
-          columns={columns}
-          rows={rows}
-          rowKey={(f) => f.id || 'unknown'}
-          status={status}
-          emptyTitle="Bu davrda lid-forma maʼlumoti yoʻq"
-          minWidth={1820}
-          maxHeight="70dvh"
-          stickyColumns={1}
-          sort={sort}
-          order={order}
-          onSort={onSort}
-          initialRows={30}
-          moreLabel={(hidden) => `Yana ${formatNumber(hidden)} ta forma`}
-        />
-      </TableCard>
-    </section>
+    </>
   )
 }
 

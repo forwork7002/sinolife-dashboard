@@ -16,7 +16,6 @@ import { t } from '@/lib/messages'
 
 import { CampaignSection } from './CampaignSection'
 import { FormSection } from './FormSection'
-import { LeadFormSection } from './LeadFormSection'
 import { QualitySection } from './QualitySection'
 import type { ReklamaOverviewDto } from './reklamaApi'
 import type { Status } from './reklamaUi'
@@ -92,8 +91,7 @@ export function ReklamaPage() {
           <>
             <Tiles data={data} status={status} brand={brand} />
             <FormSection form={data?.form} status={status} />
-            <QualitySection quality={data?.quality} status={status} />
-            <LeadFormSection forms={data?.leadForms} status={status} />
+            <QualitySection quality={data?.quality} forms={data?.leadForms} status={status} />
             <CampaignSection campaigns={data?.campaigns} status={status} />
           </>
         )}
