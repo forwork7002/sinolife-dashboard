@@ -2,6 +2,14 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
+// DataTable measures its pinned columns; jsdom has no layout to observe.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof ResizeObserver
+
+import { DmSection } from '@/features/reklama/DmSection'
 import { DmSheet } from '@/features/reklama/DmSheet'
 import type { DmBlockDto, DmCellsDto } from '@/features/reklama/reklamaApi'
 
@@ -92,6 +100,18 @@ describe('DmSheet', () => {
     const groups = screen.getAllByRole('columnheader').filter((h) => h.getAttribute('scope') === 'colgroup')
     expect(within(groups[2]!).getByTitle('Targetolog: Eldor').textContent).toBe('Eldor')
     expect(screen.getAllByTitle(/^Targetolog: /)).toHaveLength(1)
+  })
+
+  it('prints the targetolog beside the page on «Sahifalar — davr boʻyicha» too (2026-10-13)', () => {
+    const signed: DmBlockDto = {
+      ...dm,
+      pages: [{ ...dm.pages[0]!, targetolog: 'Umar · Organic' }, { ...dm.pages[1]!, targetolog: null }],
+    }
+    render(<DmSection dm={signed} status="ready" />)
+    const row = screen.getAllByRole('rowheader').find((h) => h.textContent?.startsWith(signed.pages[0]!.name))!
+    expect(within(row).getByTitle('Targetolog: Umar · Organic')).toBeTruthy()
+    // The page table and the day grid each sign the one page, nothing else.
+    expect(screen.getAllByTitle(/^Targetolog: /)).toHaveLength(2)
   })
 
   it('says so when the window has no day', () => {

@@ -94,15 +94,7 @@ export function DmSheet({ dm, status }: { dm: DmBlockDto | undefined; status: St
               >
                 <span className="inline-flex items-center gap-2">
                   {b.name}
-                  {b.targetolog && (
-                    <span
-                      title={`Targetolog: ${b.targetolog}`}
-                      className="rounded px-1.5 py-0.5 text-[11px] leading-none font-semibold"
-                      style={{ background: 'var(--ink-primary)', color: 'var(--surface-raised)' }}
-                    >
-                      {b.targetolog}
-                    </span>
-                  )}
+                  {b.targetolog && <TargetologChip name={b.targetolog} />}
                 </span>
               </th>
             ))}
@@ -183,4 +175,17 @@ function Figures({ cells, strong = false }: { cells: DmCellsDto | undefined; str
 /** «02.09» — the sheet's date, without the year every row repeats. */
 function dayLabel(date: string): string {
   return `${date.slice(8, 10)}.${date.slice(5, 7)}`
+}
+
+/** The sheet's dark chip beside a page's name: the targetolog the page belongs to (`DM_PAGE_TARGETOLOG`). */
+export function TargetologChip({ name }: { name: string }) {
+  return (
+    <span
+      title={`Targetolog: ${name}`}
+      className="rounded px-1.5 py-0.5 text-[11px] leading-none font-semibold"
+      style={{ background: 'var(--ink-primary)', color: 'var(--surface-raised)' }}
+    >
+      {name}
+    </span>
+  )
 }

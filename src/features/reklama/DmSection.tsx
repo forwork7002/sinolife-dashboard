@@ -7,7 +7,7 @@ import { SectionHeader } from '@/components/ui/Stat'
 import { PRODUCT_TONE, usd } from '@/features/target/targetTheme'
 
 import type { DmBlockDto, DmCellsDto, DmPageDto } from './reklamaApi'
-import { DmSheet } from './DmSheet'
+import { DmSheet, TargetologChip } from './DmSheet'
 import { type Status, TableCard, count, money, muted, pct } from './reklamaUi'
 
 /**
@@ -136,6 +136,7 @@ const pageColumns: readonly Column<{ key: string; name: string; page: DmPageDto 
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
           <span aria-hidden className="inline-block h-2 w-2 rounded-sm" style={{ background: PRODUCT_TONE[r.page.product] }} />
           {r.name}
+          {r.page.targetolog && <TargetologChip name={r.page.targetolog} />}
           {r.page.carriesDmSpend && (
             <span className="text-[11px] font-normal" style={muted} title="Mahsulotning DM reklamasi shu sahifaga yoziladi">
               · DM

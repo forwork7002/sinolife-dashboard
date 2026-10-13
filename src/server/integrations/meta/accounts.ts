@@ -223,16 +223,25 @@ export const DM_SHEET_PAGES: ReadonlyMap<string, TargetProduct> = new Map<string
 ])
 
 /**
- * The targetolog the sheet prints on a page's block (the black chip beside
- * the page name), as the sheet spells it. Only the blocks legible on the
- * 2026-10-10 screenshot; a page missing here draws no chip rather than a
- * guessed name.
+ * The targetolog a page belongs to, printed beside the page's name on both DM
+ * tables of «Target tahlili» (the sheet's black chip). The client's own list
+ * of 2026-10-13, by page: «Organic» on sinolifeuz is Umar's («organik degani
+ * Umarniki»), so the chip names him with the sheet's word beside it. Pages the
+ * list leaves blank (zextrasure.uz, zextrauzbekistan) and the two Telegram ad
+ * pages draw no chip; «zextrauzb ✔️Timur» names no Bitrix24 source — the
+ * portal's only Zextra Instagram source is «zextra.uz» (UC_A8LE21), which the
+ * list gives to Sobirjon, the account whose Zextra DM money lands there.
  */
 export const DM_PAGE_TARGETOLOG: Readonly<Record<string, string>> = Object.freeze({
+  UC_1X1J24: 'Umar · Organic', // sinolifeuz
+  UC_0FMQ5Q: 'Timur', // sinolife_otziv
+  UC_MWIKOC: 'Umar', // collagen.marine
   UC_NBCV5K: 'Sobirjon', // collagen.sinolife
   UC_KX2114: 'Eldor', // sinogummy
   UC_Z1OF0D: 'TG', // sinolif_tg
   UC_LBSZDU: 'Umar', // zextra.sinolife
+  UC_A8LE21: 'Sobirjon', // zextra.uz
+  '38|NEXTBOT': 'Kamron', // zextra_life
 })
 
 /**

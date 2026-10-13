@@ -765,7 +765,7 @@ describe('ReklamaService.overview — collagen.sinolife, the page Sobirjon #2\'s
     const out = await sheet.overview({ ...PERIOD, end: new Date(PERIOD.end.getTime() + 86_400_000) }, 'Asia/Tashkent')
     expect(asked.leads).toEqual(expect.arrayContaining(['UC_KX2114', 'UC_Z1OF0D']))
     expect(out.dm.pages.map((p) => [p.name, p.targetolog])).toEqual([
-      ['sinolifeuz', null],
+      ['sinolifeuz', 'Umar · Organic'],
       ['collagen.sinolife', 'Sobirjon'],
       ['sinogummy', 'Eldor'],
       ['sinolif_tg', 'TG'],
