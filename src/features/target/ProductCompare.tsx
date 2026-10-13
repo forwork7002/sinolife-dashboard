@@ -408,7 +408,8 @@ function ProductColumn({
                 content={
                   <span className="tabular">
                     Lead-forma kampaniyalari ({formatNumber(product.metaFormLeads)}). Akkauntlarning barcha «lead»
-                    lari {formatNumber(product.metaLeads)} — farqi vakansiya va boshqa kampaniyalar
+                    lari {formatNumber(product.metaLeads)}
+                    {product.metaLeads > product.metaFormLeads && ' — farqi vakansiya, sayt va boshqa kampaniyalar'}
                   </span>
                 }
               >

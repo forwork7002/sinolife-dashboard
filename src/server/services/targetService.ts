@@ -18,7 +18,7 @@ import {
   TARGET_SOURCE_IDS,
   TARGET_SOURCE_PRODUCT,
 } from '@/server/integrations/crm/bitrix24/mapping'
-import { type MetaProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
+import { type MetaProduct, campaignChannel, isSiteCampaign, ownerOf } from '@/server/integrations/meta/accounts'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import {
@@ -470,18 +470,27 @@ export function metaBlock(input: {
 
   /*
     A form lead is the product its «Проект» / form says (`leadBrand`, as on
-    «Lidlar»). A deal on a target page is the page's, counted in `sources`
-    already, so it never counts here a second time.
+    «Lidlar»). A form wins over its source, as «Lidlar»'s `leadChannel` has
+    it: a CRM-form deal filed under a target page is a FORM lead, so it is
+    taken back out of that page's row in `sources` (`page`) — otherwise the
+    targetolog cards' «Bitrix лид» and «Forma leadlari» could not agree.
   */
   const forms = (input.forms ?? []).flatMap((row) => {
-    if (row.sourceId !== null && TARGET_SOURCE_PRODUCT[row.sourceId] !== undefined) return []
     const product = leadBrand(row.sourceId, row.formTitle, row.productLine)
-    return product === null ? [] : [{ row, product }]
+    if (product === null) return []
+    const page = row.sourceId === null ? undefined : TARGET_SOURCE_PRODUCT[row.sourceId]
+    return [{ row, product, page }]
   })
+  /*
+    «Sayt» lead campaigns send people to the website, not to a Meta form, so
+    their leads never arrive as a CRM form: they stay out of the form pair, as
+    they stay out of the targetolog cards' `formUsd`.
+  */
   const campaigns = (input.campaigns ?? []).map((c) => ({
     ...c,
     product: ownerOf(c.accountId, c.accountName).product,
     channel: campaignChannel(c.objective, c.campaignName, c.accountId),
+    site: isSiteCampaign(c.campaignName),
   }))
 
   /** The owners and pages of `products`; null is every owner, «Boshqa» included. */
@@ -492,21 +501,31 @@ export function metaBlock(input: {
       const p = input.productOfSource.get(s.key)
       return p !== undefined && (products === null || products.includes(p))
     })
-    const ownForms = forms.filter((f) => products === null || products.includes(f.product)).map((f) => f.row)
-    const ownCampaigns = campaigns.filter((c) => products === null || products.includes(c.product))
-    const formCampaigns = ownCampaigns.filter((c) => c.channel === 'form')
+    const inScope = (p: MetaProduct) => products === null || products.includes(p)
+    const ownForms = forms.filter((f) => inScope(f.product)).map((f) => f.row)
+    // The form deals filed under one of these pages, taken back out of the page's row.
+    const pageForms = forms.filter((f) => f.page !== undefined && inScope(f.page)).map((f) => f.row)
+    const ownCampaigns = campaigns.filter((c) => inScope(c.product))
+    const formCampaigns = ownCampaigns.filter((c) => c.channel === 'form' && !c.site)
     const formSpend = formCampaigns.reduce((n, c) => n + c.spendMicroUsd, 0n)
     const metaFormLeads = formCampaigns.reduce((n, c) => n + c.leads, 0)
-    const rows: readonly TargetCountersRow[] = [...sources, ...ownForms]
-    const sum = (pick: (s: TargetCountersRow) => number) => rows.reduce((n, s) => n + pick(s), 0)
-    const bitrixPageLeads = sources.reduce((n, s) => n + s.leads, 0)
+    const signed: readonly (readonly [TargetCountersRow, 1 | -1])[] = [
+      ...sources.map((r) => [r, 1] as const),
+      ...ownForms.map((r) => [r, 1] as const),
+      ...pageForms.map((r) => [r, -1] as const),
+    ]
+    const sum = (pick: (s: TargetCountersRow) => number) => signed.reduce((n, [s, k]) => n + k * pick(s), 0)
+    const sumMinor = (pick: (s: TargetCountersRow) => bigint) =>
+      signed.reduce((n, [s, k]) => n + BigInt(k) * pick(s), 0n)
     const bitrixFormLeads = ownForms.reduce((n, s) => n + s.leads, 0)
+    const bitrixPageLeads =
+      sources.reduce((n, s) => n + s.leads, 0) - pageForms.reduce((n, s) => n + s.leads, 0)
     const bitrixLeads = bitrixPageLeads + bitrixFormLeads
     const orders = sum((s) => s.orders)
     const delivered = sum((s) => s.delivered)
     const returned = sum((s) => s.returned)
-    const deliveredMinor = rows.reduce((n, s) => n + s.deliveredMinor, 0n)
-    const orderedMinor = rows.reduce((n, s) => n + s.orderedMinor, 0n)
+    const deliveredMinor = sumMinor((s) => s.deliveredMinor)
+    const orderedMinor = sumMinor((s) => s.orderedMinor)
     const dollars = Number(spend) / MICRO
     const spendUzs = input.usdRate !== null ? dollars * input.usdRate : 0
     return {

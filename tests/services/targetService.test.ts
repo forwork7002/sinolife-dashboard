@@ -281,8 +281,8 @@ describe('metaBlock — the «Лид база» sheet', () => {
       forms: [
         form('Заполнение CRM-формы "Umar-collagen Collagen (UMAR)"', { leads: 900, leadWon: 200, orders: 60, deliveredMinor: 3_000_000_000n }, 'Collagen'),
         form('Заполнение CRM-формы "Umar-zextra UMAR (zextra-1)"', { leads: 70, leadWon: 5, orders: 2 }, 'Zextra'),
-        // A deal on a target page is the page's — counted in `sources` already.
-        form('Заполнение CRM-формы "Eldor-collagen x"', { leads: 999 }, null, 'UC_1X1J24'),
+        // A form deal filed under a target page is a FORM lead, taken back out of the page.
+        form('Заполнение CRM-формы "Eldor-collagen x"', { leads: 30, leadWon: 3 }, null, 'UC_1X1J24'),
       ],
       campaigns: [
         campaign('990016692137088', 'Umar - 64', 'Collagen form', 'OUTCOME_LEADS', 150_000_000n, 1_000),
@@ -290,13 +290,15 @@ describe('metaBlock — the «Лид база» sheet', () => {
         // A hiring form is no customer's lead.
         campaign('1312865112943517', 'Umar 63', 'EX - Sinolife (vakansiya)', 'OUTCOME_LEADS', 10_000_000n, 55),
         campaign('926218346480236', 'Zextra Kamron 1', 'Zextra form', 'OUTCOME_LEADS', 80_000_000n, 80),
+        // A website lead campaign never arrives as a CRM form.
+        campaign('990016692137088', 'Umar - 64', 'Sayt-1', 'OUTCOME_LEADS', 12_000_000n, 9),
       ],
       usdRate: 12_000,
     })
     const collagen = paired.products.find((p) => p.product === 'Collagen')!
     const zextra = paired.products.find((p) => p.product === 'Zextra')!
 
-    it('counts Meta\'s lead-form campaigns alone — not the hiring forms, not the DM', () => {
+    it('counts Meta\'s lead-form campaigns alone — not the hiring forms, not «Sayt», not the DM', () => {
       expect(collagen.metaFormLeads).toBe(1_000)
       expect(collagen.metaFormCplUsd).toBeCloseTo(150 / 1_000, 6)
       expect(collagen.metaConversations).toBe(320)
@@ -304,8 +306,8 @@ describe('metaBlock — the «Лид база» sheet', () => {
     })
 
     it('sets the form leads that reached Bitrix24 beside them, and the pages apart', () => {
-      expect(collagen).toMatchObject({ bitrixFormLeads: 900, bitrixPageLeads: 400, bitrixLeads: 1_300 })
-      expect(collagen.formReachPercent).toBeCloseTo(90, 6)
+      expect(collagen).toMatchObject({ bitrixFormLeads: 930, bitrixPageLeads: 370, bitrixLeads: 1_300 })
+      expect(collagen.formReachPercent).toBeCloseTo(93, 6)
       expect(zextra).toMatchObject({ bitrixFormLeads: 70, bitrixPageLeads: 100, bitrixLeads: 170 })
     })
 
