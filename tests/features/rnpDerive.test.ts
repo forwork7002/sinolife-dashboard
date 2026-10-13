@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { RnpLine, RnpRowDto } from '@/features/rnp/rnpApi'
-import { RNP_FIRST_MONTH, brandLines, dayMonth, dayMonthYear, dayTone, indexTone, rnpMonthIn, ropLines } from '@/features/rnp/rnpDerive'
+import { RNP_FIRST_MONTH, brandLines, dayMonth, dayMonthYear, dayTone, indexTone, rnpMonthIn, rnpMonthOf, ropLines } from '@/features/rnp/rnpDerive'
 
 /**
  * The grid's heat tint: a finished day of an additive row with a plan, read
@@ -157,5 +157,24 @@ describe('brandLines — a brand\'s cut of a company-wide row', () => {
     expect(brandLines(lines, 'all').map((l) => l.kind === 'value' && l.key)).toEqual(['reg:group:none:qualified'])
     expect(brandLines(lines, 'Collagen').map((l) => l.kind === 'value' && l.key)).toEqual(['reg:group:none:qualified:Collagen'])
     expect(brandLines(lines, 'none').map((l) => l.kind === 'value' && l.key)).toEqual(['reg:group:none:qualified:none'])
+  })
+})
+
+describe('rnpMonthOf — the current month, whatever the browser prints', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('is the Tashkent month as YYYY-MM', () => {
+    // 19:30 UTC on 31.10 is already 1 November in Tashkent (UTC+5).
+    expect(rnpMonthOf(new Date('2026-10-31T19:30:00Z'))).toBe('2026-11')
+    expect(rnpMonthOf(new Date('2026-10-13T04:00:00Z'))).toBe('2026-10')
+  })
+
+  it('does not lean on format(): Safari prints en-CA year + month as «10/2026»', () => {
+    const Real = Intl.DateTimeFormat
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (...args: ConstructorParameters<typeof Intl.DateTimeFormat>) {
+      const real = new Real(...args)
+      return { formatToParts: (date?: Date) => real.formatToParts(date), format: () => '10/2026' } as unknown as Intl.DateTimeFormat
+    })
+    expect(rnpMonthOf(new Date('2026-10-13T04:00:00Z'))).toBe('2026-10')
   })
 })

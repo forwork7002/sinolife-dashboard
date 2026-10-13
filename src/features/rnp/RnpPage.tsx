@@ -20,7 +20,7 @@ import { t } from '@/lib/messages'
 import { RnpColumnScope } from './RnpColumnResizer'
 import { RnpSheetTable, scrollToToday } from './RnpSheetTable'
 import type { RnpOverviewDto } from './rnpApi'
-import { RNP_FIRST_MONTH, brandLines, dayMonth, dayMonthYear, rnpMonthIn, ropLines } from './rnpDerive'
+import { RNP_FIRST_MONTH, brandLines, dayMonth, dayMonthYear, rnpMonthIn, rnpMonthOf, ropLines } from './rnpDerive'
 import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
 
 /**
@@ -318,9 +318,7 @@ function useCurrentMonth(): string {
 
 function thisMonth(): string {
   // The reader's calendar month in Tashkent, where the floor works.
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit' })
-    .format(new Date())
-    .slice(0, 7)
+  return rnpMonthOf(new Date())
 }
 
 /**

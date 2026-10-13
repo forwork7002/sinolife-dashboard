@@ -49,6 +49,19 @@ function weekdayIndex(day: string): number {
 export const RNP_FIRST_MONTH = '2025-01'
 
 /**
+ * The calendar month `now` falls in, in Tashkent, as `YYYY-MM`.
+ *
+ * Built from the parts, never from `format()`: `en-CA` gives ISO order only
+ * for a full date — for year + month alone Safari prints «10/2026», which
+ * `/rnp/overview` refused with a 400 on every visit (2026-10-13).
+ */
+export function rnpMonthOf(now: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit' }).formatToParts(now)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? ''
+  return `${part('year')}-${part('month').padStart(2, '0')}`
+}
+
+/**
  * A `YYYY-MM` the sheet can open on — a whole month from `RNP_FIRST_MONTH`
  * to the current one — or null: a half-typed month box, a future month or a
  * stale link's value is never requested (2026-10-02).
