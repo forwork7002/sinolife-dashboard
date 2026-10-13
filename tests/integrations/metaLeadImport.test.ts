@@ -102,9 +102,27 @@ describe('metaLeadRow', () => {
 describe('importMetaLeads', () => {
   afterEach(() => vi.unstubAllGlobals())
 
+  /** The form list's writes: an upsert is collected as built, `$transaction` resolves them. */
+  const formTable = (listed: Record<string, unknown>[] = [], dropped: unknown[] = []) => ({
+    $transaction: async (ops: unknown[]) => ops,
+    metaLeadForm: {
+      deleteMany: (args: unknown) => {
+        dropped.push(args)
+        return args
+      },
+      upsert: ({ create }: { create: Record<string, unknown> }) => {
+        listed.push(create)
+        return create
+      },
+    },
+  })
+
   function fakePrisma(newest: { formId: string; at: string }[] = []) {
     const written: { id: string }[] = []
+    const listed: Record<string, unknown>[] = []
+    const dropped: unknown[] = []
     const prisma = {
+      ...formTable(listed, dropped),
       metaLead: {
         groupBy: async () => newest.map((n) => ({ formId: n.formId, _max: { createdTime: new Date(n.at) } })),
         createMany: async ({ data, skipDuplicates }: { data: { id: string }[]; skipDuplicates: boolean }) => {
@@ -114,7 +132,7 @@ describe('importMetaLeads', () => {
         },
       },
     } as unknown as PrismaClient
-    return { prisma, written }
+    return { prisma, written, listed, dropped }
   }
 
   const lead = (id: string) => ({
@@ -143,7 +161,7 @@ describe('importMetaLeads', () => {
         if (url.pathname.endsWith('/p1/leadgen_forms')) {
           return json({
             data: [
-              { id: 'f-new', name: 'New form', status: 'ACTIVE' },
+              { id: 'f-new', name: 'New form', status: 'ACTIVE', created_time: '2026-10-08T03:12:00+0000', leads_count: 25 },
               { id: 'f-seen', name: 'Seen form', status: 'ACTIVE' },
               { id: 'f-old', name: 'Archived form', status: 'ARCHIVED' },
             ],
@@ -183,6 +201,39 @@ describe('importMetaLeads', () => {
     expect(asked.some((u) => u.pathname.includes('/p2/'))).toBe(false)
   })
 
+  it('writes every form the page lists — quiet and archived ones too — with Meta\'s status, date and lead count', async () => {
+    const asked = stubGraph((form) => [lead(`${form}-1`)])
+    const { prisma, listed, dropped } = fakePrisma([{ formId: 'f-old', at: '2026-09-01T00:00:00Z' }])
+    await importMetaLeads(prisma, 'user-token')
+
+    const list = asked.find((u) => u.pathname.endsWith('/p1/leadgen_forms'))!
+    expect(list.searchParams.get('fields')).toBe('id,name,status,created_time,leads_count')
+    expect(listed.map((f) => f.id)).toEqual(['f-new', 'f-seen', 'f-old'])
+    expect(listed[0]).toMatchObject({
+      pageId: 'p1',
+      pageName: 'Collagen.marine',
+      name: 'New form',
+      status: 'ACTIVE',
+      createdTime: new Date('2026-10-08T03:12:00Z'),
+      leadsCount: 25,
+    })
+    // Meta left the two out: no date, no count — never a zero.
+    expect(listed[2]).toMatchObject({ status: 'ARCHIVED', createdTime: null, leadsCount: null })
+    // A form gone from the page's whole list is gone from the table — that page's alone.
+    expect(dropped).toEqual([{ where: { pageId: 'p1', id: { notIn: ['f-new', 'f-seen', 'f-old'] } } }])
+  })
+
+  it('reads the leads even when the form list cannot be written', async () => {
+    stubGraph((form) => [lead(`${form}-1`)])
+    const { prisma, written } = fakePrisma()
+    ;(prisma as unknown as { $transaction: () => Promise<never> }).$transaction = async () => {
+      throw Object.assign(new Error('relation "meta_lead_form" does not exist'), { name: 'PrismaClientKnownRequestError' })
+    }
+    const r = await importMetaLeads(prisma, 'user-token')
+    expect(written).toHaveLength(3)
+    expect(r.failed).toEqual(['Collagen.marine: formalar roʻyxati yozilmadi (PrismaClientKnownRequestError)'])
+  })
+
   it('names a form Meta refused and still writes the others', async () => {
     stubGraph((form) => (form === 'f-new' ? new Error('(#200) Requires leads_retrieval') : [lead('ok-1')]))
     const { prisma, written } = fakePrisma()
@@ -216,6 +267,7 @@ describe('importMetaLeads', () => {
   it('names a failed write by its kind alone — a database error can quote the row, phone keys and all', async () => {
     stubGraph((form) => [lead(`${form}-1`)])
     const prisma = {
+      ...formTable(),
       metaLead: {
         groupBy: async () => [],
         createMany: async () => {

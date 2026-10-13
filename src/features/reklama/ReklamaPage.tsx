@@ -14,7 +14,6 @@ import { apiGet } from '@/lib/api'
 import { formatDateTime, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
-import { CampaignSection } from './CampaignSection'
 import { FormSection } from './FormSection'
 import { QualitySection } from './QualitySection'
 import type { ReklamaOverviewDto } from './reklamaApi'
@@ -28,7 +27,8 @@ import type { Status } from './reklamaUi'
  * sen menga shuni reklama samarasi boʻlimiga chiqarishing kerak». This is the
  * three ad sheets — «DM», «Отчёт Т» and lead quality — each as a table of
  * totals and a table of days, the way the sheets read, then every lead form
- * (2026-10-10) and every campaign.
+ * (2026-10-10). The campaigns' table under it was replaced by the forms on
+ * 2026-10-13 (the user: «shuni formalarga oʻzgartirish»).
  *
  * THE TWO OTHER TABS MOVED ON 2026-09-25 to their own section, «Lidlar»
  * (`features/leads`): «Sotuv · ROP» (removed 2026-10-01) and «Lid
@@ -92,7 +92,6 @@ export function ReklamaPage() {
             <Tiles data={data} status={status} brand={brand} />
             <FormSection form={data?.form} status={status} />
             <QualitySection quality={data?.quality} forms={data?.leadForms} status={status} />
-            <CampaignSection campaigns={data?.campaigns} status={status} />
           </>
         )}
       </div>

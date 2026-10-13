@@ -12,6 +12,11 @@
  * page or form the token cannot read is listed in `failed` and skipped: its
  * campaigns then show fewer leads read than Meta counted, never a wrong kval.
  *
+ * EVERY FORM, AS ITS PAGE LISTS IT. Each page's form list is also written
+ * to `meta_lead_form` (name, status, creation time, Meta's all-time lead
+ * count) on every pass — quiet and closed forms too — so «Formalar» can list
+ * the forms Facebook shows, not only the ones a lead was read from.
+ *
  * WHICH LEADS. A form with no rows yet is read whole — Meta keeps a lead for
  * 90 days — and after that only what was filed since its newest row, less an
  * hour's overlap (a lead is never revised, so `skipDuplicates` settles the
@@ -39,6 +44,23 @@ interface FormRow {
   readonly id: string
   readonly name?: string
   readonly status?: string
+  readonly created_time?: string
+  readonly leads_count?: number
+}
+
+/** One listed form as a `meta_lead_form` row. */
+export function metaLeadFormRow(page: { id: string; name?: string }, form: FormRow, listedAt: Date) {
+  const created = form.created_time ? new Date(form.created_time) : null
+  return {
+    id: form.id,
+    pageId: page.id,
+    pageName: page.name ?? '',
+    name: form.name || form.id,
+    status: form.status || 'UNKNOWN',
+    createdTime: created && !Number.isNaN(created.getTime()) ? created : null,
+    leadsCount: typeof form.leads_count === 'number' ? form.leads_count : null,
+    listedAt,
+  }
 }
 
 export interface LeadRow {
@@ -141,11 +163,32 @@ export async function importMetaLeads(
     let pageForms: FormRow[]
     try {
       pageForms = await getAll<FormRow>(
-        `${GRAPH}/${page.id}/leadgen_forms?${query({ fields: 'id,name,status', limit: '100' }, page.access_token)}`,
+        `${GRAPH}/${page.id}/leadgen_forms?${query(
+          { fields: 'id,name,status,created_time,leads_count', limit: '100' },
+          page.access_token,
+        )}`,
       )
     } catch (error) {
       failed.push(oneLine(`${pageName}: ${(error as Error).message}`))
       continue
+    }
+
+    /*
+      The page's list as it stands now — `getAll` answered the whole list or
+      threw above, so a form gone from it is gone from the page and its row
+      goes too. A failed write costs the list, never the leads below.
+    */
+    const listedAt = new Date()
+    try {
+      await prisma.$transaction([
+        prisma.metaLeadForm.deleteMany({ where: { pageId: page.id, id: { notIn: pageForms.map((form) => form.id) } } }),
+        ...pageForms.map((form) => {
+          const row = metaLeadFormRow(page, form, listedAt)
+          return prisma.metaLeadForm.upsert({ where: { id: row.id }, create: row, update: row })
+        }),
+      ])
+    } catch (error) {
+      failed.push(oneLine(`${pageName}: formalar roʻyxati yozilmadi (${(error as Error).name})`))
     }
 
     for (const form of pageForms) {

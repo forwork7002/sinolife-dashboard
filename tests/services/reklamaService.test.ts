@@ -5,7 +5,7 @@ import type { Period } from '@/server/domain/period/period'
 import { leadBucket } from '@/server/domain/reklama/leadQuality'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
 import { DM_ACCOUNT_PAGES, campaignChannel } from '@/server/integrations/meta/accounts'
-import type { CampaignDayRow, FormAdDayRow, LeadStageDayRow } from '@/server/repositories/reklamaRepository'
+import type { CampaignDayRow, FormAdDayRow, LeadStageDayRow, ListedFormRow } from '@/server/repositories/reklamaRepository'
 
 /*
   The repository reads `env` at module scope for APP_TIMEZONE, and `env`
@@ -357,51 +357,45 @@ describe('reklamaOverview', () => {
     expect(out.dm.total.costPerConversationUsd).toBeCloseTo(0.125, 9)
   })
 
-  it('lists campaigns biggest first, each priced by its own channel\'s result', () => {
-    const out = build(
-      [],
-      [
-        campaign({ objective: 'OUTCOME_LEADS', campaignName: 'Form', spendMicroUsd: 30_000_000n, leads: 10 }),
-        campaign({ date: '2026-08-02', objective: 'OUTCOME_LEADS', campaignName: 'Form', spendMicroUsd: 20_000_000n, leads: 15 }),
-        campaign({ campaignName: 'Sms-1', spendMicroUsd: 5_000_000n, conversations: 50, leads: 0 }),
-        campaign({ campaignName: 'Paused', spendMicroUsd: 0n }),
-      ],
-    )
-    expect(out.campaigns.map((c) => c.name)).toEqual(['Form', 'Sms-1'])
-    expect(out.campaigns[0]).toMatchObject({
-      channel: 'form',
-      targetolog: 'Umar',
-      spendUsd: 50,
-      results: 25,
-      activeDays: 2,
-      lastActive: '2026-08-02',
+  it('prices a form\'s kval from its own Meta leads met with the portal', () => {
+    const ad = (formId: string, spendMicroUsd: bigint, leads: number): FormAdDayRow => ({
+      date: '2026-08-01',
+      accountId: '990016692137088', // Umar - 64 · Collagen
+      accountName: 'Umar - 64',
+      campaignId: `c-${formId}`,
+      campaignName: 'Lid form',
+      objective: 'OUTCOME_LEADS',
+      formId,
+      formName: formId,
+      spendMicroUsd,
+      impressions: 0,
+      clicks: 0,
+      leads,
     })
-    expect(out.campaigns[0]!.costPerResultUsd).toBeCloseTo(2, 9)
-    expect(out.campaigns[1]).toMatchObject({ channel: 'dm', results: 50 })
-    expect(out.campaigns[1]!.costPerResultUsd).toBeCloseTo(0.1, 9)
-  })
-
-  it('prices a campaign\'s kval from its own Meta leads met with the portal', () => {
-    const rows = [
-      campaign({ campaignId: 'c1', objective: 'OUTCOME_LEADS', campaignName: 'Read whole', spendMicroUsd: 60_000_000n, leads: 20 }),
-      campaign({ campaignId: 'c2', objective: 'OUTCOME_LEADS', campaignName: 'Half read', spendMicroUsd: 40_000_000n, leads: 20 }),
-      campaign({ campaignId: 'c3', objective: 'OUTCOME_LEADS', campaignName: 'No kval', spendMicroUsd: 30_000_000n, leads: 5 }),
-      campaign({ campaignId: 'c4', campaignName: 'Sms-1', spendMicroUsd: 5_000_000n, conversations: 50, leads: 0 }),
-    ]
+    const read = (formId: string, o: { leads: number; matched: number; qualified: number; noAnswer?: number; lowQuality?: number; duplicate?: number; open: number }) => ({
+      campaignId: `c-${formId}`,
+      formId,
+      formName: formId,
+      noAnswer: 0,
+      lowQuality: 0,
+      duplicate: 0,
+      ...o,
+    })
     const out = reklamaOverview({
       window: WINDOW,
       pages: PAGES,
       leadRows: [],
-      campaignRows: rows,
+      campaignRows: [],
+      formAdRows: [ad('whole', 60_000_000n, 20), ad('half', 40_000_000n, 20), ad('none', 30_000_000n, 5)],
       campaignLeadRows: [
-        { campaignId: 'c1', leads: 19, matched: 16, qualified: 4, noAnswer: 5, lowQuality: 2, duplicate: 1, open: 4 },
-        // Its other form's page is closed to the token: half of Meta's 20 leads were read.
-        { campaignId: 'c2', leads: 10, matched: 9, qualified: 3, noAnswer: 0, lowQuality: 0, duplicate: 0, open: 6 },
-        { campaignId: 'c3', leads: 5, matched: 5, qualified: 0, noAnswer: 5, lowQuality: 0, duplicate: 0, open: 0 },
+        read('whole', { leads: 19, matched: 16, qualified: 4, noAnswer: 5, lowQuality: 2, duplicate: 1, open: 4 }),
+        // Half of Meta's 20 leads were read.
+        read('half', { leads: 10, matched: 9, qualified: 3, open: 6 }),
+        read('none', { leads: 5, matched: 5, qualified: 0, noAnswer: 5, open: 0 }),
       ],
       importedAt: null,
     })
-    const [whole, half, none, dm] = out.campaigns
+    const [whole, half, none] = out.leadForms
     expect(whole!.crm).toMatchObject({ leadsRead: 19, matched: 16, qualified: 4, qualifiedPercent: 25 })
     expect(whole!.crm!.costPerQualifiedUsd).toBeCloseTo(15, 9)
     // The kval is counted, never priced: 40 $ over half the leads' kval would read dearer than it is.
@@ -409,11 +403,105 @@ describe('reklamaOverview', () => {
     expect(half!.crm!.qualifiedPercent).toBeCloseTo(33.333, 2)
     // No kval is a measured 0 % with no price, not a free kval.
     expect(none!.crm).toMatchObject({ qualified: 0, qualifiedPercent: 0, costPerQualifiedUsd: null })
-    // A DM campaign has no Meta lead to meet.
-    expect(dm!.crm).toBeNull()
     // «Barcha manbalar»'s outcome columns: with the kval they are the matched leads.
     expect(whole!.crm).toMatchObject({ noAnswer: 5, lowQuality: 2, duplicate: 1, open: 4 })
     expect(4 + 5 + 2 + 1 + 4).toBe(whole!.crm!.matched)
+  })
+
+  it('lists every form the pages list, a quiet one too, with Facebook\'s page, status, date and lead count', () => {
+    const listed = (o: Partial<ListedFormRow> & Pick<ListedFormRow, 'id' | 'name'>): ListedFormRow => ({
+      pageId: '505586455975439',
+      pageName: 'Collagen.marine',
+      status: 'ACTIVE',
+      createdTime: new Date('2026-10-02T09:00:00Z'),
+      leadsCount: 166,
+      ...o,
+    })
+    const input = {
+      window: WINDOW,
+      pages: PAGES,
+      leadRows: [],
+      campaignRows: [],
+      formAdRows: [
+        {
+          date: '2026-08-01',
+          accountId: '990016692137088',
+          accountName: 'Umar - 64',
+          campaignId: 'c1',
+          campaignName: 'Lid form',
+          objective: 'OUTCOME_LEADS',
+          formId: 'f1',
+          formName: 'Old name',
+          spendMicroUsd: 10_000_000n,
+          impressions: 0,
+          clicks: 0,
+          leads: 4,
+        },
+      ],
+      listedForms: [
+        listed({ id: 'f1', name: 'Collagen FULL (UMAR)' }),
+        listed({ id: 'q1', name: 'Zextra qisqa forma', pageName: 'Zextra Uzbekistan', leadsCount: 25 }),
+        listed({ id: 'q2', name: 'Collagen eski', status: 'ARCHIVED', createdTime: null, leadsCount: null }),
+      ],
+      importedAt: null,
+    }
+    const out = reklamaOverview(input)
+    // The spender first, then the quiet ones: an active form before an archived one.
+    expect(out.leadForms.map((f) => f.id)).toEqual(['f1', 'q1', 'q2'])
+    // The page's list names a renamed form by its new name.
+    expect(out.leadForms[0]).toMatchObject({
+      name: 'Collagen FULL (UMAR)',
+      pageName: 'Collagen.marine',
+      status: 'ACTIVE',
+      createdTime: '2026-10-02T09:00:00.000Z',
+      totalLeads: 166,
+      spendUsd: 10,
+    })
+    expect(out.leadForms[1]).toMatchObject({ pageName: 'Zextra Uzbekistan', totalLeads: 25, spendUsd: 0, crm: null, targetolog: null })
+    expect(out.leadForms[2]).toMatchObject({ status: 'ARCHIVED', createdTime: null, totalLeads: null })
+
+    // Under the switch a quiet form goes by its name; one with money by its ads' budget.
+    expect(reklamaOverview({ ...input, brand: 'Zextra' }).leadForms.map((f) => f.id)).toEqual(['q1'])
+    expect(reklamaOverview({ ...input, brand: 'Collagen' }).leadForms.map((f) => f.id)).toEqual(['f1', 'q2'])
+  })
+
+  it('files a busy form on its money\'s slice alone, whatever its name says — the slices add up to «Hammasi»', () => {
+    const input = {
+      window: WINDOW,
+      pages: PAGES,
+      leadRows: [],
+      campaignRows: [],
+      formAdRows: [
+        {
+          date: '2026-08-01',
+          accountId: '990016692137088', // Umar - 64 · Collagen budget
+          accountName: 'Umar - 64',
+          campaignId: 'c1',
+          campaignName: 'Lid form',
+          objective: 'OUTCOME_LEADS',
+          formId: 'f1',
+          formName: 'Zextra 777',
+          spendMicroUsd: 10_000_000n,
+          impressions: 0,
+          clicks: 0,
+          leads: 4,
+        },
+      ],
+      // Organic leads only: no budget claims them.
+      campaignLeadRows: [
+        { campaignId: '', formId: 'org', formName: 'Collagen organik', leads: 3, matched: 3, qualified: 1, noAnswer: 0, lowQuality: 0, duplicate: 0, open: 2 },
+      ],
+      listedForms: [
+        { id: 'f1', pageId: 'p', pageName: 'P', name: 'Zextra 777', status: 'ACTIVE', createdTime: null, leadsCount: 9 },
+        { id: 'org', pageId: 'p', pageName: 'P', name: 'Collagen organik', status: 'ACTIVE', createdTime: null, leadsCount: 3 },
+      ],
+      importedAt: null,
+    }
+    const ids = (brand: 'all' | 'Collagen' | 'Zextra' | 'none') => reklamaOverview({ ...input, brand }).leadForms.map((f) => f.id)
+    expect(ids('all').sort()).toEqual(['f1', 'org'])
+    expect(ids('Collagen')).toEqual(['f1'])
+    expect(ids('Zextra')).toEqual([])
+    expect(ids('none')).toEqual(['org'])
   })
 
   it('draws one row per lead form: its ads\' money, and every lead of the form met with the portal', () => {
@@ -549,7 +637,6 @@ describe('reklamaOverview — the Collagen / Zextra switch', () => {
     expect(z.quality.total).toMatchObject({ leads: 12, success: 12 })
     expect(z.spend).toEqual({ totalUsd: 8, formUsd: 8, dmUsd: 0, hiringUsd: 0, otherUsd: 0 })
     expect(z.form.owners.map((o) => o.key)).toEqual(['Zextra|Umar'])
-    expect(z.campaigns.map((c) => c.account)).toEqual(['Zextra Umar'])
     expect(z.dm.unattributed).toEqual({ spendUsd: 0, conversations: 0 })
 
     const c = build('Collagen')
@@ -701,18 +788,17 @@ describe('ReklamaService.overview — collagen.sinolife, the page Sobirjon #2\'s
     campaignsImportedAt: async () => null,
     campaignLeads: async () => [],
     formAdDays: async () => [],
+    listedForms: async () => [],
   }
   const service = new ReklamaService(repository as never)
 
-  it('draws the sheets and the campaigns when the per-campaign scan fails', async () => {
-    const failing = new ReklamaService(
-      { ...repository, campaignLeads: async () => Promise.reject(new Error('canceling statement due to statement timeout')) } as never,
-    )
+  it('draws the sheets and the forms when the per-campaign scan and the form list fail', async () => {
+    const timeout = async () => Promise.reject(new Error('canceling statement due to statement timeout'))
+    const failing = new ReklamaService({ ...repository, campaignLeads: timeout, listedForms: timeout } as never)
     // Another window, so the memo of the cases around this one is not what answers.
     const out = await failing.overview({ ...PERIOD, start: new Date(PERIOD.start.getTime() + 86_400_000) }, 'Asia/Tashkent')
-    expect(out.campaigns).toHaveLength(1)
-    // No lead read: the portal's columns stay empty, the campaign's own figures stand.
-    expect(out.campaigns[0]!.crm).toBeNull()
+    expect(out.spend.totalUsd).toBe(30)
+    expect(out.leadForms).toEqual([])
   })
 
   it('reads the page\'s leads and name, draws it as Collagen\'s, and puts the money on it', async () => {

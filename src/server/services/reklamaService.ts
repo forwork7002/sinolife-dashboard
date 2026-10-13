@@ -54,6 +54,7 @@ import type {
   CampaignLeadRow,
   FormAdDayRow,
   LeadStageDayRow,
+  ListedFormRow,
   ReklamaRepository,
 } from '@/server/repositories/reklamaRepository'
 
@@ -210,37 +211,6 @@ export interface SpendSplitDto {
   readonly otherUsd: number
 }
 
-/**
- * One Meta campaign over the window — which ads the money actually went to.
- * `results` is the channel's own result: Meta leads on a lead-form campaign,
- * conversations on a DM one.
- */
-export interface CampaignDto {
-  readonly id: string
-  readonly name: string
-  readonly account: string
-  readonly targetolog: string
-  readonly product: MetaProduct
-  readonly channel: CampaignChannel
-  readonly spendUsd: number
-  readonly metaLeads: number
-  readonly conversations: number
-  readonly results: number
-  readonly costPerResultUsd: number | null
-  readonly impressions: number
-  readonly clicks: number
-  readonly ctrPercent: number | null
-  /** Days in the window the campaign spent anything. */
-  readonly activeDays: number
-  readonly lastActive: string | null
-  /**
-   * The campaign's own leads on the portal (`ReklamaRepository.campaignLeads`)
-   * — null on a campaign with no lead read: a DM campaign, or a form whose
-   * page the token cannot open.
-   */
-  readonly crm: CampaignCrmDto | null
-}
-
 export interface CampaignCrmDto {
   /** Meta leads read one by one — set beside `metaLeads`, Meta's own count. */
   readonly leadsRead: number
@@ -279,6 +249,15 @@ export interface LeadFormDto {
   /** Meta's form id; empty for «Forma aniqlanmagan» — lead-form ads no read lead names a form for. */
   readonly id: string
   readonly name: string
+  /** The page the form is on, as Facebook names it; null for a form no page lists to the token. */
+  readonly pageName: string | null
+  readonly pageId: string | null
+  /** Meta's: ACTIVE (Faol), ARCHIVED (Faol emas), DRAFT (Qoralama); null when no page lists the form. */
+  readonly status: string | null
+  /** When the form was made, Meta's `created_time`. */
+  readonly createdTime: string | null
+  /** Meta's all-time lead count of the form — not the window's. */
+  readonly totalLeads: number | null
   /** The account that spent most through the form; null with no ad behind it in the window. */
   readonly targetolog: string | null
   readonly product: MetaProduct
@@ -317,9 +296,7 @@ export interface ReklamaOverviewDto {
   readonly dm: DmBlockDto
   readonly form: FormBlockDto
   readonly quality: QualityBlockDto
-  /** Every campaign that spent in the window, biggest first. */
-  readonly campaigns: readonly CampaignDto[]
-  /** Every lead form that spent or received a lead in the window, biggest first. */
+  /** Every lead form the pages list, and any other that spent or received a lead in the window, biggest first. */
   readonly leadForms: readonly LeadFormDto[]
 }
 
@@ -514,10 +491,13 @@ export function reklamaOverview(input: {
   campaignLeadRows?: readonly (CampaignLeadRow & { readonly formId?: string; readonly formName?: string })[]
   /** The ads' days under each lead form; absent = the scan failed, and «Formalar» draws the leads alone. */
   formAdRows?: readonly FormAdDayRow[]
+  /** Every form the pages list (`meta_lead_form`); absent = not read, and «Formalar» draws the window's forms alone. */
+  listedForms?: readonly ListedFormRow[]
   importedAt: Date | null
   brand?: BrandFilter
 }): ReklamaOverviewDto {
   const brand = input.brand ?? 'all'
+  const busyForms = new Set<string>()
   if (brand !== 'all') {
     const leadRows = input.leadRows.filter((row) => brandMatches(brand, leadBrand(row.sourceId, null, row.productLine)))
     const pagesWithLeads = new Set(leadRows.map((row) => row.sourceId))
@@ -530,6 +510,9 @@ export function reklamaOverview(input: {
     for (const row of [...input.campaignRows, ...(input.formAdRows ?? [])]) {
       budgetOf.set(row.campaignId, adBudgetProduct(row))
     }
+    // A form with money or leads in the window goes with them, never by its name — read before the narrowing.
+    for (const row of input.formAdRows ?? []) if (row.formId !== null) busyForms.add(row.formId)
+    for (const row of input.campaignLeadRows ?? []) if (row.formId !== undefined) busyForms.add(row.formId)
     input = {
       ...input,
       brand: 'all',
@@ -710,70 +693,6 @@ export function reklamaOverview(input: {
     return { key: page.key, name: page.name, product: page.product, total: qualityCells(total), days: pageDays }
   })
 
-  // --- form block: product first, then the biggest spender.
-  // Per campaign, every channel — the drill-down under all three sheets.
-  interface CampaignAcc {
-    row: CampaignDayRow
-    channel: CampaignChannel
-    total: FormAcc
-    conversations: number
-    days: Set<string>
-    lastActive: string | null
-  }
-  const byCampaign = new Map<string, CampaignAcc>()
-  for (const row of input.campaignRows) {
-    const acc =
-      byCampaign.get(row.campaignId) ??
-      ({
-        row,
-        channel: campaignChannel(row.objective, row.campaignName, row.accountId),
-        total: formZero(),
-        conversations: 0,
-        days: new Set<string>(),
-        lastActive: null,
-      } satisfies CampaignAcc)
-    byCampaign.set(row.campaignId, acc)
-    addForm(acc.total, row)
-    acc.conversations += row.conversations
-    if (row.spendMicroUsd > 0n) {
-      acc.days.add(row.date)
-      if (acc.lastActive === null || row.date > acc.lastActive) acc.lastActive = row.date
-    }
-  }
-  // The scan answers per campaign × form: a campaign's leads are its forms' summed. An organic lead is no campaign's.
-  const crmOf = new Map<string, LeadAcc>()
-  for (const row of input.campaignLeadRows ?? []) {
-    if (row.campaignId === '') continue
-    addLeads(crmOf.get(row.campaignId) ?? crmOf.set(row.campaignId, leadZero()).get(row.campaignId)!, row)
-  }
-  const campaigns: CampaignDto[] = [...byCampaign.values()]
-    .filter((c) => c.total.spend > 0n)
-    .sort((a, b) => Number(b.total.spend - a.total.spend))
-    .map((c) => {
-      const owner = ownerOf(c.row.accountId, c.row.accountName)
-      const results = c.channel === 'dm' || c.channel === 'hiring' ? c.conversations : c.total.leads
-      const read = crmOf.get(c.row.campaignId)
-      return {
-        id: c.row.campaignId,
-        name: c.row.campaignName,
-        account: c.row.accountName,
-        targetolog: owner.targetolog,
-        product: owner.product,
-        channel: c.channel,
-        spendUsd: usd(c.total.spend),
-        metaLeads: c.total.leads,
-        conversations: c.conversations,
-        results,
-        costPerResultUsd: perUnit(c.total.spend, results),
-        impressions: c.total.impressions,
-        clicks: c.total.clicks,
-        ctrPercent: percent(c.total.clicks, c.total.impressions),
-        activeDays: c.days.size,
-        lastActive: c.lastActive,
-        crm: read ? crmCells(read, c.total) : null,
-      }
-    })
-
   // --- per lead form: the ads' money under the form their leads name, and every lead of the form.
   interface LeadFormAcc {
     name: string
@@ -784,12 +703,23 @@ export function reklamaOverview(input: {
     accounts: Map<string, { name: string; spend: bigint }>
     campaigns: Set<string>
     crm: LeadAcc | null
+    /** On a page's form list — drawn whatever the window holds. */
+    listed: boolean
   }
   const byForm = new Map<string, LeadFormAcc>()
   const formOf = (id: string, name: string): LeadFormAcc => {
     const acc =
       byForm.get(id) ??
-      ({ name, total: formZero(), days: new Set(), lastActive: null, accounts: new Map(), campaigns: new Set(), crm: null } satisfies LeadFormAcc)
+      ({
+        name,
+        total: formZero(),
+        days: new Set(),
+        lastActive: null,
+        accounts: new Map(),
+        campaigns: new Set(),
+        crm: null,
+        listed: false,
+      } satisfies LeadFormAcc)
     byForm.set(id, acc)
     return acc
   }
@@ -821,15 +751,44 @@ export function reklamaOverview(input: {
     const acc = formOf(row.formId, row.formName ?? '')
     addLeads((acc.crm ??= leadZero()), row)
   }
+  /*
+    Every form the pages list, as Facebook shows it (the client, 2026-10-13:
+    «formalar … facebookdagi formalardan olinishi kerak») — a quiet one too,
+    with nothing in the window. Under the brand switch a quiet form has no
+    money or lead to file it by, so it goes by its NAME, as a deal it would
+    open is filed («Заполнение CRM-формы "<name>"», `leadBrand`); a form busy
+    in the window is only ever on the slice its money and leads went to, so
+    the slices still add up to «Hammasi».
+  */
+  const listed = new Map((input.listedForms ?? []).map((f) => [f.id, f]))
+  for (const f of listed.values()) {
+    const quietHere = !busyForms.has(f.id) && brandMatches(brand, leadBrand(null, `Заполнение CRM-формы "${f.name}"`))
+    if (byForm.has(f.id) || quietHere) {
+      formOf(f.id, f.name).listed = true
+    }
+  }
   const leadForms: LeadFormDto[] = [...byForm.entries()]
-    .filter(([, f]) => f.total.spend > 0n || (f.crm?.leads ?? 0) > 0)
-    .sort(([, a], [, b]) => Number(b.total.spend - a.total.spend) || (b.crm?.leads ?? 0) - (a.crm?.leads ?? 0))
-    .map(([id, f]) => {
+    .filter(([, f]) => f.listed || f.total.spend > 0n || (f.crm?.leads ?? 0) > 0)
+    .map(([id, f]) => ({ id, f, meta: listed.get(id) }))
+    .sort(
+      (a, b) =>
+        Number(b.f.total.spend - a.f.total.spend) ||
+        (b.f.crm?.leads ?? 0) - (a.f.crm?.leads ?? 0) ||
+        Number(b.meta?.status === 'ACTIVE') - Number(a.meta?.status === 'ACTIVE') ||
+        (b.meta?.leadsCount ?? 0) - (a.meta?.leadsCount ?? 0),
+    )
+    .map(({ id, f, meta }) => {
       const spenders = [...f.accounts.entries()].sort(([, a], [, b]) => Number(b.spend - a.spend))
       const owner = spenders[0] ? ownerOf(spenders[0][0], spenders[0][1].name) : null
       return {
         id,
-        name: f.name,
+        // The page's list names a renamed form by its new name; a lead keeps the name it was filed under.
+        name: meta?.name ?? f.name,
+        pageName: meta?.pageName || null,
+        pageId: meta?.pageId ?? null,
+        status: meta?.status || null,
+        createdTime: meta?.createdTime?.toISOString() ?? null,
+        totalLeads: meta?.leadsCount ?? null,
         targetolog: owner?.targetolog ?? null,
         product: owner?.product ?? 'Boshqa',
         accounts: spenders.map(([, a]) => a.name),
@@ -846,6 +805,7 @@ export function reklamaOverview(input: {
       }
     })
 
+  // --- form block: product first, then the biggest spender.
   const ordered = [...owners.values()]
     .filter((o) => o.total.spend > 0n || o.total.leads > 0 || o.dmSpend > 0n)
     .sort(
@@ -910,7 +870,6 @@ export function reklamaOverview(input: {
         .map(([stage, s]) => ({ stage, bucket: s.bucket, leads: s.leads }))
         .sort((a, b) => b.leads - a.leads || a.stage.localeCompare(b.stage, 'ru')),
     },
-    campaigns,
     leadForms,
   }
 }
@@ -1141,7 +1100,7 @@ const campaignLeadCache = ttlCache<Awaited<ReturnType<ReklamaRepository['campaig
 function scanFailed<T>(scan: string, fallback: T) {
   return (error: unknown): T => {
     void import('@/server/logging/logger').then(({ logger }) =>
-      logger.warn({ err: error }, `«Kampaniyalar» ${scan} scan failed; the campaigns draw without it`),
+      logger.warn({ err: error }, `«Formalar» ${scan} scan failed; the forms draw without it`),
     )
     return fallback
   }
@@ -1167,7 +1126,7 @@ export class ReklamaService {
     }
     const key = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
 
-    const [leadRows, named, campaignRows, campaignLeadRows, formAdRows, importedAt] = await Promise.all([
+    const [leadRows, named, campaignRows, campaignLeadRows, formAdRows, listedForms, importedAt] = await Promise.all([
       leadCache.get(key, () => this.repository.leadStageDays(period, REKLAMA_SOURCE_IDS)),
       this.repository.sources(REKLAMA_SOURCE_IDS),
       this.repository.campaignDays(window.from, window.to),
@@ -1182,9 +1141,19 @@ export class ReklamaService {
       campaignLeadCache.get(key, () => this.repository.campaignLeads(period).catch(scanFailed('campaign leads', undefined))),
       // «Formalar»' money, on the same terms: without it the forms draw their leads alone.
       this.repository.formAdDays(window.from, window.to, period).catch(scanFailed('form ads', undefined)),
+      this.repository.listedForms().catch(scanFailed('form list', undefined)),
       this.repository.campaignsImportedAt(),
     ])
 
-    return { window, pages: orderedPages(named), leadRows, campaignRows, campaignLeadRows, formAdRows, importedAt }
+    return {
+      window,
+      pages: orderedPages(named),
+      leadRows,
+      campaignRows,
+      campaignLeadRows,
+      formAdRows,
+      listedForms,
+      importedAt,
+    }
   }
 }

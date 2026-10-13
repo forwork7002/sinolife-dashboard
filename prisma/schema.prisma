@@ -1559,6 +1559,28 @@ model MetaLead {
   @@map("meta_lead")
 }
 
+/// One Meta LEAD FORM as its page lists it («Reklama samarasi» · «Formalar»,
+/// 2026-10-13: the client's «formalar Facebook'dagidek aniq»). `meta_lead`
+/// knows only the forms a lead was read from; this is every form the token's
+/// pages list — a quiet form too — with Meta's own status, creation time and
+/// all-time lead count, rewritten on every hourly pass. A form Meta stops
+/// listing keeps its last row (`listedAt` says when it was last seen).
+model MetaLeadForm {
+  /// Meta's form id.
+  id          String    @id
+  pageId      String
+  pageName    String    @default("")
+  name        String
+  /// Meta's own: ACTIVE, ARCHIVED, DRAFT, DELETED.
+  status      String
+  createdTime DateTime?
+  /// Meta's `leads_count` — every lead the form ever took, not the window's.
+  leadsCount  Int?
+  listedAt    DateTime  @default(now())
+
+  @@map("meta_lead_form")
+}
+
 // ---------------------------------------------------------------------------
 // Sales plans — FAKT 1 / FAKT 2 month plans are typed in on «RNP jadvali»
 //

@@ -121,28 +121,6 @@ export interface SpendSplitDto {
   readonly otherUsd: number
 }
 
-export type CampaignChannel = 'form' | 'dm' | 'hiring' | 'other'
-
-export interface CampaignDto {
-  readonly id: string
-  readonly name: string
-  readonly account: string
-  readonly targetolog: string
-  readonly product: MetaProduct
-  readonly channel: CampaignChannel
-  readonly spendUsd: number
-  readonly metaLeads: number
-  readonly conversations: number
-  readonly results: number
-  readonly costPerResultUsd: number | null
-  readonly impressions: number
-  readonly clicks: number
-  readonly ctrPercent: number | null
-  readonly activeDays: number
-  readonly lastActive: string | null
-  readonly crm: CampaignCrmDto | null
-}
-
 export interface CampaignCrmDto {
   readonly leadsRead: number
   readonly matched: number
@@ -159,6 +137,14 @@ export interface LeadFormDto {
   /** Empty for «Forma aniqlanmagan». */
   readonly id: string
   readonly name: string
+  /** Null for a form no page lists to the token. */
+  readonly pageName: string | null
+  readonly pageId: string | null
+  /** Meta's: ACTIVE, ARCHIVED, DRAFT. */
+  readonly status: string | null
+  readonly createdTime: string | null
+  /** Meta's all-time lead count of the form. */
+  readonly totalLeads: number | null
   readonly targetolog: string | null
   readonly product: MetaProduct
   readonly accounts: readonly string[]
@@ -188,6 +174,5 @@ export interface ReklamaOverviewDto {
   readonly dm: DmBlockDto
   readonly form: FormBlockDto
   readonly quality: QualityBlockDto
-  readonly campaigns: readonly CampaignDto[]
   readonly leadForms: readonly LeadFormDto[]
 }

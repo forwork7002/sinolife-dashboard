@@ -22,6 +22,13 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver
+// …nor matchMedia; the forms table pins its identity columns from a tablet up.
+window.matchMedia ??= ((query: string) => ({
+  matches: true,
+  media: query,
+  addEventListener() {},
+  removeEventListener() {},
+})) as unknown as typeof window.matchMedia
 
 const cells = (over: Partial<QualityCellsDto> = {}): QualityCellsDto => ({
   leads: 72,
@@ -53,6 +60,11 @@ const QUALITY: QualityBlockDto = {
 const form = (over: Partial<LeadFormDto> = {}): LeadFormDto => ({
   id: '',
   name: '',
+  pageName: null,
+  pageId: null,
+  status: null,
+  createdTime: null,
+  totalLeads: null,
   targetolog: 'Timur',
   product: 'Collagen',
   accounts: ['Timuro - Sinolife 32'],
@@ -96,7 +108,7 @@ describe('Lid sifati', () => {
     render(<QualitySection quality={QUALITY} forms={[form()]} status="ready" />)
     fireEvent.click(screen.getByRole('button', { name: 'Formalar · Meta (1)' }))
     expect(screen.queryByText('Kunlik — barcha sahifalar')).toBeNull()
-    expect(screen.getByRole('status').textContent).toContain('Meta’dan forma lidlari oʻqilmayapti.')
+    expect(screen.getByRole('status').textContent).toContain('Meta’dan formalar oʻqilmayapti.')
     expect(screen.getByText('Forma aniqlanmagan')).toBeTruthy()
   })
 

@@ -155,9 +155,9 @@ export function QualitySection({
       ) : (
         <TableCard
           title="Formalar · Meta"
-          hint="Har bir lid-forma alohida qator: shu forma reklamalarining sarfi, Meta lidi va lid narxi. Lid va keyingi ustunlar — formaning Meta lidi telefon boʻyicha Bitrix24 bitimiga ulangani; Kval — «Сделка успешна», kval narxi = sarf ÷ kval. Ustun sarlavhasini bosib saralang."
+          hint="Facebook lead formalari va ularning holati — sahifa, forma, holat, yaratilgan sana va jami lidlar Facebook’dan har soatda olinadi. Keyingi ustunlar tanlangan davr: forma reklamalarining sarfi, Meta lidi, lid narxi; Lid va keyingi ustunlar — formaning Meta lidi telefon boʻyicha Bitrix24 bitimiga ulangani, Kval — «Сделка успешна», kval narxi = sarf ÷ kval."
           action={tabs}
-          footer="«Forma aniqlanmagan» — lid-forma reklamasining sarfi, lekin undan hali birorta lid qaysi formadan kelgani oʻqilmagan."
+          footer="Oʻchirilgan forma koʻrsatilmaydi. «Forma aniqlanmagan» — lid-forma reklamasining sarfi, lekin undan hali birorta lid qaysi formadan kelgani oʻqilmagan."
         >
           <LeadFormTable forms={forms} status={status} />
         </TableCard>

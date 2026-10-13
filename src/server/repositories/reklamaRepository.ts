@@ -93,6 +93,22 @@ export interface FormAdDayRow {
   readonly leads: number
 }
 
+/** Two days of hourly passes: a page read short once (a run out of time, Meta down) is not a page lost. */
+const LISTED_STALE_MS = 2 * 86_400_000
+
+/** A lead form as its page last listed it (`meta_lead_form`). */
+export interface ListedFormRow {
+  readonly id: string
+  readonly pageId: string
+  readonly pageName: string
+  readonly name: string
+  /** Meta's: ACTIVE, ARCHIVED, DRAFT. */
+  readonly status: string
+  readonly createdTime: Date | null
+  /** Meta's all-time lead count; null when Meta did not say. */
+  readonly leadsCount: number | null
+}
+
 /**
  * How long a write may wait for a pooled connection — RNP's typed cells wait
  * the same (rnpRepository.ts): the pool runs full under the scans, and
@@ -414,6 +430,19 @@ export class ReklamaRepository {
       clicks: Number(r.clicks),
       leads: Number(r.leads),
     }))
+  }
+
+  /**
+   * Every lead form the token's pages list, as Facebook shows it — a deleted
+   * one left out, as Meta Business Suite leaves it out (SinoTarget's rule).
+   * A form no pass has listed for `LISTED_STALE_MS` (its page lost to the
+   * token) is left out too, rather than shown «Faol» with a frozen count.
+   */
+  async listedForms(): Promise<ListedFormRow[]> {
+    return this.prisma.metaLeadForm.findMany({
+      where: { status: { not: 'DELETED' }, listedAt: { gte: new Date(Date.now() - LISTED_STALE_MS) } },
+      select: { id: true, pageId: true, pageName: true, name: true, status: true, createdTime: true, leadsCount: true },
+    })
   }
 
   /** When the campaign grain was last read; null means never. */
