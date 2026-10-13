@@ -15,7 +15,6 @@ import { formatDateTime, formatNumber } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 import { CampaignSection } from './CampaignSection'
-import { DmSection } from './DmSection'
 import { FormSection } from './FormSection'
 import { LeadFormSection } from './LeadFormSection'
 import { QualitySection } from './QualitySection'
@@ -37,6 +36,11 @@ import type { Status } from './reklamaUi'
  * kogortasi». «Targetologlar · kunlik» (here from 2026-10-05) followed them
  * on 2026-10-08 as a tab of «Lidlar» (the user: «shu joyini olib lidlar
  * bo'limiga o'tkazamiz»). This page is the Meta side alone, one request.
+ *
+ * The «DM» tables (davr + «Kunlik — sahifalar yonma-yon») live on «Target
+ * tahlili» alone since 2026-10-13 (the user: «ikkinchisi bo'lsa yo'qot
+ * dashbordan faqat target tahlilida qolsin»); the DM tiles here still read
+ * the same `dm` block.
  *
  * Every ad table is built from the same Meta rows and the same lead scan, so
  * the tiles, the page totals and the day rows sum to each other.
@@ -87,7 +91,6 @@ export function ReklamaPage() {
         ) : (
           <>
             <Tiles data={data} status={status} brand={brand} />
-            <DmSection dm={data?.dm} status={status} />
             <FormSection form={data?.form} status={status} />
             <QualitySection quality={data?.quality} status={status} />
             <LeadFormSection forms={data?.leadForms} status={status} />
