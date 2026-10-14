@@ -147,26 +147,34 @@ export class RegistrationRepository {
    * ONE LEAD IS COUNTED ONCE (the user, 2026-10-14: «dublikatlar ikkita
    * birxillikni olmasligi kerak … yaqqol qancha tushganini bilishim uchun»). A deal in
    * «Дубликат (лид)» is left out (read by NAME, as RNP's `registrationDaysSql`
-   * and «Lid manbalari»'s `isLeadDuplicate` read it), and of one contact's
-   * deals on one Tashkent day only the first counts, credited by its own ROP —
-   * measured 12.10 on the portal: 1 666 deals, 73 in «Дубликат (лид)», 74
-   * more repeats of a contact already in that day — ~1 520 leads. Every other
-   * stage counts. Served by the (pipelineId, createdAtSource) index.
+   * and «Lid manbalari»'s `isLeadDuplicate` read it), and of one PHONE NUMBER's
+   * deals on one Tashkent day only the first counts, credited by its own ROP
+   * (the user, the same day: «hamma kelib tushgan raqamlar»). The number is
+   * the contact's first, last nine digits (as «Факт1 мижоз» and the Meta lead
+   * match read one); a contact with no usable number stands for itself, a
+   * deal with no contact too. Measured 12.10 on the portal: 1 666 deals, 73
+   * in «Дубликат (лид)»; of the rest 1 520 contacts but 1 510 numbers — one
+   * number filed under two contacts is one lead. Every other stage counts.
+   * Served by the (pipelineId, createdAtSource) index.
    */
   static bezkvalDaysSql(): string {
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
     const hi = `(($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
     const day = `(d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date`
+    const nine = `right(regexp_replace(cu."phone", '[^0-9]', '', 'g'), 9)`
     return `
       WITH reg AS (
         SELECT d."id",
                ${day} AS day,
                row_number() OVER (
-                 PARTITION BY COALESCE(d."customerId", d."id"), ${day}
+                 PARTITION BY COALESCE(
+                   CASE WHEN ${nine} ~ '^[0-9]{9}$' AND ${nine} !~ '^([0-9])\\1{8}$' THEN ${nine} END,
+                   d."customerId", d."id"), ${day}
                  ORDER BY d."createdAtSource", d."id") AS nth
           FROM "deal" d
           JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
           LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
+          LEFT JOIN "customer" cu ON cu."id" = d."customerId"
          WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
            AND COALESCE(st."name", '') !~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'
       )
