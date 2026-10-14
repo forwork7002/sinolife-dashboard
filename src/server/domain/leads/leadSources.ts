@@ -207,7 +207,7 @@ export const AI_TARGETOLOG = 'AI targetolog'
  * its leads sat in a row of their own beside its spend).
  */
 export function targetologOfField(value: string | null): string | null {
-  if (value === null) return null
+  if (value == null) return null
   return /^ai$/i.test(value.trim()) ? AI_TARGETOLOG : value
 }
 

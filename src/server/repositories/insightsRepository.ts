@@ -1146,6 +1146,8 @@ export interface LeadFakt1ClientRow {
   readonly formTitle: string | null
   /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
   readonly productLine: string | null
+  /** The lead's «Таргетолог» field — `RegistrationDayRow.targetolog`. */
+  readonly targetolog: string | null
   /** The matched phone's last nine digits: one client, however many contacts carry it. */
   readonly client: string
 }
@@ -5772,7 +5774,14 @@ export class InsightsRepository {
    */
   async leadFakt1Clients(period: Period): Promise<LeadFakt1ClientRow[]> {
     const rows = await this.prisma.$queryRawUnsafe<
-      { source_id: string | null; source: string | null; form_title: string | null; product_line: string | null; client: string }[]
+      {
+        source_id: string | null
+        source: string | null
+        form_title: string | null
+        product_line: string | null
+        targetolog: string | null
+        client: string
+      }[]
     >(
       `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.leadFakt1ClientsSql()}`,
       period.start,
@@ -5784,6 +5793,7 @@ export class InsightsRepository {
       source: r.source,
       formTitle: r.form_title,
       productLine: r.product_line,
+      targetolog: r.targetolog,
       client: r.client,
     }))
   }
@@ -5807,7 +5817,7 @@ export class InsightsRepository {
     -- matched here, as in the registration scan; the alias CTE read the same deals a second time.
     lw AS MATERIALIZED (
       SELECT d."id", d."customerId", d."sourceId", d."title", ${sourceDescriptionSql('d')} AS sd,
-             d."productLine", d."createdAtSource"
+             d."productLine", d."targetolog", d."createdAtSource"
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
        WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
@@ -5830,6 +5840,7 @@ export class InsightsRepository {
            -- A repeat lead's form from its SOURCE_DESCRIPTION (leadFormSql.ts); one per lead, min() only to aggregate.
            min(${leadFormTitleSql('l."title"', 'l.sd', 's."externalId"', 'fa.title')}) AS form_title,
            min(NULLIF(btrim(l."productLine"), '')) AS product_line,
+           min(NULLIF(btrim(l."targetolog"), '')) AS targetolog,
            min(f.phone) AS client
       FROM lead_phone lp
       JOIN fakt1_phone f ON f.phone = lp.phone AND f.created_at > lp.created

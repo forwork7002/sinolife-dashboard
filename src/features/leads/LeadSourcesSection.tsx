@@ -539,14 +539,22 @@ export function TablesBlock({ data, status }: { data: LeadSourcesOverviewDto | u
 
 // --- forms ------------------------------------------------------------------
 
+/** A targetolog's leads no «Проект» names — the server's `brandless|…` row (2026-10-14). */
+const isBrandless = (o: FormOwnerDto) => o.key.startsWith('brandless|')
+
 const ownerLabel = (o: FormOwnerDto) =>
-  o.product === 'Boshqa' ? o.targetolog : `${o.targetolog} · ${PRODUCT_LABEL[o.product]}`
+  o.product !== 'Boshqa'
+    ? `${o.targetolog} · ${PRODUCT_LABEL[o.product]}`
+    : isBrandless(o)
+      ? `${o.targetolog} · Brendsiz`
+      : o.targetolog
 
 function formsView(data: LeadSourcesOverviewDto | undefined, status: Status): TableViewParts {
   const forms = data?.forms
   const owners = forms?.owners ?? []
   const rows: OwnerRow[] = []
   if (data && forms && (owners.length > 0 || forms.manual.leads > 0 || forms.unlinked.spendUsd > 0)) {
+    // «Bogʻlanmagan sarf» is no row of its own (2026-10-14): each account's DM money is on its targetolog's row.
     rows.push(...owners.map((o) => ({ key: o.key, owner: o, cells: ownerTotals(o) })))
     // «Ген лид» no form names: no targetolog and no spend of its own, yet a «Ген лид» kval the price divides by.
     if (forms.manual.leads > 0) {
@@ -554,24 +562,12 @@ function formsView(data: LeadSourcesOverviewDto | undefined, status: Status): Ta
         key: 'manual',
         owner: null,
         label: 'Ген лид · formasiz',
-        sub: ['Qoʻlda kiritilgan — forma nomi yoʻq'],
-        cells: { spendUsd: 0, metaLeads: 0, outcome: forms.manual, reachPercent: null, costPerLeadUsd: null, costPerSuccessUsd: null },
-      })
-    }
-    // The ad budget no lead form took, by account — what the headline's Meta spend has over the forms'.
-    if (forms.unlinked.spendUsd > 0) {
-      rows.push({
-        key: 'unlinked',
-        owner: null,
-        label: 'Bogʻlanmagan sarf',
-        sub: [
-          'Hech qaysi lid-formaga bogʻlanmagan kampaniyalar (DM / xabar va boshqa)',
-          ...forms.unlinked.accounts.map((a) => `${a.name} — ${usd(a.spendUsd)}`),
-        ],
+        sub: ['Forma nomi ham, bitimda «Таргетолог» ham yoʻq — Bitrix24 da toʻldirilsa, oʻz targetologiga oʻtadi'],
         cells: {
-          spendUsd: forms.unlinked.spendUsd,
+          spendUsd: 0,
+          unlinkedUsd: 0,
           metaLeads: 0,
-          outcome: NO_OUTCOME,
+          outcome: forms.manual,
           reachPercent: null,
           costPerLeadUsd: null,
           costPerSuccessUsd: null,
@@ -582,7 +578,8 @@ function formsView(data: LeadSourcesOverviewDto | undefined, status: Status): Ta
       key: 'total',
       owner: null,
       cells: {
-        spendUsd: forms.total.spendUsd,
+        spendUsd: forms.spendUsd,
+        unlinkedUsd: forms.unlinked.spendUsd,
         metaLeads: forms.metaLeads,
         outcome: forms.total.outcome,
         reachPercent: data.totals.formReachPercent,
@@ -594,9 +591,9 @@ function formsView(data: LeadSourcesOverviewDto | undefined, status: Status): Ta
 
   return {
     title: 'Targetologlar · lid-forma — davr boʻyicha',
-    hint: 'Meta hisoblagan lidlar va shu targetologning CRM-formasi Bitrix24 Регистрация ga ochgan bitimlar — keyin ular nima boʻlgani. Targetolog forma nomidan olinadi («Sinolife (UMAR) 777», «… Eldor»). «Yetib keldi» — Bitrix24 lid ÷ Meta lid; past boʻlsa, Meta formasi Bitrix24 ga ulanmagan boʻlishi mumkin.',
+    hint: 'Meta hisoblagan lidlar va shu targetologning CRM-formasi Bitrix24 Регистрация ga ochgan bitimlar — keyin ular nima boʻlgani. Targetolog forma nomidan olinadi («Sinolife (UMAR) 777», «… Eldor»), forma nomida boʻlmasa — bitimdagi «Таргетолог» maydonidan. «Yetib keldi» — Bitrix24 lid ÷ Meta lid; past boʻlsa, Meta formasi Bitrix24 ga ulanmagan boʻlishi mumkin.',
     footer:
-      'Lid va kval narxi — sarf ÷ Bitrix24 dagi lid (yoki kval). «Jami» — barcha Meta sarfi (formalar + bogʻlanmagan) ÷ barcha «Ген лид» kvali; yuqoridagi «Квал лид нархи $» aynan shu raqam. «Yetib keldi» faqat formalar boʻyicha. Meta lid narxi «Reklama samarasi» boʻlimida.',
+      'Lid va kval narxi — forma sarfi ÷ Bitrix24 dagi lid (yoki kval). «DM / boshqa sarf» — shu targetolog akkauntlarining lid-formaga bogʻlanmagan pullari (DM / xabar va boshqa, vakansiyasiz). «Jami» — barcha Meta sarfi (forma + DM / boshqa) ÷ barcha «Ген лид» kvali; yuqoridagi «Квал лид нархи $» aynan shu raqam. «Yetib keldi» faqat formalar boʻyicha. Meta lid narxi «Reklama samarasi» boʻlimida.',
     table: (
       <DataTable<OwnerRow>
         columns={ownerColumns}
@@ -670,10 +667,11 @@ interface OwnerRow {
   cells: FormTotals
 }
 
-const NO_OUTCOME: LeadOutcomeDto = { leads: 0, success: 0, noAnswer: 0, lowQuality: 0, duplicate: 0, open: 0, successPercent: null }
-
 interface FormTotals {
+  /** The lead forms' money — what «Lid narxi» / «Kval narxi» divide on a targetolog's row. */
   spendUsd: number
+  /** DM / message and other ad money on no lead form. */
+  unlinkedUsd: number
   metaLeads: number
   outcome: LeadOutcomeDto
   reachPercent: number | null
@@ -683,6 +681,7 @@ interface FormTotals {
 
 const ownerTotals = (o: FormOwnerDto): FormTotals => ({
   spendUsd: o.spendUsd,
+  unlinkedUsd: o.unlinkedUsd,
   metaLeads: o.metaLeads,
   outcome: o.outcome,
   reachPercent: o.reachPercent,
@@ -747,9 +746,9 @@ const ownerColumns: readonly Column<OwnerRow>[] = [
           <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
             <span aria-hidden className="inline-block h-2 w-2 rounded-sm" style={{ background: PRODUCT_TONE[r.owner.product] }} />
             {r.owner.targetolog}
-            {r.owner.product !== 'Boshqa' && (
+            {(r.owner.product !== 'Boshqa' || isBrandless(r.owner)) && (
               <span className="text-[11px] font-normal" style={muted}>
-                · {PRODUCT_LABEL[r.owner.product]}
+                · {r.owner.product !== 'Boshqa' ? PRODUCT_LABEL[r.owner.product] : 'Brendsiz'}
               </span>
             )}
           </span>
@@ -757,7 +756,14 @@ const ownerColumns: readonly Column<OwnerRow>[] = [
         </span>
       ),
   },
-  { key: 'spend', header: 'Sarf', align: 'right', numeric: true, render: (r) => money(r.cells.spendUsd) },
+  { key: 'spend', header: 'Forma sarfi', align: 'right', numeric: true, render: (r) => money(r.cells.spendUsd) },
+  {
+    key: 'unlinked',
+    header: 'DM / boshqa sarf',
+    align: 'right',
+    numeric: true,
+    render: (r) => <span style={r.cells.unlinkedUsd > 0 ? undefined : muted}>{money(r.cells.unlinkedUsd)}</span>,
+  },
   { key: 'meta', header: 'Meta lid', align: 'right', numeric: true, render: (r) => count(r.cells.metaLeads) },
   {
     key: 'leads',
@@ -786,7 +792,10 @@ const ownerColumns: readonly Column<OwnerRow>[] = [
 
 /** Forms the portal saw, then the Meta accounts — or which half is missing. */
 function OwnerSources({ owner }: { owner: FormOwnerDto }) {
-  const forms = owner.forms.length > 0 ? `Forma: ${owner.forms.join(', ')}` : 'Bitrix24 da formasi yoʻq'
+  const named = owner.forms.length > 0 ? `Forma: ${owner.forms.join(', ')}` : null
+  // Formless «Ген лид» the deal's «Таргетолог» field files here — said, so the lead count reconciles.
+  const formless = owner.formlessLeads > 0 ? `${count(owner.formlessLeads)} ta formasiz — «Таргетолог» maydonidan` : null
+  const forms = [named, formless].filter((x) => x !== null).join(' · ') || 'Bitrix24 da formasi yoʻq'
   const accounts = owner.accounts.length > 0 ? `Meta: ${owner.accounts.join(', ')}` : 'Meta akkaunti bogʻlanmagan'
   return (
     <>

@@ -68,6 +68,10 @@ export interface FormOwnerDto extends FormExpenseDto {
   readonly reachPercent: number | null
   readonly costPerLeadUsd: number | null
   readonly costPerSuccessUsd: number | null
+  /** DM / message and other ad money of this person's accounts — their part of «Bogʻlanmagan sarf». */
+  readonly unlinkedUsd: number
+  /** Of `outcome.leads`, formless «Ген лид» the deal's «Таргетолог» field files here. */
+  readonly formlessLeads: number
   /** «Факт1 мижоз» of these forms' leads; null while not read. */
   readonly fakt1Clients: number | null
   readonly days: readonly FormDayDto[]
@@ -168,7 +172,7 @@ export interface LeadSourcesOverviewDto {
       readonly spendUsd: number
       readonly accounts: readonly { readonly name: string; readonly spendUsd: number }[]
     }
-    /** The table's «Jami»: owners + `manual` + `unlinked`; its kval price is the headline's. */
+    /** The table's «Jami»: owners (their forms' spend + `unlinkedUsd`) + `manual`; its kval price is the headline's. */
     readonly total: {
       readonly spendUsd: number
       readonly outcome: LeadOutcomeDto

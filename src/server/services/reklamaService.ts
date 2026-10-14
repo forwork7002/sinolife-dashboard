@@ -153,7 +153,7 @@ export interface FormOwnerDto {
   readonly dmQualified: number
   /** Some of `dmLeads` came from a page shared with another targetolog, split by conversations. */
   readonly dmShared: boolean
-  /** Kval of the Регистрация leads this targetolog's CRM forms opened (`withFormKval`); null = not read. */
+  /** Kval of the Регистрация leads «Lidlar» files on this targetolog — their CRM forms, then the deal's «Таргетолог» (`withFormKval`); null = not read. */
   readonly qualified: number | null
   /** Those Регистрация leads — «Lidlar»'s «Bitrix лид», kval %'s divisor; null = not read. */
   readonly formLeads: number | null
@@ -970,7 +970,8 @@ export function dmLeadsByOwner(
 /**
  * «Отчёт Т» with each targetolog's kval beside their spend (the user,
  * 2026-10-10: «kval soni chiqarib bersin»). Meta names no deal, so the kval
- * is «Lidlar»'s: the Регистрация leads the targetolog's CRM forms opened,
+ * is «Lidlar»'s: the Регистрация leads the targetolog's CRM forms opened
+ * (and, since 2026-10-14, the formless «Ген лид» the deal's «Таргетолог» names),
  * «Сделка успешна» now — `forms` is that screen's own block, met on the owner
  * key both build from `ownerOf`, so the two screens print one figure. A
  * targetolog with money and no form lead reads 0; `forms` null (the scan

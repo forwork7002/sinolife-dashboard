@@ -52,6 +52,7 @@ import {
   formOwner,
   leadChannel,
   leadTile,
+  targetologOfField,
 } from '@/server/domain/leads/leadSources'
 import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type ChannelLeads, type ChannelLeadsDay, type ManualSpendDto, manualSpendBlocks } from '@/server/domain/reklama/manualSpend'
@@ -131,7 +132,7 @@ export interface FormOwnerDto extends FormExpenseDto {
   readonly product: MetaProduct
   /** The CRM forms that opened this targetolog's deals, by name. */
   readonly forms: readonly string[]
-  /** The Meta accounts whose lead-form campaigns ran in the window. */
+  /** The Meta accounts whose ad-budget campaigns ran in the window — lead forms, and DM / other money. */
   readonly accounts: readonly string[]
   readonly spendUsd: number
   readonly metaLeads: number
@@ -142,6 +143,14 @@ export interface FormOwnerDto extends FormExpenseDto {
   readonly costPerLeadUsd: number | null
   /** spend ÷ kval. */
   readonly costPerSuccessUsd: number | null
+  /**
+   * This person's ad-budget money no lead form took — DM / message and other
+   * campaigns of their Collagen / Zextra accounts, hiring out: their share of
+   * «Bogʻlanmagan sarf», so the owners' rows add up to «Jami»'s spend.
+   */
+  readonly unlinkedUsd: number
+  /** Of `outcome.leads`, «Ген лид» with no form that the deal's «Таргетолог» field files here. */
+  readonly formlessLeads: number
   /**
    * «Факт1 мижоз» of these forms' leads — distinct clients (by phone) with a
    * FAKT 1 order in the window, `SourceRowDto.fakt1Clients`' rule. Null while
@@ -259,7 +268,7 @@ export interface LeadSourcesOverviewDto {
   }
   readonly forms: {
     readonly owners: readonly FormOwnerDto[]
-    /** Owners with no form and no lead but other Meta money (SMS, hiring, other) — in none of the totals here. */
+    /** Owners with no form, no lead and no ad-budget money — hiring, or an unmapped / «Boshqa» account's — in none of the totals here. */
     readonly expenseOwners: readonly FormOwnerDto[]
     readonly days: readonly FormDayDto[]
     readonly spendUsd: number
@@ -453,12 +462,74 @@ const mapGet = <K, V>(map: Map<K, V>, key: K, make: () => V): V => {
   return made
 }
 
-/** A form with no targetolog in its name still gets a row — by its own name. */
-function ownerOfForm(form: string): { key: string; targetolog: string; product: MetaProduct } {
-  const owner = formOwner(form)
-  return owner
-    ? { key: `${owner.product}|${owner.targetolog}`, targetolog: owner.targetolog, product: owner.product }
-    : { key: `form|${form}`, targetolog: form, product: 'Boshqa' }
+type LeadOwner = { key: string; targetolog: string; product: MetaProduct }
+
+interface OwnedLead {
+  readonly sourceId: string | null
+  readonly formTitle: string | null
+  readonly productLine: string | null
+  readonly targetolog: string | null
+}
+
+/**
+ * Forms whose name names nobody but ENDS another form's name that names one
+ * person: a «Qayta zayavka» copy carries the form as Meta knows it,
+ * «zextra - 27 / 09 Варианты», while its first deal reads «Timur-zextra
+ * zextra - 27 / 09 Варианты» (measured 2026-10-14). Two words at least, so a
+ * bare «777» names nobody; two people's forms ending alike make the name
+ * nobody's. Only forms the window saw: a window holding the copy alone falls
+ * to the deal's «Таргетолог» field.
+ */
+function formTailOwners(forms: Iterable<string>): ReadonlyMap<string, string> {
+  const named: { name: string; targetolog: string }[] = []
+  const nameless = new Set<string>()
+  for (const form of forms) {
+    const owner = formOwner(form)
+    if (owner) named.push({ name: form.toLowerCase(), targetolog: owner.targetolog })
+    else nameless.add(form)
+  }
+  const tails = new Map<string, string>()
+  for (const form of nameless) {
+    const tail = form.trim().toLowerCase()
+    if (tail.split(/\s+/).length < 2) continue
+    const people = new Set(named.filter((n) => n.name.endsWith(` ${tail}`)).map((n) => n.targetolog))
+    if (people.size === 1) tails.set(form, [...people][0]!)
+  }
+  return tails
+}
+
+/**
+ * WHOSE «ГЕН ЛИД» THIS IS — the targetolog «Targetologlar» files it under.
+ * The form's name first («… (UMAR) 777», «… Eldor»), as before; then a form
+ * that ends a named one's name (`formTailOwners`); then the deal's own
+ * «Таргетолог» field. The user, 2026-10-14: «faqat targetologlar malumoti
+ * turishi kerak». Measured on the portal that day (01–14.10, 13 514 «Ген
+ * лид»): 235 had no form — 181 of them Eldor's «Sinolife Collagen - 30.04»,
+ * whose short name a deal retitled «Collagen Marine ген лид» (itself a row of
+ * its own) made ambiguous — and 196 of the 235 carry the field (Элдор 700,
+ * Umar 702, Timur 708, Sobirjon 724 …). The 39 left that fortnight were
+ * incoming calls and «Сделка #…» the registrars filed under «Ген лид» — no
+ * targetolog's at all; they stay «Ген лид · formasiz». A nameless form nothing
+ * names keeps a row by its own name.
+ *
+ * THE PRODUCT IS THE LEAD'S BRAND, `leadBrand` — the rule every screen's
+ * brand switch reads («Проект», source, form) — so a row is drawn under the
+ * same slice its leads are counted in. A formless lead with no «Проект» has no
+ * brand: it is the person's «Brendsiz» row (`brandless|…`, product «Boshqa»,
+ * a key no Meta account's owner wears), never guessed into the collagen.
+ */
+function leadOwner(row: OwnedLead, tails: ReadonlyMap<string, string>): LeadOwner | null {
+  const form = formNameOf(row.formTitle)
+  const byForm = form === null ? null : formOwner(form)
+  if (byForm) return { key: `${byForm.product}|${byForm.targetolog}`, targetolog: byForm.targetolog, product: byForm.product }
+  const person = (form === null ? undefined : tails.get(form)) ?? targetologOfField(row.targetolog)
+  if (person !== null) {
+    const product = leadBrand(row.sourceId, row.formTitle, row.productLine)
+    return product === null
+      ? { key: `brandless|${person}`, targetolog: person, product: 'Boshqa' }
+      : { key: `${product}|${person}`, targetolog: person, product }
+  }
+  return form === null ? null : { key: `form|${form}`, targetolog: form, product: 'Boshqa' }
 }
 
 /**
@@ -541,6 +612,10 @@ export function leadSourcesOverview(all: {
     accounts: Set<string>
     spend: bigint
     metaLeads: number
+    /** Ad-budget money on no lead form — this owner's part of «Bogʻlanmagan sarf». */
+    unlinked: bigint
+    /** «Ген лид» with no form, filed here by the deal's «Таргетолог» field. */
+    formless: number
     expense: ExpenseAcc
     outcome: OutcomeAcc
     days: Map<string, FormDayAcc>
@@ -569,6 +644,8 @@ export function leadSourcesOverview(all: {
       accounts: new Set<string>(),
       spend: 0n,
       metaLeads: 0,
+      unlinked: 0n,
+      formless: 0,
       expense: expenseZero(),
       outcome: outcomeZero(),
       days: new Map(),
@@ -601,6 +678,12 @@ export function leadSourcesOverview(all: {
     mapGet(page.days, row.day, () => ({ conversations: 0, leads: 0, success: 0 })).conversations += row.conversations
   }
 
+  // Every form named in the window, before the brand switch: a copy's short form name finds its owner's (`formTailOwners`).
+  const tails = formTailOwners(
+    new Set(
+      [...all.registration, ...(all.fakt1 ?? [])].map((row) => formNameOf(row.formTitle)).filter((f): f is string => f !== null),
+    ),
+  )
   for (const row of input.registration) {
     const bucket = leadBucket(row.stage, row.status)
     const form = formNameOf(row.formTitle)
@@ -613,7 +696,9 @@ export function leadSourcesOverview(all: {
     const tileKey = leadTile(row.sourceId, LEAD_TILE_SOURCES)
     const inTotal = !LEAD_TILES_APART.has(tileKey)
     if (inTotal) addOutcome(counted, one)
-    if (tileKey === 'generated' && form === null) addOutcome(manual, one)
+    // A form's lead, or a formless «Ген лид» — whoever the form or the deal's «Таргетолог» names.
+    const owner = form !== null || tileKey === 'generated' ? leadOwner(row, tails) : null
+    if (tileKey === 'generated' && form === null && owner === null) addOutcome(manual, one)
     // The tile, and under «Сммщик ии» its account — a page's second bot is the page's.
     const tileAccs = [tiles.get(tileKey)!]
     if (tileKey === 'aiSmm' && row.sourceId !== null) tileAccs.push(mapGet(smmAccounts, pageKeyOf(row.sourceId), tileZero))
@@ -632,9 +717,10 @@ export function leadSourcesOverview(all: {
     }))
     addOutcome(source.outcome, one)
 
-    if (form !== null) {
-      const acc = ownerAcc(ownerOfForm(form))
-      acc.forms.add(form)
+    if (owner !== null) {
+      const acc = ownerAcc(owner)
+      if (form !== null) acc.forms.add(form)
+      else acc.formless += row.leads
       addOutcome(acc.outcome, one)
       const day = mapGet(acc.days, row.day, formDayZero)
       day.leads += row.leads
@@ -668,8 +754,8 @@ export function leadSourcesOverview(all: {
     // The whole is «Jami»'s: a client of an «Исход» lead alone is not in it.
     if (countedSource(row.sourceId)) fakt1All.add(row.client)
     // And onto the form's owner, as the lead's row above lands its kval.
-    if (form !== null) {
-      const owner = ownerOfForm(form)
+    const owner = form !== null || leadTile(row.sourceId, LEAD_TILE_SOURCES) === 'generated' ? leadOwner(row, tails) : null
+    if (owner !== null) {
       mapGet(fakt1Owners, owner.key, () => new Set<string>()).add(row.client)
       mapGet(fakt1People, owner.targetolog, () => new Set<string>()).add(row.client)
     }
@@ -692,6 +778,9 @@ export function leadSourcesOverview(all: {
       // Ad-budget money on no lead form: «Bogʻlanmagan sarf», by account.
       if (row.spendMicroUsd > 0n && adBudgetProduct(row) !== null) {
         mapGet(unlinked, row.accountId, () => ({ name: row.accountName, spend: 0n })).spend += row.spendMicroUsd
+        // …and on the targetolog the account maps to: «Targetologlar» has no row that is nobody's (2026-10-14).
+        acc.unlinked += row.spendMicroUsd
+        acc.accounts.add(row.accountName)
       }
       continue
     }
@@ -707,7 +796,10 @@ export function leadSourcesOverview(all: {
   const formOutcome = outcomeZero()
   let formSpend = 0n
   let metaFormLeads = 0
-  const hasLeadWork = (o: FormAcc) => o.spend > 0n || o.metaLeads > 0 || LEAD_BUCKETS.some((b) => o.outcome[b] > 0)
+  let formlessLeads = 0
+  /* An owner whose ad money is all DM is a targetolog too: their row carries it in «DM / boshqa» (2026-10-14). */
+  const hasLeadWork = (o: FormAcc) =>
+    o.spend > 0n || o.metaLeads > 0 || o.unlinked > 0n || LEAD_BUCKETS.some((b) => o.outcome[b] > 0)
   const ownerDto = (o: FormAcc): FormOwnerDto => {
     const outcome = outcomeCells(o.outcome)
     return {
@@ -720,9 +812,12 @@ export function leadSourcesOverview(all: {
       metaLeads: o.metaLeads,
       ...expenseCells(o.spend, o.expense),
       outcome,
-      reachPercent: percent(outcome.leads, o.metaLeads),
+      // Forms only: a lead the field filed here never passed through a Meta form, so it may not hide a broken link.
+      reachPercent: percent(outcome.leads - o.formless, o.metaLeads),
       costPerLeadUsd: perUnit(o.spend, outcome.leads),
       costPerSuccessUsd: perUnit(o.spend, outcome.success),
+      unlinkedUsd: usd(o.unlinked),
+      formlessLeads: o.formless,
       fakt1Clients: fakt1Ready ? (fakt1Owners.get(o.key)?.size ?? 0) : null,
       days: days.map((date) => formDayCells(date, o.days.get(date) ?? formDayZero())),
     }
@@ -740,6 +835,7 @@ export function leadSourcesOverview(all: {
       addOutcome(formOutcome, o.outcome)
       formSpend += o.spend
       metaFormLeads += o.metaLeads
+      formlessLeads += o.formless
       days.forEach((date, i) => {
         const cell = o.days.get(date)
         if (!cell) return
@@ -753,11 +849,13 @@ export function leadSourcesOverview(all: {
     })
 
   /*
-    An owner whose money is ALL messages, hiring or other campaigns — HR
-    Eldor's account, a targetolog running only SMS that week — has no form and
-    no lead, so it is no row of the lead tables above and stays out of their
-    totals. «Targetologlar · kunlik» still owes it a card (2026-10-07: its
-    «Jami $» promises every dollar the accounts spent), so it rides apart.
+    An owner whose money is ALL hiring, or a «Boshqa» account's other
+    campaigns — HR Eldor's account — has no form, no lead and no ad budget, so
+    it is no row of the lead tables above and stays out of their totals. (A
+    targetolog running only SMS is a row since 2026-10-14: his DM money is his
+    «DM / boshqa sarf».) «Targetologlar · kunlik» still owes it a card
+    (2026-10-07: its «Jami $» promises every dollar the accounts spent), so it
+    rides apart.
   */
   const expenseOwners: FormOwnerDto[] = [...owners.values()]
     .filter((o) => !hasLeadWork(o) && o.expense.sms + o.expense.hr + o.expense.other > 0n)
@@ -805,7 +903,8 @@ export function leadSourcesOverview(all: {
       }
     })
 
-  const formLeads = outcomeCells(formOutcome).leads
+  // «Yetib keldi» is the forms': the leads the deal's «Таргетолог» field filed on an owner are out of it.
+  const formLeads = outcomeCells(formOutcome).leads - formlessLeads
 
   /*
     «ИИ квал сана» in the window, any creation day — «Сммщик ии»'s count until

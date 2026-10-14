@@ -86,6 +86,8 @@ const owner = (o: Pick<FormOwnerDto, 'key' | 'targetolog' | 'product'> & { spend
   reachPercent: null,
   costPerLeadUsd: null,
   costPerSuccessUsd: null,
+  unlinkedUsd: 0,
+  formlessLeads: 0,
   fakt1Clients: null,
   days: [day('2026-10-06')],
 })

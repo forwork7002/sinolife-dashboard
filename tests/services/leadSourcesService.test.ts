@@ -25,6 +25,7 @@ const reg = (over: Partial<RegistrationDayRow>): RegistrationDayRow => ({
   source: 'Ген лид',
   formTitle: null,
   productLine: null,
+  targetolog: null,
   stage: 'Сделка успешна',
   status: 'WON',
   aiQualified: false,
@@ -52,6 +53,7 @@ const fakt1 = (over: Partial<LeadFakt1ClientRow>): LeadFakt1ClientRow => ({
   source: 'Ген лид',
   formTitle: UMAR_FORM,
   productLine: null,
+  targetolog: null,
   client: '901234567',
   ...over,
 })
@@ -200,6 +202,116 @@ describe('leadSourcesOverview', () => {
     })
     // Money with no «Ген лид» kval to divide it: a price is unknown, not infinite and not free.
     expect(d.funnel).toMatchObject({ spendUsd: 10.5, generatedQualified: 0, costPerQualifiedUsd: null })
+  })
+
+  it('puts each account\'s unlinked money on its targetolog\'s row, so the rows add up to «Jami»', () => {
+    const d = leadSourcesOverview({
+      window: WINDOW,
+      importedAt: null,
+      registration: [reg({ formTitle: UMAR_FORM, leads: 3 })],
+      triage: [],
+      campaigns: [
+        campaign({ leads: 4, spendMicroUsd: 20_000_000n }),
+        campaign({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'Sms-1', spendMicroUsd: 3_000_000n }),
+        // Kamron spent on DM alone: no form, no lead, still a targetolog's row.
+        campaign({ accountId: '926218346480236', accountName: 'Zextra Kamron 1', objective: 'OUTCOME_ENGAGEMENT', campaignName: 'DM', spendMicroUsd: 6_000_000n }),
+        // Hiring is no ad budget: neither a row's DM money nor «Jami»'s.
+        campaign({ objective: 'OUTCOME_ENGAGEMENT', campaignName: 'vakansiya DM', spendMicroUsd: 7_000_000n }),
+      ],
+      fakt1: [],
+      qualified: [],
+      aiQualified: [],
+      sarafan: NO_SARAFAN,
+    })
+    const rows = d.forms.owners.map((o) => [o.key, o.spendUsd, o.unlinkedUsd])
+    expect(rows).toEqual([
+      ['Collagen|Umar', 20, 3],
+      ['Zextra|Kamron', 0, 6],
+    ])
+    expect(d.forms.expenseOwners).toEqual([])
+    const sum = d.forms.owners.reduce((t, o) => t + o.spendUsd + o.unlinkedUsd, 0)
+    expect(sum).toBe(d.forms.total.spendUsd)
+  })
+
+  it('files a «Ген лид» the form does not name under the deal\'s «Таргетолог» field', () => {
+    const d = leadSourcesOverview({
+      window: WINDOW,
+      importedAt: null,
+      registration: [
+        reg({ formTitle: UMAR_FORM, leads: 3 }),
+        // Renamed by hand, no form left — the field still says Umar; «Проект» says Collagen.
+        reg({ targetolog: 'Umar', productLine: 'Collagen', leads: 2 }),
+        // A form whose name names nobody, on Eldor's deal.
+        reg({ formTitle: 'Заполнение CRM-формы "Collagen Marine ген лид"', targetolog: 'Элдор', stage: 'Недозвон', status: 'OPEN', leads: 1 }),
+        // No «Проект»: no brand, so his «Brendsiz» row — never guessed into a product.
+        reg({ targetolog: 'Kamron', leads: 1 }),
+        // The portal's «AI».
+        reg({ targetolog: 'AI', productLine: 'Collagen', leads: 1 }),
+        // Nobody named at all: «Ген лид · formasiz».
+        reg({ leads: 4 }),
+        // A DM page's lead is the page's, whatever the field says.
+        reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', targetolog: 'Umar', leads: 5 }),
+      ],
+      triage: [],
+      campaigns: [],
+      fakt1: [fakt1({ formTitle: null, targetolog: 'Umar', productLine: 'Collagen' })],
+      qualified: [],
+      aiQualified: [],
+      sarafan: NO_SARAFAN,
+    })
+    const rows = d.forms.owners.map((o) => [o.key, o.outcome.leads, o.formlessLeads, o.forms])
+    expect(rows).toEqual([
+      ['Collagen|Umar', 5, 2, ['Sinolife (UMAR) 777']],
+      ['Collagen|Элдор', 1, 0, ['Collagen Marine ген лид']],
+      ['Collagen|AI targetolog', 1, 1, []],
+      ['brandless|Kamron', 1, 1, []],
+    ])
+    // «Yetib keldi» is the forms': Umar's 2 field-filed leads are not in it.
+    expect(d.forms.owners.find((o) => o.key === 'Collagen|Umar')!.reachPercent).toBeNull()
+    expect(d.forms.manual.leads).toBe(4)
+    expect(d.forms.owners.find((o) => o.key === 'Collagen|Umar')!.fakt1Clients).toBe(1)
+    expect(d.dm.pages.find((p) => p.key === 'UC_1X1J24')!.outcome.leads).toBe(5)
+  })
+
+  it('gives a copy\'s short form name to the form it ends, and draws every field-filed row under its leads\' own brand', () => {
+    const input = {
+      window: WINDOW,
+      importedAt: null,
+      registration: [
+        reg({ formTitle: 'Заполнение CRM-формы "Timur-zextra zextra - 27 / 09 Варианты"', leads: 3 }),
+        // The «Qayta zayavka» copy names the form as Meta knows it.
+        reg({ formTitle: 'Qayta zayavka (forma akt #4663340) Заполнена CRM-форма "zextra - 27 / 09 Варианты"', leads: 2 }),
+        // One word ends nobody's form: «777» stays a row of its own.
+        reg({ formTitle: 'Заполнение CRM-формы "777"', leads: 1 }),
+        // No form: Eldor's by the field — Collagen by «Проект», «Brendsiz» without it.
+        reg({ targetolog: 'Элдор', productLine: 'Collagen', leads: 4 }),
+        reg({ targetolog: 'Элдор', leads: 6 }),
+      ],
+      triage: [],
+      campaigns: [campaign({ leads: 10, spendMicroUsd: 1_000_000n, accountId: '1794735288825705', accountName: 'Collagen Eldor' })],
+      fakt1: [],
+      qualified: [],
+      aiQualified: [],
+      sarafan: NO_SARAFAN,
+    }
+    const keys = (brand?: 'Collagen' | 'Zextra' | 'none') =>
+      leadSourcesOverview({ ...input, brand }).forms.owners.map((o) => [o.key, o.outcome.leads])
+    expect(keys()).toEqual([
+      ['Collagen|Элдор', 4],
+      ['Zextra|Timur', 5],
+      ['brandless|Элдор', 6],
+      ['form|777', 1],
+    ])
+    // Each slice draws exactly the rows of its own leads, so the three add up to «Hammasi».
+    expect(keys('Collagen')).toEqual([
+      ['Collagen|Элдор', 4],
+      ['form|777', 1],
+    ])
+    expect(keys('Zextra')).toEqual([['Zextra|Timur', 5]])
+    expect(keys('none')).toEqual([['brandless|Элдор', 6]])
+    // Eldor's Collagen reach is his form leads' only — none here.
+    expect(leadSourcesOverview(input).forms.owners[0]!.reachPercent).toBe(0)
+    expect(leadSourcesOverview(input).totals.formReachPercent).toBe(60)
   })
 
   it('counts only «Дубликат (лид)» as Дубль, not the red «Дубликат» at the end', () => {

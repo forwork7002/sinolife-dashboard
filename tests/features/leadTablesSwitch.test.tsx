@@ -65,6 +65,8 @@ const data = {
         reachPercent: 70,
         costPerLeadUsd: 1.84,
         costPerSuccessUsd: 7.28,
+        unlinkedUsd: 32.52,
+        formlessLeads: 4,
         days: [{ date: '2026-10-01', metaLeads: 130, leads: 91, success: 23 }],
       },
     ],
@@ -107,23 +109,24 @@ describe('TablesBlock', () => {
     expect(screen.queryByText('collagen.marine')).toBeNull()
   })
 
-  it('adds «Ген лид · formasiz» and «Bogʻlanmagan sarf» with its accounts, and totals them — the headline\'s kval price (2026-10-09)', () => {
+  it('has targetologs\' rows only: each one\'s DM money in its own column, nobody\'s «Bogʻlanmagan sarf» row (2026-10-14)', () => {
     render(<TablesBlock data={data} status="ready" />)
 
     const rowOf = (el: HTMLElement) => [...el.closest('tr')!.querySelectorAll('td')].map((td) => td.textContent)
-    // Sarf · Meta lid · Bitrix24 lid · Yetib keldi · Kval · … · Lid narxi · Kval narxi
+    // Forma sarfi · DM / boshqa sarf · Meta lid · Bitrix24 lid · Yetib keldi · Kval · … · Lid narxi · Kval narxi
+    const sobirjon = rowOf(screen.getByText('Sobirjon'))
+    expect(sobirjon.slice(0, 2)).toEqual(['167.48 $', '32.52 $'])
+    expect(screen.getByText(/4 ta formasiz — «Таргетолог» maydonidan/)).toBeTruthy()
+    expect(screen.queryByTestId('forms-row-unlinked')).toBeNull()
+    expect(screen.queryByText(/Bogʻlanmagan sarf/)).toBeNull()
+    // What names nobody at all is still said — the deal has neither a form nor «Таргетолог».
     const manual = rowOf(screen.getByTestId('forms-row-manual'))
-    expect(manual.slice(0, 3)).toEqual(['—', '—', '9'])
-    expect(manual[4]).toBe('2')
-    const unlinked = screen.getByTestId('forms-row-unlinked')
-    expect(unlinked.textContent).toContain('Bogʻlanmagan sarf')
-    expect(within(unlinked).getByText('Collagen Eldor — 30.00 $')).toBeTruthy()
-    expect(within(unlinked).getByText('Umar 63 — 2.52 $')).toBeTruthy()
-    expect(rowOf(unlinked)[0]).toBe('32.52 $')
+    expect(manual.slice(0, 4)).toEqual(['—', '—', '—', '9'])
     const total = rowOf(screen.getByText('Jami'))
-    expect(total[0]).toBe('200.00 $')
-    expect(total[2]).toBe('100')
-    expect(total[4]).toBe('25')
+    // The two money columns add up to «Jami»'s spend, and its kval price stays the headline's.
+    expect(total.slice(0, 2)).toEqual(['167.48 $', '32.52 $'])
+    expect(total[3]).toBe('100')
+    expect(total[5]).toBe('25')
     expect(total.at(-1)).toBe('8.00 $')
   })
 

@@ -331,7 +331,8 @@ export class LeadWatchService {
           targetolog: owner.targetolog,
           brand: owner.product === 'Boshqa' ? null : owner.product,
           metaLeads: owner.metaLeads,
-          leads: owner.outcome.leads,
+          // Forms only, as «Yetib keldi»: a field-filed lead never passed through a Meta form.
+          leads: owner.outcome.leads - owner.formlessLeads,
         }))
       })
       .catch((error: unknown) => {

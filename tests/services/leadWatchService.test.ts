@@ -247,7 +247,7 @@ describe('LeadWatchService', () => {
       targetologForms:
         over.forms ??
         (async () => ({
-          forms: { owners: [{ key: 'Collagen|Umar', targetolog: 'Umar', product: 'Collagen', metaLeads: 120, outcome: { leads: 74 } }] },
+          forms: { owners: [{ key: 'Collagen|Umar', targetolog: 'Umar', product: 'Collagen', metaLeads: 120, outcome: { leads: 74 }, formlessLeads: 0 }] },
         })),
     } as never
     return { asked, service: new LeadWatchService(repository, calls, registration, reference, leadSources) }

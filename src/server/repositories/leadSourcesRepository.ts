@@ -23,6 +23,8 @@ export interface RegistrationDayRow {
   readonly formTitle: string | null
   /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
   readonly productLine: string | null
+  /** The deal's own «Таргетолог» field, as the portal lists it («Umar», «Элдор», «AI») — null when empty. */
+  readonly targetolog: string | null
   readonly stage: string
   /** DealStatus: OPEN, WON or LOST. */
   readonly status: string
@@ -98,6 +100,7 @@ export class LeadSourcesRepository {
         source: string | null
         form_title: string | null
         product_line: string | null
+        targetolog: string | null
         stage: string | null
         status: string
         ai_qualified: boolean
@@ -113,7 +116,8 @@ export class LeadSourcesRepository {
       WITH reg AS MATERIALIZED (
         SELECT d."id" AS id, d."createdAtSource" AS created, d."title" AS title, d."customerId" AS customer, ${sourceDescriptionSql('d')} AS sd,
                ${replayActSql(sourceDescriptionSql('d'))} AS act,
-               d."sourceId", d."stageId", d."status", d."aiQualifiedAt", NULLIF(btrim(d."productLine"), '') AS product_line
+               d."sourceId", d."stageId", d."status", d."aiQualifiedAt", NULLIF(btrim(d."productLine"), '') AS product_line,
+               NULLIF(btrim(d."targetolog"), '') AS targetolog
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
         WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
@@ -165,6 +169,7 @@ export class LeadSourcesRepository {
         */
         ${leadFormTitleSql('r.title', 'r.sd', 's."externalId"', 'fa.title')} AS form_title,
         r.product_line,
+        r.targetolog,
         st."name" AS stage,
         r."status"::text AS status,
         (r."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
@@ -175,7 +180,7 @@ export class LeadSourcesRepository {
       LEFT JOIN form_alias fa ON fa.sd = r.sd
       WHERE NOT EXISTS (SELECT 1 FROM replayed rp WHERE rp.id = r.id)
         AND NOT EXISTS (SELECT 1 FROM telegram_extra te WHERE te.id = r.id)
-      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
+      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
       `,
       period.start,
       period.end,
@@ -188,6 +193,7 @@ export class LeadSourcesRepository {
       source: r.source,
       formTitle: r.form_title,
       productLine: r.product_line,
+      targetolog: r.targetolog,
       stage: r.stage ?? '—',
       status: r.status,
       aiQualified: r.ai_qualified,

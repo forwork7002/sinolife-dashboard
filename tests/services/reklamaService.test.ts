@@ -712,8 +712,8 @@ describe('LeadSourcesService.targetologForms — «Targetologlar · kunlik» und
   const UNNAMED_FORM = 'Заполнение CRM-формы "Sinolife filtr forma 3"'
   const UMAR_FORM = 'Заполнение CRM-формы "Sinolife (UMAR) 777"'
   const registration = [
-    { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UNNAMED_FORM, productLine: null, stage: 'Сделка успешна', status: 'WON', aiQualified: false, leads: 9 },
-    { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UMAR_FORM, productLine: null, stage: 'Сделка успешна', status: 'WON', aiQualified: false, leads: 5 },
+    { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UNNAMED_FORM, productLine: null, targetolog: null, stage: 'Сделка успешна', status: 'WON', aiQualified: false, leads: 9 },
+    { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UMAR_FORM, productLine: null, targetolog: null, stage: 'Сделка успешна', status: 'WON', aiQualified: false, leads: 5 },
     // Umar's Collagen form, but the lead's «Проект» is Kosmetika: brandless.
     { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UMAR_FORM, productLine: 'Kosmetika', stage: 'Недозвон', status: 'LOST', aiQualified: false, leads: 2 },
   ]

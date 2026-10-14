@@ -111,8 +111,8 @@ const columnTint = (c: Column) => (c === 'Meta лид' ? LEAD_TINT : c === 'Jami
   `ofBrand`: Meta money by its ad budget). Hiring is no brand's budget, so on
   Collagen and Zextra «HR $» is empty on every card and «Jami $» is not all
   the accounts spent; «Brendsiz» and «Hammasi» carry it — an owner with only
-  hiring or message money has a card of its own there (`expenseOwners`, since
-  2026-10-07). «HR · Kosmetika», the strip's last card there, holds all the hiring money.
+  hiring money has a card of its own there (`expenseOwners`, since
+  2026-10-07; message money makes an owner a lead-table row since 2026-10-14). «HR · Kosmetika», the strip's last card there, holds all the hiring money.
 */
 const BRAND_NOTE =
   ' Brend tanlanganda Jami $ — faqat shu tanlovning puli. Vakansiya puli hech bir brendniki emas: Collagen va Zextra da HR $ boʻsh, u «Brendsiz» va «Hammasi» da koʻrinadi; hammasi bir joyda — oxirgi «HR · Kosmetika» kartasida.'
@@ -124,7 +124,7 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
   })
   const [picked, setPicked] = useState<MetaProduct>('Collagen')
 
-  // The lead-form owners, then the ones whose money is all SMS, hiring or other — «Jami $» is every dollar.
+  // The targetologs, then the owners whose money is all hiring or a «Boshqa» account's — «Jami $» is every dollar.
   const forms = query.data?.data.forms
   const owners = forms ? [...forms.owners, ...forms.expenseOwners] : []
   // The sheet's «Telegram» block, typed by hand: a brand with typed money has a card even with no targetolog this period.
@@ -157,7 +157,7 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Targetologlar · kunlik"
-        hint={`Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. «Telegram» kartasi — Telegram Ads sarfi qoʻlda kiritiladi (sheetdagi Telegram bloki), Bitrix лид va кв лид — Bitrix24 ga Telegram manbasidan tushgan lidlar («Проект» yozilmagani Brendsiz, kartaga kirmaydi); bu kartada лид $ va кв лид $ = $ ÷ Bitrix лид / кв лид. Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar; кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan.${brand === 'all' ? '' : BRAND_NOTE}`}
+        hint={`Har targetolog alohida, kunma-kun: Rasxod $ — lid-forma kampaniyalari sarfi (Meta); Sayt $ — «Sayt» kampaniyalari; SMS $ — xabar (DM, Sms) kampaniyalari, SMS soni — yozishmalar; HR $ — vakansiya kampaniyalari; Jami $ — akkauntlardan ketgan hamma pul. «Telegram» kartasi — Telegram Ads sarfi qoʻlda kiritiladi (sheetdagi Telegram bloki), Bitrix лид va кв лид — Bitrix24 ga Telegram manbasidan tushgan lidlar («Проект» yozilmagani Brendsiz, kartaga kirmaydi); bu kartada лид $ va кв лид $ = $ ÷ Bitrix лид / кв лид. Meta лид — Meta hisoblagan lidlar; Bitrix лид — uning CRM-formalari Bitrix24 Регистрация ga ochgan lidlar (forma nomida boʻlmasa — bitimdagi «Таргетолог» maydoni boʻyicha); кв лид — ulardan kval boʻlgani. лид $ = Rasxod $ ÷ Meta лид, % = кв лид ÷ Bitrix лид, кв лид $ = Rasxod $ ÷ кв лид. Bitrix лид 0 boʻlsa — formasi Bitrix24 ga ulanmagan.${brand === 'all' ? '' : BRAND_NOTE}`}
       />
       {brand === 'all' && products.length > 1 && (
         <SlicePicker<MetaProduct>
