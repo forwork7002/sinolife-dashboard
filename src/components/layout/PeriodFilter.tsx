@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
+import { DateInput } from '@/components/ui/DateInput'
 import { isCustomWindow } from '@/lib/customWindow'
 import { tashkentDay } from '@/lib/format'
 import { t } from '@/lib/messages'
@@ -217,10 +218,10 @@ type Mode = 'day' | 'month' | 'year' | 'range'
 /**
  * Day, month, year or an arbitrary range.
  *
- * Native `<input type="date">` and `type="month"` rather than a calendar
- * component: they are keyboard accessible, localised by the browser, work on a
- * phone, and cost nothing. A hand-built calendar would be a week of work to
- * reach the same place worse.
+ * The browser's own calendars rather than a calendar component: keyboard
+ * accessible, work on a phone, and cost nothing. A day is PRINTED by
+ * `DateInput` as «01.10.2026», though — the browser prints it in its own
+ * locale, and an English one wrote 1 October as «10/01/2026» (2026-10-14).
  */
 function PeriodPicker({
   from,
@@ -281,9 +282,8 @@ function PeriodPicker({
     /*
       AND NEVER OUTSIDE THE FIELDS' BOUNDS. A browser enforces `max` in its own
       calendar only — a day typed past today, or a year typed as «0202», was
-      applied as it stood (2026-10-14). Nothing is asked until «Qoʻllash», so
-      the fields show what was typed and the button stays off until it is a
-      window inside them.
+      applied as it stood (2026-10-14). The day fields (`DateInput`) never take
+      such a day; this is the same rule for the month and the year.
     */
     const pick = (selection: PeriodSelection) =>
       isCustomWindow(selection.from, selection.to) &&
@@ -373,7 +373,7 @@ function PeriodPicker({
 
       {mode === 'day' && (
         <Field label={t.period.day}>
-          <input type="date" value={day} min={floor} max={todayIso()} onChange={(e) => setDay(e.target.value)} />
+          <DateInput value={day} min={floor} max={todayIso()} onCommit={setDay} />
         </Field>
       )}
 
@@ -403,22 +403,10 @@ function PeriodPicker({
       {mode === 'range' && (
         <div className="space-y-2">
           <Field label={t.period.from}>
-            <input
-              type="date"
-              value={rangeFrom}
-              min={floor}
-              max={todayIso()}
-              onChange={(e) => setRangeFrom(e.target.value)}
-            />
+            <DateInput value={rangeFrom} min={floor} max={todayIso()} onCommit={setRangeFrom} />
           </Field>
           <Field label={t.period.to}>
-            <input
-              type="date"
-              value={rangeTo}
-              min={floor}
-              max={todayIso()}
-              onChange={(e) => setRangeTo(e.target.value)}
-            />
+            <DateInput value={rangeTo} min={floor} max={todayIso()} onCommit={setRangeTo} />
           </Field>
         </div>
       )}

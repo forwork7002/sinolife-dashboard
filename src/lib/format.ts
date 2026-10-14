@@ -285,6 +285,17 @@ export function tashkentDay(instant: Date = new Date()): string {
   return `${String(year).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
+/**
+ * A calendar day `YYYY-MM-DD` as «01.10.2026» — DAY, MONTH, YEAR, the order
+ * every numeric date on the dashboard is printed in (2026-10-14, the user:
+ * «sanani oldinga qoʻy … oyni 2-chisiga … oxiriga yilni»). Null for anything
+ * that is not a whole day.
+ */
+export function dottedDay(day: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day)
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : null
+}
+
 export function formatDate(iso: string): string {
   const { day, month, year } = appZoneParts(iso)
   return `${day}-${UZ_MONTHS_SHORT[month]} ${year}`

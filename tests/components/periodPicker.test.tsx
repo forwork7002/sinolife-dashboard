@@ -57,19 +57,20 @@ describe('the period picker', () => {
     expect(apply().disabled).toBe(false)
   })
 
-  it('keeps it disabled for a range starting before the year list, the fields’ floor', () => {
-    render(<PeriodFilter value="today" onChange={vi.fn()} />)
+  it('takes no day before the year list, the fields’ floor — the field keeps its day', () => {
+    const onChange = vi.fn()
+    render(<PeriodFilter value="today" onChange={onChange} />)
     fireEvent.click(screen.getByRole('button', { name: `${t.period.label}: ${t.period.pick}` }))
     fireEvent.click(screen.getByRole('tab', { name: t.period.range }))
-    const apply = () => screen.getByRole('button', { name: t.period.apply }) as HTMLButtonElement
     const floorYear = Number(new Date().getFullYear()) - 5
 
-    fireEvent.change(screen.getByLabelText(t.period.from), { target: { value: '2010-01-01' } })
     fireEvent.change(screen.getByLabelText(t.period.to), { target: { value: '2026-08-01' } })
-    expect(apply().disabled).toBe(true)
-
+    fireEvent.change(screen.getByLabelText(t.period.from), { target: { value: '2010-01-01' } })
+    fireEvent.blur(screen.getByLabelText(t.period.from))
     fireEvent.change(screen.getByLabelText(t.period.from), { target: { value: `${floorYear}-01-01` } })
-    expect(apply().disabled).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: t.period.apply }))
+
+    expect(onChange).toHaveBeenCalledWith({ preset: 'custom', from: `${floorYear}-01-01`, to: '2026-08-01' })
   })
 
   it('applies a whole month it can read', () => {
@@ -123,17 +124,20 @@ describe('the period picker on a fixed day', () => {
     expect((screen.getByLabelText(t.period.day) as HTMLInputElement).value).toBe('2026-10-07')
   })
 
-  it('applies no day typed past today, nor a year typed halfway («0202»)', () => {
+  it('takes no day typed past today, nor a year typed halfway («0202»), and prints the day as kun.oy.yil', () => {
     const onChange = open({ value: 'today' })
     const day = screen.getByLabelText(t.period.day) as HTMLInputElement
-    expect(day.value).toBe('2026-10-14')
+    const shown = () => day.parentElement!.querySelector('[data-day]')!.getAttribute('data-day')
+    expect(shown()).toBe('14.10.2026')
     fireEvent.change(day, { target: { value: '2026-10-15' } })
-    expect(apply().disabled).toBe(true)
     fireEvent.change(day, { target: { value: '0202-10-14' } })
-    expect(apply().disabled).toBe(true)
-    fireEvent.change(day, { target: { value: '2026-10-13' } })
+    fireEvent.blur(day)
+    expect(day.value).toBe('2026-10-14')
+    fireEvent.change(day, { target: { value: '2026-10-01' } })
+    // 1 October, never «10/01/2026» — the browser's month-first print.
+    expect(shown()).toBe('01.10.2026')
     fireEvent.click(apply())
-    expect(onChange).toHaveBeenCalledWith({ preset: 'custom', from: '2026-10-13', to: '2026-10-13' })
+    expect(onChange).toHaveBeenCalledWith({ preset: 'custom', from: '2026-10-01', to: '2026-10-01' })
   })
 
   it('names the year on the button for a window outside this one', () => {

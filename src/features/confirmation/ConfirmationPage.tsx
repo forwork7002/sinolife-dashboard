@@ -42,7 +42,7 @@ import {
   type MoneyDto,
   apiGet,
 } from '@/lib/api'
-import { APP_TIME_ZONE, NO_VALUE, formatFullUzs, formatNumber, tashkentDay } from '@/lib/format'
+import { APP_TIME_ZONE, NO_VALUE, dottedDay, formatFullUzs, formatNumber, tashkentDay } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -2418,7 +2418,7 @@ function OutcomeChip({ outcome }: { outcome: ConfirmationOutcome }) {
   САНА is stamped in Tashkent, always.
 
   These two exist beside `lib/format` rather than inside it because the shapes
-  differ — this column is `YYYY-MM-DD` and a bare `HH:mm`, not the Uzbek
+  differ — this column is `DD.MM.YYYY` and a bare `HH:mm`, not the Uzbek
   `1-sen 2026` the rest of the dashboard reads. The ZONE is the shared fact,
   and it is imported so there is one statement of it: the whole point of the
   daily № beside this column is that both agree on where the working day
@@ -2432,9 +2432,10 @@ const TASHKENT_TIME = new Intl.DateTimeFormat('en-GB', {
   hourCycle: 'h23',
 })
 
-// `tashkentDay`, from the parts: `en-CA`'s `.format()` is not ISO order on every ICU build.
+// The Tashkent day, printed day first — «14.10.2026» (2026-10-14: the dashboard's one numeric date order).
 function tashkentDate(iso: string): string {
-  return tashkentDay(new Date(iso))
+  const day = tashkentDay(new Date(iso))
+  return dottedDay(day) ?? day
 }
 
 function tashkentTime(iso: string): string {

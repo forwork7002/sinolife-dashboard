@@ -1573,7 +1573,9 @@ body::after {
  * stays visible against both the page and a coloured chip, which a single
  * outline does not.
  */
-.focusable:focus-visible {
+/* `DateInput`: the box is a span over an invisible native field — the ring goes on the box. */
+.focusable:focus-visible,
+.focusable:has(> input[type='date']:focus-visible) {
   outline: none;
   box-shadow:
     0 0 0 2px var(--surface),
@@ -1586,7 +1588,8 @@ body::after {
  * `CanvasText` is the system's own foreground.
  */
 @media (forced-colors: active) {
-  .focusable:focus-visible {
+  .focusable:focus-visible,
+  .focusable:has(> input[type='date']:focus-visible) {
     outline: 2px solid CanvasText;
     outline-offset: 2px;
   }

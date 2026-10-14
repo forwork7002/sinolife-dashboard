@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DateInput, isDayWithin } from '@/components/ui/DateInput'
-import { tashkentDay } from '@/lib/format'
+import { dottedDay, tashkentDay } from '@/lib/format'
 
 /*
   A date box hands over a whole day inside its bounds, never a keystroke
@@ -45,6 +45,13 @@ describe('DateInput', () => {
     const { input, onCommit } = box()
     fireEvent.change(input, { target: { value: '2026-10-21' } })
     expect(onCommit).toHaveBeenCalledExactlyOnceWith('2026-10-21')
+  })
+
+  it('prints the day as kun.oy.yil, not in the browser\'s month-first order', () => {
+    const { input } = box(vi.fn(), '2026-10-01')
+    expect(input.parentElement!.querySelector('[data-day]')!.getAttribute('data-day')).toBe('01.10.2026')
+    expect(dottedDay('2026-10-01')).toBe('01.10.2026')
+    expect(dottedDay('')).toBeNull()
   })
 
   it('reads a real calendar day only', () => {
