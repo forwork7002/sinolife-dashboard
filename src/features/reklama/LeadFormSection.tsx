@@ -3,17 +3,19 @@
 import { useMemo, useState, useSyncExternalStore } from 'react'
 
 import { type Column, DataTable } from '@/components/ui/DataTable'
+import { SectionHeader, StatTile } from '@/components/ui/Stat'
 import { formatDate, formatNumber } from '@/lib/format'
 import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
 
 import type { LeadFormDto } from './reklamaApi'
-import { type Status, count, money, muted, pct } from './reklamaUi'
+import { type Status, TableCard, count, money, muted, pct } from './reklamaUi'
 
 /**
  * Formalar — every Meta LEAD FORM, one row each, as Facebook lists it.
  *
- * Asked for on 2026-10-10 («har bitta formani alohida»); since 2026-10-13
- * it is the «Formalar · Meta» tab of «Lid sifati» (`QualitySection`) and
+ * Asked for on 2026-10-10 («har bitta formani alohida»); on 2026-10-13 it
+ * was the «Formalar · Meta» tab of «Lid sifati», since 2026-10-14 its own
+ * section under it (`LeadFormSection`), and it
  * took «Kampaniyalar»' place («shuni formalarga oʻzgartirish … facebookdagi
  * formalardan olinishi kerak»): the portal's deal names its form, never its
  * campaign, so the form is the row a registrar and a targetolog both
@@ -101,6 +103,60 @@ const useWide = () =>
     () => false,
   )
 
+/**
+ * The forms as a section of their own, under «Lid sifati» (2026-10-14, the
+ * user: «forma deb alohida pastda koʻrsatib turishing kerak, chiroyli va
+ * aniq»). Four tiles say what Facebook lists — every form, the Faol ones,
+ * the rest, Meta's all-time leads — before the table; they count only rows
+ * a page listed (`status` set), so «Forma aniqlanmagan» is never a form.
+ */
+export function LeadFormSection({ forms, status }: { forms: readonly LeadFormDto[] | undefined; status: Status }) {
+  const listed = (forms ?? []).filter((f) => f.status !== null)
+  const active = listed.filter((f) => f.status === 'ACTIVE').length
+  const pages = new Set(listed.map((f) => f.pageId)).size
+  const totalLeads = listed.reduce((n, f) => n + (f.totalLeads ?? 0), 0)
+  const known = forms === undefined ? null : listed.length
+  return (
+    <section className="flex min-w-0 flex-col gap-3">
+      <SectionHeader
+        title="Formalar · Facebook"
+        hint="Facebook sahifalaridagi barcha lid-formalar — har soatda Facebook’dan yangilanadi. Faol formalar tepada."
+      />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile
+          status={status}
+          unit="count"
+          label="Jami formalar"
+          value={known}
+          hint={known ? `${formatNumber(pages)} ta sahifada` : undefined}
+        />
+        <StatTile status={status} unit="count" label="Faol" value={known === null ? null : active} tone="good" />
+        <StatTile
+          status={status}
+          unit="count"
+          label="Faol emas"
+          value={known === null ? null : listed.length - active}
+          hint="arxivlangan yoki qoralama"
+        />
+        <StatTile
+          status={status}
+          unit="count"
+          label="Jami lidlar"
+          value={known === null ? null : totalLeads}
+          hint="Meta: formalar ochilgandan beri"
+        />
+      </div>
+      <TableCard
+        title="Formalar roʻyxati"
+        hint="Sahifa, forma, holat, yaratilgan sana va jami lidlar — Facebook’dan. Keyingi ustunlar tanlangan davr: forma reklamalarining sarfi, Meta lidi, lid narxi; Lid va keyingi ustunlar — formaning Meta lidi telefon boʻyicha Bitrix24 bitimiga ulangani, Kval — «Сделка успешна», kval narxi = sarf ÷ kval."
+        footer="Oʻchirilgan forma koʻrsatilmaydi. «Forma aniqlanmagan» — lid-forma reklamasining sarfi, lekin undan hali birorta lid qaysi formadan kelgani oʻqilmagan."
+      >
+        <LeadFormTable forms={forms} status={status} />
+      </TableCard>
+    </section>
+  )
+}
+
 export function LeadFormTable({ forms, status }: { forms: readonly LeadFormDto[] | undefined; status: Status }) {
   const [page, setPage] = useState('all')
   const [filter, setFilter] = useState<Filter>('all')
@@ -164,11 +220,11 @@ export function LeadFormTable({ forms, status }: { forms: readonly LeadFormDto[]
           }}
         >
           <strong className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
-            Meta’dan formalar oʻqilmayapti.
+            Facebook formalari hali oʻqilmagan.
           </strong>{' '}
-          Serverdagi Meta tokeni lid-forma sahifalarini koʻrmayapti (pages_show_list, pages_manage_ads va
-          leads_retrieval ruxsatlari hamda sahifalarga kirish kerak). Token yangilansa, Facebook’dagi har bir forma
-          keyingi soatlik yangilanishda shu yerda chiqadi.
+          Formalar Facebook’dan har soatda oʻqiladi. Bir soatdan keyin ham shu yozuv tursa, serverdagi Meta tokeni
+          lid-forma sahifalarini koʻrmayapti (pages_show_list, pages_manage_ads va leads_retrieval ruxsatlari hamda
+          sahifalarga kirish kerak).
         </div>
       )}
       <div className="grid gap-3 px-5 pb-3 sm:grid-cols-3">

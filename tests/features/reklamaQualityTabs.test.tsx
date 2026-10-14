@@ -1,17 +1,18 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { LeadFormSection } from '@/features/reklama/LeadFormSection'
 import { QualitySection } from '@/features/reklama/QualitySection'
 import type { LeadFormDto, QualityBlockDto, QualityCellsDto } from '@/features/reklama/reklamaApi'
 
 /**
- * «LID SIFATI» — ONE CARD, TWO TABS (2026-10-13, the user: «ikkisini
- * birlashtirib yubor»). «Kunlik — barcha sahifalar» and «Formalar · Meta»
- * were two sections; they are now the two readings of one card. The day
- * table keeps the client's sheet columns and gains a share bar; the forms
- * tab says out loud when Meta's form leads are not being read, rather than
- * drawing one «Forma aniqlanmagan» row of dashes.
+ * «LID SIFATI» AND «FORMALAR · FACEBOOK». The forms were the card's second
+ * tab on 2026-10-13 and are their own section under it since 2026-10-14 (the
+ * user: «forma deb alohida pastda koʻrsatib turishing kerak»). The day table
+ * keeps the client's sheet columns and a share bar; the forms section opens
+ * on four tiles and says out loud when no form has been read yet, rather
+ * than drawing one «Forma aniqlanmagan» row of dashes.
  */
 
 afterEach(cleanup)
@@ -83,8 +84,9 @@ const form = (over: Partial<LeadFormDto> = {}): LeadFormDto => ({
 
 describe('Lid sifati', () => {
   it('opens on the day table, with the sheet columns and a share bar per row', () => {
-    render(<QualitySection quality={QUALITY} forms={[form()]} status="ready" />)
+    render(<QualitySection quality={QUALITY} status="ready" />)
     expect(screen.getByText('Kunlik — barcha sahifalar')).toBeTruthy()
+    expect(screen.queryByText('Formalar · Facebook')).toBeNull()
     for (const header of [
       'Недозвон',
       'Sifatsiz',
@@ -104,12 +106,29 @@ describe('Lid sifati', () => {
     )
   })
 
-  it('switches to the forms and says why every form row is dashes when no Meta form lead was read', () => {
-    render(<QualitySection quality={QUALITY} forms={[form()]} status="ready" />)
-    fireEvent.click(screen.getByRole('button', { name: 'Formalar · Meta (1)' }))
-    expect(screen.queryByText('Kunlik — barcha sahifalar')).toBeNull()
-    expect(screen.getByRole('status').textContent).toContain('Meta’dan formalar oʻqilmayapti.')
+})
+
+describe('Formalar · Facebook', () => {
+  it('stands on its own: four tiles over the table, counting listed forms only', () => {
+    const listed = [
+      form({ id: '1', name: 'Collagen FULL', pageId: 'p1', pageName: 'Collagen.marine', status: 'ACTIVE', totalLeads: 166 }),
+      form({ id: '2', name: 'Zextra eski', pageId: 'p2', pageName: 'Zextra.uz', status: 'ARCHIVED', totalLeads: 34 }),
+    ]
+    render(<LeadFormSection forms={[...listed, form()]} status="ready" />)
+    // The tiles come before the table, whose headers and chips repeat two of these words.
+    const tile = (label: string) => screen.getAllByText(label)[0]!.closest('.card')!.textContent ?? ''
+    expect(screen.getByText('Formalar · Facebook')).toBeTruthy()
+    expect(tile('Jami formalar')).toContain('2')
+    expect(tile('Jami formalar')).toContain('2 ta sahifada')
+    expect(tile('Faol emas')).toContain('1')
+    expect(tile('Jami lidlar')).toContain('200')
     expect(screen.getByText('Forma aniqlanmagan')).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('says the forms are not read yet when no row was listed or matched', () => {
+    render(<LeadFormSection forms={[form()]} status="ready" />)
+    expect(screen.getByRole('status').textContent).toContain('Facebook formalari hali oʻqilmagan.')
   })
 
   it('says nothing of the token once a form lead was read', () => {
@@ -118,8 +137,7 @@ describe('Lid sifati', () => {
       name: 'Sinolife (UMAR) 777',
       crm: {} as LeadFormDto['crm'],
     })
-    render(<QualitySection quality={QUALITY} forms={[crm, form()]} status="ready" />)
-    fireEvent.click(screen.getByRole('button', { name: 'Formalar · Meta (2)' }))
+    render(<LeadFormSection forms={[crm, form()]} status="ready" />)
     expect(screen.queryByRole('status')).toBeNull()
   })
 })

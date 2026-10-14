@@ -998,6 +998,17 @@ async function main() {
   let lastReferenceAt: Date | null = null
   let lastSweepAt: Date | null = null
   let lastSweepFailedAt: Date | null = null
+  /*
+    META IS ON THE WALL CLOCK TOO (2026-10-14). It was `tick % META_EVERY`
+    offset by half a period, so every start waited half an hour before its
+    first Meta pass — and on a day of six deploys the forms table and the
+    spend were never read at all. The clock is the newest spend row's
+    `importedAt` (the import deletes and re-creates its window, so the
+    column is the last successful pass); the loop stamps each attempt, so a
+    failing token is retried once per period, never every tick.
+  */
+  const META_MS = META_EVERY * INTERVAL_SEC * 1000
+  let lastMetaAt: Date | null = null
   // In memory only: a restart costs one near and one wide check, ~150 invocations.
   const recentSweepAt = new Map<string, Date>()
   // In memory only: a restart costs one pass of the feeds, two requests.
@@ -1061,6 +1072,15 @@ async function main() {
     // Not fatal: unknown means «due», which is exactly what a restart did before.
     console.warn(`  ${stamp()} ! oxirgi maʼlumotnoma/tozalash vaqti oʻqilmadi:`, error)
   }
+  if (META_TOKEN && META_MS > 0) {
+    try {
+      const meta = await prisma.metaAdDaily.aggregate({ _max: { importedAt: true } })
+      lastMetaAt = meta._max.importedAt
+    } catch (error) {
+      // Not fatal: unknown means «due» — one Meta pass on the first eligible tick.
+      console.warn(`  ${stamp()} ! oxirgi Meta vaqti oʻqilmadi:`, error)
+    }
+  }
 
   await pruneSyncLog(prisma)
 
@@ -1113,7 +1133,9 @@ async function main() {
       ` (oxirgisi: ${lastReferenceAt?.toISOString() ?? 'yozilmagan'}).` +
       (SWEEP_EVERY > 0 ? ` Oxirgi tozalash: ${lastSweepAt?.toISOString() ?? 'yozilmagan'}.` : '') +
       (ROISTAT_EVERY > 0 ? ` Roistat har ${ROISTAT_EVERY} tsiklda.` : ' Roistat oʻchirilgan.') +
-      (META_TOKEN && META_EVERY > 0 ? ` Meta har ${META_EVERY} tsiklda.` : ' Meta oʻchirilgan (token yoʻq).') +
+      (META_TOKEN && META_EVERY > 0
+        ? ` Meta har ${META_EVERY} tsiklda (oxirgisi: ${lastMetaAt?.toISOString() ?? 'yozilmagan'}).`
+        : ' Meta oʻchirilgan (token yoʻq).') +
       (MOYSKLAD_TOKEN && MOYSKLAD_EVERY > 0
         ? ` MoySklad har ${MOYSKLAD_EVERY} tsiklda.`
         : ' MoySklad oʻchirilgan (token yoʻq).') +
@@ -1826,18 +1848,19 @@ async function main() {
     }
 
     /*
-      Meta, on the same «after the tick, never tick 0» rule. Offset by half a
-      period from Roistat so the two passengers never ride the same tick. A
-      failure is logged and forgotten until the next hour — Meta being down
-      must never cost a Bitrix24 tick.
+      Meta, on the same «after the tick, never tick 0» rule, on the wall
+      clock (`lastMetaAt`, above), and never on Roistat's tick so the two
+      passengers never ride together. A failure is logged and forgotten until
+      the next period — Meta being down must never cost a Bitrix24 tick.
     */
     if (
       META_TOKEN &&
-      META_EVERY > 0 &&
       tick > 0 &&
-      (tick + Math.floor(META_EVERY / 2)) % META_EVERY === 0 &&
+      (ROISTAT_EVERY <= 0 || tick % ROISTAT_EVERY !== 0) &&
+      isPassDue(lastMetaAt, new Date(), META_MS) &&
       !stopping
     ) {
+      lastMetaAt = new Date()
       const metaStarted = Date.now()
       try {
         const r = await importMetaSpend(
