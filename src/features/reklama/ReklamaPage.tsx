@@ -124,9 +124,13 @@ function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; 
   */
   const dmPages = data?.dm.pages.filter((p) => p.carriesDmSpend) ?? []
   const dmQualified = dmPages.reduce((n, p) => n + p.total.qualified, 0)
+  // «DM lid» / «DM kval» and «DM lid narxi» on the same DM-money pages, so the four DM tiles divide alike.
+  const dmLeads = dmPages.reduce((n, p) => n + p.total.leads, 0)
+  const dmPagesSpend = dmPages.reduce((n, p) => n + p.total.spendUsd, 0)
+  const dmPageNames = dmPages.map((p) => p.name).join(', ')
   return (
     <section className="flex min-w-0 flex-col gap-3">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           status={status}
           unit="usd"
@@ -151,12 +155,33 @@ function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; 
         <StatTile status={status} unit="usd" label="DM sarfi" value={spend?.dmUsd ?? null} hint="«DM», vakansiyasiz" />
         <StatTile
           status={status}
+          unit="count"
+          label="DM lid"
+          value={data ? dmLeads : null}
+          hint={data ? `${dmPageNames}: Регистрация lidlari` : undefined}
+        />
+        <StatTile
+          status={status}
+          unit="count"
+          label="DM kval"
+          value={data ? dmQualified : null}
+          hint={data ? `${formatNumber(dmLeads)} liddan, «Сделка успешна»` : undefined}
+        />
+        <StatTile
+          status={status}
+          unit="usd"
+          label="DM lid narxi"
+          value={data && dmLeads > 0 ? dmPagesSpend / dmLeads : null}
+          hint={data ? `DM sarfi ÷ ${formatNumber(dmLeads)} lid` : undefined}
+        />
+        <StatTile
+          status={status}
           unit="usd"
           label="DM kval narxi"
           value={data?.dm.total.costPerQualifiedUsd ?? null}
           hint={
             data
-              ? `${dmPages.map((p) => p.name).join(', ')}: ${formatNumber(dmQualified)} kval · ${formatNumber(data.dm.total.conversations)} murojat`
+              ? `${dmPageNames}: ${formatNumber(dmQualified)} kval · ${formatNumber(data.dm.total.conversations)} murojat`
               : undefined
           }
         />
