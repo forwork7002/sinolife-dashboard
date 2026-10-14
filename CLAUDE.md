@@ -2987,6 +2987,13 @@ requests, not one. A new department head now reaches the org chart and a TEAM
 account's scope up to three hours later; `npm run bitrix:resync -- DEPARTMENTS
 EMPLOYEES` does it in seconds when a hand-over has to land now.
 
+**THE SWEEP RUNS AT NIGHT SINCE 2026-10-14** (`isSweepDue` in `schedule.ts`):
+once a night in the backfill's window, 01:00–06:00 Tashkent. On the bare
+24-hour clock it had settled at 15:45, where the contact relink behind it
+scans every deal on the 1-vCPU database and a reader's request timed out in
+the same minute. The deals backfill and the one-off reads keep an hour clear
+of it either side (`sweepNear`), since both now share its night.
+
 **`SYNC_REFERENCE_EVERY` IS SET IN `.do/app.yaml`, SO THE CODE DEFAULT ALONE
 CHANGES NOTHING IN PRODUCTION** — and the LIVE spec overrides the committed one
 again (see *Deploy*: take the live spec, edit it, apply that). A cadence changed
@@ -3179,8 +3186,8 @@ five minutes» as the kind of thing that earns an administrative block, and this
 portal issued one on 2026-09-14 and again on 2026-09-15. 24 bursts a day became
 4. Nothing about the walk, `sweepByAntiJoin` or the short-read guard changed, so
 correctness is untouched — **read a six-hour-old test deal as `SYNC_SWEEP_EVERY`,
-not as a sync fault**, and set it lower on the deployed app if the client ever
-wants the old latency back.
+not as a sync fault**. (Lowering it no longer brings the old latency back: the
+sweep is at most nightly since 2026-10-14, see «THE SWEEP RUNS AT NIGHT».)
 
 ---
 
@@ -3202,6 +3209,19 @@ doctl apps update <app-id> --spec /tmp/live.yaml
 The health check must stay pointed at `/api/health`, which opens a real database
 connection. It used to point at `/login`, which Next serves from the build
 output and answers 200 with the database gone.
+
+**`slow request` AND `slow page guard` IN THE WEB LOG (2026-10-14).** Any API
+request or page-guard lookup taking a second or more leaves one warn line:
+path (cut to 160), the shape-only query keys, status, `ms`, `authMs` (the
+caller lookup) and the pool's `{ total, idle, waiting }` read when the request
+arrived (`poolAtStart`) and when it ended (`pool`) —
+`src/server/http/slowRequest.ts`; `/api/health` writes `slow health check`
+the same way. `poolAtStart.waiting > 0` is a request that arrived at a full
+pool; nothing in the line proves a slow query on its own (a screen can queue
+for connections after the caller is resolved too). A `slow page guard` with
+`resolved: false` is a signed-in reader the guard may have sent to /login:
+`optionalPrincipal` answers null on any failure. Read them with
+`doctl apps logs <app-id> web --type run | grep 'slow '`.
 
 ---
 
