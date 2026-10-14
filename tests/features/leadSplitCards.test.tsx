@@ -39,12 +39,12 @@ window.matchMedia = ((query: string) => ({
 
 const { LeadSplitCard, LeadWeekCard, useLeadSplit } = await import('@/features/leads/LeadSplitCards')
 const { RopReport } = await import('@/features/leads/RopReport')
-const { dayWindow } = await import('@/features/leads/RopWindowPicker')
+const { TODAY_WINDOW } = await import('@/features/leads/RopWindowPicker')
 
 /** The split cards on one shared day; «ROP otchet» on its own window, as on «RNP jadvali». */
 function Cards() {
   const [day, setDay] = useState(TODAY)
-  const [span, setSpan] = useState(() => dayWindow(TODAY))
+  const [span, setSpan] = useState(TODAY_WINDOW)
   const { colors } = useLeadSplit(day)
   return (
     <>
@@ -288,17 +288,19 @@ describe('LeadSplitCards', () => {
     expect(within(row('Umumiy')).queryByText(/Ruxsat/)).toBeNull()
   })
 
-  it('asks «ROP otchet» for a day, a whole month to today, or a range (2026-10-14)', async () => {
+  it('asks «ROP otchet» for a day, this month to today, or a picked window — the pages\' own control (2026-10-14)', async () => {
     data = fixture()
     await draw()
     await waitFor(() => expect(reportUrls.some((u) => u.includes(`from=${TODAY}&to=${TODAY}`))).toBe(true))
-    fireEvent.click(screen.getByRole('button', { name: 'Oy' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Shu oy' }))
     await waitFor(() => expect(reportUrls.some((u) => u.includes(`from=${TODAY.slice(0, 7)}-01&to=${TODAY}`))).toBe(true))
-    expect(screen.getByLabelText('Oldingi oy')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Oraliq' }))
-    expect(screen.getByText('dan')).toBeTruthy()
-    expect(screen.getByText('gacha')).toBeTruthy()
-    // A range opens on the month on screen.
-    expect(reportUrls.at(-1)).toContain(`from=${TODAY.slice(0, 7)}-01&to=${TODAY}`)
+    // Kun · Oy · Oraliq live inside the picker; a window longer than the API answers has no «Yil».
+    fireEvent.click(screen.getByRole('button', { name: /^Davr:/ }))
+    const picker = within(screen.getByRole('dialog'))
+    expect(picker.getByRole('tab', { name: 'Kun' })).toBeTruthy()
+    expect(picker.getByRole('tab', { name: 'Oy' }).getAttribute('aria-selected')).toBe('false')
+    expect(picker.queryByRole('tab', { name: 'Yil' })).toBeNull()
+    fireEvent.click(picker.getByRole('tab', { name: 'Oraliq' }))
+    expect(picker.getByText('Eng koʻpi 93 kun')).toBeTruthy()
   })
 })

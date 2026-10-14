@@ -8,9 +8,8 @@ import { Card } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { Select } from '@/components/ui/Select'
 import { useCohortRop } from '@/features/cohort/useCohortRop'
-import { today } from '@/features/leads/LeadSplitCards'
 import { RopReport } from '@/features/leads/RopReport'
-import { dayWindow, type RopWindow } from '@/features/leads/RopWindowPicker'
+import { type RopWindow, TODAY_WINDOW } from '@/features/leads/RopWindowPicker'
 import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -69,7 +68,7 @@ type Tab = 'sheet' | 'rop'
 export function RnpPage() {
   const [tab, setTab] = useState<Tab>('sheet')
   // «ROP otchet»'s window — a day, a month or a range; its own, kept across a trip to the sheet and back.
-  const [ropWindow, setRopWindow] = useState<RopWindow>(() => dayWindow(today()))
+  const [ropWindow, setRopWindow] = useState<RopWindow>(TODAY_WINDOW)
   const current = useCurrentMonth()
   const { month, setMonth } = useRnpMonth(current)
   // What the month box holds while it is not yet a month the sheet can show (`rnpMonthIn`).

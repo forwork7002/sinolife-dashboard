@@ -10,7 +10,7 @@ import { formatDate, formatDateShort, formatDuration, formatFullUzs, formatNumbe
 
 import { Access } from './GroupPlanCard'
 import { ROP_COLORS } from './ropColors'
-import { type RopWindow, RopWindowPicker } from './RopWindowPicker'
+import { type RopWindow, RopWindowPicker, windowDays } from './RopWindowPicker'
 import type { RopReportCellsDto, RopReportDto, RopReportGroupDto } from './leadSplitApi'
 
 /**
@@ -67,7 +67,7 @@ export function RopReport({
   colors?: ReadonlyMap<string, string>
 }) {
   const { apiParams } = useDashboardFilters()
-  const range = { from: span.from, to: span.to }
+  const range = windowDays(span)
   const params = apiParams.brand !== undefined ? { ...range, brand: apiParams.brand } : range
   const report = useQuery({
     queryKey: ['registration-report', params],
@@ -84,7 +84,7 @@ export function RopReport({
             ROP otchet{data ? ` · ${windowLabel(data.from, data.day)}` : ''}
           </h2>
           <p className="mt-0.5 max-w-3xl text-xs" style={muted}>
-            Kun, oy yoki oraliq tanlanadi — raqamlar tanlangan kunlar boʻyicha jamlanadi. Лид сони — shu kunlarda tarqatilgan lidlar («Лид таркатилган сана»), bitim kimda boʻlsa oʻsha sotuvchiga. Факт-1 / Факт-2 — Sotuvchilar
+            Kun, oy yoki oraliq (📅) tanlanadi — raqamlar tanlangan kunlar boʻyicha jamlanadi. Лид сони — shu kunlarda tarqatilgan lidlar («Лид таркатилган сана»), bitim kimda boʻlsa oʻsha sotuvchiga. Факт-1 / Факт-2 — Sotuvchilar
             reytingidagi hisob (tasdiqlash navbatiga kelgan kun). План = 500 000 × Лид сони. Отклонение = План − Факт-1: ✅ Факт-1 rejaga yetdi,
             🔴 kam. Конверсия = Транз-1 ÷ Лид сони. Дозвон — shu kunlarda ulangan qoʻngʻiroqlar, Длительность — ularning suhbat vaqti («Qoʻngʻiroqlar»
             bilan bir xil). Dostup — Отклонение qizil (🔴) boʻlsa «Ruxsat emas», aks holda «Ruxsat».

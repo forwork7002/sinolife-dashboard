@@ -63,11 +63,18 @@ export function PeriodFilter({
   from,
   to,
   onChange,
+  maxDays,
 }: {
   value: PeriodPreset
   from?: string
   to?: string
   onChange: (selection: PeriodSelection) => void
+  /**
+   * The longest window the screen's API answers, when it has one («ROP
+   * otchet»: 93 days, 2026-10-14). The picker then offers no «Yil» and keeps
+   * «Qoʻllash» off for a longer range, saying why. Omitted: no limit.
+   */
+  maxDays?: number
 }) {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
@@ -203,6 +210,7 @@ export function PeriodFilter({
         <PeriodPicker
           from={from}
           to={to}
+          maxDays={maxDays}
           onPick={(selection) => {
             onChange(selection)
             setOpen(false)
@@ -226,10 +234,12 @@ type Mode = 'day' | 'month' | 'year' | 'range'
 function PeriodPicker({
   from,
   to,
+  maxDays,
   onPick,
 }: {
   from?: string
   to?: string
+  maxDays?: number
   onPick: (selection: PeriodSelection) => void
 }) {
   /*
@@ -239,7 +249,11 @@ function PeriodPicker({
     «Qoʻllash» replaced the range with that day. Every field starts from the
     window: the range's both ends, its first day, its month, its year.
   */
-  const [mode, setMode] = useState<Mode>(() => modeOf(from, to))
+  const [mode, setMode] = useState<Mode>(() => {
+    const opened = modeOf(from, to)
+    // A screen with a window limit has no «Yil»: its range reads the year's days instead.
+    return opened === 'year' && maxDays !== undefined ? 'range' : opened
+  })
   const [day, setDay] = useState(to ?? todayIso())
   const [month, setMonth] = useState((from ?? todayIso()).slice(0, 7))
   const [year, setYear] = useState(Number((from ?? todayIso()).slice(0, 4)))
@@ -288,7 +302,8 @@ function PeriodPicker({
     const pick = (selection: PeriodSelection) =>
       isCustomWindow(selection.from, selection.to) &&
       selection.from! >= floor &&
-      selection.to! <= todayIso()
+      selection.to! <= todayIso() &&
+      (maxDays === undefined || spanDays(selection.from!, selection.to!) <= maxDays)
         ? selection
         : null
 
@@ -330,7 +345,7 @@ function PeriodPicker({
   const MODES: readonly { id: Mode; label: string }[] = [
     { id: 'day', label: t.period.day },
     { id: 'month', label: t.period.month },
-    { id: 'year', label: t.period.year },
+    ...(maxDays === undefined ? [{ id: 'year' as const, label: t.period.year }] : []),
     { id: 'range', label: t.period.range },
   ]
 
@@ -408,6 +423,11 @@ function PeriodPicker({
           <Field label={t.period.to}>
             <DateInput value={rangeTo} min={floor} max={todayIso()} onCommit={setRangeTo} />
           </Field>
+          {maxDays !== undefined && (
+            <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              Eng koʻpi {maxDays} kun
+            </p>
+          )}
         </div>
       )}
 
@@ -483,6 +503,11 @@ function modeOf(from: string | undefined, to: string | undefined): Mode {
   if (from.endsWith('-01-01') && from.slice(0, 4) === to.slice(0, 4) && ends(`${from.slice(0, 4)}-12-31`)) return 'year'
   if (from.endsWith('-01') && from.slice(0, 7) === to.slice(0, 7) && ends(lastDayOfMonth(from.slice(0, 7)))) return 'month'
   return 'range'
+}
+
+/** Days in an inclusive window: one day is 1. */
+function spanDays(from: string, to: string): number {
+  return (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 + 1
 }
 
 function lastDayOfMonth(month: string): string {
