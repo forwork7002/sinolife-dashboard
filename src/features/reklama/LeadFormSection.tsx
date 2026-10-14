@@ -68,12 +68,19 @@ const SORTERS: Readonly<Record<SortKey, (f: LeadFormDto) => number | string | nu
 }
 
 /** Meta's statuses as SinoTarget and Meta Business Suite name them; a deleted form never reaches the page. */
-const STATUS_LABEL: Readonly<Record<string, string>> = { ACTIVE: 'Faol', ARCHIVED: 'Faol emas', DRAFT: 'Qoralama' }
+const STATUS_LABEL: Readonly<Record<string, string>> = {
+  ACTIVE: 'Faol',
+  ARCHIVED: 'Faol emas',
+  DRAFT: 'Qoralama',
+  // Known only off an ad's creative (2026-10-14): Meta gives no name, status or total for these.
+  NO_ACCESS: 'Ruxsat yoʻq',
+  DELETED: 'Oʻchirilgan',
+}
 
-const STATUS_RANK: Readonly<Record<string, number>> = { ACTIVE: 0, ARCHIVED: 1, DRAFT: 2 }
+const STATUS_RANK: Readonly<Record<string, number>> = { ACTIVE: 0, ARCHIVED: 1, DRAFT: 2, NO_ACCESS: 3, DELETED: 4 }
 
-type Filter = 'all' | 'ACTIVE' | 'ARCHIVED' | 'DRAFT'
-const FILTERS: readonly Exclude<Filter, 'all'>[] = ['ACTIVE', 'ARCHIVED', 'DRAFT']
+type Filter = 'all' | 'ACTIVE' | 'ARCHIVED' | 'DRAFT' | 'NO_ACCESS' | 'DELETED'
+const FILTERS: readonly Exclude<Filter, 'all'>[] = ['ACTIVE', 'ARCHIVED', 'DRAFT', 'NO_ACCESS', 'DELETED']
 
 /** «Tartib», as SinoTarget offers it, plus the window's money. */
 const ORDERS: readonly { key: SortKey; label: string }[] = [
@@ -106,50 +113,61 @@ const useWide = () =>
 /**
  * The forms as a section of their own, under «Lid sifati» (2026-10-14, the
  * user: «forma deb alohida pastda koʻrsatib turishing kerak, chiroyli va
- * aniq»). Four tiles say what Facebook lists — every form, the Faol ones,
- * the rest, Meta's all-time leads — before the table; they count only rows
- * a page listed (`status` set), so «Forma aniqlanmagan» is never a form.
+ * aniq»). Five tiles before the table — every form, the Faol ones, the rest,
+ * the ones an ad runs on a page the token is not assigned to («Ruxsat
+ * yoʻq», read off the ads' creatives), Meta's all-time leads. A deleted form
+ * and «Forma aniqlanmagan» are rows (they carry money), never forms here.
  */
 export function LeadFormSection({ forms, status }: { forms: readonly LeadFormDto[] | undefined; status: Status }) {
-  const listed = (forms ?? []).filter((f) => f.status !== null)
-  const active = listed.filter((f) => f.status === 'ACTIVE').length
-  const pages = new Set(listed.map((f) => f.pageId)).size
-  const totalLeads = listed.reduce((n, f) => n + (f.totalLeads ?? 0), 0)
-  const known = forms === undefined ? null : listed.length
+  const known = (forms ?? []).filter((f) => f.status !== null && f.status !== 'DELETED')
+  const active = known.filter((f) => f.status === 'ACTIVE').length
+  const closed = known.filter((f) => f.status === 'NO_ACCESS').length
+  const pages = new Set(known.map((f) => f.pageId)).size
+  const totalLeads = known.reduce((n, f) => n + (f.totalLeads ?? 0), 0)
+  const total = forms === undefined ? null : known.length
+  const of = (n: number) => (total === null ? null : n)
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
         title="Formalar · Facebook"
         hint="Facebook sahifalaridagi barcha lid-formalar — har soatda Facebook’dan yangilanadi. Faol formalar tepada."
       />
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <StatTile
           status={status}
           unit="count"
           label="Jami formalar"
-          value={known}
-          hint={known ? `${formatNumber(pages)} ta sahifada` : undefined}
+          value={total}
+          hint={total ? `${formatNumber(pages)} ta sahifada` : undefined}
         />
-        <StatTile status={status} unit="count" label="Faol" value={known === null ? null : active} tone="good" />
+        <StatTile status={status} unit="count" label="Faol" value={of(active)} tone="good" />
         <StatTile
           status={status}
           unit="count"
           label="Faol emas"
-          value={known === null ? null : listed.length - active}
+          value={of(known.length - active - closed)}
           hint="arxivlangan yoki qoralama"
         />
         <StatTile
           status={status}
           unit="count"
+          label="Ruxsat yoʻq"
+          value={of(closed)}
+          tone={closed > 0 ? 'warning' : 'neutral'}
+          hint="reklamadan topilgan, sahifa tokenga biriktirilmagan"
+        />
+        <StatTile
+          status={status}
+          unit="count"
           label="Jami lidlar"
-          value={known === null ? null : totalLeads}
+          value={of(totalLeads)}
           hint="Meta: formalar ochilgandan beri"
         />
       </div>
       <TableCard
         title="Formalar roʻyxati"
         hint="Sahifa, forma, holat, yaratilgan sana va jami lidlar — Facebook’dan. Keyingi ustunlar tanlangan davr: forma reklamalarining sarfi, Meta lidi, lid narxi; Lid va keyingi ustunlar — formaning Meta lidi telefon boʻyicha Bitrix24 bitimiga ulangani, Kval — «Сделка успешна», kval narxi = sarf ÷ kval."
-        footer="Oʻchirilgan forma koʻrsatilmaydi. «Forma aniqlanmagan» — lid-forma reklamasining sarfi, lekin undan hali birorta lid qaysi formadan kelgani oʻqilmagan."
+        footer="«Ruxsat yoʻq» — forma reklamaning oʻzidan topilgan, lekin uning sahifasi Meta tokeniga (system user «AI Targetolog») biriktirilmagan: nomi, holati va jami lidlari sahifa biriktirilgach chiqadi, sarf va Meta lidi hozir ham bor. «Oʻchirilgan» — sahifa endi koʻrsatmaydigan, lekin davrda sarfi bor forma. «Forma aniqlanmagan» — lid-forma reklamasining sarfi, formasi hali aniqlanmagan."
       >
         <LeadFormTable forms={forms} status={status} />
       </TableCard>
@@ -317,8 +335,8 @@ function ownerLine(f: LeadFormDto): string {
 
 function StatusChip({ status }: { status: string | null }) {
   if (status === null) return <span style={muted}>—</span>
-  const active = status === 'ACTIVE'
-  const tone = active ? 'var(--status-good)' : 'var(--ink-muted)'
+  const tone =
+    status === 'ACTIVE' ? 'var(--status-good)' : status === 'NO_ACCESS' ? 'var(--status-warning)' : 'var(--ink-muted)'
   return (
     <span
       className="inline-flex h-[22px] items-center gap-1.5 rounded-full px-2 text-[11.5px] font-medium whitespace-nowrap"
@@ -335,12 +353,12 @@ const columns: readonly Column<LeadFormDto>[] = [
     key: 'page',
     header: 'Sahifa',
     render: (f) =>
-      f.pageName === null ? (
+      f.pageName === null && f.pageId === null ? (
         <span style={muted}>{f.id === '' ? '—' : 'Sahifa roʻyxatida yoʻq'}</span>
       ) : (
         <span className="flex flex-col leading-tight">
-          <span className="max-w-[170px] truncate" title={f.pageName}>
-            {f.pageName}
+          <span className="max-w-[170px] truncate" title={f.pageName ?? undefined} style={f.pageName ? undefined : muted}>
+            {f.pageName ?? 'Nomi berilmagan'}
           </span>
           <span className="tabular text-[11px] font-normal" style={muted}>
             {f.pageId}
@@ -355,7 +373,7 @@ const columns: readonly Column<LeadFormDto>[] = [
     render: (f) => (
       <span className="flex flex-col leading-tight">
         <span className="max-w-[260px] truncate font-medium" title={f.name || undefined}>
-          {f.id === '' ? 'Forma aniqlanmagan' : f.name || f.id}
+          {f.id === '' ? 'Forma aniqlanmagan' : f.name || 'Nomi oʻqilmadi'}
         </span>
         <span className="tabular text-[11px] font-normal" style={muted}>
           {f.id === '' ? 'lid oʻqilmagan reklama sarfi' : f.id}

@@ -465,6 +465,54 @@ describe('reklamaOverview', () => {
     expect(reklamaOverview({ ...input, brand: 'Collagen' }).leadForms.map((f) => f.id)).toEqual(['f1', 'q2'])
   })
 
+  it('draws a form known only off an ad\'s creative: «Ruxsat yoʻq» on a closed page, «Oʻchirilgan» on a read one', () => {
+    const ad = (formId: string, pageId: string, spendMicroUsd: bigint): FormAdDayRow => ({
+      date: '2026-08-01',
+      accountId: '990016692137088',
+      accountName: 'Umar - 64',
+      campaignId: `c-${formId}`,
+      campaignName: 'Lid form',
+      objective: 'OUTCOME_LEADS',
+      formId,
+      formName: null,
+      pageId,
+      spendMicroUsd,
+      impressions: 0,
+      clicks: 0,
+      leads: 3,
+    })
+    const out = reklamaOverview({
+      window: WINDOW,
+      pages: PAGES,
+      leadRows: [],
+      campaignRows: [],
+      formAdRows: [ad('closed', '468913109633234', 30_000_000n), ad('gone', '505586455975439', 20_000_000n)],
+      listedForms: [
+        {
+          id: 'f1',
+          name: 'Collagen FULL',
+          pageId: '505586455975439',
+          pageName: 'Collagen.marine',
+          status: 'ACTIVE',
+          createdTime: null,
+          leadsCount: 1,
+        },
+      ],
+      importedAt: null,
+    })
+    const byId = new Map(out.leadForms.map((f) => [f.id, f]))
+    expect(byId.get('closed')).toMatchObject({
+      name: '',
+      pageName: 'Sinolife.uzb',
+      pageId: '468913109633234',
+      status: 'NO_ACCESS',
+      totalLeads: null,
+      spendUsd: 30,
+      metaLeads: 3,
+    })
+    expect(byId.get('gone')).toMatchObject({ status: 'DELETED', spendUsd: 20 })
+  })
+
   it('files a busy form on its money\'s slice alone, whatever its name says — the slices add up to «Hammasi»', () => {
     const input = {
       window: WINDOW,

@@ -265,3 +265,25 @@ export function sideColumn(channel: CampaignChannel, accountId: string): SideCol
   if (KOSMETIKA_ACCOUNTS.has(accountId)) return 'kosmetika'
   return null
 }
+
+/**
+ * Names of the pages the lead-form ads run on that the token is not assigned
+ * to (2026-10-14) — Meta refuses even a page's name there, so a form found
+ * on an ad's creative names its page from here. Taken from SinoTarget's own
+ * list (`NEED_ACCESS_PAGES`); a page missing here is shown by its id. Note
+ * the same names on OTHER ids among the token's pages (Zextra.uz,
+ * Collagen.sinolife, Sinolife zextra): two pages each, not one.
+ */
+export const META_PAGE_NAMES: Readonly<Record<string, string>> = {
+  '468913109633234': 'Sinolife.uzb',
+  '640530355805980': 'Sinolifeotziv',
+  '1037365646126968': 'Sinolife zextra',
+  '1280195325169928': 'Collagen.sinolife',
+  '1263273996866173': 'Zextra.uz',
+  '336762362856485': 'Gluzextra Gold',
+  '552780077920720': 'Pro X',
+  '538087526045694': 'Prox.uz',
+  '595158920338174': 'Sinogummy',
+  '1208156029043090': 'Genyrose.uz',
+  '630366153487853': 'Rustamovs-Mebel',
+}

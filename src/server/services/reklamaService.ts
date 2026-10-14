@@ -32,6 +32,7 @@ import {
   DM_PAGE_OF_PRODUCT,
   DM_PAGE_TARGETOLOG,
   DM_SHEET_PAGES,
+  META_PAGE_NAMES,
   adBudgetProduct,
   type MetaProduct,
   type SideColumn,
@@ -249,10 +250,18 @@ export interface LeadFormDto {
   /** Meta's form id; empty for «Forma aniqlanmagan» — lead-form ads no read lead names a form for. */
   readonly id: string
   readonly name: string
-  /** The page the form is on, as Facebook names it; null for a form no page lists to the token. */
+  /**
+   * The page the form is on, as Facebook names it — or, for a form known only
+   * off an ad's creative, `META_PAGE_NAMES`' name (null when it has none).
+   */
   readonly pageName: string | null
   readonly pageId: string | null
-  /** Meta's: ACTIVE (Faol), ARCHIVED (Faol emas), DRAFT (Qoralama); null when no page lists the form. */
+  /**
+   * Meta's: ACTIVE (Faol), ARCHIVED (Faol emas), DRAFT (Qoralama); `NO_ACCESS`
+   * for a form an ad's creative names on a page the token is not assigned to
+   * (no name, status or total from Meta), `DELETED` for one on a page the
+   * token reads that no longer lists it; null for «Forma aniqlanmagan».
+   */
   readonly status: string | null
   /** When the form was made, Meta's `created_time`. */
   readonly createdTime: string | null
@@ -705,6 +714,8 @@ export function reklamaOverview(input: {
     crm: LeadAcc | null
     /** On a page's form list — drawn whatever the window holds. */
     listed: boolean
+    /** The page an ad's creative names, for a form no page lists. */
+    pageId: string | null
   }
   const byForm = new Map<string, LeadFormAcc>()
   const formOf = (id: string, name: string): LeadFormAcc => {
@@ -719,6 +730,7 @@ export function reklamaOverview(input: {
         campaigns: new Set(),
         crm: null,
         listed: false,
+        pageId: null,
       } satisfies LeadFormAcc)
     byForm.set(id, acc)
     return acc
@@ -736,6 +748,7 @@ export function reklamaOverview(input: {
       continue
     }
     const acc = formOf(row.formId ?? '', row.formName ?? '')
+    if (row.pageId) acc.pageId = row.pageId
     addForm(acc.total, row)
     if (row.spendMicroUsd > 0n) {
       acc.days.add(row.date)
@@ -761,6 +774,7 @@ export function reklamaOverview(input: {
     the slices still add up to «Hammasi».
   */
   const listed = new Map((input.listedForms ?? []).map((f) => [f.id, f]))
+  const listedPages = new Set([...listed.values()].map((f) => f.pageId))
   for (const f of listed.values()) {
     const quietHere = !busyForms.has(f.id) && brandMatches(brand, leadBrand(null, `Заполнение CRM-формы "${f.name}"`))
     if (byForm.has(f.id) || quietHere) {
@@ -784,9 +798,16 @@ export function reklamaOverview(input: {
         id,
         // The page's list names a renamed form by its new name; a lead keeps the name it was filed under.
         name: meta?.name ?? f.name,
-        pageName: meta?.pageName || null,
-        pageId: meta?.pageId ?? null,
-        status: meta?.status || null,
+        pageName: meta?.pageName || (f.pageId ? (META_PAGE_NAMES[f.pageId] ?? null) : null),
+        pageId: meta?.pageId ?? f.pageId,
+        /*
+          Known only off an ad's creative: on a page the token reads, the page
+          no longer lists the form — deleted; on any other page the token is
+          not assigned to it.
+        */
+        status:
+          meta?.status ||
+          (id !== '' && f.pageId ? (listedPages.has(f.pageId) ? 'DELETED' : 'NO_ACCESS') : null),
         createdTime: meta?.createdTime?.toISOString() ?? null,
         totalLeads: meta?.leadsCount ?? null,
         targetolog: owner?.targetolog ?? null,

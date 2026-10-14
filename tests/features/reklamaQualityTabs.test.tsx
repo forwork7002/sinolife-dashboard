@@ -126,6 +126,18 @@ describe('Formalar · Facebook', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
+  it('counts a form found only on an ad under «Ruxsat yoʻq» and names it by its id', () => {
+    const closed = form({ id: '2052029759508941', pageId: '468913109633234', pageName: 'Sinolife.uzb', status: 'NO_ACCESS' })
+    render(<LeadFormSection forms={[closed]} status="ready" />)
+    const tile = (label: string) => screen.getAllByText(label)[0]!.closest('.card')!.textContent ?? ''
+    expect(tile('Ruxsat yoʻq')).toContain('1')
+    expect(tile('Faol emas')).toContain('0')
+    expect(screen.getByText('Nomi oʻqilmadi')).toBeTruthy()
+    expect(screen.getByText('2052029759508941')).toBeTruthy()
+    // In the page select and on the row.
+    expect(screen.getAllByText('Sinolife.uzb').length).toBe(2)
+  })
+
   it('says the forms are not read yet when no row was listed or matched', () => {
     render(<LeadFormSection forms={[form()]} status="ready" />)
     expect(screen.getByRole('status').textContent).toContain('Facebook formalari hali oʻqilmagan.')

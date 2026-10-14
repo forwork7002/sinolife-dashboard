@@ -87,6 +87,8 @@ export interface FormAdDayRow {
   readonly objective: string
   readonly formId: string | null
   readonly formName: string | null
+  /** The page the ad's creative names — set only when the form came off the creative (`meta_ad_form`). */
+  readonly pageId?: string | null
   readonly spendMicroUsd: bigint
   readonly impressions: number
   readonly clicks: number
@@ -355,8 +357,9 @@ export class ReklamaRepository {
    * ad's own LEADS name the form, so `meta_lead` is the map: an ad's form is
    * the one most of its leads of this window were filed through, else of all
    * time (an ad that spent today and has not brought a lead yet). An ad with
-   * no lead ever read — a form on a page closed to the token, or an ad that
-   * never brought one — has `formId` null and is reported as such.
+   * no lead ever read takes the form its creative names (`meta_ad_form`,
+   * 2026-10-14 — a form on a page closed to the token has no lead to read),
+   * with that page; only an ad neither names has `formId` null.
    *
    * `from` / `to` are the window's Tashkent days, as `campaignDays`; `period`
    * dates the leads that decide an ad's form.
@@ -372,6 +375,7 @@ export class ReklamaRepository {
         objective: string
         form_id: string | null
         form_name: string | null
+        page_id: string | null
         spend: bigint
         impressions: bigint
         clicks: bigint
@@ -400,16 +404,18 @@ export class ReklamaRepository {
         a."campaignId" AS campaign_id,
         a."campaignName" AS campaign_name,
         a."objective" AS objective,
-        af."formId" AS form_id,
+        COALESCE(af."formId", cf."formId") AS form_id,
         af.form_name,
+        CASE WHEN af."formId" IS NULL THEN cf."pageId" END AS page_id,
         sum(a."spendMicroUsd")::bigint AS spend,
         sum(a."impressions")::bigint AS impressions,
         sum(a."clicks")::bigint AS clicks,
         sum(a."leads")::bigint AS leads
       FROM "meta_ad_insight_daily" a
       LEFT JOIN ad_form af ON af."adId" = a."adId"
+      LEFT JOIN "meta_ad_form" cf ON cf."adId" = a."adId" AND cf."formId" <> ''
       WHERE a."date" >= $1::date AND a."date" <= $2::date
-      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8
+      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
       `,
       from,
       to,
@@ -425,6 +431,7 @@ export class ReklamaRepository {
       objective: r.objective,
       formId: r.form_id,
       formName: r.form_name,
+      pageId: r.page_id,
       spendMicroUsd: r.spend,
       impressions: Number(r.impressions),
       clicks: Number(r.clicks),

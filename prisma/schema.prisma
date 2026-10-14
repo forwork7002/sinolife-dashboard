@@ -1581,6 +1581,19 @@ model MetaLeadForm {
   @@map("meta_lead_form")
 }
 
+/// Which lead form each lead-form ad points at, read once off its creative
+/// (2026-10-14) — the only link to a form on a page the token is not
+/// assigned to. `formId` '' = the creative names no form.
+model MetaAdForm {
+  adId   String   @id
+  formId String
+  pageId String   @default("")
+  readAt DateTime @default(now())
+
+  @@index([formId])
+  @@map("meta_ad_form")
+}
+
 // ---------------------------------------------------------------------------
 // Sales plans — FAKT 1 / FAKT 2 month plans are typed in on «RNP jadvali»
 //

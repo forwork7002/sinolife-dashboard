@@ -83,6 +83,7 @@ import {
   refreshRecentCalls,
 } from '../src/server/integrations/crm/sync/leadWatchFeeds'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
+import { importMetaAdForms } from '../src/server/integrations/meta/metaAdFormImport'
 import { importMetaLeads } from '../src/server/integrations/meta/metaLeadImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
 import { resolvePeriod, zonedDateKey } from '../src/server/domain/period/period'
@@ -1892,6 +1893,23 @@ async function main() {
         for (const refused of r.failed) console.warn(`  ${stamp()} meta forma oʻqilmadi — ${refused}`)
       } catch (error) {
         console.warn(`  ${stamp()} meta lidlar muvaffaqiyatsiz: ${(error as Error).message}`)
+      }
+
+      /*
+        Which form each lead-form ad points at, off its creative — the only
+        link to a form on a page the token is not assigned to. Once per ad,
+        in its own try: it is the ad accounts' `ads_management` budget.
+      */
+      const adFormsStarted = Date.now()
+      try {
+        const r = await importMetaAdForms(prisma, META_TOKEN)
+        console.log(
+          `  ${stamp()} meta reklama→forma: ${r.ads} reklama oʻqildi, ${r.withForm} tasida forma` +
+            `  (${((Date.now() - adFormsStarted) / 1000).toFixed(1)}s)`,
+        )
+        for (const refused of r.failed) console.warn(`  ${stamp()} meta reklama→forma toʻxtadi — ${refused}`)
+      } catch (error) {
+        console.warn(`  ${stamp()} meta reklama→forma muvaffaqiyatsiz: ${(error as Error).message}`)
       }
     }
 
