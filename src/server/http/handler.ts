@@ -23,6 +23,7 @@ import { assertPermission, requirePrincipal } from '@/server/auth/session'
 import { TRUSTED_ORIGINS } from '@/server/auth/auth'
 import { env } from '@/server/config/env'
 import { getCrmProvider } from '@/server/config/providerFactory'
+import { poolStats } from '@/server/db/prisma'
 import { scopeService } from '@/server/services/container'
 import { resolvePeriod, type Period } from '@/server/domain/period/period'
 import { childLogger, newCorrelationId } from '@/server/logging/logger'
@@ -34,6 +35,7 @@ import {
   success,
 } from './envelope'
 import { type PeriodQuery, searchParamsToObject } from './queryParams'
+import { SLOW_REQUEST_MS, type PoolReading, readSafely, slowRequestEntry } from './slowRequest'
 
 const log = childLogger('api')
 
@@ -49,6 +51,31 @@ function jsonResponse(body: unknown, status: number): NextResponse {
       'cache-control': 'no-store',
     },
   })
+}
+
+/**
+ * Write the slow-request line when this request earned one — see
+ * `slowRequest.ts`. The clock is read first, so a quick request costs one
+ * subtraction, and nothing in here can throw: a diagnostic must never turn a
+ * finished answer into a 500.
+ */
+function noteIfSlow(
+  request: Request,
+  correlationId: string,
+  started: number,
+  poolAtStart: PoolReading | null,
+  authMs: number | null,
+  response: NextResponse,
+): NextResponse {
+  const ms = performance.now() - started
+  if (ms < SLOW_REQUEST_MS) return response
+  try {
+    const entry = slowRequestEntry(new URL(request.url), response.status, ms, authMs, poolAtStart, poolStats())
+    if (entry) log.warn({ correlationId, ...entry }, 'slow request')
+  } catch {
+    // The answer is already built; losing one log line is the cheaper failure.
+  }
+  return response
 }
 
 function baseMeta(correlationId: string): ResponseMeta {
@@ -169,11 +196,15 @@ export function getHandler<Q>(
   handle: (ctx: HandlerContext<Q>) => Promise<{ data: unknown; meta?: Partial<ResponseMeta> }>,
 ) {
   return async function GET(request: Request): Promise<NextResponse> {
+    const started = performance.now()
+    const poolAtStart = readSafely(() => poolStats())
+    let authMs: number | null = null
     const correlationId = newCorrelationId()
     const meta = baseMeta(correlationId)
 
     try {
       const principal = await authorise(request, access, 'read')
+      authMs = performance.now() - started
 
       const url = new URL(request.url)
       const raw = searchParamsToObject(url.searchParams)
@@ -204,7 +235,8 @@ export function getHandler<Q>(
         scope: await scopeService.resolve(principal),
       })
 
-      return jsonResponse(success(result.data, { ...meta, ...result.meta }), 200)
+      const response = jsonResponse(success(result.data, { ...meta, ...result.meta }), 200)
+      return noteIfSlow(request, correlationId, started, poolAtStart, authMs, response)
     } catch (error) {
       const apiError = toApiError(error)
 
@@ -219,7 +251,8 @@ export function getHandler<Q>(
         log.warn({ correlationId, code: apiError.code }, 'request rejected')
       }
 
-      return jsonResponse(failure(apiError, meta), apiError.status)
+      const response = jsonResponse(failure(apiError, meta), apiError.status)
+      return noteIfSlow(request, correlationId, started, poolAtStart, authMs, response)
     }
   }
 }
@@ -249,6 +282,9 @@ export function mutationHandler<B>(
   ) => Promise<{ data: unknown; meta?: Partial<ResponseMeta> }>,
 ) {
   return async function POST(request: Request): Promise<NextResponse> {
+    const started = performance.now()
+    const poolAtStart = readSafely(() => poolStats())
+    let authMs: number | null = null
     const correlationId = newCorrelationId()
     const meta = baseMeta(correlationId)
 
@@ -260,6 +296,7 @@ export function mutationHandler<B>(
       }
 
       const principal = await authorise(request, access, 'write')
+      authMs = performance.now() - started
 
       let raw: unknown
       try {
@@ -295,7 +332,8 @@ export function mutationHandler<B>(
         scope: await scopeService.resolve(principal),
       })
 
-      return jsonResponse(success(result.data, { ...meta, ...result.meta }), 200)
+      const response = jsonResponse(success(result.data, { ...meta, ...result.meta }), 200)
+      return noteIfSlow(request, correlationId, started, poolAtStart, authMs, response)
     } catch (error) {
       const apiError = toApiError(error)
 
@@ -308,7 +346,8 @@ export function mutationHandler<B>(
         log.warn({ correlationId, code: apiError.code }, 'write rejected')
       }
 
-      return jsonResponse(failure(apiError, meta), apiError.status)
+      const response = jsonResponse(failure(apiError, meta), apiError.status)
+      return noteIfSlow(request, correlationId, started, poolAtStart, authMs, response)
     }
   }
 }

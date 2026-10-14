@@ -83,6 +83,7 @@ function createPrismaClient(): PrismaClient {
     }),
   )
 
+  globalForPrisma.__sinolifePool = pool
   const adapter = new PrismaPg(pool)
 
   return new PrismaClient({
@@ -96,6 +97,7 @@ function createPrismaClient(): PrismaClient {
 
 const globalForPrisma = globalThis as unknown as {
   __sinolifePrisma?: PrismaClient
+  __sinolifePool?: Pool
 }
 
 // Written in every environment — see ONE POOL PER PROCESS above. Gating this
@@ -103,3 +105,17 @@ const globalForPrisma = globalThis as unknown as {
 globalForPrisma.__sinolifePrisma ??= createPrismaClient()
 
 export const prisma: PrismaClient = globalForPrisma.__sinolifePrisma
+
+/**
+ * The pool's state at this instant — for the slow-request log (`handler.ts`).
+ *
+ * `waiting` is the number that separates the two kinds of slow: requests
+ * queued for one of the eight connections (the warmers and the heavy scans
+ * have them all) against a database that is simply slow to answer. Null
+ * before the pool exists.
+ */
+export function poolStats(): { total: number; idle: number; waiting: number } | null {
+  const pool = globalForPrisma.__sinolifePool
+  if (!pool) return null
+  return { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }
+}

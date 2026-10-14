@@ -34,8 +34,13 @@ import {
   isCompanyWideSection,
   readsCompanyWide,
 } from '@/lib/sections'
+import { poolStats } from '@/server/db/prisma'
+import { SLOW_REQUEST_MS, readSafely } from '@/server/http/slowRequest'
+import { childLogger } from '@/server/logging/logger'
 import { optionalPrincipal } from './session'
 import { can, canSeeSection, type Principal } from './rbac'
+
+const log = childLogger('auth')
 
 /**
  * The first screen this account may open AND be served.
@@ -99,10 +104,29 @@ function firstServableSection(
  * `optionalPrincipal` reads cookies from; the incoming headers are the only
  * part of it that matters here.
  */
-export const pagePrincipal = cache(
-  async (): Promise<Principal | null> =>
-    optionalPrincipal(new Request('https://guard.invalid/', { headers: await headers() })),
-)
+export const pagePrincipal = cache(async (): Promise<Principal | null> => {
+  const started = performance.now()
+  const poolAtStart = readSafely(() => poolStats())
+  const principal = await optionalPrincipal(new Request('https://guard.invalid/', { headers: await headers() }))
+  /*
+    TIMED, BECAUSE EVERY NAVIGATION WAITS ON IT (2026-10-14). A click on the
+    sidebar renders the next page on the server, and that render cannot start
+    until this lookup answers — so a lookup queued behind the pool is a click
+    that does nothing. Same threshold and the same two pool readings as the
+    API's slow-request line (`slowRequest.ts`). `resolved: false` on a slow
+    line is worth reading twice: `optionalPrincipal` answers null on ANY
+    failure, a pool timeout included, and the guard then sends a signed-in
+    reader to /login.
+  */
+  const ms = performance.now() - started
+  if (ms >= SLOW_REQUEST_MS) {
+    log.warn(
+      { ms: Math.round(ms), resolved: principal !== null, poolAtStart, pool: readSafely(() => poolStats()) },
+      'slow page guard',
+    )
+  }
+  return principal
+})
 
 export async function requireSection(section: SectionValue): Promise<void> {
   const principal = await pagePrincipal()
