@@ -215,12 +215,78 @@ const BACKFILL_EXPIRES_MS = 14 * 86_400_000
  * spend. Bitrix24's OVERLOAD_LIMIT is portal-wide and shared with the client's
  * other integrations, and both blocks we have seen came in working hours — so
  * the one expensive thing we choose to do, we do while the floor is asleep.
+ * The daily deletion sweep runs in the same hours since 2026-10-14
+ * (`isSweepDue`).
  */
 const BACKFILL_NIGHT = { fromHour: 1, toHour: 6 } as const
+
+const NIGHT_SPAN_MS = (BACKFILL_NIGHT.toHour - BACKFILL_NIGHT.fromHour) * 3_600_000
+
+const DAY_MS = 86_400_000
 
 function hourIn(now: Date, timeZone: string): number {
   return Number(
     new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hourCycle: 'h23', timeZone }).format(now),
+  )
+}
+
+/**
+ * Whether the deletion sweep — and the contact relink that runs on its walk —
+ * should run on this tick.
+ *
+ * IN THE NIGHT WINDOW ONLY, SINCE 2026-10-14. On the bare 24-hour clock the
+ * sweep ran wherever the last one had landed, and that was 15:45 Tashkent: the
+ * relink scans every deal (527 000) on the 1-vCPU database, and a reader's
+ * request timed out at 20 s in the same minute (prod log, 10:48:16 UTC). The
+ * client had just reported the dashboard freezing between pages in working
+ * hours.
+ *
+ * ONCE A NIGHT. The interval is shortened by the window's span, so a sweep at
+ * 05:50 is due again from 01:00 the next night instead of sliding past 06:00
+ * and skipping it; within one night it cannot run twice. An interval shorter
+ * than a day still means nightly — `SYNC_SWEEP_EVERY` can no longer make the
+ * sweep more frequent than once a night — and two days or more skips nights
+ * (between one and two days the hour drifts later night by night until it
+ * skips one; nothing runs at such a value). The first night
+ * after a daytime sweep may wait one more day — that is a deleted deal
+ * counted a day longer, once.
+ */
+export function isSweepDue(
+  lastRun: Date | null,
+  now: Date,
+  everyMs: number,
+  timeZone: string,
+): boolean {
+  if (!Number.isFinite(everyMs) || everyMs <= 0) return false
+  const hour = hourIn(now, timeZone)
+  if (hour < BACKFILL_NIGHT.fromHour || hour >= BACKFILL_NIGHT.toHour) return false
+  return isPassDue(lastRun, now, Math.max(everyMs, DAY_MS) - NIGHT_SPAN_MS)
+}
+
+/**
+ * Whether the sweep ran within the last hour or may run within the next — the
+ * hour both expensive night reads keep clear of it (`syncWorker.ts`): the
+ * sweep's ~9 300 invocations beside the deals backfill or a one-off read pass
+ * the 15 000 hourly ceiling, and a refused ceiling freezes every hot tick
+ * until the hour drains.
+ *
+ * «DUE NOW» IS ASKED AS WELL AS «DUE WITHIN THE HOUR». On the plain day clock
+ * the second implied the first; the night window is not monotone — at 05:30 a
+ * sweep still owed is due now and not due at 06:30. A sweep that keeps failing
+ * stays due, so it holds both reads for the rest of the night: the sweep comes
+ * first, by design.
+ */
+export function isSweepNear(
+  lastRun: Date | null,
+  now: Date,
+  everyMs: number,
+  timeZone: string,
+): boolean {
+  if (!Number.isFinite(everyMs) || everyMs <= 0) return false
+  if (lastRun !== null && now.getTime() - lastRun.getTime() < SWEEP_RETRY_MS) return true
+  return (
+    isSweepDue(lastRun, now, everyMs, timeZone) ||
+    isSweepDue(lastRun, new Date(now.getTime() + SWEEP_RETRY_MS), everyMs, timeZone)
   )
 }
 

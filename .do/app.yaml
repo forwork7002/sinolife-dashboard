@@ -201,8 +201,9 @@ envs:
 
   # 720 ticks x 120 s = ONE DAY. It walks all 464 000 deal ids, so it is the
   # largest single thing this integration asks the portal for — about 62% of
-  # everything we now spend. Raise the frequency only if a deleted deal
-  # surviving a day is actually a problem for somebody.
+  # everything we now spend. Since 2026-10-14 the sweep runs only at night
+  # (01:00-06:00 Tashkent, isSweepDue), at most once a night: a value under a
+  # day no longer makes it more frequent; 0 still switches it off.
   - key: SYNC_SWEEP_EVERY
     scope: RUN_TIME
     value: "720"

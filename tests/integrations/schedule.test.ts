@@ -6,6 +6,8 @@ import {
   isBackfillDue,
   isPassDue,
   isResolvePassDue,
+  isSweepDue,
+  isSweepNear,
   planTick,
   REFERENCE_MARKER,
   RESOLVE,
@@ -79,6 +81,85 @@ describe('isBackfillDue — the one-off deals re-read', () => {
     const night = at('2026-09-20T02:00:00+05:00')
     expect(isBackfillDue(backfill, false, night, TZ, at('2026-09-20T01:30:00+05:00'))).toBe(false)
     expect(isBackfillDue(backfill, false, night, TZ, at('2026-09-20T00:59:00+05:00'))).toBe(true)
+  })
+})
+
+/**
+ * THE DELETION SWEEP RUNS AT NIGHT (2026-10-14). On the bare day clock it
+ * landed at 15:45 Tashkent, and the contact relink behind it timed out a
+ * reader's request in the same minute.
+ */
+describe('isSweepDue — the nightly deletion sweep', () => {
+  const at = (iso: string) => new Date(iso)
+  const TZ = 'Asia/Tashkent'
+  const DAY = 86_400_000
+
+  it('never runs in working hours, however overdue', () => {
+    expect(isSweepDue(at('2026-10-12T15:45:00+05:00'), at('2026-10-14T15:45:00+05:00'), DAY, TZ)).toBe(false)
+    expect(isSweepDue(null, at('2026-10-14T10:00:00+05:00'), DAY, TZ)).toBe(false)
+  })
+
+  it('runs in the Tashkent night, 01:00 to 06:00, once a day has nearly passed', () => {
+    const last = at('2026-10-13T01:02:00+05:00')
+    expect(isSweepDue(last, at('2026-10-14T00:59:00+05:00'), DAY, TZ)).toBe(false)
+    expect(isSweepDue(last, at('2026-10-14T01:00:00+05:00'), DAY, TZ)).toBe(true)
+    expect(isSweepDue(last, at('2026-10-14T05:59:00+05:00'), DAY, TZ)).toBe(true)
+    expect(isSweepDue(last, at('2026-10-14T06:00:00+05:00'), DAY, TZ)).toBe(false)
+    expect(isSweepDue(null, at('2026-10-14T02:00:00+05:00'), DAY, TZ)).toBe(true)
+  })
+
+  it('runs once a night, and a late sweep does not cost the next night', () => {
+    expect(isSweepDue(at('2026-10-14T01:02:00+05:00'), at('2026-10-14T05:59:00+05:00'), DAY, TZ)).toBe(false)
+    expect(isSweepDue(at('2026-10-14T05:50:00+05:00'), at('2026-10-15T01:00:00+05:00'), DAY, TZ)).toBe(true)
+  })
+
+  it('moves a daytime sweep to the night after next, once', () => {
+    const daytime = at('2026-10-14T15:45:00+05:00')
+    expect(isSweepDue(daytime, at('2026-10-15T01:00:00+05:00'), DAY, TZ)).toBe(false)
+    expect(isSweepDue(daytime, at('2026-10-15T05:59:00+05:00'), DAY, TZ)).toBe(false)
+    expect(isSweepDue(daytime, at('2026-10-16T01:00:00+05:00'), DAY, TZ)).toBe(true)
+  })
+
+  it('reads a shorter interval as nightly and a longer one as skipping nights; 0 is off', () => {
+    const last = at('2026-10-14T01:02:00+05:00')
+    expect(isSweepDue(last, at('2026-10-14T04:00:00+05:00'), 6 * 3_600_000, TZ)).toBe(false)
+    expect(isSweepDue(last, at('2026-10-15T02:00:00+05:00'), 2 * DAY, TZ)).toBe(false)
+    expect(isSweepDue(last, at('2026-10-16T01:00:00+05:00'), 2 * DAY, TZ)).toBe(true)
+    expect(isSweepDue(null, at('2026-10-14T02:00:00+05:00'), 0, TZ)).toBe(false)
+  })
+})
+
+/**
+ * THE NIGHT READS KEEP AN HOUR CLEAR OF THE SWEEP, either side — the deals
+ * backfill too, since the sweep moved into their night (2026-10-14).
+ */
+describe('isSweepNear — the hour the night reads leave the sweep', () => {
+  const at = (iso: string) => new Date(iso)
+  const TZ = 'Asia/Tashkent'
+  const DAY = 86_400_000
+  const lastNight = at('2026-10-14T01:02:00+05:00')
+
+  it('holds the hour before a sweep that is about to fall due', () => {
+    expect(isSweepNear(lastNight, at('2026-10-15T00:30:00+05:00'), DAY, TZ)).toBe(true)
+  })
+
+  it('holds the hour after a sweep, and clears once it has passed', () => {
+    expect(isSweepNear(lastNight, at('2026-10-14T01:30:00+05:00'), DAY, TZ)).toBe(true)
+    expect(isSweepNear(lastNight, at('2026-10-14T02:10:00+05:00'), DAY, TZ)).toBe(false)
+  })
+
+  it('holds a sweep still owed at 05:30, though at 06:30 it would not be due', () => {
+    expect(isSweepNear(at('2026-10-13T01:02:00+05:00'), at('2026-10-14T05:30:00+05:00'), DAY, TZ)).toBe(true)
+  })
+
+  it('leaves the first night after a daytime sweep to the backfill', () => {
+    const daytime = at('2026-10-14T15:45:00+05:00')
+    expect(isSweepNear(daytime, at('2026-10-15T01:00:00+05:00'), DAY, TZ)).toBe(false)
+    expect(isSweepNear(daytime, at('2026-10-15T04:00:00+05:00'), DAY, TZ)).toBe(false)
+  })
+
+  it('holds nothing when the sweep is switched off', () => {
+    expect(isSweepNear(null, at('2026-10-15T02:00:00+05:00'), 0, TZ)).toBe(false)
   })
 })
 

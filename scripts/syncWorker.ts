@@ -92,6 +92,8 @@ import {
   isBackfillDue,
   isPassDue,
   isResolvePassDue,
+  isSweepDue,
+  isSweepNear,
   planTick,
   REFERENCE_MARKER,
   RESOLVE,
@@ -226,10 +228,12 @@ const MOYSKLAD_MAX_PAGES = 15
  *
  * WHAT IT COSTS, SAID PLAINLY: a deal deleted in the portal can be counted
  * here for up to a DAY. Read a day-old test deal as this setting, not as a
- * sync fault — and if the client wants the old latency back, it is
- * `SYNC_SWEEP_EVERY` on the deployed app and no deploy. The cheaper thing to
- * do first is to ask whether the number they are checking is one a deletion
- * would move at all.
+ * sync fault. Since 2026-10-14 it is also AT MOST NIGHTLY (`isSweepDue`, the
+ * 01:00–06:00 Tashkent window): a value under a day no longer brings the old
+ * latency back, and the near / wide / created reaches of `RECENT_SWEEPS`
+ * plus the portal's own DELETE events are what keep recent deletions short.
+ * The cheaper thing to do first is to ask whether the number they are
+ * checking is one a deletion would move at all.
  *
  * Set to 0 to switch it off.
  */
@@ -1141,7 +1145,7 @@ async function main() {
         ? ` MoySklad har ${MOYSKLAD_EVERY} tsiklda.`
         : ' MoySklad oʻchirilgan (token yoʻq).') +
       (SWEEP_EVERY > 0
-        ? ` Oʻchirilganlarni tozalash har ${SWEEP_EVERY} tsiklda.`
+        ? ` Oʻchirilganlarni tozalash kechada bir marta (01:00–06:00, ${WORKER_TIME_ZONE}), oraliq ${SWEEP_EVERY} tsikl.`
         : ' Tozalash oʻchirilgan.') +
       (EVENTS_DRAIN_MS > 0
         ? ` Portal hodisalari har ${EVENTS_DRAIN_MS / 1000}s.`
@@ -1529,10 +1533,12 @@ async function main() {
       never reached tick 720 at all. A failure is retried after
       `SWEEP_RETRY_MS`, never on the next tick — ~9 300 invocations every two
       minutes into a portal that just refused one is the loop to avoid.
+      AND ONLY AT NIGHT SINCE 2026-10-14 (`isSweepDue`): the relink below
+      scans every deal, and at 15:45 it timed out a reader's request.
     */
     const sweepNow = new Date()
     const sweepDue =
-      isPassDue(lastSweepAt, sweepNow, SWEEP_MS) &&
+      isSweepDue(lastSweepAt, sweepNow, SWEEP_MS, WORKER_TIME_ZONE) &&
       (lastSweepFailedAt === null || sweepNow.getTime() - lastSweepFailedAt.getTime() >= SWEEP_RETRY_MS)
     if (sweepDue && tick > 0 && calm === 0 && !provider.gate.isOpen() && !stopping && dealsHandler) {
       const sweepStarted = Date.now()
@@ -1737,11 +1743,19 @@ async function main() {
     }
 
     /*
+      AN HOUR CLEAR OF THE SWEEP, EITHER SIDE, for both night reads below
+      (`isSweepNear`). The one-off reads always kept this distance; the deals
+      backfill did not need to while the sweep ran in the day, and shares its
+      night since 2026-10-14 (`isSweepDue`).
+    */
+    const sweepNear = isSweepNear(lastSweepAt, new Date(), SWEEP_MS, WORKER_TIME_ZONE)
+
+    /*
       THE ONE-OFF BACKFILL — see `DEALS_BACKFILL`. Same guards as the sweep:
       never tick 0, never while recovering from a block, never with the gate
-      shut; plus the night window. PARTIAL settles it like SUCCESS — a skipped
-      deal is one the portal no longer resolves, and re-reading the window
-      would skip it again.
+      shut; plus the night window, and never beside the sweep (above).
+      PARTIAL settles it like SUCCESS — a skipped deal is one the portal no
+      longer resolves, and re-reading the window would skip it again.
     */
     const backfillNow = new Date()
     if (
@@ -1750,6 +1764,7 @@ async function main() {
       calm === 0 &&
       !provider.gate.isOpen() &&
       !stopping &&
+      !sweepNear &&
       isBackfillDue(DEALS_BACKFILL, backfillSettled, backfillNow, WORKER_TIME_ZONE, backfillFailedAt)
     ) {
       const backfillStarted = Date.now()
@@ -1783,14 +1798,11 @@ async function main() {
       and never beside the daily sweep: the sweep's ~9 300 invocations and the
       contacts' ~7 600 together pass the 15 000 hourly ceiling, and a refused
       ceiling freezes every hot tick until the hour drains. So an hour clear of
-      the sweep either side, and ONE_OFF_HEADROOM left in the budget.
+      the sweep either side (`sweepNear`, above), and ONE_OFF_HEADROOM left in
+      the budget.
     */
     const oneOffNow = new Date()
     const oneOffBudget = provider.budget.state(oneOffNow)
-    const sweepNear =
-      SWEEP_MS > 0 &&
-      ((lastSweepAt !== null && oneOffNow.getTime() - lastSweepAt.getTime() < SWEEP_RETRY_MS) ||
-        isPassDue(lastSweepAt, new Date(oneOffNow.getTime() + SWEEP_RETRY_MS), SWEEP_MS))
     const oneOff = ONE_OFF_READS.find((read) =>
       isBackfillDue(
         read.request,
