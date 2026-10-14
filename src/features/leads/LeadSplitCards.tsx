@@ -7,12 +7,13 @@ import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
+import { DateInput } from '@/components/ui/DateInput'
 import { ChevronGlyph } from '@/components/ui/Icons'
 import { StatusChip } from '@/components/ui/Stat'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { apiGet, apiWrite } from '@/lib/api'
 import { apportion } from '@/lib/apportion'
-import { APP_TIME_ZONE, formatDate, formatDateShort, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
+import { formatDate, formatDateShort, formatDateTime, formatNumber, formatPercent, tashkentDay } from '@/lib/format'
 
 import { type LeadSplitDto, type LeadSplitRopDto, type SaveSplitBody, SHARE_TOTAL_BP, type SplitShare } from './leadSplitApi'
 import { ROP_COLORS, ropInk } from './ropColors'
@@ -45,10 +46,8 @@ interface Row extends LeadSplitRopDto {
   readonly color: string
 }
 
-const TASHKENT_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
-
 export function today(): string {
-  return TASHKENT_DAY.format(new Date())
+  return tashkentDay()
 }
 
 function shiftDay(day: string, delta: number): string {
@@ -63,8 +62,10 @@ const FIRST_DAY = '2025-01-01'
 
 /** ‹ day › and «Bugun» — the day control of the day cards, «Guruhlar» and «ROP otchet». */
 export function DayPicker({ day, onChange }: { day: string; onChange: (day: string) => void }) {
+  // The arrows stop at both ends too: a week ahead is the furthest a plan is typed for.
+  const last = shiftDay(today(), 7)
   const goTo = (next: string) => {
-    if (next >= FIRST_DAY) onChange(next)
+    if (next >= FIRST_DAY && next <= last) onChange(next)
   }
   return (
     <div className="flex items-center gap-1.5">
@@ -73,14 +74,11 @@ export function DayPicker({ day, onChange }: { day: string; onChange: (day: stri
       </Button>
       <label className="flex items-center gap-2 text-xs" style={muted}>
         Kun
-        <input
-          type="date"
+        <DateInput
           value={day}
           min={FIRST_DAY}
-          max={shiftDay(today(), 7)}
-          onChange={(e) => {
-            if (e.target.value) goTo(e.target.value)
-          }}
+          max={last}
+          onCommit={goTo}
           className="focusable h-7 rounded-[var(--radius-panel-sm)] border px-2 text-xs"
           style={{ backgroundColor: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }}
         />

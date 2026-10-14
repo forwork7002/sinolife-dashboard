@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { isCustomWindow } from '@/lib/customWindow'
-import { APP_TIME_ZONE } from '@/lib/format'
+import { tashkentDay } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -231,8 +231,15 @@ function PeriodPicker({
   to?: string
   onPick: (selection: PeriodSelection) => void
 }) {
-  const [mode, setMode] = useState<Mode>('day')
-  const [day, setDay] = useState(from ?? todayIso())
+  /*
+    IT OPENS ON THE WINDOW ON SCREEN, in the mode that reads it (2026-10-14).
+    It always opened on «Kun» with the window's FIRST day in the box, so a
+    range 01.10–14.10 reopened as the single day 01.10 and one press of
+    «Qoʻllash» replaced the range with that day. Every field starts from the
+    window: the range's both ends, its first day, its month, its year.
+  */
+  const [mode, setMode] = useState<Mode>(() => modeOf(from, to))
+  const [day, setDay] = useState(to ?? todayIso())
   const [month, setMonth] = useState((from ?? todayIso()).slice(0, 7))
   const [year, setYear] = useState(Number((from ?? todayIso()).slice(0, 4)))
   const [rangeFrom, setRangeFrom] = useState(from ?? todayIso())
@@ -241,6 +248,8 @@ function PeriodPicker({
   // From the app's calendar, like every other bound in this picker.
   const thisYear = Number(todayIso().slice(0, 4))
   const years = Array.from({ length: 6 }, (_, i) => thisYear - i)
+  // The year list's first day is every field's floor: a typed «0202» is no window.
+  const floor = `${years.at(-1)}-01-01`
 
   /** What «Qoʻllash» applies for the fields as they stand, or null — see below. */
   const chosen = (): PeriodSelection | null => {
@@ -269,7 +278,19 @@ function PeriodPicker({
       `lastDayOfMonth`. This runs on every render now, so the month guard
       below is what keeps a half-typed field from taking the popover down.
     */
-    const pick = (selection: PeriodSelection) => (isCustomWindow(selection.from, selection.to) ? selection : null)
+    /*
+      AND NEVER OUTSIDE THE FIELDS' BOUNDS. A browser enforces `max` in its own
+      calendar only — a day typed past today, or a year typed as «0202», was
+      applied as it stood (2026-10-14). Nothing is asked until «Qoʻllash», so
+      the fields show what was typed and the button stays off until it is a
+      window inside them.
+    */
+    const pick = (selection: PeriodSelection) =>
+      isCustomWindow(selection.from, selection.to) &&
+      selection.from! >= floor &&
+      selection.to! <= todayIso()
+        ? selection
+        : null
 
     switch (mode) {
       case 'day':
@@ -352,7 +373,7 @@ function PeriodPicker({
 
       {mode === 'day' && (
         <Field label={t.period.day}>
-          <input type="date" value={day} max={todayIso()} onChange={(e) => setDay(e.target.value)} />
+          <input type="date" value={day} min={floor} max={todayIso()} onChange={(e) => setDay(e.target.value)} />
         </Field>
       )}
 
@@ -385,6 +406,7 @@ function PeriodPicker({
             <input
               type="date"
               value={rangeFrom}
+              min={floor}
               max={todayIso()}
               onChange={(e) => setRangeFrom(e.target.value)}
             />
@@ -393,6 +415,7 @@ function PeriodPicker({
             <input
               type="date"
               value={rangeTo}
+              min={floor}
               max={todayIso()}
               onChange={(e) => setRangeTo(e.target.value)}
             />
@@ -453,14 +476,25 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
  * the current day out of reach on the one screen built to select it.
  */
 function todayIso(): string {
-  // `en-CA` is ISO order, which is what the date inputs and this comparison
-  // both want; the zone is what actually matters here.
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: APP_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date())
+  // From the parts (`tashkentDay`): `en-CA`'s `.format()` is not ISO order on
+  // every ICU build, and a «today» that is not `YYYY-MM-DD` is no date input
+  // value and compares wrongly against every bound here.
+  return tashkentDay()
+}
+
+/**
+ * The picker mode that reads a window: one day, a whole month (to today in
+ * the current one), a whole year (likewise), else a range. No window — a
+ * preset — opens on «Kun».
+ */
+function modeOf(from: string | undefined, to: string | undefined): Mode {
+  if (!from || !to || !isCustomWindow(from, to)) return 'day'
+  if (from === to) return 'day'
+  const today = todayIso()
+  const ends = (last: string) => to === last || (last > today && to === today)
+  if (from.endsWith('-01-01') && from.slice(0, 4) === to.slice(0, 4) && ends(`${from.slice(0, 4)}-12-31`)) return 'year'
+  if (from.endsWith('-01') && from.slice(0, 7) === to.slice(0, 7) && ends(lastDayOfMonth(from.slice(0, 7)))) return 'month'
+  return 'range'
 }
 
 function lastDayOfMonth(month: string): string {
@@ -470,9 +504,15 @@ function lastDayOfMonth(month: string): string {
   return last.toISOString().slice(0, 10)
 }
 
-/** A range, short enough for a button: `12.08` or `01.08 – 25.08`. */
+/**
+ * A range, short enough for a button: `12.08` or `01.08 – 25.08` — with the
+ * year when it is not this one (`01.12.2025 – 14.01.2026`): without it a
+ * window a year back read as this year's same days.
+ */
 function shortRange(from: string, to?: string): string {
-  const short = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`
+  const thisYear = todayIso().slice(0, 4)
+  const withYear = from.slice(0, 4) !== thisYear || (to !== undefined && to.slice(0, 4) !== thisYear)
+  const short = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}${withYear ? `.${iso.slice(0, 4)}` : ''}`
   if (!to || to === from) return short(from)
   return `${short(from)} – ${short(to)}`
 }

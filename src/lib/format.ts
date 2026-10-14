@@ -268,6 +268,23 @@ function appZoneParts(iso: string): {
   }
 }
 
+/**
+ * THE TASHKENT CALENDAR DAY of an instant, `YYYY-MM-DD` — «today» for every
+ * date control on the dashboard.
+ *
+ * From the PARTS, never `Intl.DateTimeFormat('en-CA').format()`: that pattern
+ * is ISO order only on some ICU builds — Safari printed «10/2026» for year +
+ * month and `/rnp` answered every visit with a 400 (2026-10-13). A «today»
+ * that is not `YYYY-MM-DD` is no `<input type="date">` value and compares as a
+ * string against real dates, so a picker built on it chose the wrong day or
+ * none (2026-10-14, the user: «vaqtni tanlashda notoʻgʻri vaqt tanlanib
+ * ketmasligi zarur»).
+ */
+export function tashkentDay(instant: Date = new Date()): string {
+  const { day, month, year } = appZoneParts(instant.toISOString())
+  return `${String(year).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
 export function formatDate(iso: string): string {
   const { day, month, year } = appZoneParts(iso)
   return `${day}-${UZ_MONTHS_SHORT[month]} ${year}`

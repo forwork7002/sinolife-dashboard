@@ -7,6 +7,7 @@ import { ErrorState, statusOf } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { MultiSelect, SegmentedControl } from '@/components/ui/Controls'
 import { type Column, DataTable } from '@/components/ui/DataTable'
+import { DateInput } from '@/components/ui/DateInput'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
 import { isOneBrand } from '@/features/shared/BrandSwitch'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -156,6 +157,9 @@ export function LeadCohortSection() {
 
 const inputStyle = { background: 'var(--surface-raised)', borderColor: 'var(--border-strong)', color: 'var(--ink-primary)' }
 
+/** `leadCohortWindow`'s first day: a box typed below it would be clamped there by the server, not shown as typed. */
+const FIRST_DAY = '2025-01-01'
+
 function Filters(props: {
   from: string
   to: string
@@ -172,23 +176,22 @@ function Filters(props: {
     <div className="flex flex-wrap items-end gap-3">
       <label className="flex flex-col gap-1 text-xs" style={muted}>
         Tushgan sana, dan
-        <input
-          type="date"
+        <DateInput
           value={props.from}
+          min={FIRST_DAY}
           max={props.to || props.today}
-          onChange={(e) => props.onFrom(e.target.value || undefined)}
+          onCommit={props.onFrom}
           className="focusable rounded-[var(--radius-panel-sm)] border px-2 py-1 text-xs"
           style={inputStyle}
         />
       </label>
       <label className="flex flex-col gap-1 text-xs" style={muted}>
         gacha
-        <input
-          type="date"
+        <DateInput
           value={props.to}
-          min={props.from || undefined}
+          min={props.from || FIRST_DAY}
           max={props.today}
-          onChange={(e) => props.onTo(e.target.value || undefined)}
+          onCommit={props.onTo}
           className="focusable rounded-[var(--radius-panel-sm)] border px-2 py-1 text-xs"
           style={inputStyle}
         />

@@ -42,7 +42,7 @@ import {
   type MoneyDto,
   apiGet,
 } from '@/lib/api'
-import { APP_TIME_ZONE, NO_VALUE, formatFullUzs, formatNumber } from '@/lib/format'
+import { APP_TIME_ZONE, NO_VALUE, formatFullUzs, formatNumber, tashkentDay } from '@/lib/format'
 import { t } from '@/lib/messages'
 
 /**
@@ -2425,13 +2425,6 @@ function OutcomeChip({ outcome }: { outcome: ConfirmationOutcome }) {
   starts, and a manager opening this from Istanbul must not see an order
   numbered into a day the date column disagrees with.
 */
-const TASHKENT_DATE = new Intl.DateTimeFormat('en-CA', {
-  timeZone: APP_TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-})
-
 const TASHKENT_TIME = new Intl.DateTimeFormat('en-GB', {
   timeZone: APP_TIME_ZONE,
   hour: '2-digit',
@@ -2439,8 +2432,9 @@ const TASHKENT_TIME = new Intl.DateTimeFormat('en-GB', {
   hourCycle: 'h23',
 })
 
+// `tashkentDay`, from the parts: `en-CA`'s `.format()` is not ISO order on every ICU build.
 function tashkentDate(iso: string): string {
-  return TASHKENT_DATE.format(new Date(iso))
+  return tashkentDay(new Date(iso))
 }
 
 function tashkentTime(iso: string): string {
