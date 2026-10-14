@@ -67,11 +67,7 @@ export function ConfirmationOutcomeSection({
   return (
     <section
       aria-labelledby="outcome-heading"
-      className="space-y-3"
-      style={{
-        opacity: query.isPlaceholderData ? 0.6 : 1,
-        transition: 'opacity 150ms var(--ease-out)',
-      }}
+      className={`data-body space-y-3 ${query.isPlaceholderData ? 'data-stale' : ''}`}
       aria-busy={query.isPlaceholderData || undefined}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

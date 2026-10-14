@@ -6,9 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 /**
  * THE PAGE MAY NOT BE LEFT DIMMED BY A BAND IT IS NOT DRAWING.
  *
- * `PageShell`'s `stale` holds the WHOLE page at `opacity: 0.6` with
- * `aria-busy`, and it says one thing: the figures on screen still belong to
- * the previous window and better ones are on their way. It is therefore only
+ * `PageShell`'s `stale` holds the page's BODY dimmed and blurred
+ * (`.data-stale`) with `aria-busy`, and it says one thing: the figures on
+ * screen still belong to the previous window and better ones are on their way. It is therefore only
  * ever true of a query that is LIVE — something has to be able to resolve it.
  *
  * THE MODES WENT ON 2026-09-16 AND HALF THE MECHANISM WENT WITH THEM — the
@@ -280,14 +280,14 @@ function openPage() {
   )
 }
 
-/** The block `stale` dims: `PageShell`'s own page container. */
+/** The block `stale` dims: `PageShell`'s body, under the header and filters. */
 function pageBody(container: HTMLElement) {
-  const body = container.querySelector<HTMLElement>('.page-container')
-  if (!body) throw new Error('PageShell drew no page container')
+  const body = container.querySelector<HTMLElement>('[data-page-body]')
+  if (!body) throw new Error('PageShell drew no page body')
   return body
 }
 
-const isDimmed = (container: HTMLElement) => pageBody(container).style.opacity === '0.6'
+const isDimmed = (container: HTMLElement) => pageBody(container).classList.contains('data-stale')
 const isBusy = (container: HTMLElement) =>
   pageBody(container).getAttribute('aria-busy') === 'true'
 

@@ -5782,3 +5782,151 @@ button.watch-card:hover {
     border: 1px solid CanvasText;
   }
 }
+
+/* ===========================================================================
+ * LIVE DATA — what the reader sees while figures are being replaced
+ *
+ * The client, 2026-10-14: «yangilanayotganda … bilishimiz kerakki
+ * yangilanayapti, yangi maʼlumot chiqdi». Three signals, one per moment:
+ *
+ * 1. `.sync-line` — a 3px line under the header while a PAGE query is in
+ *    flight (the background poll included). Nothing else moves: the page is
+ *    read while it refreshes, every two minutes, so it is never blurred or
+ *    dimmed for a poll — a screen that went soft every two minutes would be
+ *    a screen nobody could read off a wall.
+ * 2. `.fresh-toast` — «Yangi maʼlumot keldi · 16:12» for a few seconds when
+ *    a refetch of the SAME question came back with different figures.
+ * 3. `.data-stale` — the body only (never the filter row the reader is
+ *    using) goes soft while the figures on screen still belong to the
+ *    PREVIOUS filter. That is the one moment they are wrong, so the one
+ *    moment they are blurred.
+ * ======================================================================== */
+
+.sync-line {
+  position: absolute;
+  inset-inline: 0;
+  /* Over the header's own 1px rule and 2px into the page's top padding. */
+  bottom: -2px;
+  height: 3px;
+  overflow: hidden;
+  pointer-events: none;
+  /* A faint track, so the moving segment reads as a bar and not a glint. */
+  background: color-mix(in srgb, var(--series-1) 14%, transparent);
+  opacity: 0;
+  transition: opacity 200ms var(--ease-out);
+}
+.sync-line[data-active] {
+  opacity: 1;
+  /* A fetch that answers inside a quarter second never draws the line. */
+  transition-delay: 250ms;
+}
+.sync-line::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 100%;
+  background: linear-gradient(90deg, transparent, var(--series-1) 30%, var(--series-3) 70%, transparent);
+  opacity: 0.55;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sync-line::before {
+    width: 38%;
+    opacity: 1;
+    /* Symmetric, not --ease-out: a decelerating curve parks the segment at
+       the far edge, off the line, for most of every lap. */
+    animation: sync-slide 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  }
+}
+@keyframes sync-slide {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(265%);
+  }
+}
+
+.fresh-toast {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding-inline: 12px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-ambient);
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* On a phone the title sits right under the bar, so the pill would cover
+   it: there it rises from the bottom edge instead, above the home bar. */
+@media (max-width: 639px) {
+  .fresh-toast {
+    position: fixed;
+    top: auto;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+}
+.fresh-toast-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--status-good);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-good) 22%, transparent);
+}
+.fresh-toast-time {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .fresh-toast {
+    animation: fresh-in var(--duration-enter) var(--ease-out) both;
+  }
+}
+@keyframes fresh-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+}
+@media (max-width: 639px) and (prefers-reduced-motion: no-preference) {
+  .fresh-toast {
+    animation-name: fresh-up;
+  }
+}
+@keyframes fresh-up {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+}
+
+.data-body {
+  transition:
+    opacity 180ms var(--ease-out),
+    filter 180ms var(--ease-out);
+}
+.data-stale {
+  opacity: 0.55;
+  filter: blur(1.5px) saturate(0.85);
+  cursor: progress;
+}
+@media (prefers-reduced-motion: reduce) {
+  .data-body {
+    transition: none;
+  }
+}
+@media (forced-colors: active) {
+  .data-stale {
+    filter: none;
+  }
+}

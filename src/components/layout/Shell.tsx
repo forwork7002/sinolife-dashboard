@@ -44,6 +44,7 @@ import { useFilterOptions } from '@/features/shared/PageShell'
 import { t } from '@/lib/messages'
 import { classifySearchTerm, shortTermHint } from '@/lib/searchTerm'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
+import { isPageQuery, useFreshDataAt } from './liveData'
 import { VISIBLE_PRESETS } from './PeriodFilter'
 
 /**
@@ -234,6 +235,13 @@ export function Shell({
     alerts?.syncError != null &&
     ((alerts?.syncAgeMinutes ?? 0) >= 5 || alerts.syncError.kind === 'CREDENTIAL')
   const busy = useIsFetching() > 0
+  /*
+    THE PAGE'S OWN FETCHES, FOR THE LINE UNDER THE HEADER, AND WHEN THEY
+    BROUGHT SOMETHING NEW — see LIVE DATA in globals.css. The refresh glyph
+    above keeps counting everything: it answers «is anything loading».
+  */
+  const pageBusy = useIsFetching({ predicate: isPageQuery }) > 0
+  const freshAt = useFreshDataAt()
 
   /*
     WHAT THE REFRESH BUTTON SAYS AFTER IT HAS DONE ITS WORK.
@@ -730,7 +738,7 @@ export function Shell({
             them. A class rather than a style, so the transparency fallback
             can make it opaque.
           */
-          className="app-header z-20 shrink-0 border-b"
+          className="app-header relative z-20 shrink-0 border-b"
           style={{
             viewTransitionName: 'app-header',
             // Under a notch or a status bar the bar's content starts below it,
@@ -926,6 +934,14 @@ export function Shell({
             </div>
           </div>
 
+          <div className="sync-line" data-active={pageBusy || undefined} aria-hidden="true" />
+          {freshAt !== null && (
+            <div key={freshAt} className="fresh-toast" role="status">
+              <span className="fresh-toast-dot" aria-hidden="true" />
+              Yangi maʼlumot keldi
+              <span className="fresh-toast-time">{clockOf(freshAt)}</span>
+            </div>
+          )}
         </header>
 
         {/*

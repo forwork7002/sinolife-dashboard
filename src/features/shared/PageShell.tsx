@@ -187,8 +187,9 @@ export function PageShell({
    * is what stops a preset switch collapsing the page to skeletons — but it
    * also means the screen shows one window's figures under another window's
    * control for a moment, marked "ready". Wire this to `isPlaceholderData`
-   * and the content dims until the honest numbers land. Background refetches
-   * of the SAME window never set it, so the page stays still on the poll.
+   * and the body (not the filter row) dims and blurs until the honest numbers
+   * land. Background refetches of the SAME window never set it, so the page
+   * stays still on the poll — the shell's sync line says a poll is running.
    */
   stale?: boolean
   children: ReactNode
@@ -427,14 +428,7 @@ export function PageShell({
     >
       <div
         className={`page-container ${fill ? 'flex h-full min-h-0 flex-col gap-4' : 'space-y-4'}`}
-        style={{
-          ...(accent ? ({ '--accent': accent } as React.CSSProperties) : undefined),
-          // A dimmed page is data awaiting replacement; opacity is cheap to
-          // composite and the transition keeps the change from flickering.
-          opacity: stale ? 0.6 : 1,
-          transition: 'opacity 150ms var(--ease-out)',
-        }}
-        aria-busy={stale || undefined}
+        style={accent ? ({ '--accent': accent } as React.CSSProperties) : undefined}
       >
         {/*
           The header zone carries the aurora — title, description and filters
@@ -545,7 +539,19 @@ export function PageShell({
             against it — hence `min-h-0`, without which the flex child refuses
             to shrink below its content and the canvas grows the page instead
             of fitting into it. */}
-        {fill ? <div className="min-h-0 flex-1">{children}</div> : children}
+        {/* `stale` softens THIS block and nothing above it: the filter row is
+            what the reader is using while the next answer loads, and dimmed
+            with the rest it turned a ticked list see-through over the tiles.
+            Blurred as well as dimmed (`.data-stale`, LIVE DATA in globals.css)
+            because these figures are the previous filter's — wrong, not late.
+            A background poll never sets it. */}
+        <div
+          data-page-body=""
+          className={`data-body ${fill ? 'min-h-0 flex-1' : 'space-y-4'} ${stale ? 'data-stale' : ''}`}
+          aria-busy={stale || undefined}
+        >
+          {children}
+        </div>
       </div>
     </Shell>
   )

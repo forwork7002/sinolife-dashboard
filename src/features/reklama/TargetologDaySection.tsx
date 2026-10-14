@@ -190,8 +190,7 @@ export function TargetologDaySection({ params, brand }: { params: Params; brand:
       ) : (
         /* Side by side like the sheet; a phone swipes from one targetolog to the next. */
         <div
-          className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2"
-          style={{ opacity: query.isPlaceholderData ? 0.6 : 1 }}
+          className={`data-body -mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-1 pb-2 ${query.isPlaceholderData ? 'data-stale' : ''}`}
         >
           {shown.map((owner) => (
             <OwnerSheet key={owner.key} owner={owner} />

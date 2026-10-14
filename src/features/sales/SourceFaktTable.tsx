@@ -48,10 +48,7 @@ export function SourceFaktTable() {
 
   return (
     <div
-      style={{
-        opacity: query.isPlaceholderData ? 0.6 : 1,
-        transition: 'opacity 150ms var(--ease-out)',
-      }}
+      className={`data-body ${query.isPlaceholderData ? 'data-stale' : ''}`}
       aria-busy={query.isPlaceholderData || undefined}
     >
       {/* In a card like every other table in the product (see SellersForecastTable). */}

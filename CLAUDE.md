@@ -380,6 +380,23 @@ focus refetch fires only for a STALE query, so two returns inside a minute
 cost nothing and a return after an hour is current at once. Changing either
 value without the other brings one of the two failures back.
 
+**WHAT A READER SEES WHILE FIGURES ARE REPLACED — 2026-10-14** (the client:
+«yangilanayotganda … bilishimiz kerakki yangilanayapti, yangi maʼlumot
+chiqdi»; asked whether to blur on every refresh). Three signals, one per
+moment, all in LIVE DATA at the end of `globals.css`: a 3px `.sync-line`
+under the header while a PAGE query is in flight (`isPageQuery` in
+`components/layout/liveData.ts` leaves out `meta`, `filters`, `search` and the
+rail's lead-watch badge; shown after 250 ms); a «Yangi maʼlumot keldi · HH:MM»
+pill (`useFreshDataAt`) when a re-ask of the SAME key came back with a
+different `data` — structural sharing keeps `data` by reference when equal,
+`meta.generatedAt` always moves — never on a first answer, a new filter or a
+`manual` write; and `.data-stale` (dim + 1.5px blur) on PageShell's BODY only
+while `stale`, so the filter row being used stays sharp. **A background poll
+never blurs or dims anything** — every two minutes on a wall screen would make
+it unreadable. On a phone the pill rises from the bottom (it covered the
+title). Checked on a local build at 375 / 768 / 1440 with a delayed, altered
+API answer.
+
 ### Light or dark
 
 `globals.css` has carried a full second palette since it was written, but for a
