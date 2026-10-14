@@ -2,7 +2,7 @@ import { zonedDateKey } from '@/server/domain/period/period'
 import { getHandler } from '@/server/http/handler'
 import { registrationService } from '@/server/services/container'
 
-import { overviewQuerySchema } from '../schema'
+import { reportQuerySchema } from '../schema'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,10 +14,12 @@ export const dynamic = 'force-dynamic'
  */
 const ACCESS = { permission: 'analytics:read:all', section: 'rnp' } as const
 
-/** «ROP otchet» — one day, every ROP team seller by seller. See ropReport.ts. */
-export const GET = getHandler(ACCESS, overviewQuerySchema, async (ctx) => {
+/** «ROP otchet» — one day, a month or a range, every ROP team seller by seller. See ropReport.ts. */
+export const GET = getHandler(ACCESS, reportQuerySchema, async (ctx) => {
+  const day = ctx.query.day ?? zonedDateKey(ctx.now, ctx.timeZone)
   const data = await registrationService.report({
-    day: ctx.query.day ?? zonedDateKey(ctx.now, ctx.timeZone),
+    from: ctx.query.from ?? day,
+    to: ctx.query.to ?? day,
     timeZone: ctx.timeZone,
     now: ctx.now,
     brand: ctx.query.brand,

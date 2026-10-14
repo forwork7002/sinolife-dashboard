@@ -28,6 +28,31 @@ export const overviewQuerySchema = z.object({
   brand: brandFilter,
 })
 
+/** The longest window «ROP otchet» answers: a quarter. Its scans (queue cohort, hand-outs, calls) grow with it. */
+export const REPORT_MAX_DAYS = 93
+
+const daysBetween = (from: string, to: string) => (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000
+
+/**
+ * «ROP otchet» (2026-10-14, the user: «kun boʻyicha va oy boʻyicha … oraliq
+ * boʻyicha ham»): one `day`, or a window `from`…`to` (inclusive, both or
+ * neither) — a month is a window from its first day. Omitted: today.
+ */
+export const reportQuerySchema = z
+  .object({
+    day: calendarDay.optional(),
+    from: calendarDay.optional(),
+    to: calendarDay.optional(),
+    brand: brandFilter,
+  })
+  .refine((q) => (q.from === undefined) === (q.to === undefined), 'from and to go together')
+  .refine((q) => q.day === undefined || q.from === undefined, 'Either day or from/to')
+  .refine((q) => q.from === undefined || q.to === undefined || q.from <= q.to, 'from is after to')
+  .refine(
+    (q) => q.from === undefined || q.to === undefined || daysBetween(q.from, q.to) < REPORT_MAX_DAYS,
+    `At most ${REPORT_MAX_DAYS} days`,
+  )
+
 export const splitBodySchema = z.object({
   day: calendarDay,
   rows: z

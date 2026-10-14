@@ -72,9 +72,9 @@ export class RegistrationService {
     await this.repository.saveSplit(day, rows, by)
   }
 
-  /** «ROP otchet» — one day. See ropReport.ts. */
-  async report(input: { day: string; timeZone: string; now: Date; brand?: BrandFilter }): Promise<RopReportDto> {
-    return this.sellerSheet({ from: input.day, to: input.day, timeZone: input.timeZone, now: input.now, calls: true, brand: input.brand })
+  /** «ROP otchet» — one day, a month or a range (`from`…`to`, inclusive; 2026-10-14). See ropReport.ts. */
+  async report(input: { from: string; to: string; timeZone: string; now: Date; brand?: BrandFilter }): Promise<RopReportDto> {
+    return this.sellerSheet({ from: input.from, to: input.to, timeZone: input.timeZone, now: input.now, calls: true, brand: input.brand })
   }
 
   /** «Guruhlar» — the first of the day's month to the day, one row per ROP. See groupPlan.ts. */
@@ -121,6 +121,7 @@ export class RegistrationService {
     const strangers = new Set([...allFakt.map((r) => r.employeeId), ...allLeads.flatMap((r) => (r.employeeId ? [r.employeeId] : []))])
     const names = await this.repository.names([...strangers].filter((id) => !rostered.has(id)))
     return buildRopReport({
+      from: input.from,
       day: input.to,
       leads: allLeads,
       fakt: allFakt,

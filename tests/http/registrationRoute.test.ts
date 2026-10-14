@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { overviewQuerySchema, splitBodySchema } from '@/app/api/v1/registration/schema'
+import { overviewQuerySchema, reportQuerySchema, splitBodySchema } from '@/app/api/v1/registration/schema'
 
 describe('registration request schemas', () => {
   it('takes an optional real calendar day', () => {
@@ -8,6 +8,19 @@ describe('registration request schemas', () => {
     expect(overviewQuerySchema.safeParse({ day: '2026-09-30' }).success).toBe(true)
     expect(overviewQuerySchema.safeParse({ day: '2026-02-30' }).success).toBe(false)
     expect(overviewQuerySchema.safeParse({ day: '1999-01-01' }).success).toBe(false)
+  })
+
+  it('«ROP otchet» takes a day, or a window of at most 93 days', () => {
+    expect(reportQuerySchema.safeParse({}).success).toBe(true)
+    expect(reportQuerySchema.safeParse({ day: '2026-10-14' }).success).toBe(true)
+    expect(reportQuerySchema.safeParse({ from: '2026-10-01', to: '2026-10-14' }).success).toBe(true)
+    expect(reportQuerySchema.safeParse({ from: '2026-10-14', to: '2026-10-14' }).success).toBe(true)
+    expect(reportQuerySchema.safeParse({ from: '2026-07-14', to: '2026-10-14' }).success).toBe(true)
+    expect(reportQuerySchema.safeParse({ from: '2026-07-13', to: '2026-10-14' }).success).toBe(false)
+    expect(reportQuerySchema.safeParse({ from: '2026-10-14', to: '2026-10-01' }).success).toBe(false)
+    expect(reportQuerySchema.safeParse({ from: '2026-10-01' }).success).toBe(false)
+    expect(reportQuerySchema.safeParse({ day: '2026-10-14', from: '2026-10-01', to: '2026-10-14' }).success).toBe(false)
+    expect(reportQuerySchema.safeParse({ from: '2026-02-30', to: '2026-03-01' }).success).toBe(false)
   })
 
   it('takes whole basis points from 0 to 100 % per team', () => {

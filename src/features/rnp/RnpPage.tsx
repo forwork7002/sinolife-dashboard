@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Select'
 import { useCohortRop } from '@/features/cohort/useCohortRop'
 import { today } from '@/features/leads/LeadSplitCards'
 import { RopReport } from '@/features/leads/RopReport'
+import { dayWindow, type RopWindow } from '@/features/leads/RopWindowPicker'
 import { DashboardBrandSwitch } from '@/features/shared/BrandSwitch'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -59,7 +60,7 @@ import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
  *
  * «ROP otchet» IS THE SECOND TAB (2026-10-07, moved here from «Lidlar» — the
  * user: «rnp jadvaliga ROP otchetni koʻchiramiz … shu boʻlimchani ham olib»):
- * the client's group sheet for one day (`RopReport`), on its own day, under
+ * the client's group sheet for one day, a month or a range (`RopReport`, its own window), under
  * the brand switch only. Nothing on a hidden tab asks: the sheet's request
  * waits while «ROP otchet» is open, and the other way round.
  */
@@ -67,8 +68,8 @@ type Tab = 'sheet' | 'rop'
 
 export function RnpPage() {
   const [tab, setTab] = useState<Tab>('sheet')
-  // «ROP otchet»'s day — its own, kept across a trip to the sheet and back.
-  const [day, setDay] = useState(today)
+  // «ROP otchet»'s window — a day, a month or a range; its own, kept across a trip to the sheet and back.
+  const [ropWindow, setRopWindow] = useState<RopWindow>(() => dayWindow(today()))
   const current = useCurrentMonth()
   const { month, setMonth } = useRnpMonth(current)
   // What the month box holds while it is not yet a month the sheet can show (`rnpMonthIn`).
@@ -199,7 +200,7 @@ export function RnpPage() {
       }
     >
       {tab === 'rop' ? (
-        <RopReport day={day} onDay={setDay} />
+        <RopReport window={ropWindow} onWindow={setRopWindow} />
       ) : (
         // The grid reads its column widths from here (`RnpColumnScope`).
         <RnpColumnScope ref={scope} minWidths={minWidths} className="flex h-full min-h-0 flex-col">

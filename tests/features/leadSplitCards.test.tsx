@@ -39,16 +39,18 @@ window.matchMedia = ((query: string) => ({
 
 const { LeadSplitCard, LeadWeekCard, useLeadSplit } = await import('@/features/leads/LeadSplitCards')
 const { RopReport } = await import('@/features/leads/RopReport')
+const { dayWindow } = await import('@/features/leads/RopWindowPicker')
 
-/** The three cards on one shared day, as `LeadsPage` shares it across its tabs. */
+/** The split cards on one shared day; «ROP otchet» on its own window, as on «RNP jadvali». */
 function Cards() {
   const [day, setDay] = useState(TODAY)
+  const [span, setSpan] = useState(() => dayWindow(TODAY))
   const { colors } = useLeadSplit(day)
   return (
     <>
       <LeadSplitCard day={day} onDay={setDay} />
       <LeadWeekCard day={day} />
-      <RopReport day={day} onDay={setDay} colors={colors} />
+      <RopReport window={span} onWindow={setSpan} colors={colors} />
     </>
   )
 }
@@ -103,6 +105,7 @@ const cells = (leads: number, fakt1: number, orders: number, connectedCalls: num
 
 function reportFixture(): RopReportDto {
   return {
+    from: TODAY,
     day: TODAY,
     groups: [
       {
@@ -121,14 +124,17 @@ function reportFixture(): RopReportDto {
 let data: LeadSplitDto
 let report: RopReportDto
 let posted: { day: string; rows: { rop: string; shareBp: number }[] }[] = []
+let reportUrls: string[] = []
 
 beforeEach(() => {
   posted = []
+  reportUrls = []
   report = reportFixture()
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       const isReport = String(url).includes('/registration/report')
+      if (isReport) reportUrls.push(String(url))
       if (init?.method === 'POST') posted.push(JSON.parse(String(init.body)))
       return {
         ok: true,
@@ -280,5 +286,19 @@ describe('LeadSplitCards', () => {
     expect(within(row('Sardor Davlatov')).getByText('Ruxsat emas')).toBeTruthy()
     expect(within(row('Asliddin Karimberdiyev')).getByText('Ruxsat')).toBeTruthy()
     expect(within(row('Umumiy')).queryByText(/Ruxsat/)).toBeNull()
+  })
+
+  it('asks «ROP otchet» for a day, a whole month to today, or a range (2026-10-14)', async () => {
+    data = fixture()
+    await draw()
+    await waitFor(() => expect(reportUrls.some((u) => u.includes(`from=${TODAY}&to=${TODAY}`))).toBe(true))
+    fireEvent.click(screen.getByRole('button', { name: 'Oy' }))
+    await waitFor(() => expect(reportUrls.some((u) => u.includes(`from=${TODAY.slice(0, 7)}-01&to=${TODAY}`))).toBe(true))
+    expect(screen.getByLabelText('Oldingi oy')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Oraliq' }))
+    expect(screen.getByText('dan')).toBeTruthy()
+    expect(screen.getByText('gacha')).toBeTruthy()
+    // A range opens on the month on screen.
+    expect(reportUrls.at(-1)).toContain(`from=${TODAY.slice(0, 7)}-01&to=${TODAY}`)
   })
 })

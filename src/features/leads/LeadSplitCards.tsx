@@ -50,7 +50,7 @@ export function today(): string {
   return tashkentDay()
 }
 
-function shiftDay(day: string, delta: number): string {
+export function shiftDay(day: string, delta: number): string {
   const d = new Date(`${day}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + delta)
   return d.toISOString().slice(0, 10)
@@ -58,7 +58,7 @@ function shiftDay(day: string, delta: number): string {
 
 const pctOfBp = (bp: number) => bp / 100
 /** The API's first day; the arrows and the picker stop there rather than earn a 400. */
-const FIRST_DAY = '2025-01-01'
+export const FIRST_DAY = '2025-01-01'
 
 /** ‹ day › and «Bugun» — the day control of the day cards, «Guruhlar» and «ROP otchet». */
 export function DayPicker({ day, onChange }: { day: string; onChange: (day: string) => void }) {

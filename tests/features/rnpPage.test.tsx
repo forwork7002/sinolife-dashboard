@@ -761,6 +761,7 @@ describe('«ROP otchet» (moved here from «Lidlar», 2026-10-07)', () => {
     talkSec: 0,
   })
   const report = {
+    from: '2026-10-07',
     day: '2026-10-07',
     groups: [
       {

@@ -104,6 +104,9 @@ export interface RopReportGroupDto {
 }
 
 export interface RopReportDto {
+  /** The window's first day, `YYYY-MM-DD`; equal to `day` for one day (2026-10-14: a month or a range too). */
+  readonly from: string
+  /** The window's last day — the day the sheet is dated by. */
   readonly day: string
   readonly groups: readonly RopReportGroupDto[]
   readonly total: RopReportCellsDto
@@ -165,6 +168,8 @@ const credited = (a: Acc): boolean => a.leads > 0 || a.fakt1Orders > 0 || a.fakt
 
 export function buildRopReport(input: {
   day: string
+  /** The window's first day; omitted, the window is `day` alone. */
+  from?: string
   leads: readonly SellerLeadRow[]
   fakt: readonly SellerFaktRow[]
   roster: readonly RosterMember[]
@@ -265,5 +270,5 @@ export function buildRopReport(input: {
     .filter((g) => g.sellers.length > 0)
     .sort((a, b) => groupOrder(a.rop, b.rop))
 
-  return { day: input.day, groups, total: cells(total, callsKnown) }
+  return { from: input.from ?? input.day, day: input.day, groups, total: cells(total, callsKnown) }
 }

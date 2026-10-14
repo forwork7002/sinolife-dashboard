@@ -82,6 +82,8 @@ export interface RopReportGroupDto {
 }
 
 export interface RopReportDto {
+  /** The window's first day; equal to `day` for one day. */
+  readonly from: string
   readonly day: string
   readonly groups: readonly RopReportGroupDto[]
   readonly total: RopReportCellsDto

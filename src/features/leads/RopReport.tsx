@@ -6,17 +6,19 @@ import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type MoneyDto, apiGet } from '@/lib/api'
-import { formatDate, formatDuration, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
+import { formatDate, formatDateShort, formatDuration, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 import { Access } from './GroupPlanCard'
-import { DayPicker } from './LeadSplitCards'
 import { ROP_COLORS } from './ropColors'
+import { type RopWindow, RopWindowPicker } from './RopWindowPicker'
 import type { RopReportCellsDto, RopReportDto, RopReportGroupDto } from './leadSplitApi'
 
 /**
  * «ROP otchet» — the client's group sheet for the chosen day (a tab of
  * «RNP jadvali» since 2026-10-07, on its own day; a tab of «Lidlar» on
- * 2026-10-02–07, sharing the split cards' day): every ROP team,
+ * 2026-10-02–07, sharing the split cards' day) — or, since 2026-10-14, a whole
+ * month or a range of days (`RopWindowPicker`), every figure summed over it:
+ * every ROP team,
  * seller by seller, with the team's «Umumiy» under it and the company's at the
  * foot. Asked for on 2026-10-01 in place of the split table, «Лид руч» left
  * out. The definitions are in `server/domain/registration/ropReport.ts`.
@@ -49,17 +51,24 @@ const som = (m: MoneyDto) => formatFullUzs(m.amount)
 /** No split on the page («RNP jadvali»): every team takes its slot in the report's own order. */
 const NO_SPLIT_COLORS: ReadonlyMap<string, string> = new Map()
 
+/** «14-okt 2026», or «1-okt – 14-okt 2026» for a window (the first day's year too when the two differ). */
+function windowLabel(from: string, to: string): string {
+  if (from === to) return formatDate(to)
+  return `${from.slice(0, 4) === to.slice(0, 4) ? formatDateShort(from) : formatDate(from)} – ${formatDate(to)}`
+}
+
 export function RopReport({
-  day,
-  onDay,
+  window: span,
+  onWindow,
   colors = NO_SPLIT_COLORS,
 }: {
-  day: string
-  onDay: (day: string) => void
+  window: RopWindow
+  onWindow: (next: RopWindow) => void
   colors?: ReadonlyMap<string, string>
 }) {
   const { apiParams } = useDashboardFilters()
-  const params = apiParams.brand !== undefined ? { day, brand: apiParams.brand } : { day }
+  const range = { from: span.from, to: span.to }
+  const params = apiParams.brand !== undefined ? { ...range, brand: apiParams.brand } : range
   const report = useQuery({
     queryKey: ['registration-report', params],
     queryFn: ({ signal }) => apiGet<RopReportDto>('/registration/report', params, signal),
@@ -72,17 +81,17 @@ export function RopReport({
       <header className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4 pb-3">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-            ROP otchet{data ? ` · ${formatDate(data.day)}` : ''}
+            ROP otchet{data ? ` · ${windowLabel(data.from, data.day)}` : ''}
           </h2>
           <p className="mt-0.5 max-w-3xl text-xs" style={muted}>
-            Лид сони — shu kuni tarqatilgan lidlar («Лид таркатилган сана»), bitim kimda boʻlsa oʻsha sotuvchiga. Факт-1 / Факт-2 — Sotuvchilar
+            Kun, oy yoki oraliq tanlanadi — raqamlar tanlangan kunlar boʻyicha jamlanadi. Лид сони — shu kunlarda tarqatilgan lidlar («Лид таркатилган сана»), bitim kimda boʻlsa oʻsha sotuvchiga. Факт-1 / Факт-2 — Sotuvchilar
             reytingidagi hisob (tasdiqlash navbatiga kelgan kun). План = 500 000 × Лид сони. Отклонение = План − Факт-1: ✅ Факт-1 rejaga yetdi,
-            🔴 kam. Конверсия = Транз-1 ÷ Лид сони. Дозвон — shu kuni ulangan qoʻngʻiroqlar, Длительность — ularning suhbat vaqti («Qoʻngʻiroqlar»
+            🔴 kam. Конверсия = Транз-1 ÷ Лид сони. Дозвон — shu kunlarda ulangan qoʻngʻiroqlar, Длительность — ularning suhbat vaqti («Qoʻngʻiroqlar»
             bilan bir xil). Dostup — Отклонение qizil (🔴) boʻlsa «Ruxsat emas», aks holda «Ruxsat».
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <DayPicker day={day} onChange={onDay} />
+          <RopWindowPicker value={span} onChange={onWindow} />
         </div>
       </header>
       <div className="px-5 pb-5">
@@ -95,7 +104,7 @@ export function RopReport({
             className="rounded-[var(--radius-panel-sm)] border border-dashed px-3 py-3 text-xs"
             style={{ borderColor: 'var(--border-strong)', color: 'var(--ink-secondary)' }}
           >
-            Bu kunda ROP jamoalarida hech kim yoʻq — lid ham, buyurtma ham.
+            {data.from === data.day ? 'Bu kunda' : 'Bu davrda'} ROP jamoalarida hech kim yoʻq — lid ham, buyurtma ham.
           </p>
         ) : (
           <ReportTable data={data} colors={colors} />
