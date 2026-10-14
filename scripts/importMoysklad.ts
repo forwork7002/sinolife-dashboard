@@ -35,6 +35,8 @@ async function main() {
         (r.since ? ` (${r.since.toISOString()} dan)` : ' (hammasi)') +
         (r.skipped > 0 ? `, sanasiz ${r.skipped}` : '') +
         (r.deleted === null ? '' : `, oʻchirilgan: ${r.deleted}`) +
+        (r.repriced ? `, toʻlovi yangilangan: ${r.repriced}` : '') +
+        (r.paymentError ? `, toʻlovlar oʻqilmadi: ${r.paymentError}` : '') +
         `  ${((Date.now() - started) / 1000).toFixed(1)}s\n`,
     )
   } finally {

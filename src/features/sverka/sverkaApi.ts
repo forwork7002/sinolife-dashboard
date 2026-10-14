@@ -118,11 +118,17 @@ export interface SverkaOverviewDto {
   readonly totals: {
     readonly fakt1: SverkaPairDto
     readonly fakt2: SverkaPairDto
-    /** `fakt2.moysklad` split by MoySklad's «Касса» status; `payed` — delivered orders with a recorded payment. */
+    /** FAKT 2 against the payments MoySklad booked, deal by deal: `received` + `left` = `due`. */
     readonly kassa: {
-      readonly banked: SverkaSideDto
-      readonly awaiting: SverkaSideDto
-      readonly payed: SverkaSideDto
+      readonly due: SverkaSideDto
+      readonly received: SverkaSideDto
+      readonly left: SverkaSideDto
+      /** Of `left`, the deals paid in part. */
+      readonly partial: number
+      /** Of `left`, the deals with no MoySklad order. */
+      readonly noOrder: number
+      /** `due` by the MoySklad status of each deal's order, largest first. */
+      readonly byState: readonly { readonly state: string | null; readonly due: SverkaSideDto; readonly paidOrders: number }[]
     }
     readonly transit: SverkaPairDto
     readonly returned: SverkaPairDto

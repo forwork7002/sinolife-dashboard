@@ -69,7 +69,8 @@ export type SverkaPhase = 'PRE_WAREHOUSE' | 'TRANSIT' | 'DELIVERED' | 'RETURNED'
 /**
  * MoySklad's seven statuses, measured 2026-10-06: Новый 1, В пути 362,
  * Ожидание / нд 2, Успешно 6 092, Касса 1 366, Отказ 2, Возврат получен 1 952.
- * «Касса» is money banked after «Успешно», so it is delivered too.
+ * «Касса» and «Успешно» are both delivered. Which comes first in the client's
+ * process is unconfirmed, so no money is read off either name — see `SverkaKassa`.
  */
 export function moyskladPhase(state: string | null): SverkaPhase {
   switch (state?.trim()) {
@@ -87,17 +88,6 @@ export function moyskladPhase(state: string | null): SverkaPhase {
     default:
       return 'OUTSIDE'
   }
-}
-
-/**
- * «Касса» — the one MoySklad status that says the order's money has reached
- * the cash desk. Bitrix24 keeps no payment sum at all (payment is a stage
- * NAME there), so this status is the only per-order «kassa» either system has.
- */
-export const KASSA_STATE = 'Касса'
-
-export function inKassa(state: string | null): boolean {
-  return state?.trim() === KASSA_STATE
 }
 
 /**
@@ -481,17 +471,44 @@ const add = (t: SideTotal, amount: bigint) => {
   t.amountMinor += amount
 }
 
+/** One MoySklad status among FAKT 2's orders, and how many of them carry a payment. */
+export interface KassaState {
+  /** MoySklad's status name; null when the deal has no MoySklad order. */
+  readonly state: string | null
+  readonly due: SideTotal
+  /** Of `due`, the deals MoySklad has any payment booked against. */
+  readonly paidOrders: number
+}
+
 /**
- * FAKT 2's MoySklad side, split by where the money stands. `banked` +
- * `awaiting` is `fakt2.moysklad` to the soʻm — the same lines, the same sums.
+ * FAKT 2's money against what MoySklad has booked as paid, DEAL BY DEAL.
+ *
+ * Due is the deal's Bitrix24 sum (FAKT 2 itself); received is the payments
+ * MoySklad booked against the deal's order (`payedSum`), capped at what is
+ * due. NOT the «Касса» status: which of «Касса» / «Успешно» comes first in
+ * the client's process was never confirmed (1–14.10: 385 «Касса», 384
+ * «Успешно», 383 orders with a payment), so the status is only reported beside
+ * the money (`byState`). An order MoySklad itself calls paid in full
+ * (`payedSum` ≥ its sum) is received in full when that sum is within
+ * `SUM_TOLERANCE_MINOR` of the deal's — a kopeck gap is not money missing; a
+ * real SUM gap stays in `left`. Payments on the deal's other orders count too
+ * (a re-made order), capped at due. Per deal received + left = due, so
+ * `received` + `left` is FAKT 2 to the soʻm. `beforeFloor` deals are out:
+ * MoySklad could not hold them.
  */
 export interface SverkaKassa {
-  /** Delivered and «Касса»: the money is in the cash desk. */
-  readonly banked: SideTotal
-  /** Delivered («Успешно») and not «Касса» yet. */
-  readonly awaiting: SideTotal
-  /** Delivered orders MoySklad has a payment recorded against (`payedSum` > 0), and that money. */
-  readonly payed: SideTotal
+  /** FAKT 2 deals inside MoySklad's reach — what the cash desk should receive. */
+  readonly due: SideTotal
+  /** Deals with any payment booked, and the money (capped per deal at its due). */
+  readonly received: SideTotal
+  /** Deals not paid in full, and what is still missing on them. */
+  readonly left: SideTotal
+  /** Of `left`, the deals paid in part. */
+  readonly partial: number
+  /** Of `left`, the deals with no MoySklad order at all. */
+  readonly noOrder: number
+  /** `due` by the MoySklad status of each deal's order, largest first. */
+  readonly byState: readonly KassaState[]
 }
 
 export interface SverkaTotals {
@@ -499,7 +516,7 @@ export interface SverkaTotals {
   readonly fakt1: SverkaPair
   /** FAKT 2 against the cohort deals MoySklad calls Успешно / Касса. */
   readonly fakt2: SverkaPair
-  /** What of `fakt2.moysklad` has reached the cash desk. */
+  /** What of FAKT 2 MoySklad has booked as paid. */
   readonly kassa: SverkaKassa
   /** On the way, in each system's own words. */
   readonly transit: SverkaPair
@@ -523,7 +540,8 @@ export function sverkaTotals(lines: readonly SverkaLine[]): SverkaTotals {
   const fakt2 = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
   const transit = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
   const returned = { bitrix: zero(), moysklad: zero(), beforeFloor: zero() }
-  const kassa = { banked: zero(), awaiting: zero(), payed: zero() }
+  const kassa = { due: zero(), received: zero(), left: zero(), partial: 0, noOrder: 0 }
+  const kassaStates = new Map<string | null, { state: string | null; due: SideTotal; paidOrders: number }>()
   const pending = zero()
   const beforeFloor = zero()
   let clean = 0
@@ -542,10 +560,28 @@ export function sverkaTotals(lines: readonly SverkaLine[]): SverkaTotals {
 
     if (line.beforeFloor) add(beforeFloor, bx.amountMinor)
     if (bx.delivered) addBitrix(fakt2)
-    if (ms && msPhase === 'DELIVERED') {
-      add(fakt2.moysklad, ms.sumMinor)
-      add(inKassa(ms.stateName) ? kassa.banked : kassa.awaiting, ms.sumMinor)
-      if (ms.payedMinor > 0n) add(kassa.payed, ms.payedMinor)
+    if (ms && msPhase === 'DELIVERED') add(fakt2.moysklad, ms.sumMinor)
+    if (bx.delivered && !line.beforeFloor) {
+      const due = bx.amountMinor
+      // A deal re-made in MoySklad may carry its payment on the older order; the cap below keeps it counted once.
+      const payed = [ms, ...line.others].reduce((sum, o) => sum + (o?.payedMinor ?? 0n), 0n)
+      // MoySklad's own sum paid in full closes a kopeck gap only; a real SUM gap stays left.
+      const kopeckGap = ms !== null && ms.sumMinor > 0n && due - ms.sumMinor < SUM_TOLERANCE_MINOR
+      const paidInFull = payed >= due || (kopeckGap && payed >= ms.sumMinor)
+      const received = paidInFull ? due : payed
+      add(kassa.due, due)
+      if (payed > 0n) add(kassa.received, received)
+      if (received < due) {
+        add(kassa.left, due - received)
+        if (payed > 0n) kassa.partial += 1
+        if (!ms) kassa.noOrder += 1
+      }
+      // null is «no MoySklad order»; an order with no status is named as such.
+      const state = ms ? ms.stateName?.trim() || 'holatsiz' : null
+      const bucket = kassaStates.get(state) ?? { state, due: zero(), paidOrders: 0 }
+      add(bucket.due, due)
+      if (payed > 0n) bucket.paidOrders += 1
+      kassaStates.set(state, bucket)
     }
 
     if (!bx.fakt1) continue
@@ -558,7 +594,8 @@ export function sverkaTotals(lines: readonly SverkaLine[]): SverkaTotals {
     if (ms && msPhase === 'RETURNED') add(returned.moysklad, ms.sumMinor)
     if (ms && line.issues.length === 0) clean += 1
   }
-  return { fakt1, fakt2, kassa, transit, returned, pending, clean, beforeFloor }
+  const byState = [...kassaStates.values()].sort((a, b) => b.due.orders - a.due.orders)
+  return { fakt1, fakt2, kassa: { ...kassa, byState }, transit, returned, pending, clean, beforeFloor }
 }
 
 export interface ProductRow {

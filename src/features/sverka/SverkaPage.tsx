@@ -155,7 +155,7 @@ export function SverkaBody({
           pair={totals?.fakt2}
           hint="Bitrix24 «Доставлено» · MoySklad «Успешно» + «Касса»"
         />
-        <KassaTile status={status} fakt2={totals?.fakt2} kassa={totals?.kassa} />
+        <KassaTile status={status} kassa={totals?.kassa} />
         <PairTile status={status} label="Yoʻlda" pair={totals?.transit} hint="Yoʻlda va pochtada · MoySklad «В пути»" />
         <PairTile
           status={status}
@@ -510,33 +510,29 @@ function PairTile({
  * «Kassa» — how much of the delivered money has reached the cash desk.
  *
  * WHAT IS OWED IS FAKT 2: a delivered order is money the cash desk should
- * receive. WHAT ARRIVED is MoySklad's «Касса» status — Bitrix24 keeps no
- * payment sum, so the second row has no Bitrix24 twin. The remainder is
- * amber, never red: money on its way from a courier is waiting, not wrong.
+ * receive. WHAT ARRIVED is the payment MoySklad booked against each deal's
+ * order (`payedSum`), counted deal by deal on the server, so «Kassada» +
+ * «Kassaga tushmagan» is «Kerak» to the soʻm. Not the «Касса» status — its
+ * place in the client's process is unconfirmed, so the statuses are only
+ * listed under the figures with how many of each carry a payment. The
+ * remainder is amber, never red: money on its way from a courier is
+ * waiting, not wrong.
  */
-function KassaTile({
-  status,
-  fakt2,
-  kassa,
-}: {
-  status: Status
-  fakt2: SverkaPairDto | undefined
-  kassa: SverkaOverviewDto['totals']['kassa'] | undefined
-}) {
-  if (status === 'loading' || !fakt2 || !kassa) {
+function KassaTile({ status, kassa }: { status: Status; kassa: SverkaOverviewDto['totals']['kassa'] | undefined }) {
+  if (status === 'loading' || !kassa) {
     return (
       <Card className="p-4">
         <LoadingSkeleton rows={3} />
       </Card>
     )
   }
-  // As on the pair tiles: a deal older than MoySklad is in FAKT 2 and cannot be in its cash desk.
-  const owedAmount = fakt2.bitrix.amount - fakt2.beforeFloor.amount
-  const owedOrders = fakt2.bitrix.orders - fakt2.beforeFloor.orders
-  const leftAmount = owedAmount - kassa.banked.amount
-  const leftOrders = owedOrders - kassa.banked.orders
-  const share = owedAmount > 0 ? (kassa.banked.amount / owedAmount) * 100 : null
-  const full = owedOrders > 0 && leftAmount < 1 && leftOrders <= 0
+  const { due, received, left } = kassa
+  const share = due.amount > 0 ? (received.amount / due.amount) * 100 : null
+  const full = due.orders > 0 && left.orders === 0
+  const notes = [
+    kassa.partial > 0 ? `qisman toʻlangan: ${formatNumber(kassa.partial)} ta` : null,
+    kassa.noOrder > 0 ? `MoySkladʼda buyurtmasi yoʻq: ${formatNumber(kassa.noOrder)} ta` : null,
+  ].filter((n) => n !== null)
   return (
     <Card className="flex flex-col gap-2 p-4">
       <div>
@@ -544,38 +540,43 @@ function KassaTile({
           Kassa — pul tushgan
         </h3>
         <p className="mt-0.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          Yetkazilgan buyurtmalar puli · MoySklad «Касса» holati
+          Yetkazilgan buyurtmalar puli · MoySkladʼda yozilgan toʻlov
         </p>
       </div>
-      <SideRow name="Kerak · FAKT 2" orders={owedOrders} amount={owedAmount} />
-      <SideRow name="Kassada" orders={kassa.banked.orders} amount={kassa.banked.amount} />
+      <SideRow name="Kerak · FAKT 2" orders={due.orders} amount={due.amount} />
+      <SideRow name="Kassada" orders={received.orders} amount={received.amount} />
       <div
         className="mt-auto flex items-baseline justify-between gap-2 border-t pt-2 text-xs font-medium tabular-nums"
         style={{
           borderColor: 'var(--grid)',
-          color: owedOrders === 0 ? 'var(--ink-muted)' : full ? 'var(--status-good)' : 'var(--status-warning)',
+          color: due.orders === 0 ? 'var(--ink-muted)' : full ? 'var(--status-good)' : 'var(--status-warning)',
         }}
       >
         <span className="inline-flex items-center gap-1">
           {full && <CheckCircleGlyph />}
-          {owedOrders === 0 ? 'Yetkazilgan buyurtma yoʻq' : full ? 'toʻliq tushgan' : 'Kassaga tushmagan'}
+          {due.orders === 0 ? 'Yetkazilgan buyurtma yoʻq' : full ? 'toʻliq tushgan' : 'Kassaga tushmagan'}
         </span>
-        {owedOrders > 0 && !full && (
+        {due.orders > 0 && !full && (
           <span className="text-right">
-            {formatNumber(leftOrders)} ta · {formatFullUzs(leftAmount)} soʻm
+            {formatNumber(left.orders)} ta · {formatFullUzs(left.amount)} soʻm
           </span>
         )}
       </div>
       {share !== null && (
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           Kassaga {formatPercent(share)} tushgan
-          {kassa.awaiting.orders > 0 &&
-            ` · MoySkladʼda «Успешно» (kassa kutilmoqda): ${formatNumber(kassa.awaiting.orders)} ta, ${formatFullUzs(kassa.awaiting.amount)} soʻm`}
+          {notes.length > 0 && ` · ${notes.join(' · ')}`}
         </p>
       )}
-      {kassa.payed.orders > 0 && (
+      {kassa.byState.length > 0 && (
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-          MoySkladʼda toʻlov yozilgan: {formatNumber(kassa.payed.orders)} ta buyurtma, {formatFullUzs(kassa.payed.amount)} soʻm
+          MoySklad holati:{' '}
+          {kassa.byState
+            .map(
+              (s) =>
+                `${s.state === null ? 'buyurtma yoʻq' : `«${s.state}»`} ${formatNumber(s.due.orders)} ta (toʻlov yozilgan ${formatNumber(s.paidOrders)})`,
+            )
+            .join(' · ')}
         </p>
       )}
     </Card>

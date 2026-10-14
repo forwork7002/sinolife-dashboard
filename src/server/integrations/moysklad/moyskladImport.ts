@@ -17,6 +17,16 @@
  * second as our read is otherwise missed for good, the trap
  * `SETTLE_LOOKBACK_MS` closes on the Bitrix24 side.
  *
+ * PAYMENTS. `payedSum` / `shippedSum` are sums MoySklad keeps over OTHER
+ * documents (incoming payments, shipments), and the incremental read above
+ * only sees an order whose own `updated` moved — so a payment booked against
+ * an order nobody edited could stay unpaid here for good, and «Kassa» would
+ * read low. `refreshPayments` re-reads both sums for every order of the last
+ * `PAYMENT_WINDOW_MS` on each run (~5 000 orders, ~6 pages of 1 000, no
+ * expand) and for the whole table on a sweep run, writing only the rows whose
+ * sums moved. A failure there is reported (`paymentError`) and never fails
+ * the order import, whose rows are already committed.
+ *
  * DELETIONS. An incremental read cannot see an order that was deleted, so
  * `sweepDeleted` lists every order id (≈10 requests, no expand) and removes
  * the rows MoySklad no longer has — refusing when the listing came back short
@@ -34,6 +44,10 @@ const REQUEST_TIMEOUT_MS = 30_000
 const MAX_ATTEMPTS = 4
 /** Re-read this much before the newest `updated` we hold. */
 const SETTLE_MS = 10 * 60_000
+/** Every run re-reads the payment sums of the orders placed this recently. */
+const PAYMENT_WINDOW_MS = 62 * 24 * 3_600_000
+/** Rows written per transaction when payment sums move. */
+const PAYMENT_WRITE_CHUNK = 200
 /** The sweep refuses to delete more than this many orders in one pass … */
 const SWEEP_GONE_FLOOR = 50
 /** … or more than this share of the table, whichever is larger. */
@@ -235,6 +249,10 @@ export interface MoyskladImportResult {
   /** Orders MoySklad sent without a date, left out (and counted) rather than stopping the run. */
   readonly skipped: number
   readonly deleted: number | null
+  /** Orders whose payment or shipment sum moved without the order being edited; null on a partial run or a failed refresh. */
+  readonly repriced: number | null
+  /** Why the payment refresh failed, when it did. */
+  readonly paymentError: string | null
 }
 
 /** The whole second an instant falls in — MoySklad's filter has no milliseconds. */
@@ -335,12 +353,67 @@ export async function importMoyskladOrders(
   }
 
   const deleted = options.sweep && !partial ? await sweepDeleted(prisma, token) : null
+  let repriced: number | null = null
+  let paymentError: string | null = null
+  if (!partial) {
+    try {
+      repriced = await refreshPayments(prisma, token, options.sweep ? null : new Date(Date.now() - PAYMENT_WINDOW_MS))
+    } catch (error) {
+      paymentError = (error as Error).message
+    }
+  }
   await prisma.moyskladSync.upsert({
     where: { id: SYNC_ROW },
     create: { id: SYNC_ROW, lastSuccessAt: new Date() },
     update: { lastSuccessAt: new Date(), lastError: null, lastErrorAt: null },
   })
-  return { orders, items, since, partial, skipped, deleted }
+  return { orders, items, since, partial, skipped, deleted, repriced, paymentError }
+}
+
+/**
+ * Re-reads `payedSum` / `shippedSum` of every order placed since `since`
+ * (every order when null) and writes the ones that moved. Only orders already
+ * stored are touched: a new one is the incremental read's to insert whole.
+ * Offset paging is safe enough here — an order this listing slides past is
+ * read again on the next run.
+ */
+async function refreshPayments(prisma: PrismaClient, token: string, since: Date | null): Promise<number> {
+  const filter = since ? `&filter=${encodeURIComponent(`moment>=${formatMoscow(since)}`)}` : ''
+  let changed = 0
+  for (let offset = 0; ; offset += ID_PAGE) {
+    const body = await get<ListBody<Pick<RawOrder, 'id' | 'payedSum' | 'shippedSum'>>>(
+      `entity/customerorder?limit=${ID_PAGE}&offset=${offset}&order=created,asc${filter}`,
+      token,
+    )
+    const rows = body.rows ?? []
+    if (rows.length > 0) {
+      const stored = await prisma.moyskladOrder.findMany({
+        where: { id: { in: rows.map((r) => r.id) } },
+        select: { id: true, payedMinor: true, shippedMinor: true },
+      })
+      const current = new Map(stored.map((o) => [o.id, o]))
+      const moved = rows
+        .map((r) => ({ id: r.id, payedMinor: minorOf(r.payedSum), shippedMinor: minorOf(r.shippedSum) }))
+        .filter((r) => {
+          const was = current.get(r.id)
+          return was !== undefined && (was.payedMinor !== r.payedMinor || was.shippedMinor !== r.shippedMinor)
+        })
+      for (let i = 0; i < moved.length; i += PAYMENT_WRITE_CHUNK) {
+        await prisma.$transaction(
+          moved.slice(i, i + PAYMENT_WRITE_CHUNK).map((r) =>
+            // updateMany: a row the incremental read replaced meanwhile is 0 rows, not a throw.
+            prisma.moyskladOrder.updateMany({
+              where: { id: r.id },
+              data: { payedMinor: r.payedMinor, shippedMinor: r.shippedMinor },
+            }),
+          ),
+        )
+      }
+      changed += moved.length
+    }
+    if (rows.length < ID_PAGE) break
+  }
+  return changed
 }
 
 /** The one `moysklad_sync` row. */

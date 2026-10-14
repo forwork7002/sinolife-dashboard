@@ -168,14 +168,16 @@ export interface SverkaOverviewDto {
     readonly fakt1: SverkaPairDto
     readonly fakt2: SverkaPairDto
     /**
-     * `fakt2.moysklad` split by MoySklad's «Касса» status: `banked` (in the
-     * cash desk) + `awaiting` (delivered, not «Касса» yet) add up to it.
-     * `payed` is the delivered orders carrying a recorded payment, and that money.
+     * FAKT 2 against the payments MoySklad booked, deal by deal (`SverkaKassa`):
+     * `received` + `left` = `due`. `byState` is `due` by MoySklad status.
      */
     readonly kassa: {
-      readonly banked: SverkaSideDto
-      readonly awaiting: SverkaSideDto
-      readonly payed: SverkaSideDto
+      readonly due: SverkaSideDto
+      readonly received: SverkaSideDto
+      readonly left: SverkaSideDto
+      readonly partial: number
+      readonly noOrder: number
+      readonly byState: readonly { readonly state: string | null; readonly due: SverkaSideDto; readonly paidOrders: number }[]
     }
     readonly transit: SverkaPairDto
     readonly returned: SverkaPairDto
@@ -410,9 +412,12 @@ export class SverkaService {
         fakt1: pair(totals.fakt1),
         fakt2: pair(totals.fakt2),
         kassa: {
-          banked: side(totals.kassa.banked),
-          awaiting: side(totals.kassa.awaiting),
-          payed: side(totals.kassa.payed),
+          due: side(totals.kassa.due),
+          received: side(totals.kassa.received),
+          left: side(totals.kassa.left),
+          partial: totals.kassa.partial,
+          noOrder: totals.kassa.noOrder,
+          byState: totals.kassa.byState.map((s) => ({ state: s.state, due: side(s.due), paidOrders: s.paidOrders })),
         },
         transit: pair(totals.transit),
         returned: pair(totals.returned),

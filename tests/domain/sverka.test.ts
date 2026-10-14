@@ -386,19 +386,68 @@ describe('sverkaTotals', () => {
     expect(totals.transit.moysklad.orders).toBe(1)
   })
 
-  it('splits FAKT 2\'s MoySklad side into «Касса» and what is still awaited, adding up to it', () => {
+  it('counts FAKT 2 into the cash desk by MoySklad\'s booked payment, not by the «Касса» status', () => {
     const delivered = { delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' } as const
     const totals = sverkaTotals([
-      compareDeal(bitrix({ externalId: '1', ...delivered }), [moysklad({ stateName: 'Касса', payedMinor: 160_000_000n })]),
-      compareDeal(bitrix({ externalId: '2', ...delivered }), [moysklad({ stateName: 'Успешно', sumMinor: 100_000_000n })]),
+      // «Касса» with no payment booked is NOT in the cash desk.
+      compareDeal(bitrix({ externalId: '1', ...delivered }), [moysklad({ stateName: 'Касса' })]),
+      // «Успешно» paid in full is.
+      compareDeal(bitrix({ externalId: '2', ...delivered }), [moysklad({ stateName: 'Успешно', payedMinor: 160_000_000n })]),
+      // Paid in part: the part is received, the rest is left.
+      compareDeal(bitrix({ externalId: '3', ...delivered }), [moysklad({ stateName: 'Успешно', payedMinor: 60_000_000n })]),
+      // MoySklad's own sum is paid in full and the gap is a kopeck one: not money missing.
+      compareDeal(bitrix({ externalId: '4', ...delivered, amountMinor: 160_000_050n }), [
+        moysklad({ stateName: 'Успешно', payedMinor: 160_000_000n }),
+      ]),
+      // Delivered with no MoySklad order: due, nothing received.
+      compareDeal(bitrix({ externalId: '5', ...delivered }), []),
       // On its way: no part of the cash desk's figure, whatever was prepaid.
-      compareDeal(bitrix({ externalId: '3' }), [moysklad({ payedMinor: 50_000_000n })]),
+      compareDeal(bitrix({ externalId: '6' }), [moysklad({ payedMinor: 50_000_000n })]),
     ])
-    expect(totals.kassa.banked).toEqual({ orders: 1, amountMinor: 160_000_000n })
-    expect(totals.kassa.awaiting).toEqual({ orders: 1, amountMinor: 100_000_000n })
-    expect(totals.kassa.payed).toEqual({ orders: 1, amountMinor: 160_000_000n })
-    expect(totals.kassa.banked.amountMinor + totals.kassa.awaiting.amountMinor).toBe(totals.fakt2.moysklad.amountMinor)
-    expect(totals.kassa.banked.orders + totals.kassa.awaiting.orders).toBe(totals.fakt2.moysklad.orders)
+    const k = totals.kassa
+    expect(k.due).toEqual({ orders: 5, amountMinor: 800_000_050n })
+    expect(k.received).toEqual({ orders: 3, amountMinor: 380_000_050n })
+    expect(k.left).toEqual({ orders: 3, amountMinor: 420_000_000n })
+    expect(k.received.amountMinor + k.left.amountMinor).toBe(k.due.amountMinor)
+    expect(k.due.amountMinor).toBe(totals.fakt2.bitrix.amountMinor)
+    expect(k.partial).toBe(1)
+    expect(k.noOrder).toBe(1)
+    expect(k.byState).toEqual([
+      { state: 'Успешно', due: { orders: 3, amountMinor: 480_000_050n }, paidOrders: 3 },
+      { state: 'Касса', due: { orders: 1, amountMinor: 160_000_000n }, paidOrders: 0 },
+      { state: null, due: { orders: 1, amountMinor: 160_000_000n }, paidOrders: 0 },
+    ])
+  })
+
+  it('keeps a real SUM gap left even when MoySklad\'s own smaller sum is paid in full', () => {
+    const delivered = { delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' } as const
+    const k = sverkaTotals([
+      compareDeal(bitrix({ externalId: '1', ...delivered }), [
+        moysklad({ stateName: 'Успешно', sumMinor: 100_000_000n, payedMinor: 100_000_000n }),
+      ]),
+    ]).kassa
+    expect(k.received).toEqual({ orders: 1, amountMinor: 100_000_000n })
+    expect(k.left).toEqual({ orders: 1, amountMinor: 60_000_000n })
+  })
+
+  it('counts a payment booked on the deal\'s older order, and an order with no status apart from no order', () => {
+    const delivered = { delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' } as const
+    const older = moysklad({ orderId: 'old', orderName: 'bx10043-old', moment: new Date('2026-10-04T10:00:00Z'), payedMinor: 160_000_000n })
+    const k = sverkaTotals([
+      compareDeal(bitrix({ externalId: '1', ...delivered }), [moysklad({ stateName: null }), older]),
+    ]).kassa
+    expect(k.received).toEqual({ orders: 1, amountMinor: 160_000_000n })
+    expect(k.left.orders).toBe(0)
+    expect(k.byState).toEqual([{ state: 'holatsiz', due: { orders: 1, amountMinor: 160_000_000n }, paidOrders: 1 }])
+  })
+
+  it('never counts more than is due on an overpaid deal', () => {
+    const delivered = { delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' } as const
+    const k = sverkaTotals([
+      compareDeal(bitrix({ externalId: '1', ...delivered }), [moysklad({ stateName: 'Успешно', payedMinor: 200_000_000n })]),
+    ]).kassa
+    expect(k.received).toEqual({ orders: 1, amountMinor: 160_000_000n })
+    expect(k.left).toEqual({ orders: 0, amountMinor: 0n })
   })
 
   it('ignores orphan lines — they have no Bitrix24 side', () => {
@@ -418,6 +467,8 @@ describe('sverkaTotals', () => {
     expect(totals.fakt1.beforeFloor).toEqual({ orders: 2, amountMinor: 320_000_000n })
     expect(totals.fakt2.bitrix.orders).toBe(1)
     expect(totals.fakt2.beforeFloor.orders).toBe(1)
+    // MoySklad could not hold it, so the cash desk is not owed it either.
+    expect(totals.kassa.due.orders).toBe(0)
     expect(totals.returned.beforeFloor.orders).toBe(1)
     expect(totals.transit.beforeFloor.orders).toBe(0)
     expect(totals.beforeFloor).toEqual({ orders: 2, amountMinor: 320_000_000n })

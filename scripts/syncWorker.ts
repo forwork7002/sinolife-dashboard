@@ -1930,6 +1930,8 @@ async function main() {
             (r.partial ? ' (davomi keyingi safar)' : '') +
             (r.skipped > 0 ? `, sanasiz ${r.skipped}` : '') +
             (r.deleted === null ? '' : `, oʻchirilgan ${r.deleted}`) +
+            (r.repriced ? `, toʻlovi yangilangan ${r.repriced}` : '') +
+            (r.paymentError ? `, toʻlovlar oʻqilmadi: ${r.paymentError}` : '') +
             `  (${((Date.now() - msStarted) / 1000).toFixed(1)}s)`,
         )
       } catch (error) {

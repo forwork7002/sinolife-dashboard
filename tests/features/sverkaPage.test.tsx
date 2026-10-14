@@ -105,7 +105,17 @@ const data: SverkaOverviewDto = {
   totals: {
     fakt1: pair,
     fakt2: pair,
-    kassa: { banked: { orders: 1, amount: 1_200_000 }, awaiting: { orders: 1, amount: 600_000 }, payed: none },
+    kassa: {
+      due: { orders: 2, amount: 3_200_000 },
+      received: { orders: 1, amount: 1_200_000 },
+      left: { orders: 1, amount: 2_000_000 },
+      partial: 0,
+      noOrder: 1,
+      byState: [
+        { state: 'Успешно', due: { orders: 1, amount: 1_600_000 }, paidOrders: 1 },
+        { state: null, due: { orders: 1, amount: 1_600_000 }, paidOrders: 0 },
+      ],
+    },
     transit: pair,
     returned: pair,
     pending: { orders: 0, amount: 0 },
@@ -161,23 +171,27 @@ describe('SverkaBody — the difference list', () => {
 describe('SverkaBody — the «Kassa» tile', () => {
   const tile = () => screen.getByRole('heading', { name: 'Kassa — pul tushgan' }).closest('div')!.parentElement!
 
-  it('sets the delivered money against what MoySklad calls «Касса» and names the remainder', () => {
+  it('sets the delivered money against the payments MoySklad booked and names the remainder', () => {
     render(<SverkaBody data={data} status="ready" />)
     const card = within(tile())
     expect(card.getByText('Kerak · FAKT 2')).toBeTruthy()
     expect(card.getByText('Kassaga tushmagan')).toBeTruthy()
-    // 3 200 000 owed, 1 200 000 in the cash desk.
+    // 3 200 000 owed, 1 200 000 paid: the server's remainder, as sent.
     expect(card.getByText(/1 ta · 2,000,000 soʻm/)).toBeTruthy()
-    expect(card.getByText(/«Успешно» \(kassa kutilmoqda\): 1 ta, 600,000 soʻm/)).toBeTruthy()
-    expect(card.queryByText(/toʻlov yozilgan/)).toBeNull()
+    expect(card.getByText(/MoySkladʼda buyurtmasi yoʻq: 1 ta/)).toBeTruthy()
+    expect(card.getByText(/«Успешно» 1 ta \(toʻlov yozilgan 1\) · buyurtma yoʻq 1 ta \(toʻlov yozilgan 0\)/)).toBeTruthy()
   })
 
   it('says so when every delivered soʻm is in the cash desk', () => {
-    const all = { ...data, totals: { ...data.totals, kassa: { banked: pair.bitrix, awaiting: none, payed: pair.bitrix } } }
+    const paid = { orders: 2, amount: 3_200_000 }
+    const all = {
+      ...data,
+      totals: { ...data.totals, kassa: { ...data.totals.kassa, received: paid, left: none, noOrder: 0 } },
+    }
     render(<SverkaBody data={all} status="ready" />)
     const card = within(tile())
     expect(card.getByText('toʻliq tushgan')).toBeTruthy()
-    expect(card.getByText(/toʻlov yozilgan: 2 ta buyurtma/)).toBeTruthy()
+    expect(card.queryByText(/buyurtmasi yoʻq/)).toBeNull()
   })
 })
 

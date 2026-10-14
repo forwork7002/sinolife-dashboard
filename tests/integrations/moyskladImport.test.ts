@@ -117,7 +117,7 @@ describe('orderRows', () => {
   the sweep confirms with. `onRequest` lets a test change the data between
   two pages — the concurrent edit or deletion each fix is about.
 */
-import { afterEach, vi } from 'vitest'
+import { afterEach, onTestFinished, vi } from 'vitest'
 
 import { importMoyskladOrders } from '@/server/integrations/moysklad/moyskladImport'
 
@@ -125,6 +125,8 @@ interface FakeOrder {
   id: string
   updated: string
   created: number
+  /** Kopecks booked against the order; MoySklad moves it WITHOUT touching `updated`. */
+  payed?: number
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -146,9 +148,12 @@ function fakeMoysklad(orders: FakeOrder[], onRequest: (url: URL, count: number) 
     const offset = Number(url.searchParams.get('offset'))
     const filter = url.searchParams.get('filter')
     const from = filter?.match(/^updated>=(.+)$/)?.[1]
+    // Every fake order is placed at its `updated` second.
+    const placedFrom = filter?.match(/^moment>=(.+)$/)?.[1]
     const byCreated = url.searchParams.get('order') === 'created,asc'
     const list = orders
       .filter((o) => !from || o.updated.slice(0, 19) >= from)
+      .filter((o) => !placedFrom || o.updated.slice(0, 19) >= placedFrom)
       .sort((a, b) => (byCreated ? a.created - b.created : a.updated.localeCompare(b.updated)))
     const rows = list.slice(offset, offset + limit).map((o) => ({
       id: o.id,
@@ -157,6 +162,7 @@ function fakeMoysklad(orders: FakeOrder[], onRequest: (url: URL, count: number) 
       moment: o.updated,
       updated: o.updated,
       sum: 100,
+      payedSum: o.payed ?? 0,
       positions: { meta: { size: 0 }, rows: [] },
     }))
     return new Response(JSON.stringify({ meta: { size: list.length }, rows }), { status: 200 })
@@ -165,7 +171,7 @@ function fakeMoysklad(orders: FakeOrder[], onRequest: (url: URL, count: number) 
 
 /** Just enough of Prisma for the import: the two tables and the sync row. */
 function fakePrisma() {
-  const stored = new Map<string, { id: string; updatedAtSource: Date }>()
+  const stored = new Map<string, { id: string; updatedAtSource: Date; payedMinor: bigint; shippedMinor: bigint }>()
   const prisma = {
     moyskladOrder: {
       aggregate: async () => ({
@@ -174,10 +180,16 @@ function fakePrisma() {
       deleteMany: async ({ where }: { where: { id: { in: string[] } } }) => {
         for (const id of where.id.in) stored.delete(id)
       },
-      createMany: async ({ data }: { data: { id: string; updatedAtSource: Date }[] }) => {
+      createMany: async ({ data }: { data: { id: string; updatedAtSource: Date; payedMinor: bigint; shippedMinor: bigint }[] }) => {
         for (const o of data) stored.set(o.id, o)
       },
-      findMany: async () => [...stored.values()].map((o) => ({ id: o.id })),
+      findMany: async (args?: { where?: { id: { in: string[] } } }) =>
+        [...stored.values()].filter((o) => !args?.where || args.where.id.in.includes(o.id)),
+      updateMany: async ({ where, data }: { where: { id: string }; data: { payedMinor: bigint; shippedMinor: bigint } }) => {
+        const was = stored.get(where.id)
+        if (was) stored.set(where.id, { ...was, ...data })
+        return { count: was ? 1 : 0 }
+      },
     },
     moyskladOrderItem: { createMany: async () => undefined },
     moyskladSync: { upsert: async () => undefined },
@@ -239,7 +251,8 @@ describe('the deletion sweep', () => {
     vi.stubGlobal(
       'fetch',
       fakeMoysklad(orders, (url) => {
-        if (url.searchParams.get('order') === 'created,asc' && ++sweepPages === 2) {
+        // The sweep's listing alone: no filter (the payment refresh lists by created too).
+        if (url.searchParams.get('order') === 'created,asc' && !url.searchParams.has('filter') && ++sweepPages === 2) {
           orders.splice(
             orders.findIndex((o) => o.id === 'o5'),
             1,
@@ -257,5 +270,69 @@ describe('the deletion sweep', () => {
     expect(next.deleted).toBe(1)
     expect(stored.has('o5')).toBe(false)
     expect(stored.size).toBe(1499)
+  })
+})
+
+describe('payments booked without an edit', () => {
+  it('catches it when the incremental read has moved past the order', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-14T07:00:00Z'))
+    onTestFinished(() => {
+      vi.useRealTimers()
+    })
+    // o0 is weeks older than the watermark: the incremental read never asks for it again.
+    const orders: FakeOrder[] = [
+      { id: 'o0', updated: '2026-09-20 10:00:00.000', created: 0 },
+      { id: 'o1', updated: '2026-10-01 10:00:00.000', created: 1 },
+    ]
+    const { prisma, stored } = fakePrisma()
+    vi.stubGlobal('fetch', fakeMoysklad(orders))
+    await importMoyskladOrders(prisma, 'token')
+
+    orders[0]!.payed = 16_000_000
+    const r = await importMoyskladOrders(prisma, 'token')
+    expect(r.orders).toBe(1) // o1 alone, inside the settle window
+    expect(r.repriced).toBe(1)
+    expect(r.paymentError).toBeNull()
+    expect(stored.get('o0')!.payedMinor).toBe(16_000_000n)
+  })
+
+  it('reports a failed payment refresh without failing the order import', async () => {
+    const orders: FakeOrder[] = [{ id: 'o0', updated: at(1), created: 0 }]
+    const { prisma, stored } = fakePrisma()
+    const moysklad = fakeMoysklad(orders)
+    vi.stubGlobal('fetch', async (input: string | URL) => {
+      const url = new URL(String(input))
+      if (url.searchParams.get('filter')?.startsWith('moment>=')) {
+        return new Response(JSON.stringify({ errors: [{ error: 'nope' }] }), { status: 400 })
+      }
+      return moysklad(input)
+    })
+    const r = await importMoyskladOrders(prisma, 'token')
+    expect(stored.size).toBe(1)
+    expect(r.repriced).toBeNull()
+    expect(r.paymentError).toContain('nope')
+  })
+
+  it('reaches an order older than the payment window only on a sweep run', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-14T07:00:00Z'))
+    try {
+      const orders: FakeOrder[] = [
+        { id: 'july', updated: '2026-07-01 10:00:00.000', created: 0 },
+        { id: 'oct', updated: '2026-10-01 10:00:00.000', created: 1 },
+      ]
+      const { prisma, stored } = fakePrisma()
+      vi.stubGlobal('fetch', fakeMoysklad(orders))
+      await importMoyskladOrders(prisma, 'token')
+
+      orders[0]!.payed = 100
+      expect((await importMoyskladOrders(prisma, 'token')).repriced).toBe(0)
+      expect(stored.get('july')!.payedMinor).toBe(0n)
+      expect((await importMoyskladOrders(prisma, 'token', { sweep: true })).repriced).toBe(1)
+      expect(stored.get('july')!.payedMinor).toBe(100n)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
