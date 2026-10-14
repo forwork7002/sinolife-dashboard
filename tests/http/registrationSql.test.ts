@@ -60,7 +60,8 @@ describe('bezkvalDaysSql', () => {
 
   it('reads Регистрация deals by the Tashkent day they were created, end-exclusive', () => {
     expect(sql).toContain(`JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'`)
-    expect(sql).toContain(`(d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day`)
+    expect(sql).toContain(`(d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date AS day`)
+    expect(sql).toContain(`r.day::text AS day`)
     expect(sql).toContain(`d."createdAtSource" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
     expect(sql).toContain(`d."createdAtSource" < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
   })
@@ -105,8 +106,12 @@ describe('bezkvalDaysSql', () => {
     expect(sql).toContain(`ORDER BY c."changedAt" DESC, c."createdAt" DESC`)
   })
 
-  it('counts every stage, as the portal filter does', () => {
-    expect(sql).not.toContain('stage')
+  it('counts a lead once: «Дубликат (лид)» out, one contact once a day', () => {
+    expect(sql).toContain(`LEFT JOIN "deal_stage" st ON st."id" = d."stageId"`)
+    expect(sql).toContain(`AND COALESCE(st."name", '') !~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'`)
+    expect(sql).toContain(`PARTITION BY COALESCE(d."customerId", d."id"), (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date`)
+    expect(sql).toContain(`ORDER BY d."createdAtSource", d."id") AS nth`)
+    expect(sql).toContain(`WHERE r.nth = 1`)
     expect(sql).not.toContain('status')
   })
 })

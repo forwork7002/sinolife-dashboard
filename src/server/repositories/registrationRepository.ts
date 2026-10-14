@@ -142,15 +142,36 @@ export class RegistrationRepository {
    * 3. the last owner change to a ROP the sync recorded (`deal_owner_change`,
    *    from 2026-10-06) — the deal went on to the desk or back office;
    *
-   * else null. Every stage, «Дубликат (лид)» included: the portal's filter.
-   * Served by the (pipelineId, createdAtSource) index.
+   * else null.
+   *
+   * ONE LEAD IS COUNTED ONCE (the user, 2026-10-14: «dublikatlar ikkita
+   * birxillikni olmasligi kerak … yaqqol qancha tushganini bilishim uchun»). A deal in
+   * «Дубликат (лид)» is left out (read by NAME, as RNP's `registrationDaysSql`
+   * and «Lid manbalari»'s `isLeadDuplicate` read it), and of one contact's
+   * deals on one Tashkent day only the first counts, credited by its own ROP —
+   * measured 12.10 on the portal: 1 666 deals, 73 in «Дубликат (лид)», 74
+   * more repeats of a contact already in that day — ~1 520 leads. Every other
+   * stage counts. Served by the (pipelineId, createdAtSource) index.
    */
   static bezkvalDaysSql(): string {
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
     const hi = `(($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
+    const day = `(d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date`
     return `
+      WITH reg AS (
+        SELECT d."id",
+               ${day} AS day,
+               row_number() OVER (
+                 PARTITION BY COALESCE(d."customerId", d."id"), ${day}
+                 ORDER BY d."createdAtSource", d."id") AS nth
+          FROM "deal" d
+          JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+          LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
+         WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
+           AND COALESCE(st."name", '') !~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'
+      )
       SELECT
-        (d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
+        r.day::text AS day,
         COALESCE(
           ${RegistrationRepository.bezkvalOwnerRopSql('k')},
           ${RegistrationRepository.bezkvalOwnerRopSql('e')},
@@ -174,11 +195,11 @@ export class RegistrationRepository {
             LIMIT 1)
         ) AS rop,
         count(*)::bigint AS leads
-      FROM "deal" d
-      JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
+      FROM reg r
+      JOIN "deal" d ON d."id" = r."id"
       LEFT JOIN "employee" e ON e."id" = d."employeeId"
       LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"
-      WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
+      WHERE r.nth = 1
       GROUP BY 1, 2`
   }
 
