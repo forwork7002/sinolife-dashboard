@@ -94,7 +94,7 @@ describe('watchLeads', () => {
     expect(channelOf(null)).toBe('other')
   })
 
-  it('takes the brand from «Проект» first, and keeps the feed’s own', () => {
+  it('takes the brand from «Проект» when the form names none, and keeps the feed’s own', () => {
     const [lead] = watchLeads([leadRow({ productLine: 'Zextra sure' })])
     expect(lead!.brand).toBe('Zextra')
     expect(lead!.projectFilled).toBe(true)

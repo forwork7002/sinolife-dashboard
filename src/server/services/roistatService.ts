@@ -35,7 +35,7 @@ import {
   spendCut,
   spendTotal,
 } from '@/server/domain/roistat/roistatCuts'
-import { formNameBrand, formNameOf, leadChannel } from '@/server/domain/leads/leadSources'
+import { leadChannel } from '@/server/domain/leads/leadSources'
 import type { DealProductBrand } from '@/server/domain/products/productBrand'
 import { isBaseTeam, saleBrand } from '@/server/domain/rnp/rnpSheet'
 import { type BrandFilter, brandMatches } from '@/server/domain/types'
@@ -201,7 +201,8 @@ export interface RoistatQuery {
  * so the switch and the P&L agree on every sale and on every lead whose title
  * names its form. A repeat lead («Такрор - обработка») is recovered from
  * SOURCE_DESCRIPTION on both (`leadFormSql.ts`); a lead known only by a
- * form's short name is recovered here (`form_alias`) and not on a sale.
+ * form's short name is recovered here (`form_alias`) and not on a sale
+ * (`brandForm` on a sale row is already the brand, read without the alias).
  * Rows of a brand-keyed scan only (`RoistatRepository.bitrix`'s `brandKeys`).
  */
 function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: BrandFilter): Parameters<typeof bitrixCut>[1] {
@@ -210,7 +211,7 @@ function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: BrandFilter): P
     brandMatches(
       brand,
       row.brandTeam !== null
-        ? saleBrand(row.brandProduct as DealProductBrand, row.brandTeam, formNameBrand(formNameOf(row.brandForm)))
+        ? saleBrand(row.brandProduct as DealProductBrand, row.brandTeam, row.brandForm as 'Collagen' | 'Zextra' | null)
         : leadBrand(row.brandSource, row.brandForm, row.brandLine),
     ),
   )
@@ -416,7 +417,8 @@ export class RoistatService {
       this.spendDays(window.from, window.to),
       this.usd.forDays([rateDay], today),
       // An addition to the «Дни» table, never its price: a failed scan is logged and the table draws without FAKT.
-      this.insights.rnpTeamDays(period).catch((error: unknown) => {
+      // Under «Hammasi» no order is filed by brand, so the per-order brand probes are skipped.
+      this.insights.rnpTeamDays(period, brand !== 'all').catch((error: unknown) => {
         void import('@/server/logging/logger').then(({ logger }) =>
           logger.warn({ err: error }, '«Kunlar boʻyicha» FAKT scan failed; the table draws without it'),
         )

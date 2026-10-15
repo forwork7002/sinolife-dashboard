@@ -131,16 +131,26 @@ export function dealFormTitleSql(deal: string, source: string, alias: string): s
 /**
  * The brand a form TITLE's form name states — `formNameBrand` in SQL, off
  * the same `FORM_BRAND_PATTERNS`: 'Zextra', 'Collagen', or NULL (no title, or
- * a name that names neither). Only the name between the quotes is read.
+ * a name that names neither). Only the name between the quotes is read, cut
+ * out once; the space before the quote may be a no-break one, as JS `\s`
+ * allows (`formNameOf`) and `[[:space:]]` under a C locale does not.
  */
 export function formBrandOfTitleSql(title: string): string {
-  const name = `substring(${title} from 'CRM-форм[аы][[:space:]]*[«"“]([^»"”]+)')`
-  const arms = FORM_BRAND_PATTERNS.map(([brand, pattern]) => `WHEN ${name} ~* '${pattern}' THEN '${brand}'`).join(' ')
-  return `CASE ${arms} END`
+  const arms = FORM_BRAND_PATTERNS.map(([brand, pattern]) => `WHEN fbn.name ~* '${pattern}' THEN '${brand}'`).join(' ')
+  return `(SELECT CASE ${arms} END
+            FROM (SELECT substring(${title} from 'CRM-форм[аы][[:space:]\u00a0]*[«"“]([^»"”]+)') AS name) fbn)`
 }
 
 /** How far before a sales deal its ORIGIN LEAD may have opened (Roistat's join, and every sale's brand). */
 export const ORIGIN_LEAD_DAYS = 30
+
+/**
+ * Which of a contact's leads is a sale's origin: a WON one first («Сделка
+ * успешна» opens the sales deal), then the latest, then the id — so two leads
+ * opened in the same second resolve to the same one on every screen.
+ */
+export const originLeadOrderSql = (lead: string): string =>
+  `(${lead}."status" = 'WON') DESC, ${lead}."createdAtSource" DESC, ${lead}."id" DESC`
 
 /**
  * A SALE'S FORM TITLE: its origin lead's form when it has an origin lead
@@ -171,19 +181,20 @@ export function saleFormTitleSql(leadFound: string, leadTitle: string, leadSd: s
  * had no lead in the 30 days (База, repeat customers).
  */
 export function originFormBrandSql(sale: string): string {
+  // Aliases of its own (ofb_*): a caller's alias named «l» or «ol» would otherwise be shadowed silently.
   return `(SELECT ${formBrandOfTitleSql(
-    saleFormTitleSql('ol."id" IS NOT NULL', 'ol."title"', 'ol.sd', `${sale}."title"`),
+    saleFormTitleSql('ofb_lead."id" IS NOT NULL', 'ofb_lead."title"', 'ofb_lead.sd', `${sale}."title"`),
   )}
-          FROM (SELECT 1) one
+          FROM (SELECT 1) ofb_one
           LEFT JOIN LATERAL (
-            SELECT l."id", l."title", ${sourceDescriptionSql('l')} AS sd
-            FROM "deal" l
-            JOIN "pipeline" lp ON lp."id" = l."pipelineId" AND lp."role" = 'LEAD'
+            SELECT ofb_l."id", ofb_l."title", ${sourceDescriptionSql('ofb_l')} AS sd
+            FROM "deal" ofb_l
+            JOIN "pipeline" ofb_lp ON ofb_lp."id" = ofb_l."pipelineId" AND ofb_lp."role" = 'LEAD'
             WHERE ${sale}."customerId" IS NOT NULL
-              AND l."customerId" = ${sale}."customerId"
-              AND l."createdAtSource" <= ${sale}."createdAtSource"
-              AND l."createdAtSource" > ${sale}."createdAtSource" - interval '${ORIGIN_LEAD_DAYS} days'
-            ORDER BY (l."status" = 'WON') DESC, l."createdAtSource" DESC
+              AND ofb_l."customerId" = ${sale}."customerId"
+              AND ofb_l."createdAtSource" <= ${sale}."createdAtSource"
+              AND ofb_l."createdAtSource" > ${sale}."createdAtSource" - interval '${ORIGIN_LEAD_DAYS} days'
+            ORDER BY ${originLeadOrderSql('ofb_l')}
             LIMIT 1
-          ) ol ON true)`
+          ) ofb_lead ON true)`
 }

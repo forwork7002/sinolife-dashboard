@@ -16,6 +16,8 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { RoistatService, faktDays, resetRoistatCaches } = await import('@/server/services/roistatService')
+const { leadBrand } = await import('@/server/services/rnpService')
+const { bitrixLabel } = await import('@/server/domain/roistat/roistatCuts')
 
 beforeEach(() => {
   resetRoistatCaches()
@@ -291,6 +293,26 @@ describe('faktDays — the brand switch', () => {
     expect(of('none')).toEqual({ fakt1PrimaryUzs: 0, fakt1BaseUzs: 100_000, fakt2PrimaryUzs: 0 })
     expect(of('all')).toEqual({ fakt1PrimaryUzs: 1_600_000, fakt1BaseUzs: 100_000, fakt2PrimaryUzs: 0 })
   })
+
+  it('files an order by its origin lead\'s form first (2026-10-15), whatever it was paid for', () => {
+    const formed = [
+      teamDay({ day: '2026-10-01', rop: 'Azizbek', productBrand: 'Zextra', formBrand: 'Collagen', fakt1Minor: 40_000_000n }),
+      teamDay({ day: '2026-10-01', rop: 'Asliddin', productBrand: '-', formBrand: 'Zextra', fakt1Minor: 20_000_000n }),
+    ]
+    expect(faktDays(formed, 'Collagen').total.fakt1PrimaryUzs).toBe(400_000)
+    expect(faktDays(formed, 'Zextra').total.fakt1PrimaryUzs).toBe(200_000)
+    expect(faktDays(formed, 'none').total.fakt1PrimaryUzs).toBe(0)
+  })
+
+  it('asks the team-day scan for the brand probes only when one brand is picked', async () => {
+    const asked: unknown[] = []
+    const repository = { bitrix: async () => [], meta: async () => [], metaName: async () => null, metaImportedAt: async () => null }
+    const probe = { rnpTeamDays: async (_p: unknown, brands?: boolean) => (asked.push(brands), []) }
+    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, probe as never)
+    await service.days(PERIOD, NOW, 'all')
+    await service.days(PERIOD, NOW, 'Zextra')
+    expect(asked).toEqual([false, true])
+  })
 })
 
 describe('RoistatService — the Collagen / Zextra switch', () => {
@@ -478,6 +500,19 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
     expect(c.kpi.sold).toBe(0)
   })
 
+  it('files a sale by the brand its origin lead\'s form names before the product and the team (2026-10-15)', async () => {
+    const rows = [
+      // A «Umar-collagen» lead who paid for Zextra, through a Zextra team: Collagen's.
+      bitrixRow('total', { brandTeam: 'Asliddin', brandProduct: 'Zextra', brandForm: 'Collagen', sold: 1, soldMinor: 5_000_000_00n }),
+      bitrixRow('total', { brandTeam: 'Sevinch', brandProduct: '-', brandForm: 'Zextra', sold: 1, soldMinor: 3_000_000_00n }),
+    ]
+    const repository = { bitrix: async () => rows, meta: async () => [], metaName: async () => null, metaImportedAt: async () => null }
+    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, insights)
+    expect((await service.overview(PERIOD, { dim: 'days', brand: 'Collagen' }, NOW)).kpi).toMatchObject({ sold: 1, soldUzs: 5_000_000 })
+    expect((await service.overview(PERIOD, { dim: 'days', brand: 'Zextra' }, NOW)).kpi).toMatchObject({ sold: 1, soldUzs: 3_000_000 })
+    expect((await service.overview(PERIOD, { dim: 'days', brand: 'none' }, NOW)).kpi.sold).toBe(0)
+  })
+
   it('files what neither brand claims under «Brendsiz» — Hayot\'s sale — and the three make the whole scan', async () => {
     const { service } = keyedHarness()
     const n = await service.overview(PERIOD, { dim: 'days', brand: 'none' }, NOW)
@@ -532,6 +567,19 @@ describe('RoistatRepository.bitrix — which set a row is', () => {
     expect(rows.map((r) => r.set)).toEqual(['total', 'day', 'form', 'source', 'product', 'region', 'rop', 'seller', 'registrar'])
   })
 
+  it('hands the «Товар» set its product_form as the form, every other set its form_title', async () => {
+    const answer = [
+      raw(['g_source', 'g_form', 'g_product'], { form_title: null, product_form: 'Заполнение CRM-формы "Umar-collagen x"' }),
+      raw(['g_form', 'g_targetolog'], { form_title: 'Заполнение CRM-формы "Eldor-zextra y"', product_form: null }),
+    ]
+    const prisma = { $queryRawUnsafe: async () => answer } as unknown as PrismaClient
+    const rows = await new RoistatRepository(prisma).bitrix(PERIOD, NOW)
+    expect(rows.map((r) => [r.set, r.formTitle])).toEqual([
+      ['product', 'Заполнение CRM-формы "Umar-collagen x"'],
+      ['form', 'Заполнение CRM-формы "Eldor-zextra y"'],
+    ])
+  })
+
   it('files a sale\'s «Товар» by its line items, its team only with none — the switch\'s rule', async () => {
     const sql: string[] = []
     const params: unknown[][] = []
@@ -547,6 +595,14 @@ describe('RoistatRepository.bitrix — which set a row is', () => {
     expect(sql[0]).toContain(`WHEN pb.brand = '-' THEN 'Boshqa'`)
     expect(sql[0]).toContain(`WHEN tm.team = ANY($5::text[]) THEN 'Collagen'`)
     expect(sql[0]).toContain(`WHEN tm.team = ANY($6::text[]) THEN 'Zextra'`)
+    // 2026-10-15: the origin lead's form first, as the switch reads it (b_form is that brand).
+    expect(sql[0]).toMatch(/AS product_line,/)
+    expect(sql[0].indexOf('WHEN sfb.brand IS NOT NULL THEN sfb.brand')).toBeLessThan(sql[0].indexOf(`WHEN pb.brand = '-' THEN 'Boshqa'`))
+    expect(sql[0]).toContain('sfb.brand AS b_form')
+    expect(sql[0]).toContain(`ORDER BY (l."status" = 'WON') DESC, l."createdAtSource" DESC, l."id" DESC`)
+    // The «Товар» set groups a lead's form apart from the form set's title, a sale's as NULL.
+    expect(sql[0]).toContain('(source_id, product_form, product_line)')
+    expect(sql[0]).toContain('NULL::text AS product_form')
     expect(params[0]![4]).toContain('Sevinch')
     expect(params[0]![5]).toContain('Asliddin')
   })
@@ -564,5 +620,21 @@ describe('RoistatRepository.bitrix — which set a row is', () => {
     await repository.bitrix(PERIOD, NOW, 'days', true)
     expect(sql[0]).toMatch(/GROUPING SETS \(\(\),\s*\(day\)\)/)
     expect(sql[1]).toMatch(/GROUPING SETS \(\(b_source, b_form, b_line, b_team, b_product\),\s*\(day, b_source, b_form, b_line, b_team, b_product\)\)/)
+  })
+})
+
+describe('the «Товар» cut with RNP\'s real leadBrand', () => {
+  const labelers = { brandOf: leadBrand, channelOf: () => 'other' as const }
+  const product = (fields: Partial<RoistatBitrixRow>) => bitrixLabel('product', bitrixRow('product', fields), labelers)
+
+  it('labels a lead by its form\'s name first, then its «Проект» (2026-10-15)', () => {
+    expect(product({ sourceId: 'REPEAT_SALE', formTitle: 'Заполнение CRM-формы "Umar-collagen x"', productLine: 'Zextra sure' })).toBe('Collagen')
+    expect(product({ sourceId: 'REPEAT_SALE', formTitle: null, productLine: 'Zextra sure' })).toBe('Zextra')
+  })
+
+  it('labels a sale by the brand its row already carries — the switch\'s', () => {
+    expect(product({ sourceId: 'REPEAT_SALE', formTitle: null, productLine: 'Collagen' })).toBe('Collagen')
+    expect(product({ sourceId: 'UC_CKXAZS', formTitle: null, productLine: 'Zextra' })).toBe('Zextra')
+    expect(product({ sourceId: 'REPEAT_SALE', formTitle: null, productLine: 'Boshqa' })).toBe('Boshqa')
   })
 })

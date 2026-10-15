@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import { FORM_BRAND_PATTERNS, formNameBrand } from '@/server/domain/leads/leadSources'
-import { dealFormTitleSql, formAliasCteSql, formBrandOfTitleSql, originFormBrandSql } from '@/server/repositories/leadFormSql'
+import {
+  ORIGIN_LEAD_DAYS,
+  dealFormTitleSql,
+  formAliasCteSql,
+  formBrandOfTitleSql,
+  originFormBrandSql,
+} from '@/server/repositories/leadFormSql'
 
 /*
   The one SQL home of a lead's CRM form — «Roistat», «Lidlar» and «RNP
@@ -35,25 +41,32 @@ describe('the form\'s brand', () => {
     expect(formNameBrand('Umar-collagen Collagen (UMAR)')).toBe('Collagen')
     expect(formNameBrand('Sobirjon-zextra I.S | Long form new 14.09')).toBe('Zextra')
     expect(formNameBrand('Kamron Коллаген тест')).toBe('Collagen')
+    expect(formNameBrand('Kamron КОЛЛАГЕН тест')).toBe('Collagen')
     expect(formNameBrand('Kamron 6 etap filt forma 05.07')).toBeNull()
     expect(formNameBrand(null)).toBeNull()
   })
 
-  it('spells Cyrillic with both cases — `~*` folds only Latin under a C locale', () => {
+  it('spells every Cyrillic letter with both cases — `~*` folds only Latin under a C locale', () => {
     for (const [, pattern] of FORM_BRAND_PATTERNS) {
-      for (const word of pattern.split('|')) if (/[а-яё]/i.test(word)) expect(word).toMatch(/^\[[А-ЯЁ][а-яё]\]/)
+      for (const word of pattern.split('|')) {
+        if (/[а-яё]/i.test(word)) expect(word).toMatch(/^(\[[А-ЯЁ][а-яё]\])+$/)
+      }
+      // Spliced into SQL literals: nothing that could close or escape one.
+      expect(pattern).not.toMatch(/['\\]/)
     }
+    expect(Number.isInteger(ORIGIN_LEAD_DAYS)).toBe(true)
     const sql = formBrandOfTitleSql('t')
-    expect(sql).toContain(`WHEN substring(t from 'CRM-форм[аы][[:space:]]*[«"“]([^»"”]+)') ~* 'zextra' THEN 'Zextra'`)
+    expect(sql).toContain(`substring(t from 'CRM-форм[аы][[:space:]\u00a0]*[«"“]([^»"”]+)') AS name`)
+    expect(sql).toContain(`WHEN fbn.name ~* 'zextra' THEN 'Zextra'`)
     expect(sql.indexOf(`'Zextra'`)).toBeLessThan(sql.indexOf(`'Collagen'`))
   })
 
   it('finds a sale\'s origin lead as Roistat does — same contact, ≤ 30 days before, WON first', () => {
     const sql = originFormBrandSql('d')
-    expect(sql).toContain('l."customerId" = d."customerId"')
-    expect(sql).toContain(`l."createdAtSource" > d."createdAtSource" - interval '30 days'`)
-    expect(sql).toContain(`ORDER BY (l."status" = 'WON') DESC, l."createdAtSource" DESC`)
+    expect(sql).toContain('ofb_l."customerId" = d."customerId"')
+    expect(sql).toContain(`ofb_l."createdAtSource" > d."createdAtSource" - interval '30 days'`)
+    expect(sql).toContain(`ORDER BY (ofb_l."status" = 'WON') DESC, ofb_l."createdAtSource" DESC, ofb_l."id" DESC`)
     // A lead found decides, form or not; only a sale with no lead reads its own title.
-    expect(sql).toMatch(/WHEN ol\."id" IS NOT NULL THEN[\s\S]*WHEN d\."title" LIKE '%CRM-форм%' THEN d\."title"/)
+    expect(sql).toMatch(/WHEN ofb_lead\."id" IS NOT NULL THEN[\s\S]*WHEN d\."title" LIKE '%CRM-форм%' THEN d\."title"/)
   })
 })

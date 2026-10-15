@@ -792,8 +792,13 @@ Per-screen traps worth knowing before you touch one:
     Portal 14.10: 946 of 946 form leads named their brand, «Проект» agreed on
     all 804 that had both; orders opened 10–14.10: 155 of 345 had a form lead,
     the rest fall through to the rules below. Meta money and Meta leads stay
-    on the ad ACCOUNT's budget (`adBudgetProduct` — they carry no CRM form);
-    team blocks stay team blocks. The rest of this paragraph is the fallback.
+    on the ad ACCOUNT's budget (`adBudgetProduct` — Meta's own records, named
+    by Meta's form names, not the portal's renamed CRM forms); team blocks
+    stay team blocks. A SALE reads no `form_alias`: a lead known only by its
+    form's short name (452 of 6 320 leads in the week of 01–06.10) is that
+    form's brand, its order the product's. Roistat's «Товар» cut for a sale is
+    the same brand (`sfb`), so cut and switch agree. The rest of this
+    paragraph is the fallback.
   · Brand P&L: an ORDER's brand is the PRODUCT most of its money was paid
     for (2026-10-06, the client: «mahsulot bo'yicha») — its paid `deal_item`
     lines summed per brand (`PRODUCT_BRAND_PATTERNS`: «collagen|kollagen»,
@@ -805,14 +810,14 @@ Per-screen traps worth knowing before you touch one:
     Sadriddin (+Sevinchxon), Charos (+Malika)) — the rule from 2026-10-01
     until then. The same rule drives every screen's brand switch
     (`?brand=all|Collagen|Zextra|none`, «Brendsiz» the complement, so the
-    three slices add up to «Hammasi»); team BLOCKS stay team blocks; a LEAD's brand is its «Проект» field
-    first (`productLine`, UF_CRM_1750413928942 — since 2026-10-06, the
+    three slices add up to «Hammasi»); team BLOCKS stay team blocks; a LEAD
+    with no brand in its form's name reads its «Проект» field
+    (`productLine`, UF_CRM_1750413928942 — since 2026-10-06, the
     client's rule; «Kosmetika» or another non-brand project = none; filled on
     ~a third of the leads so far), else its source (`LEAD_SOURCE_BRAND`, +
     collagen.sinolife and «Сммщик sinolifeuz» since 2026-10-02 — the map also
-    marks «Lidlar»'s DM page rows), else its CRM form («zextra» in the name,
-    then «collagen» — before the owner rule since 2026-10-02 — then a Kamron
-    form), else none; a form title missing its
+    marks «Lidlar»'s DM page rows), else a Kamron / Tursunbek form is Zextra
+    and any other form Collagen, else none; a form title missing its
     closing quote still names its form. A «Brendsiz» block carries what
     neither brand claims (other products, brandless leads), so the three add
     up to the company; it is drawn as «Brendsiz проект» under the «Brendsiz»
@@ -1073,7 +1078,7 @@ Per-screen traps worth knowing before you touch one:
   `critical` minutes. The population of every deal check: Регистрация deals
   created today, OPEN, not «Исход» (by `leadChannel` — a form wins over its
   source); channel = `leadChannel` folded to five (form + manual → «Ген лид»,
-  page + smm → «СММ»); brand = `leadBrand` («Проект» first), nothing new.
+  page + smm → «СММ»); brand = `leadBrand` (form name, then «Проект»), nothing new.
   **PORTAL FACTS IT RESTS ON** (read-only MCP, 2026-10-09):
   · `voximplant.statistic.get` links a call to the CONTACT, almost never to
     the deal, and PORTAL_NUMBER is `REST_APP:64` on every row. So «no call» is

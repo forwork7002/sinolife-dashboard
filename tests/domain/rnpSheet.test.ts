@@ -654,6 +654,21 @@ describe('buildRnpSheet — the brand P&L (rows 394–445)', () => {
     expect(on(row(d, 'team:Sevinch', 'team:Sevinch:fakt1'), '2026-09-21')).toBe(5_000_000)
   })
 
+  it('files an order by its origin lead\'s form before its product (the client, 2026-10-15)', () => {
+    const base = input()
+    const d = buildRnpSheet({
+      ...base,
+      fakt: [
+        // A Collagen form's lead who paid for Zextra; a Zextra form's lead who bought Prox.
+        fakt('2026-09-21', 'Sevinch', { fakt1Orders: 1, fakt1Minor: som(2_000_000), productBrand: 'Zextra', formBrand: 'Collagen' }),
+        fakt('2026-09-21', 'Baza', { fakt1Orders: 1, fakt1Minor: som(1_000_000), productBrand: '-', formBrand: 'Zextra' }),
+      ],
+    })
+    expect(d21(d, 'pj:collagen:fakt1')).toBe(2_000_000)
+    expect(d21(d, 'pj:zextra:fakt1')).toBe(1_000_000)
+    expect(on(row(d, 'project:none', 'pj:none:fakt1'), '2026-09-21')).toBe(0)
+  })
+
   it('costs the marketing as the sheet does: budget × rate, +10 %, + typed lines, +1 % of ФАКТ 2', () => {
     const d = dto()
     const spendUzs = 100 * 12_200

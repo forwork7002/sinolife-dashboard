@@ -178,14 +178,16 @@ export function formNameOf(title: string | null | undefined): string | null {
 /**
  * The words a CRM form's NAME states its brand with, «zextra» asked first —
  * POSIX patterns, read by JS (`formNameBrand`, case-insensitive) and by SQL
- * (`formBrandOfTitleSql`, `~*`). Cyrillic is spelled with both cases written
- * out: `~*` on Cyrillic follows the database's ctype and under a C locale
- * folds nothing.
+ * (`formBrandOfTitleSql`, `~*`). Every Cyrillic letter is spelled with both
+ * its cases: `~*` on Cyrillic follows the database's ctype and under a C
+ * locale folds nothing, so only this spelling matches alike on both sides.
  */
 export const FORM_BRAND_PATTERNS: readonly (readonly [TargetProduct, string])[] = [
   ['Zextra', 'zextra'],
-  ['Collagen', 'collagen|kollagen|[Кк]оллаген'],
+  ['Collagen', 'collagen|kollagen|[Кк][Оо][Лл][Лл][Аа][Гг][Ее][Нн]'],
 ]
+
+const FORM_BRAND_REGEXES = FORM_BRAND_PATTERNS.map(([brand, pattern]) => [brand, new RegExp(pattern, 'i')] as const)
 
 /**
  * The brand a CRM form's name states, or null when it names neither.
@@ -200,7 +202,7 @@ export const FORM_BRAND_PATTERNS: readonly (readonly [TargetProduct, string])[] 
  */
 export function formNameBrand(formName: string | null): TargetProduct | null {
   if (formName === null) return null
-  for (const [brand, pattern] of FORM_BRAND_PATTERNS) if (new RegExp(pattern, 'i').test(formName)) return brand
+  for (const [brand, pattern] of FORM_BRAND_REGEXES) if (pattern.test(formName)) return brand
   return null
 }
 

@@ -20,6 +20,8 @@ import { leadBucket } from '@/server/domain/reklama/leadQuality'
 import type { ManualSpendChannel, ManualSpendRow } from '@/server/domain/reklama/manualSpend'
 import type { TargetProduct } from '@/server/domain/types'
 
+import { leadFormTitleSql, sourceDescriptionSql } from './leadFormSql'
+
 /** Leads created on one day, on one page, sitting in one stage now. */
 export interface LeadStageDayRow {
   /** `YYYY-MM-DD` in the app timezone. */
@@ -32,6 +34,11 @@ export interface LeadStageDayRow {
   readonly status: string
   /** «Проект» (`productLine`) — named, it decides the brand before the page (`leadBrand`). */
   readonly productLine: string | null
+  /**
+   * The CRM form's title, when a form filed the lead under the page — its
+   * name decides the brand first (`leadBrand`, 2026-10-15); absent = none.
+   */
+  readonly formTitle?: string | null
   readonly leads: number
 }
 
@@ -141,6 +148,7 @@ export class ReklamaRepository {
         stage: string
         status: string
         product_line: string | null
+        form_title: string | null
         leads: bigint
       }[]
     >(
@@ -156,6 +164,8 @@ export class ReklamaRepository {
         st."name" AS stage,
         d."status"::text AS status,
         NULLIF(btrim(d."productLine"), '') AS product_line,
+        -- A page's leads are mostly formless; the few a form files here keep its name for the brand (no alias: not «Ген лид»).
+        ${leadFormTitleSql('d."title"', sourceDescriptionSql('d'), 's."externalId"', 'NULL::text')} AS form_title,
         count(*)::bigint AS leads
       FROM "deal" d
       JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
@@ -163,7 +173,7 @@ export class ReklamaRepository {
       JOIN "sales_source" s ON s."id" = d."sourceId"
       WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
         AND s."externalId" = ANY($4::text[])
-      GROUP BY 1, 2, 3, 4, 5, 6
+      GROUP BY 1, 2, 3, 4, 5, 6, 7
       `,
       period.start,
       period.end,
@@ -177,6 +187,7 @@ export class ReklamaRepository {
       stage: r.stage,
       status: r.status,
       productLine: r.product_line,
+      formTitle: r.form_title,
       leads: Number(r.leads),
     }))
   }

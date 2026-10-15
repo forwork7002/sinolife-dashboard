@@ -251,7 +251,7 @@ const SET_OF: Partial<Record<RoistatDim, BitrixCutRow['set']>> = {
 
 /** What a cut needs from outside the domain, passed in so this file stays free of the service layer. */
 export interface RoistatLabelers {
-  /** RNP's `leadBrand`: «Проект», then source, then form. */
+  /** RNP's `leadBrand`: the CRM form's name, then «Проект», then source. */
   readonly brandOf: (sourceId: string | null, formTitle: string | null, productLine: string | null) => TargetProduct | null
   /** `leadChannel` over the portal's source vocabulary, for a lead no form opened. */
   readonly channelOf: (sourceId: string | null) => Exclude<LeadChannel, 'form'>
@@ -277,9 +277,11 @@ export function bitrixLabel(dim: RoistatDim, row: BitrixCutRow, { brandOf, chann
       return stated(row.sourceName)
     case 'product':
       /*
-        A sale carries what it was paid for (`product_line`, its line items, as
-        a brand's name); a lead its «Проект», else its source or form — one
-        call, since `leadBrand` reads a named line first either way.
+        A sale carries its brand by `saleBrand`'s rule (`product_line`: its
+        origin form's brand, else its line items', as a brand's name) and no
+        form here (`product_form`); a lead its form, else its «Проект», else
+        its source — one call, since with no form `leadBrand` reads a named
+        line first.
       */
       if (row.productLine === ROISTAT_NO_PRODUCT) return ROISTAT_NO_PRODUCT
       return brandOf(row.sourceId, row.formTitle, row.productLine) ?? ROISTAT_NO_PRODUCT

@@ -508,7 +508,7 @@ export function reklamaOverview(input: {
   const brand = input.brand ?? 'all'
   const busyForms = new Set<string>()
   if (brand !== 'all') {
-    const leadRows = input.leadRows.filter((row) => brandMatches(brand, leadBrand(row.sourceId, null, row.productLine)))
+    const leadRows = input.leadRows.filter((row) => brandMatches(brand, leadBrand(row.sourceId, row.formTitle ?? null, row.productLine)))
     const pagesWithLeads = new Set(leadRows.map((row) => row.sourceId))
     /*
       A Meta lead is its campaign's budget's: read before the rows are

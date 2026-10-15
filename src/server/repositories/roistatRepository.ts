@@ -40,7 +40,9 @@ import {
   dealFormTitleSql,
   formAliasCteSql,
   formAliasJoinSql,
+  formBrandOfTitleSql,
   leadFormTitleSql,
+  originLeadOrderSql,
   saleFormTitleSql,
   sourceDescriptionSql,
 } from './leadFormSql'
@@ -80,8 +82,9 @@ export interface RoistatBitrixRow extends RoistatBitrixCounters {
   /**
    * What the Collagen / Zextra switch files the row by — filled only when the
    * scan was asked for them (`brandKeys`), null otherwise. A lead row carries
-   * its own source, form and «Проект» (`brandLine`; `brandTeam` null); a sale row carries its
-   * origin lead's form (`brandForm`, `saleFormTitleSql`), the team that sold
+   * its own source, form and «Проект» (`brandLine`; `brandTeam` null); a sale row carries the
+   * BRAND its origin lead's form names in `brandForm` ('Collagen' / 'Zextra'
+   * / null — `originFormBrandSql`'s reading, not a title), the team that sold
    * it (`brandTeam` set) and what its line items say (`brandProduct`,
    * `DealProductBrand`) — the brand of a sale is its form's, else its
    * product's, the team only when it has neither (`saleBrand`). Every grouping set is
@@ -171,7 +174,7 @@ export class RoistatRepository {
             // The source too: a lead no form opened is labelled by its channel (DM page, «Исход», …).
             ['form_title', 'targetolog', 'source_id'],
             ['source_id', 'source_name'],
-            ['source_id', 'form_title', 'product_line'],
+            ['source_id', 'product_form', 'product_line'],
             ['region'],
             ['rop'],
             ['seller'],
@@ -185,7 +188,7 @@ export class RoistatRepository {
       read answers every other flag as «rolled up» and every other key as
       null itself.
     */
-    const keys = ['day', 'source_id', 'source_name', 'form_title', 'targetolog', 'product_line', 'region', 'rop', 'seller', 'registrar']
+    const keys = ['day', 'source_id', 'source_name', 'form_title', 'product_form', 'targetolog', 'product_line', 'region', 'rop', 'seller', 'registrar']
     const flags: readonly (readonly [string, string])[] = [
       ['g_day', 'day'],
       ['g_form', 'form_title'],
@@ -221,6 +224,7 @@ export class RoistatRepository {
         source_id: string | null
         source_name: string | null
         form_title: string | null
+        product_form: string | null
         targetolog: string | null
         product_line: string | null
         region: string | null
@@ -256,6 +260,8 @@ export class RoistatRepository {
           s."externalId" AS source_id,
           s."name" AS source_name,
           ${forms ? dealFormTitleSql('d', 's', 'fa') : `CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END`} AS form_title,
+          -- The «Товар» cut reads a lead's form (leadBrand); a sale's product_line is already its brand.
+          ${forms ? dealFormTitleSql('d', 's', 'fa') : 'NULL::text'} AS product_form,
           NULLIF(btrim(d."targetolog"), '') AS targetolog,
           -- «Проект»: named, it is the lead's brand after its form's name, before its source (leadBrand).
           NULLIF(btrim(d."productLine"), '') AS product_line,
@@ -314,11 +320,15 @@ export class RoistatRepository {
             conversion that is not one. Only a sale with no lead at all reads
             its own deal.
 
-            ITS «ТОВАР» IS WHAT IT WAS PAID FOR (the client, 2026-10-06): the
-            dominant line item's brand (pb), «Boshqa» when that product is
-            neither brand's; a sale with no line item, its team's (tm against
-            $5 / $6, each brand's teams) — saleBrand's rule, the brand
-            switch's, so the «Товар» cut and the switch never disagree.
+            ITS «ТОВАР» IS ITS BRAND BY saleBrand's RULE — the brand switch's,
+            so the «Товар» cut and the switch never disagree: the brand its
+            origin lead's CRM form names (sfb, 2026-10-15), else what it was
+            paid for (the client, 2026-10-06: the dominant line item's brand,
+            pb, «Boshqa» when that product is neither brand's), else, with no
+            line item, its team's (tm against $5 / $6, each brand's teams).
+            The cut reads it as it stands (product_form is NULL here): the
+            form title beside it, alias-recovered, could name another brand
+            than sfb, which reads no alias, as every other screen's sale.
           */
           CASE WHEN o.created IS NOT NULL THEN o.source_id ELSE ss."externalId" END AS source_id,
           CASE WHEN o.created IS NOT NULL THEN o.source_name ELSE ss."name" END AS source_name,
@@ -326,8 +336,10 @@ export class RoistatRepository {
             WHEN o.created IS NOT NULL THEN ${forms ? leadFormTitleSql('o.title', 'o.sd', 'o.source_id', 'ofa.title') : `CASE WHEN o.title LIKE '%CRM-форм%' THEN o.title END`}
             WHEN sb."title" LIKE '%CRM-форм%' THEN sb."title"
           END AS form_title,
+          NULL::text AS product_form,
           CASE WHEN o.created IS NOT NULL THEN o.targetolog ELSE NULLIF(btrim(sb."targetolog"), '') END AS targetolog,
           CASE
+            WHEN sfb.brand IS NOT NULL THEN sfb.brand
             WHEN pb.brand = '-' THEN '${ROISTAT_NO_PRODUCT}'
             WHEN pb.brand IS NOT NULL THEN pb.brand
             WHEN tm.team = ANY($5::text[]) THEN 'Collagen'
@@ -364,8 +376,8 @@ export class RoistatRepository {
             THEN GREATEST(EXTRACT(EPOCH FROM (sb."closedAt" - o.created)) / 86400.0, 0)::double precision
           END AS deal_days,
           NULL::text AS b_source,
-          -- The origin lead's form, as every other screen reads a sale's (originFormBrandSql): it names the brand first.
-          ${saleFormTitleSql('o.created IS NOT NULL', 'o.title', 'o.sd', 'sb."title"')} AS b_form,
+          -- A sale's b_form is a BRAND, not a title: what its origin lead's form names (sfb), read first by saleBrand.
+          sfb.brand AS b_form,
           NULL::text AS b_line,
           -- The rop column again: the team decides a sale with no form and no line item (rnpSheet saleBrand).
           tm.team AS b_team,
@@ -401,10 +413,14 @@ export class RoistatRepository {
             AND l."customerId" = sb."customerId"
             AND l."createdAtSource" <= sb."createdAtSource"
             AND l."createdAtSource" > sb."createdAtSource" - interval '${ORIGIN_LEAD_DAYS} days'
-          ORDER BY (l."status" = 'WON') DESC, l."createdAtSource" DESC
+          ORDER BY ${originLeadOrderSql('l')}
           LIMIT 1
         ) o ON true
         ${forms ? 'LEFT JOIN form_alias ofa ON ofa.sd = o.sd' : ''}
+        -- The brand the origin lead's form names — originFormBrandSql's reading, over the lead joined above.
+        LEFT JOIN LATERAL (
+          SELECT ${formBrandOfTitleSql(saleFormTitleSql('o.created IS NOT NULL', 'o.title', 'o.sd', 'sb."title"'))} AS brand
+        ) sfb ON true
         WHERE COALESCE(o.created, sb."createdAtSource") >= $1
           AND COALESCE(o.created, sb."createdAtSource") < $2
       ),
@@ -462,7 +478,8 @@ export class RoistatRepository {
         day: r.day,
         sourceId: r.source_id,
         sourceName: r.source_name,
-        formTitle: r.form_title,
+        // The «Товар» set groups a lead's form as product_form (a sale's is NULL there): the cut reads it as the form.
+        formTitle: set === 'product' ? r.product_form : r.form_title,
         targetolog: r.targetolog,
         productLine: r.product_line,
         region: r.region,

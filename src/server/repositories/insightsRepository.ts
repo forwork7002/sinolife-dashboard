@@ -5677,7 +5677,7 @@ export class InsightsRepository {
    * it on 2026-09-28, and it is how Logistika's per-ROP strip already reads,
    * so the two screens name every order's team identically.
    */
-  async rnpTeamDays(period: Period): Promise<RnpTeamDayRow[]> {
+  async rnpTeamDays(period: Period, brands = true): Promise<RnpTeamDayRow[]> {
     const params: unknown[] = [period.start, period.end, null]
     const rows = await this.prisma.$queryRawUnsafe<
       {
@@ -5692,7 +5692,7 @@ export class InsightsRepository {
         product_brand: string | null
         form_brand: string | null
       }[]
-    >(`${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.rnpTeamDaysSql()}`, ...params)
+    >(`${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.rnpTeamDaysSql(brands)}`, ...params)
     return rows.map((r) => ({
       day: r.day,
       rop: r.rop,
@@ -5857,8 +5857,14 @@ export class InsightsRepository {
      GROUP BY l."id", s."externalId", s."name"`
   }
 
-  /** Isolated so a test can pin it against the board's own predicates. */
-  static rnpTeamDaysSql(): string {
+  /**
+   * Isolated so a test can pin it against the board's own predicates.
+   *
+   * `brands` false skips the two per-order probes (product, origin form) and
+   * returns both brands NULL — for a reader under «Hammasi», which files no
+   * order by brand (Roistat's «Kunlar boʻyicha», polled by every open tab).
+   */
+  static rnpTeamDaysSql(brands = true): string {
     const fakt2 = InsightsRepository.faktDeliveredSql('ds."logisticsRole"')
     const refused = `(${InsightsRepository.FAKT1_OUTCOMES}) AND ${InsightsRepository.bucketCaseSql('ds."logisticsRole"::text')} = 'REFUSED'`
     return `
@@ -5871,14 +5877,18 @@ export class InsightsRepository {
          COALESCE(sum(d."amountMinor") FILTER (WHERE ${fakt2}), 0)::text AS fakt2,
          count(*) FILTER (WHERE ${refused})::bigint AS refused_orders,
          COALESCE(sum(d."amountMinor") FILTER (WHERE ${refused}), 0)::text AS refused,
-         pb.brand AS product_brand,
-         fb.brand AS form_brand
+         ${brands ? 'pb.brand' : 'NULL::text'} AS product_brand,
+         ${brands ? 'fb.brand' : 'NULL::text'} AS form_brand
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
-       LEFT JOIN LATERAL (SELECT ${InsightsRepository.dealProductBrandSql('d')} AS brand) pb ON true
+       ${
+         brands
+           ? `LEFT JOIN LATERAL (SELECT ${InsightsRepository.dealProductBrandSql('d')} AS brand) pb ON true
        LEFT JOIN LATERAL (SELECT ${originFormBrandSql('d')} AS brand) fb ON true
        GROUP BY 1, 2, pb.brand, fb.brand`
+           : 'GROUP BY 1, 2'
+       }`
   }
 
   /**

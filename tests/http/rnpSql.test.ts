@@ -44,6 +44,14 @@ describe('rnpTeamDaysSql', () => {
     expect(sql).toMatch(/GROUP BY 1, 2, pb\.brand, fb\.brand\s*$/)
   })
 
+  it('skips both brand probes for a reader under «Hammasi»', () => {
+    const plain = InsightsRepository.rnpTeamDaysSql(false)
+    expect(plain).not.toContain('"deal_item"')
+    expect(plain).not.toContain(`interval '30 days'`)
+    expect(plain).toContain('NULL::text AS product_brand')
+    expect(plain).toMatch(/GROUP BY 1, 2\s*$/)
+  })
+
   it('buckets by the Tashkent queue day', () => {
     expect(sql).toMatch(/c\.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '[^']+'\)::date::text AS day/)
   })
