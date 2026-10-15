@@ -2080,6 +2080,38 @@ model OpenLineChat {
   @@map("open_line_chat")
 }
 
+/// One CRM-FORM FILL as the portal recorded it (2026-10-15, the client: the
+/// Bitrix24 side must count Facebook's leads «huddi shu kombinatsiyada»): a
+/// `crm.activity` with PROVIDER_ID CRM_WEBFORM, «Заполнена CRM-форма
+/// "<form>"», CREATED = the instant the form was filled. Every fill is one —
+/// a new contact's (on the deal it opened) and a returning one's (on the
+/// contact's OLD deal, where no new deal is opened). Measured 01–15.10.2026:
+/// 16 489 fills against Meta's 16 550 form leads, every day 97–103 %, while
+/// the Регистрация deals they opened read 83 %.
+///
+/// A HISTORY, APPEND-ONLY: written by `formFillFeed.ts` in id order and never
+/// deleted — a fill happened even when its deal is later removed, as Meta
+/// keeps counting it. No foreign keys: the owner is the portal's own id.
+model CrmFormFill {
+  id              String         @id @default(cuid())
+  externalSource  ExternalSource @default(BITRIX24)
+  /// The activity's portal id — also the «forma akt #N» a «Qayta zayavka» deal names.
+  externalId      String
+  /// SUBJECT as the portal wrote it: «Заполнена CRM-форма "<form>"». The form is parsed at read time.
+  subject         String
+  /// CREATED — when the form was filled.
+  filledAt        DateTime
+  /// OWNER_TYPE_ID — 2 a deal, 3 a contact.
+  ownerTypeId     String
+  /// OWNER_ID — the portal id of that deal or contact.
+  ownerExternalId String
+  createdAt       DateTime       @default(now())
+
+  @@unique([externalSource, externalId])
+  @@index([filledAt])
+  @@map("crm_form_fill")
+}
+
 /// The lead watch's two feeds, one row each — id 'calls' and 'chats'. Like
 /// `moysklad_sync`: a pass that found nothing new and a pass that never ran
 /// would otherwise read the same, and «Лид назорати» prints how old its data

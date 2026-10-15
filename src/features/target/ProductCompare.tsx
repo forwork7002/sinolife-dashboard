@@ -435,7 +435,17 @@ function ProductColumn({
               'Forma leadlari',
               <span className="inline-flex items-baseline gap-2">
                 <ReachChip percent={product.formReachPercent} meta={product.metaFormLeads} />
-                <span>{formatNumber(product.bitrixFormLeads)}</span>
+                <Tooltip
+                  content={
+                    product.formLeadsBasis === 'fills'
+                      ? 'Bitrix24 ga tushgan har bir forma toʻldirish — Facebook sanaganidek: eski mijoz qayta toʻldirsa ham, yangi bitim ochilmasa ham'
+                      : 'Bu davr uchun forma toʻldirishlari hali oʻqilmagan — Регистрация da ochilgan forma bitimlari'
+                  }
+                >
+                  <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">
+                    {formatNumber(product.bitrixFormLeads)}
+                  </span>
+                </Tooltip>
               </span>,
             )}
             {row('DM sahifa leadlari', formatNumber(product.bitrixPageLeads))}

@@ -21,7 +21,7 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { NOT_STATED } = await import('@/server/repositories/targetRepository')
-const { TargetService, countersDto, fillDays, metaBlock, resetTargetCaches, withTargetologLeads } = await import(
+const { TargetService, countersDto, fillDays, fillsCover, metaBlock, resetTargetCaches, withTargetologLeads } = await import(
   '@/server/services/targetService'
 )
 
@@ -86,10 +86,18 @@ describe('fillDays', () => {
 describe('TargetService.overview', () => {
   let asked: TargetWindow[]
   let service: InstanceType<typeof TargetService>
+  let fills: Awaited<ReturnType<TargetRepository['formFills']>>
 
   beforeEach(() => {
     resetTargetCaches()
     asked = []
+    fills = {
+      coverage: null,
+      rows: [
+        { subject: 'Заполнена CRM-форма "Umar-collagen Collagen (UMAR)"', fills: 7 },
+        { subject: 'Заполнена CRM-форма "Umar-zextra UMAR (zextra-1)"', fills: 3 },
+      ],
+    }
     const repository = {
       summary: async (window: TargetWindow) => {
         asked.push(window)
@@ -109,6 +117,7 @@ describe('TargetService.overview', () => {
       metaSpend: async () => [],
       metaCampaigns: async () => [],
       formLeads: async () => [],
+      formFills: async () => fills,
       metaImportedAt: async () => null,
     } as unknown as TargetRepository
     const marketing = { snapshot: async () => null } as unknown as MarketingRepository
@@ -134,6 +143,42 @@ describe('TargetService.overview', () => {
     await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')
     await service.overview(PERIOD, 'all', 'all', 'Asia/Tashkent')
     expect(asked).toHaveLength(2)
+  })
+
+  it('counts the fills only once a pass has caught up, and only from where they were read', async () => {
+    // No pass has reached the newest fill yet: a backfill under way is no count.
+    expect((await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')).meta.total).toMatchObject({
+      formLeadsBasis: 'deals',
+      bitrixFormLeads: 0,
+    })
+
+    resetTargetCaches()
+    fills = { ...fills, coverage: { from: new Date('2026-08-31T19:00:00Z'), through: new Date('2026-09-03T19:05:00Z') } }
+    expect((await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')).meta.total).toMatchObject({
+      formLeadsBasis: 'fills',
+      bitrixFormLeads: 10,
+    })
+
+    // One product asked for: the other product's fills are no part of any figure.
+    resetTargetCaches()
+    expect((await service.overview(PERIOD, 'target', 'Collagen', 'Asia/Tashkent')).meta.total.bitrixFormLeads).toBe(7)
+
+    // A window that starts before the fills were read would be counted short.
+    resetTargetCaches()
+    fills = { ...fills, coverage: { from: new Date('2026-09-02T19:00:00Z'), through: new Date('2026-09-03T19:05:00Z') } }
+    expect((await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')).meta.total.formLeadsBasis).toBe('deals')
+  })
+
+  it('stops trusting fills the feed has not brought current in half an hour', () => {
+    const coverage = (through: string) => ({ from: new Date('2026-08-31T19:00:00Z'), through: new Date(through) })
+    const now = new Date('2026-10-15T10:00:00Z')
+    const live = { ...PERIOD, end: now }
+    expect(fillsCover(coverage('2026-10-15T09:31:00Z'), live, now)).toBe(true)
+    expect(fillsCover(coverage('2026-10-15T09:29:00Z'), live, now)).toBe(false)
+    // A window that ended long ago needs the fills only up to its end.
+    expect(fillsCover(coverage('2026-09-03T18:40:00Z'), PERIOD, now)).toBe(true)
+    expect(fillsCover(coverage('2026-09-03T18:00:00Z'), PERIOD, now)).toBe(false)
+    expect(fillsCover(null, live, now)).toBe(false)
   })
 
   it('says «never imported» for Meta rather than printing zero spend', async () => {
@@ -266,7 +311,7 @@ describe('metaBlock — the «Лид база» sheet', () => {
       ...ZERO,
       ...over,
     })
-    const paired = metaBlock({
+    const pairedInput = {
       rows,
       importedAt: new Date('2026-10-13T06:00:00Z'),
       window: { from: '2026-10-01', to: '2026-10-13' },
@@ -294,7 +339,8 @@ describe('metaBlock — the «Лид база» sheet', () => {
         campaign('990016692137088', 'Umar - 64', 'Sayt-1', 'OUTCOME_LEADS', 12_000_000n, 9),
       ],
       usdRate: 12_000,
-    })
+    }
+    const paired = metaBlock(pairedInput)
     const collagen = paired.products.find((p) => p.product === 'Collagen')!
     const zextra = paired.products.find((p) => p.product === 'Zextra')!
 
@@ -316,6 +362,52 @@ describe('metaBlock — the «Лид база» sheet', () => {
       expect(collagen.deliveredMoney.amountMinor).toBe('4000000000')
       expect(collagen.costPerBitrixLeadUsd).toBeCloseTo(452.63 / 1_300, 6)
       expect(paired.productsTotal.bitrixLeads).toBe(1_470)
+    })
+ 
+    it('says it counted deals when no fills were handed over', () => {
+      expect(collagen.formLeadsBasis).toBe('deals')
+    })
+
+    describe('…COUNTED AS META COUNTS THEM: EVERY FILL (2026-10-15)', () => {
+      /*
+        01–15.10.2026: 13 197 Meta Collagen form leads, 13 174 CRM-form fills
+        on the portal, 10 896 Регистрация deals — a returning contact's fill
+        lands on the old deal and opens none. The client: count «huddi shu
+        kombinatsiyada».
+      */
+      const fill = (form: string, fills: number) => ({ subject: `Заполнена CRM-форма "${form}"`, fills })
+      const counted = metaBlock({
+        ...pairedInput,
+        forms: [
+          ...pairedInput.forms,
+          // The AI targetolog files deals, never a CRM form: its leads are its deals.
+          form('CRM-формы «AI targetolog · Sinolife AI forma 26.09.2026»', { leads: 5, leadWon: 1 }, 'Collagen'),
+        ],
+        fills: [
+          fill('Umar-collagen Collagen (UMAR)', 990),
+          fill('Eldor-collagen x', 31),
+          fill('Umar-zextra UMAR (zextra-1)', 78),
+          // A website form answers no Meta form campaign.
+          fill('collagen form web', 4),
+          // No form named at all: not a form fill this screen can place.
+          { subject: 'Заполнена форма', fills: 2 },
+        ],
+      })
+      const col = counted.products.find((p) => p.product === 'Collagen')!
+      const zex = counted.products.find((p) => p.product === 'Zextra')!
+
+      it('counts every fill of the product\'s forms, plus the AI targetolog\'s deals', () => {
+        expect(col).toMatchObject({ bitrixFormLeads: 990 + 31 + 5, formLeadsBasis: 'fills' })
+        expect(col.formReachPercent).toBeCloseTo(102.6, 6)
+        expect(zex).toMatchObject({ bitrixFormLeads: 78, formLeadsBasis: 'fills' })
+        expect(zex.formReachPercent).toBeCloseTo(97.5, 6)
+      })
+
+      it('keeps the pages, kval, orders and money on the deals', () => {
+        expect(col).toMatchObject({ bitrixPageLeads: 370, bitrixLeads: 370 + 1_026, bitrixLeadWon: 241, orders: 70 })
+        expect(col.deliveredMoney.amountMinor).toBe('4000000000')
+        expect(counted.productsTotal.bitrixLeads).toBe(370 + 1_026 + 100 + 78)
+      })
     })
   })
 

@@ -82,11 +82,16 @@ import {
   refreshOpenLineChats,
   refreshRecentCalls,
 } from '../src/server/integrations/crm/sync/leadWatchFeeds'
+import {
+  FORM_FILLS_FROM_MONTH,
+  prismaFormFillStore,
+  refreshFormFills,
+} from '../src/server/integrations/crm/sync/formFillFeed'
 import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { importMetaAdForms } from '../src/server/integrations/meta/metaAdFormImport'
 import { importMetaLeads } from '../src/server/integrations/meta/metaLeadImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
-import { resolvePeriod, zonedDateKey } from '../src/server/domain/period/period'
+import { resolvePeriod, sinceMonth, zonedDateKey } from '../src/server/domain/period/period'
 import {
   type DealsBackfill,
   isBackfillDue,
@@ -338,6 +343,14 @@ const EVENTS_GIVE_UP_MS = 3_600_000
  */
 const LEAD_WATCH_MS = LEAD_WATCH_SETTINGS.refreshEveryMs
 const LEAD_WATCH_SLACK_MS = 30_000
+
+/**
+ * How often the CRM-form fills are read (`formFillFeed.ts`): one request a
+ * pass, ~290 a day (less the tick's slack, as the lead watch). Five minutes
+ * because Meta's own figure beside them moves hourly; a pass that stopped at
+ * its page cap (the first backfill) runs again on the next tick instead.
+ */
+const FORM_FILLS_MS = 5 * 60_000
 
 /**
  * How far back the stage history is re-read once, at startup. Default: 45 days.
@@ -1020,6 +1033,9 @@ async function main() {
   let lastLeadWatchAt: Date | null = null
   const leadWatchClock = prismaFeedClock(prisma)
   const openChatStore = prismaChatStore(prisma, 'BITRIX24')
+  const formFillStore = prismaFormFillStore(prisma, 'BITRIX24')
+  /** Null while a backfill is behind: the next tick reads on at once. */
+  let lastFormFillsAt: Date | null = null
   const triageRereadAt = new Map<string, Date>()
   try {
     const now = Date.now()
@@ -1485,6 +1501,44 @@ async function main() {
           console.warn(`  ${stamp()} lid nazorati · ochiq chatlar muvaffaqiyatsiz: ${message}`)
           await leadWatchClock.failed('chats', message, new Date()).catch(() => undefined)
         }
+      }
+    }
+
+    /*
+      THE CRM-FORM FILLS — see `FORM_FILLS_MS` and `formFillFeed.ts`. The
+      watch's guards (gate shut, calming down, stopping), its own clock and
+      its own try: a failure costs this feed one pass and nothing else.
+    */
+    const formsNow = new Date()
+    if (
+      isPassDue(lastFormFillsAt, formsNow, FORM_FILLS_MS - LEAD_WATCH_SLACK_MS) &&
+      calm === 0 &&
+      !provider.gate.isOpen() &&
+      !stopping
+    ) {
+      lastFormFillsAt = formsNow
+      try {
+        const r = await refreshFormFills({
+          clock: leadWatchClock,
+          store: formFillStore,
+          fetch: (afterId) => provider.fetchFormFills(afterId, 1),
+          firstIdSince: (since) => provider.firstActivityIdSince(since),
+          from: sinceMonth(FORM_FILLS_FROM_MONTH, formsNow, WORKER_TIME_ZONE).start,
+          now: formsNow,
+          stopping: () => stopping,
+        })
+        if (!r.complete && !stopping) lastFormFillsAt = null
+        // Quiet on an ordinary pass: one short page every five minutes.
+        if (r.bootstrap || !r.complete) {
+          console.log(
+            `  ${stamp()} forma toʻldirishlari: #${r.floor} gacha ${r.written} ta yozildi` +
+              (r.complete ? '' : ' — hali yetib olinmadi, keyingi tsiklda davom etadi'),
+          )
+        }
+      } catch (error) {
+        const message = describeFeedError(error)
+        console.warn(`  ${stamp()} forma toʻldirishlari muvaffaqiyatsiz: ${message}`)
+        await leadWatchClock.failed('forms', message, new Date()).catch(() => undefined)
       }
     }
 

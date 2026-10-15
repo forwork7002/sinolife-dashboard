@@ -124,8 +124,13 @@ export interface MetaProductTotalsDto extends MetaMetricsDto {
   readonly metaFormCplUsd: number | null
   /** Conversations Meta counted on the DM campaigns. */
   readonly metaConversations: number
-  /** Регистрация leads naming one of the product's Meta lead forms. */
+  /**
+   * Meta's form leads as Bitrix24 recorded them: every CRM-form fill
+   * ('fills' — a returning contact's too) or, for a window the fills do not
+   * cover, the Регистрация deals naming those forms ('deals').
+   */
   readonly bitrixFormLeads: number
+  readonly formLeadsBasis: 'fills' | 'deals'
   /** Регистрация leads from the product's target pages (DM). */
   readonly bitrixPageLeads: number
   /** bitrixFormLeads ÷ metaFormLeads, %. */

@@ -21,10 +21,12 @@ import {
 import { type MetaProduct, campaignChannel, isSiteCampaign, ownerOf } from '@/server/integrations/meta/accounts'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
+import { formFillBrand, formNameOf } from '@/server/domain/leads/leadSources'
 import {
   NOT_STATED,
   type MetaCampaignTotalRow,
   type TargetCountersRow,
+  type TargetFormFills,
   type TargetFormRow,
   type TargetGroupRow,
   type MetaSpendRow,
@@ -214,8 +216,17 @@ export interface MetaProductTotalsDto extends MetaMetricsDto {
   readonly metaFormCplUsd: number | null
   /** Conversations Meta counted on the DM (message) campaigns. */
   readonly metaConversations: number
-  /** Регистрация leads that name one of this product's Meta lead forms («Ген лид»). */
+  /**
+   * Meta's form leads as Bitrix24 recorded them. On `formLeadsBasis` 'fills'
+   * (the rule since 2026-10-15): every CRM-form FILL of the product's forms
+   * in the window — a returning contact's too, though the portal opens no
+   * deal for it — plus the AI targetolog's leads, which arrive as deals and
+   * not as CRM forms. On 'deals': the Регистрация deals naming those forms,
+   * as before — for a window the fills do not cover yet.
+   */
   readonly bitrixFormLeads: number
+  /** What `bitrixFormLeads` counts — see there. */
+  readonly formLeadsBasis: 'fills' | 'deals'
   /** Регистрация leads from this product's target pages (DM). */
   readonly bitrixPageLeads: number
   /** bitrixFormLeads ÷ metaFormLeads — how much of what Meta counted reached the portal. */
@@ -381,6 +392,29 @@ function ratio(numerator: number, denominator: number): number | null {
 
 const PRODUCT_ORDER: readonly MetaProduct[] = ['Collagen', 'Zextra', 'Boshqa']
 
+/** A form deal of the AI targetolog's own integration — the title `leadFormTitleSql` gives it. */
+const AI_FORM_TITLE = /^CRM-формы «AI targetolog · /
+
+/** The brand a fill's subject («Заполнена CRM-форма "<form>"») counts for, or null. */
+function fillProduct(subject: string): MetaProduct | null {
+  const name = formNameOf(subject)
+  return name === null ? null : formFillBrand(name)
+}
+
+/**
+ * How old the fills' last whole pass may be before the card stops trusting
+ * them for a window that runs to now. The worker reads every ~6 minutes; a
+ * feed that has failed for half an hour would count today short under the
+ * «every fill» label, so the deals are counted instead until it reads again.
+ */
+const FILLS_STALE_MS = 30 * 60_000
+
+/** Whether the fills cover the whole window — read from its start and current to its end. */
+export function fillsCover(coverage: TargetFormFills['coverage'], period: Period, now: Date): boolean {
+  if (coverage === null || period.start < coverage.from) return false
+  return coverage.through.getTime() >= Math.min(period.end.getTime(), now.getTime()) - FILLS_STALE_MS
+}
+
 /** Spend, leads and delivery for one slice, with every rate null over nothing. */
 function metrics(spend: bigint, leads: number, impressions: number, clicks: number): MetaMetricsDto {
   const dollars = Number(spend) / MICRO
@@ -412,6 +446,12 @@ export function metaBlock(input: {
   productOfSource: ReadonlyMap<string, MetaProduct | undefined>
   /** The lead-form leads and their sales (`TargetRepository.formLeads`). */
   forms?: readonly TargetFormRow[]
+  /**
+   * The window's CRM-form fills (`TargetRepository.formFills`) — what
+   * «Forma leadlari» counts; null when the fills do not cover the window,
+   * and then the form deals are counted instead.
+   */
+  fills?: TargetFormFills['rows'] | null
   /** Meta per campaign over the window (`TargetRepository.metaCampaigns`). */
   campaigns?: readonly MetaCampaignTotalRow[]
   usdRate: number | null
@@ -482,6 +522,27 @@ export function metaBlock(input: {
     return [{ row, product, page }]
   })
   /*
+    THE FILLS, AS META COUNTS ITS LEADS (2026-10-15, the client: «facebookdagi
+    leadlar … qanday kombinatsiya … bitrix24da ham huddi shu kombinatsiyada»).
+    Meta counts every fill, on the day it was filled; the portal opens a deal
+    for only some — a returning contact's fill lands on the old deal. Over
+    01–15.10.2026 the deals were 83 % of Meta's Collagen leads, the fills
+    99.8 %. A fill's brand is its form's (`formFillBrand`: a website, vacancy
+    or cosmetics form answers no Meta form campaign). The AI targetolog's own
+    integration files deals, never a CRM form, so its leads are its deals
+    either way. «Leadlar · jami» and every per-lead rate on the card divide
+    these: a lead is what Meta calls one.
+  */
+  const fills =
+    input.fills === null || input.fills === undefined
+      ? null
+      : input.fills.flatMap((row) => {
+          const product = fillProduct(row.subject)
+          return product === null ? [] : [{ product, fills: row.fills }]
+        })
+  const aiForms = forms.filter((f) => AI_FORM_TITLE.test(f.row.formTitle))
+
+  /*
     «Sayt» lead campaigns send people to the website, not to a Meta form, so
     their leads never arrive as a CRM form: they stay out of the form pair, as
     they stay out of the targetolog cards' `formUsd`.
@@ -517,7 +578,11 @@ export function metaBlock(input: {
     const sum = (pick: (s: TargetCountersRow) => number) => signed.reduce((n, [s, k]) => n + k * pick(s), 0)
     const sumMinor = (pick: (s: TargetCountersRow) => bigint) =>
       signed.reduce((n, [s, k]) => n + BigInt(k) * pick(s), 0n)
-    const bitrixFormLeads = ownForms.reduce((n, s) => n + s.leads, 0)
+    const bitrixFormLeads =
+      fills === null
+        ? ownForms.reduce((n, s) => n + s.leads, 0)
+        : fills.filter((f) => inScope(f.product)).reduce((n, f) => n + f.fills, 0) +
+          aiForms.filter((f) => inScope(f.product)).reduce((n, f) => n + f.row.leads, 0)
     const bitrixPageLeads =
       sources.reduce((n, s) => n + s.leads, 0) - pageForms.reduce((n, s) => n + s.leads, 0)
     const bitrixLeads = bitrixPageLeads + bitrixFormLeads
@@ -539,6 +604,7 @@ export function metaBlock(input: {
       metaFormCplUsd: ratio(Number(formSpend) / MICRO, metaFormLeads),
       metaConversations: ownCampaigns.filter((c) => c.channel === 'dm').reduce((n, c) => n + c.conversations, 0),
       bitrixFormLeads,
+      formLeadsBasis: fills === null ? 'deals' : 'fills',
       bitrixPageLeads,
       formReachPercent: percent(bitrixFormLeads, metaFormLeads),
       bitrixLeads,
@@ -721,11 +787,14 @@ function leadDto(row: TargetLeadRow): TargetLeadDto {
 const summaryCache = ttlCache<Awaited<ReturnType<TargetRepository['summary']>>>(120_000, LIVE_CACHE)
 /** The lead-form scan, keyed by the window alone — it takes no source scope. */
 const formCache = ttlCache<Awaited<ReturnType<TargetRepository['formLeads']>>>(120_000, LIVE_CACHE)
+/** The window's CRM-form fills, keyed like the form scan. */
+const fillCache = ttlCache<TargetFormFills>(120_000, LIVE_CACHE)
 
 /** Test seam: module-level, so shared between test files inside one worker. */
 export function resetTargetCaches(): void {
   summaryCache.clear()
   formCache.clear()
+  fillCache.clear()
 }
 
 /** What `/target/leads` narrows by, already validated by `targetLeadsQuerySchema`. */
@@ -777,9 +846,10 @@ export class TargetService {
     }
 
     const formKey = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
-    const [summary, formRows, targetSources, snapshot, metaRows, campaignRows, metaImportedAt] = await Promise.all([
+    const [summary, formRows, formFills, targetSources, snapshot, metaRows, campaignRows, metaImportedAt] = await Promise.all([
       summaryCache.get(key, () => this.repository.summary({ period, sourceIds })),
       formCache.get(formKey, () => this.repository.formLeads(period)),
+      fillCache.get(formKey, () => this.repository.formFills(period)),
       this.repository.targetSources(TARGET_SOURCE_IDS),
       this.marketing.snapshot(),
       this.repository.metaSpend(window.from, window.to),
@@ -828,6 +898,12 @@ export class TargetService {
           product === 'all'
             ? formRows
             : formRows.filter((f) => leadBrand(f.sourceId, f.formTitle, f.productLine) === product),
+        // Fills only where they cover the window (`fillsCover`); else the deals, as before.
+        fills: fillsCover(formFills.coverage, period, new Date())
+          ? product === 'all'
+            ? formFills.rows
+            : formFills.rows.filter((r) => fillProduct(r.subject) === product)
+          : null,
         campaigns:
           product === 'all'
             ? campaignRows

@@ -326,6 +326,20 @@ export interface RawOpenLineChat extends ExternalRecord {
   readonly openedAt: Date
 }
 
+/**
+ * One CRM-form fill — a `crm.activity` of the portal's web-form provider.
+ * Not part of `CrmProvider`, like the open chats: read through the provider
+ * class itself (`fetchFormFills`).
+ */
+export interface RawFormFill extends ExternalRecord {
+  /** «Заполнена CRM-форма "<form>"». */
+  readonly subject: string
+  readonly filledAt: Date
+  /** OWNER_TYPE_ID: '2' a deal, '3' a contact. */
+  readonly ownerTypeId: string
+  readonly ownerExternalId: string
+}
+
 export interface RawStore extends ExternalRecord {
   readonly name: string
   readonly address?: string

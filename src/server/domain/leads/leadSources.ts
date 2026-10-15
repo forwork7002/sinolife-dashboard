@@ -207,6 +207,27 @@ export function formNameBrand(formName: string | null): TargetProduct | null {
 }
 
 /**
+ * Forms no Meta customer campaign answers: the website's («collagen form
+ * web», one fill over 01–15.10.2026 — Meta's form figure leaves «Sayt» out,
+ * `isSiteCampaign`), a vacancy's and the cosmetics line's (Meta leaves the
+ * hiring campaigns and Kosmetika Eldor out of both brands).
+ */
+const NOT_A_META_CUSTOMER_FORM = /\bweb\b|website|\bsite\b|sayt|сайт|vakans|вакан|vacanc|ishga\s+olish|\bhr\b|kosmetik|косметик/i
+
+/**
+ * The brand a CRM-form FILL counts for on «Target tahlili» (2026-10-15) — or
+ * null when it answers no Collagen / Zextra form campaign. A fill carries its
+ * form's name and nothing else (no «Проект», no source), so where a deal
+ * falls back to those, a fill stops at the form: the name's brand, else its
+ * targetolog's (`formOwner`), else none — never the «any other form is the
+ * collagen» guess, which would file an unnamed HR or cosmetics form under it.
+ */
+export function formFillBrand(formName: string): TargetProduct | null {
+  if (NOT_A_META_CUSTOMER_FORM.test(formName)) return null
+  return formNameBrand(formName) ?? formOwner(formName)?.product ?? null
+}
+
+/**
  * A form wins over its source: a form deal is «Ген лид» by source, and the
  * handful a form files under a page's source are still that form's leads.
  * «Ген лид» WITHOUT a form title is an operator typing a lead in by hand.

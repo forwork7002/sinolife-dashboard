@@ -34,6 +34,7 @@ import {
   type RawDealItem,
   type RawDepartment,
   type RawEmployee,
+  type RawFormFill,
   type RawOpenLineChat,
   type RawPayment,
   type RawPipeline,
@@ -51,6 +52,7 @@ import {
   ACTIVITY_OWNER_DEAL,
   ALL_PIPELINES,
   CONFIRMATION_REFUSAL_STAGES,
+  CRM_FORM_PROVIDER_ID,
   DELIVERY_ROUTE_NAMES,
   OPEN_LINE_BOT_USER_ID,
   OPEN_LINE_PROVIDER_ID,
@@ -2541,6 +2543,73 @@ export class Bitrix24CrmProvider implements CrmProvider {
       undefined,
       ACTIVITY_LIST,
     )
+  }
+
+  /**
+   * CRM-FORM FILLS above `afterId`, oldest first — at most `maxPages` pages
+   * of fifty, and whether the walk reached the newest fill (`complete`).
+   *
+   * The same indexed seek as the open chats (`>ID`, `order: { ID: 'ASC' }`,
+   * `start: -1`, no date): ~0.1 s a page on the live portal, 2026-10-15. A
+   * day is ~1 100 fills, so an ordinary pass is one short page; a first pass
+   * backfilling weeks stops at `maxPages` and the next one carries on from
+   * the last id written (`formFillFeed.ts`).
+   *
+   * THROWS RATHER THAN GUESSING, because the caller APPENDS what this returns
+   * and never deletes: a row of another provider, at or under the floor, or
+   * without its owner or date is what an ignored filter looks like, and one
+   * such page would put a day of calls into the form leads for good.
+   */
+  async fetchFormFills(afterId: string, maxPages: number): Promise<{ fills: RawFormFill[]; complete: boolean }> {
+    const fills: RawFormFill[] = []
+    let after = afterId
+
+    for (let page = 0; page < maxPages; page++) {
+      const payload = await this.call<unknown>(
+        ACTIVITY_LIST,
+        {
+          order: { ID: 'ASC' },
+          filter: { PROVIDER_ID: CRM_FORM_PROVIDER_ID, '>ID': after },
+          select: ['ID', 'OWNER_ID', 'OWNER_TYPE_ID', 'SUBJECT', 'CREATED', 'PROVIDER_ID'],
+          start: -1,
+        },
+        { retries: 0 },
+      )
+      if (!Array.isArray(payload.result)) {
+        throw new Bitrix24Error(`Bitrix24 ${ACTIVITY_LIST} (forma toʻldirishlari) roʻyxat qaytarmadi`, undefined, false, undefined, ACTIVITY_LIST)
+      }
+      const rows = payload.result as Record<string, unknown>[]
+
+      for (const row of rows) {
+        const id = nonEmpty(row.ID)
+        const ownerExternalId = nonEmpty(row.OWNER_ID)
+        const ownerTypeId = nonEmpty(row.OWNER_TYPE_ID)
+        const filledAt = toDate(row.CREATED)
+        const asked =
+          id !== undefined && /^\d+$/.test(id) && Number(id) > Number(after) && row.PROVIDER_ID === CRM_FORM_PROVIDER_ID
+        if (!asked || !ownerExternalId || !ownerTypeId || !filledAt) {
+          throw new Bitrix24Error(
+            // The id only when it IS one: whatever else sits in that field is the portal's text, not ours to print.
+            `Bitrix24 ${ACTIVITY_LIST} (forma toʻldirishlari) soʻralmagan yoki chala yozuvni qaytardi: ${id !== undefined && /^\d+$/.test(id) ? id : '—'} — filtr eʼtiborsiz qoldi`,
+            undefined,
+            false,
+            undefined,
+            ACTIVITY_LIST,
+          )
+        }
+        fills.push({
+          externalId: id,
+          subject: typeof row.SUBJECT === 'string' ? row.SUBJECT : '',
+          filledAt,
+          ownerTypeId: String(ownerTypeId),
+          ownerExternalId,
+        })
+        after = id
+      }
+
+      if (rows.length < LIST_PAGE) return { fills, complete: true }
+    }
+    return { fills, complete: false }
   }
 
   /**

@@ -31,6 +31,8 @@ import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import type { Period } from '@/server/domain/period/period'
 
+import { parseFormFillsState } from '@/server/integrations/crm/sync/formFillFeed'
+
 import { formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 
 /** A money column as Postgres returns it: text, to survive the driver. */
@@ -117,6 +119,18 @@ export interface TargetFormRow extends TargetCountersRow {
   readonly formTitle: string
   readonly sourceId: string | null
   readonly productLine: string | null
+}
+
+/** The CRM-form fills of a window, by the activity's subject (`TargetRepository.formFills`). */
+export interface TargetFormFills {
+  /**
+   * What the table holds: fills from `from` to `through`, the start of the
+   * last pass that reached the newest one. Null until a pass has caught up —
+   * a backfill still under way is no count.
+   */
+  readonly coverage: { readonly from: Date; readonly through: Date } | null
+  /** «Заполнена CRM-форма "<form>"» and how many fills carried it. */
+  readonly rows: readonly { readonly subject: string; readonly fills: number }[]
 }
 
 /** One Meta campaign over a window, summed (`TargetRepository.metaCampaigns`). */
@@ -653,6 +667,30 @@ export class TargetRepository {
       returned: int(r.returned),
       returnedMinor: money(r.returned_minor),
     }))
+  }
+
+  /**
+   * EVERY CRM-FORM FILL OF THE WINDOW, by its subject (`crm_form_fill`,
+   * `formFillFeed.ts`) — the Bitrix24 count of Meta's form leads: one per
+   * fill, on the instant it was filled, a returning contact's included (the
+   * portal files those on the old deal and opens no Регистрация deal). The
+   * subject names the form; the brand is decided in the service, as for a
+   * deal (`leadBrand`). One index range on `filledAt`, ~1 100 rows a day.
+   */
+  async formFills(period: Period): Promise<TargetFormFills> {
+    const [clock, rows] = await Promise.all([
+      this.prisma.leadWatchSync.findUnique({ where: { id: 'forms' }, select: { state: true, lastSuccessAt: true } }),
+      this.prisma.crmFormFill.groupBy({
+        by: ['subject'],
+        where: { filledAt: { gte: period.start, lt: period.end } },
+        _count: { _all: true },
+      }),
+    ])
+    const state = parseFormFillsState(clock?.state ?? null)
+    return {
+      coverage: state && clock?.lastSuccessAt ? { from: state.from, through: clock.lastSuccessAt } : null,
+      rows: rows.map((r) => ({ subject: r.subject, fills: r._count._all })),
+    }
   }
 
   /**

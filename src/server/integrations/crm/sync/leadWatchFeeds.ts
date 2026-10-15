@@ -49,7 +49,12 @@ import type { FetchOptions, Page, RawCall, RawOpenLineChat } from '@/server/inte
 // The feeds' clock
 // ---------------------------------------------------------------------------
 
-export type LeadWatchFeed = 'calls' | 'chats'
+/**
+ * 'forms' is not the watch's: the CRM-form fills (`formFillFeed.ts`) keep
+ * their bookmark in the same table. «Лид назорати» reads its two rows by id
+ * (`LeadWatchRepository.feedClocks`), so a third row moves nothing there.
+ */
+export type LeadWatchFeed = 'calls' | 'chats' | 'forms'
 
 /**
  * Where a feed keeps its bookmark and its clock — `lead_watch_sync`, one row

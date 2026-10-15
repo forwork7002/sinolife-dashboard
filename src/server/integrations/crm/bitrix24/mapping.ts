@@ -661,6 +661,18 @@ export const OPEN_LINE_PROVIDER_ID = 'IMOPENLINES_SESSION'
 export const ACTIVITY_OWNER_DEAL = '2'
 
 /**
+ * How Bitrix24 records a CRM-FORM FILL: one `crm.activity` with this
+ * PROVIDER_ID, SUBJECT «Заполнена CRM-форма "<form>"», CREATED the instant
+ * the form was filled, owned by the deal the fill opened — or, for a
+ * returning contact, by the contact's OLD deal (or the contact itself), with
+ * no new deal opened. The «forma akt #N» of a «Qayta zayavka» deal is this
+ * activity's id. Measured through the read-only MCP on 2026-10-15: 16 489
+ * fills over 01–15.10 against Meta's 16 550 form leads; an id-floor page
+ * answered in ~0.1 s.
+ */
+export const CRM_FORM_PROVIDER_ID = 'CRM_WEBFORM'
+
+/**
  * The NEXTBOT AI bot's portal user. Of the 826 chats open on 2026-10-09, 815
  * had RESPONSIBLE_ID = 1 — the bot's own conversations, their deals standing
  * in «ИИ обработка» (C20:NEW) — and 11 a person. A chat the bot holds is not a
