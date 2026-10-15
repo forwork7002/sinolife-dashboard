@@ -36,6 +36,8 @@ describe('middleware matcher', () => {
       '/_next/static/media/logo.svg',
       '/_next/image',
       '/favicon.ico',
+      '/icon.png',
+      '/apple-icon.png',
     ]) {
       expect(matcher.test(path)).toBe(false)
     }

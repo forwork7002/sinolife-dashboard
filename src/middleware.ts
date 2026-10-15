@@ -45,10 +45,19 @@ export const config = {
    * expects JSON. It carries one timestamp and no session, so there is
    * nothing in it to guard.
    *
+   * `icon.png` and `apple-icon.png` are the app icons (`src/app/`, the
+   * SinoLife logo since 2026-10-15). A phone fetches the second one when
+   * somebody adds the dashboard to the home screen, and nothing promises the
+   * session cookie rides that fetch; answered with the login PAGE instead of
+   * an image, iOS draws its grey letter tile — what the home screen showed
+   * while the app had no icon at all.
+   *
    * There is no `.svg` exemption any more. It covered create-next-app's
    * public/*.svg, deleted on 2026-08-29; nothing outside /_next/static serves
    * an .svg now, so the alternative only let any path ending in `.svg` skip
    * the signed-out redirect.
    */
-  matcher: ['/((?!api|login|build-id.json|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    '/((?!api|login|build-id.json|_next/static|_next/image|favicon.ico|icon.png|apple-icon.png).*)',
+  ],
 }
