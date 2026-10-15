@@ -6,7 +6,7 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
-import type { MoyskladSide, SverkaItem } from '@/server/domain/sverka/sverka'
+import type { MoyskladSide, ProductCheckRow, SverkaItem } from '@/server/domain/sverka/sverka'
 
 export interface MoyskladOrderRow extends MoyskladSide {
   readonly bitrixDealId: string | null
@@ -135,6 +135,62 @@ export class SverkaRepository {
       out.set(r.deal_id, list)
     }
     return out
+  }
+
+  /**
+   * Every deal holding product rows last READ before `readBefore` whose
+   * newest MoySklad order — the order `ordersForDeals` puts first for
+   * `compareDeal` — is dated from `since`, beside that order. For the worker's
+   * product re-read (`productRecheckRows`).
+   *
+   * «Last read» is the newest `deal_item."updatedAt"`: the line-item upsert
+   * writes every row the portal lists, changed or not, so it moves on every
+   * read of the deal.
+   */
+  async productCheckRows(since: Date, readBefore: Date): Promise<ProductCheckRow[]> {
+    const orders = await this.prisma.moyskladOrder.findMany({
+      where: { bitrixDealId: { not: null }, moment: { gte: since } },
+      select: {
+        bitrixDealId: true,
+        moment: true,
+        items: { select: { productCode: true, productName: true, quantity: true, totalMinor: true } },
+      },
+      orderBy: [{ moment: 'desc' }, { updatedAtSource: 'desc' }],
+    })
+    const newest = new Map<string, (typeof orders)[number]>()
+    for (const o of orders) if (o.bitrixDealId && !newest.has(o.bitrixDealId)) newest.set(o.bitrixDealId, o)
+    if (newest.size === 0) return []
+
+    const deals = await this.prisma.$queryRawUnsafe<{ id: string; external_id: string }[]>(
+      `SELECT d."id", d."externalId" AS external_id
+         FROM "deal" d
+         JOIN "deal_item" i ON i."dealId" = d."id"
+        WHERE d."externalSource" = 'BITRIX24'
+          AND d."externalId" = ANY($1::text[])
+        GROUP BY d."id"
+       HAVING max(i."updatedAt") < $2::timestamp`,
+      [...newest.keys()],
+      readBefore,
+    )
+    const items = await this.dealItems(deals.map((d) => d.id))
+
+    return deals.flatMap((d) => {
+      const order = newest.get(d.external_id)
+      if (!order) return []
+      return [
+        {
+          dealId: d.external_id,
+          moment: order.moment,
+          bitrix: items.get(d.id) ?? [],
+          moysklad: order.items.map((i) => ({
+            code: i.productCode,
+            name: i.productName,
+            quantity: i.quantity,
+            totalMinor: i.totalMinor,
+          })),
+        },
+      ]
+    })
   }
 
   /**

@@ -114,6 +114,8 @@ import {
 } from '../src/server/integrations/crm/bitrix24/refusal'
 import type { RefusalClass } from '../src/server/integrations/crm/bitrix24/refusal'
 import { FRESHNESS_ENTITIES } from '../src/server/repositories/referenceRepository'
+import { SverkaRepository } from '../src/server/repositories/sverkaRepository'
+import { productRecheckRows } from '../src/server/domain/sverka/sverka'
 import { CALL_DATA_FLOOR } from '../src/lib/callQuality'
 import { LEAD_WATCH_SETTINGS } from '../src/lib/leadWatchSettings'
 
@@ -192,6 +194,30 @@ const MOYSKLAD_SWEEP_RUNS = 10
  * so the Bitrix24 sync is never held for long.
  */
 const MOYSKLAD_MAX_PAGES = 15
+
+/**
+ * «SVERKA»'S PRODUCT RE-READ — see `productRecheckRows` (2026-10-15, the client
+ * over two «Mahsulot farqi» lines the portal no longer had: «aniq qilish
+ * kerak»). After a MoySklad read, at most every `PRODUCT_RECHECK_MS`, the
+ * deals whose stored product rows disagree with their order (dated in the last
+ * `PRODUCT_RECHECK_REACH_MS`), and were last read over `PRODUCT_RECHECK_AGE_MS`
+ * ago, are handed to the line-item read (`requestDealItems`, 20 stored lines a
+ * tick). A difference that survives the read is the portal's; a deal still
+ * differing — or one the read gave up on, whose rows never move — is asked
+ * about again a day later at most (`productAskedAt` covers the second, in
+ * this process). One `crm.deal.productrows.get` per deal per day. Minutes; 0
+ * switches it off.
+ */
+const PRODUCT_RECHECK_MS = Number(process.env.SYNC_PRODUCT_RECHECK_MIN ?? 60) * 60_000
+const PRODUCT_RECHECK_AGE_MS = 24 * 60 * 60_000
+/** Orders this old or newer: MoySklad's whole reach on 2026-10-15, bounded from then on. */
+const PRODUCT_RECHECK_REACH_MS = 120 * 24 * 60 * 60_000
+/**
+ * Deals one check may hand over — newest orders first. 200 an hour bounds the
+ * day at 4 800 reads even if a product's codes stopped matching wholesale; on
+ * 2026-10-15 the chip held two deals.
+ */
+const PRODUCT_RECHECK_MAX = 200
 
 /**
  * How many ticks between deletion sweeps. Default: 60 = hourly.
@@ -870,6 +896,7 @@ async function main() {
   const dealsHandler = handlers.find((h) => h.entity === 'DEALS')
 
   const store = new PrismaSyncStore(prisma)
+  const sverkaRepository = new SverkaRepository(prisma)
 
   const engine = new SyncEngine({
     provider,
@@ -1184,6 +1211,10 @@ async function main() {
   let tick = 0
   /** MoySklad reads this process has made — every tenth also sweeps deletions. */
   let moyskladRuns = 0
+  /** When «Sverka»'s product check last ran; null — on the first MoySklad turn. */
+  let lastProductCheckAt: Date | null = null
+  /** Deals the check asked for, and when — none is asked for twice inside a day. */
+  const productAskedAt = new Map<string, number>()
   /**
    * Consecutive failures, for backoff.
    *
@@ -2003,6 +2034,34 @@ async function main() {
       } catch (error) {
         console.warn(`  ${stamp()} moysklad muvaffaqiyatsiz: ${(error as Error).message}`)
         await recordMoyskladFailure(prisma, error as Error).catch(() => undefined)
+      }
+
+      // See `PRODUCT_RECHECK_MS`. Asks the portal nothing itself; never fatal.
+      const checkNow = new Date()
+      if (isPassDue(lastProductCheckAt, checkNow, PRODUCT_RECHECK_MS)) {
+        lastProductCheckAt = checkNow
+        const now = checkNow.getTime()
+        for (const [id, at] of productAskedAt) if (now - at >= PRODUCT_RECHECK_AGE_MS) productAskedAt.delete(id)
+        try {
+          const rows = await sverkaRepository.productCheckRows(
+            new Date(now - PRODUCT_RECHECK_REACH_MS),
+            new Date(now - PRODUCT_RECHECK_AGE_MS),
+          )
+          const due = productRecheckRows(
+            rows.filter((r) => !productAskedAt.has(r.dealId)),
+            PRODUCT_RECHECK_MAX,
+          )
+          if (due.length > 0) {
+            for (const r of due) productAskedAt.set(r.dealId, now)
+            const waiting = provider.requestDealItems(due.map((r) => ({ id: r.dealId, lines: r.bitrix.length })))
+            console.log(
+              `  ${stamp()} sverka: ${due.length} bitim mahsuloti MoySkladʼdan farq qiladi —` +
+                ` Bitrix24ʼdan qayta oʻqiladi (navbatda ${waiting})`,
+            )
+          }
+        } catch (error) {
+          console.warn(`  ${stamp()} sverka mahsulot tekshiruvi muvaffaqiyatsiz: ${(error as Error).message}`)
+        }
       }
     }
 

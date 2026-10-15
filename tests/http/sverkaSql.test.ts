@@ -49,3 +49,63 @@ describe('sverkaCohortSql', () => {
     expect(bare(reach.queueSql('window', '$3'))).toContain('$3')
   })
 })
+
+const { SverkaRepository } = await import('@/server/repositories/sverkaRepository')
+
+/**
+ * The worker's product re-read: each deal's NEWEST MoySklad order — the one
+ * `compareDeal` reads — beside the rows stored for it, and only for a deal
+ * whose rows were last read before the cutoff.
+ */
+describe('productCheckRows', () => {
+  const OMEGA = '-n3II3IBjoS45bviltfkN0'
+  const line = (productCode: string, quantity: number) => ({
+    productCode,
+    productName: 'Omega Sinolife 500',
+    quantity,
+    totalMinor: 0n,
+  })
+
+  it('pairs a deal\'s newest order in reach with its rows, asking only for rows read before the cutoff', async () => {
+    const calls: { sql: string; params: unknown[] }[] = []
+    let query: unknown
+    const prisma = {
+      moyskladOrder: {
+        findMany: async (args: unknown) => {
+          query = args
+          return [
+            { bitrixDealId: '1052240', moment: new Date('2026-10-02T09:00:00Z'), items: [] },
+            { bitrixDealId: '1050902', moment: new Date('2026-10-01T09:00:00Z'), items: [line(OMEGA, 1)] },
+            // An older order of 1052240: not the one compared.
+            { bitrixDealId: '1052240', moment: new Date('2026-10-01T08:00:00Z'), items: [line(OMEGA, 1)] },
+          ]
+        },
+      },
+      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
+        calls.push({ sql, params })
+        if (sql.includes('HAVING')) return [{ id: 'd2', external_id: '1052240' }]
+        return [{ deal_id: 'd2', code: OMEGA, name: 'Omega Sinolife 500', quantity: 1, total: '0' }]
+      },
+    }
+    const since = new Date('2026-06-17T13:00:00Z')
+    const cutoff = new Date('2026-10-14T13:00:00Z')
+
+    const rows = await new SverkaRepository(prisma as never).productCheckRows(since, cutoff)
+
+    expect(query).toMatchObject({
+      where: { bitrixDealId: { not: null }, moment: { gte: since } },
+      orderBy: [{ moment: 'desc' }, { updatedAtSource: 'desc' }],
+    })
+    expect(calls[0]!.params).toEqual([['1052240', '1050902'], cutoff])
+    expect(bare(calls[0]!.sql)).toMatch(/HAVING max\(i\."updatedAt"\) < \$2::timestamp/)
+    expect(calls[1]!.params).toEqual([['d2']])
+    expect(rows).toEqual([
+      {
+        dealId: '1052240',
+        moment: new Date('2026-10-02T09:00:00Z'),
+        bitrix: [{ code: OMEGA, name: 'Omega Sinolife 500', quantity: 1, totalMinor: 0n }],
+        moysklad: [],
+      },
+    ])
+  })
+})

@@ -387,6 +387,33 @@ export function productDiff(bitrix: readonly SverkaItem[], moysklad: readonly Sv
     .map(([key, r]) => ({ key, code: r.code, name: r.name, bitrixQuantity: r.b, moyskladQuantity: r.m }))
 }
 
+/** One deal's stored product rows beside its newest MoySklad order's lines. */
+export interface ProductCheckRow {
+  /** The Bitrix24 deal id. */
+  readonly dealId: string
+  /** The MoySklad order's `moment`. */
+  readonly moment: Date
+  readonly bitrix: readonly SverkaItem[]
+  readonly moysklad: readonly SverkaItem[]
+}
+
+/**
+ * The deals whose stored rows would draw «Mahsulot farqi» — `compareDeal`'s
+ * PRODUCTS test, to the letter — newest order first, at most `limit`.
+ *
+ * The worker has these rows read off the portal again before the difference
+ * is believed (the client, 2026-10-15, over 1050902 and 1052240: «aniq qilish
+ * kerak»). Both were edited on the portal on 2026-10-06, before the sync
+ * learned to drop a row the portal no longer lists, and kept an Omega line
+ * their orders did not have — while the portal and MoySklad agreed.
+ */
+export function productRecheckRows(rows: readonly ProductCheckRow[], limit: number): ProductCheckRow[] {
+  return rows
+    .filter((r) => r.bitrix.length > 0 && !sameProducts(r.bitrix, r.moysklad))
+    .sort((a, b) => b.moment.getTime() - a.moment.getTime())
+    .slice(0, limit)
+}
+
 /**
  * Compares one cohort deal with its MoySklad orders (newest first).
  */

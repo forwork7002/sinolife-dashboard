@@ -193,6 +193,16 @@ const PRODUCT_ROWS = 'crm.deal.productrows.get'
 const ITEM_READ_ATTEMPTS = 3
 
 /**
+ * Stored lines of requested deals (`requestDealItems`) one line-item read
+ * takes — at least one deal, however many lines it has. Counted in LINES, not
+ * deals: the read's reconciliation deletes nothing past `surplusLineLimit` —
+ * 25 lines at the least — and a requested deal may have lost any of its
+ * stored lines, so fifteen deals with two stale lines each would refuse the
+ * whole run, the tick's own removals with it. 20 leaves the tick's deals 5.
+ */
+const REQUESTED_LINES_PER_READ = 20
+
+/**
  * How long an enumeration item a fresh `crm.deal.fields` did not know stays
  * written off (`deadLabels`) before a deal naming it may ask again.
  */
@@ -437,6 +447,23 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * the deal.
    */
   private itemDealsOwed = new Map<string, number>()
+
+  /**
+   * Deals whose product rows someone outside the deals pass asked to have read
+   * again (`requestDealItems`), `REQUESTED_LINES_PER_READ` stored lines a read.
+   *
+   * DEAL_ITEMS reads a deal's rows only when the deals pass sees it modified,
+   * and only since 2026-10-06 (99e25969) does a read drop the rows the portal
+   * no longer lists. A deal edited before that and untouched since kept a row
+   * it had lost — 1052240 still carried the Omega gift the portal removed
+   * that afternoon, and «Sverka» drew «−1 Omega Sinolife 500» against an
+   * order that matched the portal exactly.
+   *
+   * Each with the lines stored for it, which is what a read may drop. Keyed,
+   * so a deal asked for twice is read once. In memory, like `itemDealsOwed`:
+   * a restart forgets it, and the asker asks again.
+   */
+  private requestedItemDeals = new Map<string, number>()
 
   // Running totals, for progress output only. The walk is stateless — every
   // page is addressed by the id it starts after — so these carry no meaning
@@ -2027,8 +2054,22 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * not in it and keeps its lines (`productRows`).
    */
   async fetchDealItems(options: DealItemsOptions = {}): Promise<DealItemsPage> {
+    // Taken off the request list now; a read that fails keeps them owed (`productRows`).
+    const requested: string[] = []
+    let requestedLines = 0
+    for (const [id, lines] of this.requestedItemDeals) {
+      if (requested.length > 0 && requestedLines + lines > REQUESTED_LINES_PER_READ) break
+      requested.push(id)
+      requestedLines += lines
+    }
+    for (const id of requested) this.requestedItemDeals.delete(id)
     const wanted = [
-      ...new Set([...this.itemDealsOwed.keys(), ...this.itemDealIds, ...(options.dealExternalIds ?? [])]),
+      ...new Set([
+        ...this.itemDealsOwed.keys(),
+        ...this.itemDealIds,
+        ...(options.dealExternalIds ?? []),
+        ...requested,
+      ]),
     ]
     if (wanted.length === 0) return this.page([])
 
@@ -2089,6 +2130,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
     this.progress(`  deal items: ${items.length}`)
     return { items, dealsRead: [...answered.keys()] }
+  }
+
+  /**
+   * Asks for these deals' product rows to be read again by the next line-item
+   * reads, `REQUESTED_LINES_PER_READ` stored lines per read, in the order
+   * given — see `requestedItemDeals`. `lines` is how many are stored for the
+   * deal now. Returns how many deals are waiting.
+   */
+  requestDealItems(deals: readonly { readonly id: string; readonly lines: number }[]): number {
+    for (const d of deals) this.requestedItemDeals.set(d.id, d.lines)
+    return this.requestedItemDeals.size
   }
 
   /**

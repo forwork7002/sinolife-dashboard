@@ -243,4 +243,38 @@ describe('reading line items', () => {
     expect((await provider.fetchDealItems()).dealsRead).toEqual(['1001', '1003']) // its last
     expect(warnings).toHaveLength(1)
   })
+
+  /*
+    «SVERKA» ASKS FOR DEALS NO DEALS PASS WILL NAME — 1052240 was last edited
+    on 2026-10-06 and kept a line the portal had dropped. They are read 20
+    STORED LINES a read, in the order asked, so one reconciliation never has
+    more lines to drop than `surplusLineLimit` lets it; each deal once however
+    often it is asked for, and a deal bigger than that alone.
+  */
+  it('reads the deals it was asked to, twenty stored lines a read, each once', async () => {
+    const { provider, asked } = portal(() => [LINE], () => [])
+    const ids = Array.from({ length: 12 }, (_, i) => String(3001 + i))
+
+    expect(provider.requestDealItems(ids.map((id) => ({ id, lines: 2 })))).toBe(12)
+    expect(provider.requestDealItems([{ id: '3001', lines: 2 }, { id: '4001', lines: 30 }])).toBe(13)
+
+    for (let read = 0; read < 4; read++) {
+      await provider.fetchDeals()
+      await provider.fetchDealItems()
+    }
+    expect(asked).toEqual([ids.slice(0, 10), ids.slice(10), ['4001']])
+  })
+
+  it('keeps an asked-for deal owed when the read is refused', async () => {
+    const overload = { error: 'OVERLOAD_LIMIT', error_description: 'REST API is blocked due to overload' }
+    const { provider, asked } = portal((_id, read) => (read === 1 ? overload : [LINE]), () => [])
+    provider.requestDealItems([{ id: '3001', lines: 1 }])
+
+    await provider.fetchDeals()
+    await expect(provider.fetchDealItems()).rejects.toThrow(/OVERLOAD_LIMIT/)
+    expect(await provider.probe()).toBe(true)
+
+    expect((await provider.fetchDealItems()).dealsRead).toEqual(['3001'])
+    expect(asked).toEqual([['3001'], ['3001']])
+  })
 })

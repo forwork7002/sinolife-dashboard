@@ -1302,6 +1302,20 @@ Per-screen traps worth knowing before you touch one:
   other orders, MoySklad's payed/shipped. Search + TSV copy over the list.
   The region/ROP vocabularies were NOT measured on production MoySklad rows
   (no local data then) — if a chip reads high, read the pairs first.
+  **«Mahsulot farqi» IS RE-READ BEFORE IT IS BELIEVED (2026-10-15)** — the
+  client over 1050902 / 1052240: «−1 Omega Sinolife 500» where the portal and
+  MoySklad agreed. Both deals lost an Omega row on the portal on 2026-10-06,
+  were re-read before DEAL_ITEMS learned to drop unlisted rows (99e25969), and
+  were never modified again, so the stale row stayed. After a MoySklad read,
+  hourly (`SYNC_PRODUCT_RECHECK_MIN`), the worker hands every deal whose
+  stored rows fail `sameProducts` against its newest order and were last read
+  over a day ago (`deal_item."updatedAt"`, which every read rewrites; orders
+  of the last 120 days, at most 200 deals a check, none asked twice a day) to
+  the line-item read — `productCheckRows` → `productRecheckRows` →
+  `provider.requestDealItems`, 20 STORED LINES a tick (not deals: a
+  reconciliation past `surplusLineLimit`, 25, deletes nothing). While the list
+  is non-empty that is ≤ one `crm.deal.productrows.get` per deal, ~10 a tick.
+  A difference that survives is the portal's.
 - **Mijoz qaytishi** — **REWORKED ON 2026-09-15**, on the client's instruction
   («kogorta jadvalini … kuchaytirish … oddiylashtirish kerak, mijoz qaytishi
   boʻlimini toʻliqligicha yaxshilash»). Three things changed and each fixed a

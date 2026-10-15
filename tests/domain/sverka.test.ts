@@ -11,6 +11,7 @@ import {
   orphanLine,
   phasesAgree,
   productDiff,
+  productRecheckRows,
   productRows,
   regionKey,
   regionVerdict,
@@ -323,6 +324,37 @@ describe('productDiff', () => {
 
   it('is empty when the baskets agree', () => {
     expect(productDiff(bitrix().items, moysklad().items)).toEqual([])
+  })
+})
+
+describe('productRecheckRows', () => {
+  /*
+    1052240 on 2026-10-15: the portal and MoySklad both held one Collagen;
+    the stored rows still had the Omega gift the portal dropped on 2026-10-06.
+  */
+  const collagen = { code: COLLAGEN, name: 'Collagen Marine Sinolife', quantity: 1, totalMinor: 80_000_000n }
+  const omega = { code: OMEGA, name: 'Omega Sinolife 500', quantity: 1, totalMinor: 0n }
+  const row = (dealId: string, moment: string, bitrixItems: typeof collagen[], moyskladItems: typeof collagen[]) => ({
+    dealId,
+    moment: new Date(moment),
+    bitrix: bitrixItems,
+    moysklad: moyskladItems,
+  })
+
+  it('names the deals «Mahsulot farqi» would flag, newest order first', () => {
+    const rows = [
+      row('1050902', '2026-10-01T09:00:00Z', [{ ...collagen, quantity: 2 }, omega, omega], [{ ...collagen, quantity: 2 }, omega]),
+      row('1052240', '2026-10-01T12:00:00Z', [collagen, omega], [collagen]),
+      row('1060000', '2026-10-02T12:00:00Z', [collagen], [collagen]),
+    ]
+    const ids = (limit: number) => productRecheckRows(rows, limit).map((r) => r.dealId)
+    expect(ids(10)).toEqual(['1052240', '1050902'])
+    expect(ids(1)).toEqual(['1052240'])
+  })
+
+  it('skips a deal with no stored rows, as compareDeal does', () => {
+    expect(productRecheckRows([row('1', '2026-10-01T09:00:00Z', [], [collagen])], 10)).toEqual([])
+    expect(compareDeal(bitrix({ items: [] }), [moysklad({ items: [collagen] })]).issues).not.toContain('PRODUCTS')
   })
 })
 
