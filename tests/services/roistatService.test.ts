@@ -33,7 +33,7 @@ const PERIOD: Period = {
 const NOW = new Date('2026-10-05T07:00:00Z')
 
 function teamDay(fields: Partial<RnpTeamDayRow> & Pick<RnpTeamDayRow, 'day' | 'rop'>): RnpTeamDayRow {
-  return { fakt1Orders: 0, fakt1Minor: 0n, fakt2Orders: 0, fakt2Minor: 0n, refusedOrders: 0, refusedMinor: 0n, productBrand: null, ...fields }
+  return { fakt1Orders: 0, fakt1Minor: 0n, fakt2Orders: 0, fakt2Minor: 0n, refusedOrders: 0, refusedMinor: 0n, productBrand: null, formBrand: null, ...fields }
 }
 
 /** The queue cohort's team-days under «Kunlar boʻyicha» — what a case puts here, `days` reads. */

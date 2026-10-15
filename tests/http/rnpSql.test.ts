@@ -35,10 +35,13 @@ describe('rnpTeamDaysSql', () => {
     expect(sql).toContain(`= 'REFUSED'`)
   })
 
-  it('groups day × team × the orders\' product — the brand is the product\'s (2026-10-06), decided in the domain', () => {
+  it('groups day × team × the orders\' form brand × product — the brand is decided in the domain (saleBrand)', () => {
     expect(sql).toContain('FROM "deal_item" di JOIN "product" dp ON dp."id" = di."productId"')
     expect(sql).toContain('pb.brand AS product_brand')
-    expect(sql).toMatch(/GROUP BY 1, 2, pb\.brand\s*$/)
+    // 2026-10-15: the origin lead's CRM form names the brand first.
+    expect(sql).toContain('fb.brand AS form_brand')
+    expect(sql).toContain(`interval '30 days'`)
+    expect(sql).toMatch(/GROUP BY 1, 2, pb\.brand, fb\.brand\s*$/)
   })
 
   it('buckets by the Tashkent queue day', () => {

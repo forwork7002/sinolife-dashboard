@@ -525,7 +525,7 @@ function formTailOwners(forms: Iterable<string>): ReadonlyMap<string, string> {
  * names keeps a row by its own name.
  *
  * THE PRODUCT IS THE LEAD'S BRAND, `leadBrand` — the rule every screen's
- * brand switch reads («Проект», source, form) — so a row is drawn under the
+ * brand switch reads (form name, «Проект», source) — so a row is drawn under the
  * same slice its leads are counted in. A formless lead with no «Проект» has no
  * brand: it is the person's «Brendsiz» row (`brandless|…`, product «Boshqa»,
  * a key no Meta account's owner wears), never guessed into the collagen.
@@ -561,7 +561,7 @@ type LeadSourcesInput = Parameters<typeof leadSourcesOverview>[0]
 /**
  * The tab's inputs narrowed to one brand — RNP's rules, so the switch agrees
  * with RNP's «Коллаген / Зехтра проект»: a lead (and its kval, its FAKT 1
- * client, the AI's mark) by `leadBrand` — its «Проект», then its source, then its form; a chat
+ * client, the AI's mark) by `leadBrand` — its form's name, then its «Проект», then its source; a chat
  * by its page; Meta money by its ad budget (`adBudgetProduct`). What
  * nothing ties to a brand — an outgoing call, a hand-typed lead, a page no
  * brand claims, hiring money — is «Brendsiz», and so are «Сарафан» and the
@@ -1317,7 +1317,7 @@ export class LeadSourcesService {
       The sheet's «Telegram» block beside the targetologs' cards: the dollars
       typed by hand (no Meta row behind them), the leads the portal filed
       under Telegram (`leadChannel` = telegram — the bot, the open line, the
-      brand's own channel), each on the brand its «Проект», source or form
+      brand's own channel), each on the brand its form's name, «Проект» or source
       names, as «Lidlar» files every lead. Read from the SAME rows the cards
       above are built from, so the two agree to the lead.
     */

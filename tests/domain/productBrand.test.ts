@@ -38,4 +38,13 @@ describe('saleBrand', () => {
     expect(saleBrand(null, 'Malika')).toBe('Zextra')
     expect(saleBrand(null, 'Hayot')).toBeNull()
   })
+
+  it('is the origin lead\'s form\'s brand first (the client, 2026-10-15), whatever was paid for or who sold it', () => {
+    expect(saleBrand('Zextra', 'Sevinch', 'Collagen')).toBe('Collagen')
+    expect(saleBrand('-', 'Hayot', 'Zextra')).toBe('Zextra')
+    expect(saleBrand(null, 'Asliddin', 'Collagen')).toBe('Collagen')
+    // No form names a brand: the product, then the team, as before.
+    expect(saleBrand('Zextra', 'Sevinch', null)).toBe('Zextra')
+    expect(saleBrand(null, 'Asliddin', null)).toBe('Zextra')
+  })
 })

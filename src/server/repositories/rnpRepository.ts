@@ -50,7 +50,7 @@ export interface RnpRegistrationDayRow {
   /** The lead's SOURCE_ID, and the CRM form's full title when it came from one — what decides its brand. */
   readonly sourceId: string | null
   readonly formTitle: string | null
-  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  /** «Проект» (`productLine`) — named, it decides the brand after the form's name, before the source (`leadBrand`). */
   readonly productLine: string | null
   /** Регистрация deals created, «Дубликат (лид)» and late «Qayta zayavka» copies excluded (the red «Дубликат» is a lead). */
   readonly leads: number

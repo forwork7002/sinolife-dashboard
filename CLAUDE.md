@@ -779,6 +779,21 @@ Per-screen traps worth knowing before you touch one:
     named in its hint, so the rows add up to «РОП ларга тарқатилди». Row 48
     stays the registrars' WON by close day: the two differ by definition
     (01.10: 240 kval, 233 handed out); its hint says so.
+  · **THE CRM FORM'S NAME DECIDES FIRST (2026-10-15, the client: «crm-forma
+    nomlariga qarab … hamma yerda», after renaming every form «<targetolog>-
+    collagen …» / «<targetolog>-zextra …»).** A LEAD is the brand its form's
+    name states (`formNameBrand`, `FORM_BRAND_PATTERNS`: «zextra», then
+    «collagen|kollagen|[Кк]оллаген») before «Проект» and its source; an ORDER
+    is the brand its ORIGIN LEAD's form names (`originFormBrandSql` in
+    `leadFormSql.ts`: Roistat's origin lead — same contact, ≤ 30 days before
+    the sales deal, WON first — else the sales deal's own form title), before
+    its product and team (`saleBrand(product, team, formBrand)`,
+    `brandSliceSql`, `rnpTeamDays.formBrand`, Roistat's sale `b_form`).
+    Portal 14.10: 946 of 946 form leads named their brand, «Проект» agreed on
+    all 804 that had both; orders opened 10–14.10: 155 of 345 had a form lead,
+    the rest fall through to the rules below. Meta money and Meta leads stay
+    on the ad ACCOUNT's budget (`adBudgetProduct` — they carry no CRM form);
+    team blocks stay team blocks. The rest of this paragraph is the fallback.
   · Brand P&L: an ORDER's brand is the PRODUCT most of its money was paid
     for (2026-10-06, the client: «mahsulot bo'yicha») — its paid `deal_item`
     lines summed per brand (`PRODUCT_BRAND_PATTERNS`: «collagen|kollagen»,

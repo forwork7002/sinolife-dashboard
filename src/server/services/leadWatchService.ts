@@ -123,7 +123,7 @@ export function watchLeads(rows: readonly WatchLeadRow[]): WatchLead[] {
       open: row.status === 'OPEN' && row.stageId !== REGISTRATION_DUPLICATE_STAGE_ID,
       firstStage: row.stageId !== null && REGISTRATION_INTAKE_STAGE_IDS.has(row.stageId),
       channel: watch,
-      // The lead's own brand: its «Проект» first (`leadBrand`, the rule every screen shares).
+      // The lead's own brand: its form's name first, then «Проект» (`leadBrand`, the rule every screen shares).
       brand: leadBrand(row.sourceId, row.formTitle, row.productLine),
       // The feed's: a form's or a page's, whatever project one lead of it names.
       feed: watchFeed(channel, form, row.sourceId, row.source, leadBrand(row.sourceId, row.formTitle)),

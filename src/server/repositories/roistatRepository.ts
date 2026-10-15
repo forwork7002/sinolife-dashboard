@@ -35,10 +35,15 @@ import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { ROISTAT_NO_PRODUCT } from '@/server/domain/roistat/roistatCuts'
 
 import { InsightsRepository } from './insightsRepository'
-import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, leadFormTitleSql, sourceDescriptionSql } from './leadFormSql'
-
-/** How far after the window a sales deal may open and still be the window's lead's. */
-const ORIGIN_LEAD_DAYS = 30
+import {
+  ORIGIN_LEAD_DAYS,
+  dealFormTitleSql,
+  formAliasCteSql,
+  formAliasJoinSql,
+  leadFormTitleSql,
+  saleFormTitleSql,
+  sourceDescriptionSql,
+} from './leadFormSql'
 
 /** Additive Bitrix24 counters for one group. Money in minor units, as stored. */
 export interface RoistatBitrixCounters {
@@ -75,10 +80,11 @@ export interface RoistatBitrixRow extends RoistatBitrixCounters {
   /**
    * What the Collagen / Zextra switch files the row by — filled only when the
    * scan was asked for them (`brandKeys`), null otherwise. A lead row carries
-   * its own source, form and «Проект» (`brandLine`; `brandTeam` null); a sale row carries the team
-   * that sold it (`brandTeam` set, the other two null) and what its line
-   * items say (`brandProduct`, `DealProductBrand` — the brand of a sale is
-   * its product's, the team only when it has no line). Every grouping set is
+   * its own source, form and «Проект» (`brandLine`; `brandTeam` null); a sale row carries its
+   * origin lead's form (`brandForm`, `saleFormTitleSql`), the team that sold
+   * it (`brandTeam` set) and what its line items say (`brandProduct`,
+   * `DealProductBrand`) — the brand of a sale is its form's, else its
+   * product's, the team only when it has neither (`saleBrand`). Every grouping set is
    * then split by these, so one key row can come back several times.
    */
   readonly brandSource: string | null
@@ -137,8 +143,8 @@ export class RoistatRepository {
    *
    * `brandKeys` adds the brand inputs to every grouping set, for a screen
    * narrowed to one brand: the rule (RNP's `leadBrand` for a lead,
-   * `saleBrand` for a sale — its line items' brand, else its team) lives in
-   * TypeScript, and a copy of its form regexes in SQL would drift from it.
+   * `saleBrand` for a sale — its origin lead's form's brand, else its line
+   * items', else its team) lives in TypeScript.
    */
   async bitrix(
     period: Period,
@@ -251,7 +257,7 @@ export class RoistatRepository {
           s."name" AS source_name,
           ${forms ? dealFormTitleSql('d', 's', 'fa') : `CASE WHEN d."title" LIKE '%CRM-форм%' THEN d."title" END`} AS form_title,
           NULLIF(btrim(d."targetolog"), '') AS targetolog,
-          -- «Проект»: named, it is the lead's brand before its source and form (leadBrand).
+          -- «Проект»: named, it is the lead's brand after its form's name, before its source (leadBrand).
           NULLIF(btrim(d."productLine"), '') AS product_line,
           NULL::text AS region,
           NULL::text AS rop,
@@ -358,9 +364,10 @@ export class RoistatRepository {
             THEN GREATEST(EXTRACT(EPOCH FROM (sb."closedAt" - o.created)) / 86400.0, 0)::double precision
           END AS deal_days,
           NULL::text AS b_source,
-          NULL::text AS b_form,
+          -- The origin lead's form, as every other screen reads a sale's (originFormBrandSql): it names the brand first.
+          ${saleFormTitleSql('o.created IS NOT NULL', 'o.title', 'o.sd', 'sb."title"')} AS b_form,
           NULL::text AS b_line,
-          -- The rop column again: the team decides a sale with no line item (rnpSheet saleBrand).
+          -- The rop column again: the team decides a sale with no form and no line item (rnpSheet saleBrand).
           tm.team AS b_team,
           pb.brand AS b_product
         FROM sale_base sb

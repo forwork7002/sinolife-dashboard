@@ -477,7 +477,7 @@ const SIDE_NAMES: Readonly<Record<SideColumn, string>> = { hr: 'HR', kosmetika: 
  *
  * `brand` (the brand switch, `BRAND_FILTERS`) narrows all three ledgers
  * before anything is summed: a lead by `leadBrand`, as «Lidlar», RNP and
- * Roistat file it — its «Проект» first (2026-10-06), so a sinolifeuz lead
+ * Roistat file it — its CRM form's name first (2026-10-15), then its «Проект» (2026-10-06), so a sinolifeuz lead
  * whose project is Zextra is Zextra's and a «Kosmetika» one «Brendsiz»; else
  * its page (`LEAD_SOURCE_BRAND`, which names every page this screen reads).
  * The pages are that brand's, then any other page still holding one of its
@@ -1073,7 +1073,7 @@ export interface TargetDmDto {
 
 /**
  * Exported for its test. Each product is `reklamaOverview` run under that
- * brand — the leads filed by «Проект» first, the money by its ad budget — so
+ * brand — the leads filed by their form's name, then «Проект», the money by its ad budget — so
  * its price is the brand switch's «Итог» to the cent, never a re-derivation
  * that could drift from it. A product with no DM-money page is left out.
  */

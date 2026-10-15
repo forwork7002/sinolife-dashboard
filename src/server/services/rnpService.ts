@@ -27,7 +27,7 @@ import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { type RnpOverviewDto, TEAM_ALIASES, buildRnpSheet } from '@/server/domain/rnp/rnpSheet'
 import { type Period, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import type { TargetProduct } from '@/server/domain/types'
-import { ZEXTRA_ONLY_TARGETOLOGS, formNameOf, formOwner } from '@/server/domain/leads/leadSources'
+import { ZEXTRA_ONLY_TARGETOLOGS, formNameBrand, formNameOf, formOwner } from '@/server/domain/leads/leadSources'
 import { productOfLine } from '@/server/domain/roistat/roistatCuts'
 import { LEAD_SOURCE_BRAND } from '@/server/integrations/crm/bitrix24/mapping'
 import { adBudgetProduct } from '@/server/integrations/meta/accounts'
@@ -419,18 +419,17 @@ export class RnpService {
 }
 
 /**
- * A Регистрация lead's brand: its «Проект» field first (`productLine`, the
- * client's rule of 2026-10-06 — whatever the deal names, the registrar or the
- * AI chose it; a project that is neither brand, «Kosmetika», is brandless);
- * the portal fills it on a share of the leads so far (06.10: 315 of 930 —
- * «Исход» repeats and part of the AI's), so an empty one falls through to
- * the rule below. Then its source when the source is a brand's page or
- * line; else its CRM form's — «zextra» or «collagen» in the name, then a
- * Kamron or Tursunbek form (their Meta accounts are all Zextra; «Kamron 6 etap filt forma»
- * names no product); any other form sold the collagen (every form of
- * 18–24.09 without «zextra» did). A name that says «collagen» outranks its
- * owner: the forms read «<targetolog>-collagen / -zextra» (01.10), so a
- * «Kamron-collagen» form must not turn Zextra. Null: a lead nothing ties to a
+ * A Регистрация lead's brand: the brand its CRM FORM's name states first
+ * (`formNameBrand` — the client's rule of 2026-10-15, «crm-forma nomlariga
+ * qarab … hamma yerda»: a lead from a «…-collagen» form is Collagen's,
+ * whatever else the deal says). A lead with no form, or a form whose name
+ * names neither brand, reads on: its «Проект» field (`productLine`, the rule
+ * of 2026-10-06 — the registrar or the AI chose it; a project that is neither
+ * brand, «Kosmetika», is brandless), then its source when the source is a
+ * brand's page or line, and only then the old guess for a form that names no
+ * product — a Kamron or Tursunbek form is Zextra (their Meta accounts all
+ * are; «Kamron 6 etap filt forma» names none), any other the collagen (every
+ * form of 18–24.09 without «zextra» sold it). Null: a lead nothing ties to a
  * brand (an operator's outgoing call, a lead typed in by hand) — the P&L
  * prints those as «brendsiz».
  */
@@ -439,13 +438,13 @@ export function leadBrand(
   formTitle: string | null,
   productLine: string | null = null,
 ): TargetProduct | null {
+  const form = formNameOf(formTitle)
+  const byForm = formNameBrand(form)
+  if (byForm) return byForm
   if (productLine !== null && productLine.trim() !== '') return productOfLine(productLine)
   const bySource = sourceId === null ? undefined : LEAD_SOURCE_BRAND[sourceId]
   if (bySource) return bySource
-  const form = formNameOf(formTitle)
   if (form === null) return null
-  if (/zextra/i.test(form)) return 'Zextra'
-  if (/collagen|коллаген/i.test(form)) return 'Collagen'
   const owner = formOwner(form)
   if (owner && ZEXTRA_ONLY_TARGETOLOGS.has(owner.targetolog)) return 'Zextra'
   return 'Collagen'

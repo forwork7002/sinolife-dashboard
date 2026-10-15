@@ -176,6 +176,35 @@ export function formNameOf(title: string | null | undefined): string | null {
 }
 
 /**
+ * The words a CRM form's NAME states its brand with, «zextra» asked first —
+ * POSIX patterns, read by JS (`formNameBrand`, case-insensitive) and by SQL
+ * (`formBrandOfTitleSql`, `~*`). Cyrillic is spelled with both cases written
+ * out: `~*` on Cyrillic follows the database's ctype and under a C locale
+ * folds nothing.
+ */
+export const FORM_BRAND_PATTERNS: readonly (readonly [TargetProduct, string])[] = [
+  ['Zextra', 'zextra'],
+  ['Collagen', 'collagen|kollagen|[Кк]оллаген'],
+]
+
+/**
+ * The brand a CRM form's name states, or null when it names neither.
+ *
+ * THE CLIENT'S RULE OF 2026-10-15: every Collagen / Zextra split reads the
+ * CRM form's name FIRST («crm-forma nomlariga qarab … hamma yerda»). The
+ * portal's forms were renamed for it — «<targetolog>-collagen …» /
+ * «<targetolog>-zextra …»: on 14.10 all 946 form leads named their brand, and
+ * where «Проект» was filled too (804) it agreed on every one. A lead's form
+ * decides its brand (`leadBrand`), a sale's is its origin lead's
+ * (`saleBrand`, `originFormBrandSql`).
+ */
+export function formNameBrand(formName: string | null): TargetProduct | null {
+  if (formName === null) return null
+  for (const [brand, pattern] of FORM_BRAND_PATTERNS) if (new RegExp(pattern, 'i').test(formName)) return brand
+  return null
+}
+
+/**
  * A form wins over its source: a form deal is «Ген лид» by source, and the
  * handful a form files under a page's source are still that form's leads.
  * «Ген лид» WITHOUT a form title is an operator typing a lead in by hand.
@@ -248,12 +277,6 @@ export const ZEXTRA_ONLY_TARGETOLOGS: ReadonlySet<string> = new Set(['Kamron', '
 export function formOwner(formName: string): FormOwner | null {
   const hit = FORM_TARGETOLOGS.find(([pattern]) => pattern.test(formName))
   if (!hit) return null
-  const product: TargetProduct = /zextra/i.test(formName)
-    ? 'Zextra'
-    : /collagen|коллаген/i.test(formName)
-      ? 'Collagen'
-      : ZEXTRA_ONLY_TARGETOLOGS.has(hit[1])
-        ? 'Zextra'
-        : 'Collagen'
+  const product: TargetProduct = formNameBrand(formName) ?? (ZEXTRA_ONLY_TARGETOLOGS.has(hit[1]) ? 'Zextra' : 'Collagen')
   return { targetolog: hit[1], product }
 }

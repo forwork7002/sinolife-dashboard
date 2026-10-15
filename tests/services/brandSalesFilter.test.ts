@@ -83,6 +83,15 @@ describe('the confirmation-queue readers', () => {
     expect(params.slice(3)).toEqual([['Sevinch'], ['Asliddin'], 'Zextra'])
   })
 
+  it('read the origin lead\'s CRM form before the product (the client, 2026-10-15)', () => {
+    const clause = ratingFilterSql({ brand: slice('Collagen') }, [])
+    const form = clause.indexOf('JOIN "pipeline" lp ON lp."id" = l."pipelineId" AND lp."role" = \'LEAD\'')
+    expect(form).toBeGreaterThan(-1)
+    expect(clause).toContain('CASE COALESCE((SELECT CASE WHEN substring(')
+    expect(form).toBeLessThan(clause.indexOf('FROM "deal_item" di'))
+    expect(clause).toContain('l."customerId" = d."customerId"')
+  })
+
   it('keep, for «Brendsiz», the orders neither brand claims', () => {
     const params: unknown[] = []
     expect(ratingFilterSql({ brand: slice('none') }, params).endsWith(') IS NULL')).toBe(true)

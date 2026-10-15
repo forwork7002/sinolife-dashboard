@@ -59,7 +59,7 @@ import {
   type LogisticsRoleValue,
 } from '@/server/domain/types'
 
-import { formAliasOverSql, leadFormTitleSql, sourceDescriptionSql } from './leadFormSql'
+import { formAliasOverSql, leadFormTitleSql, originFormBrandSql, sourceDescriptionSql } from './leadFormSql'
 
 /** A money column as Postgres returns it: text, to survive the driver. */
 type MoneyText = string | null
@@ -1105,6 +1105,8 @@ export interface RnpTeamDayRow {
    * back once per value, so the brand P&L can file each order by its product.
    */
   readonly productBrand: DealProductBrand
+  /** The brand the orders' origin lead's CRM form names (`originFormBrandSql`), read before the product; null = none. */
+  readonly formBrand: 'Collagen' | 'Zextra' | null
 }
 
 /**
@@ -1144,7 +1146,7 @@ export interface LeadFakt1ClientRow {
   readonly source: string | null
   /** The lead's title when it names a CRM form — `RegistrationDayRow.formTitle`'s rule. */
   readonly formTitle: string | null
-  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  /** «Проект» (`productLine`) — named, it decides the brand after the form's name, before the source (`leadBrand`). */
   readonly productLine: string | null
   /** The lead's «Таргетолог» field — `RegistrationDayRow.targetolog`. */
   readonly targetolog: string | null
@@ -3603,18 +3605,21 @@ export class InsightsRepository {
 
   /**
    * The brand switch over a sales reader (`BrandSlice`): an order's brand is
-   * its product's (`dealProductBrandSql`), and only an order with no line
-   * item falls back to the team that sold it (`teamExpression` against each
-   * brand's `brandTeams`) — `saleBrand`'s rule, in SQL. «Brendsiz» keeps the
-   * orders neither brand claims, so the three slices partition the reader.
-   * The product subquery is evaluated once (a simple CASE).
+   * the one its origin lead's CRM form names (`originFormBrandSql`, the
+   * client's rule of 2026-10-15), else its product's (`dealProductBrandSql`),
+   * and only an order with neither falls back to the team that sold it
+   * (`teamExpression` against each brand's `brandTeams`) — `saleBrand`'s
+   * rule, in SQL. «Brendsiz» keeps the orders neither brand claims, so the
+   * three slices partition the reader. The form and product subqueries are
+   * evaluated once (a simple CASE over their COALESCE; the product is asked
+   * only when no form names a brand).
    */
   static brandSliceSql(alias: string, teamExpression: string, brand: BrandSlice, params: unknown[]): string {
     params.push([...brand.collagenTeams])
     const collagen = params.length
     params.push([...brand.zextraTeams])
     const zextra = params.length
-    const expression = `CASE ${InsightsRepository.dealProductBrandSql(alias)}
+    const expression = `CASE COALESCE(${originFormBrandSql(alias)}, ${InsightsRepository.dealProductBrandSql(alias)})
           WHEN 'Collagen' THEN 'Collagen' WHEN 'Zextra' THEN 'Zextra' WHEN '-' THEN NULL
           ELSE CASE WHEN (${teamExpression}) = ANY($${collagen}::text[]) THEN 'Collagen'
                     WHEN (${teamExpression}) = ANY($${zextra}::text[]) THEN 'Zextra' END
@@ -5685,6 +5690,7 @@ export class InsightsRepository {
         refused_orders: bigint
         refused: MoneyText
         product_brand: string | null
+        form_brand: string | null
       }[]
     >(`${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.rnpTeamDaysSql()}`, ...params)
     return rows.map((r) => ({
@@ -5697,6 +5703,7 @@ export class InsightsRepository {
       refusedOrders: int(r.refused_orders),
       refusedMinor: money(r.refused),
       productBrand: (r.product_brand ?? null) as DealProductBrand,
+      formBrand: (r.form_brand ?? null) as 'Collagen' | 'Zextra' | null,
     }))
   }
 
@@ -5864,12 +5871,14 @@ export class InsightsRepository {
          COALESCE(sum(d."amountMinor") FILTER (WHERE ${fakt2}), 0)::text AS fakt2,
          count(*) FILTER (WHERE ${refused})::bigint AS refused_orders,
          COALESCE(sum(d."amountMinor") FILTER (WHERE ${refused}), 0)::text AS refused,
-         pb.brand AS product_brand
+         pb.brand AS product_brand,
+         fb.brand AS form_brand
        FROM scoped c
        JOIN "deal" d ON d."id" = c.deal_id
        LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
        LEFT JOIN LATERAL (SELECT ${InsightsRepository.dealProductBrandSql('d')} AS brand) pb ON true
-       GROUP BY 1, 2, pb.brand`
+       LEFT JOIN LATERAL (SELECT ${originFormBrandSql('d')} AS brand) fb ON true
+       GROUP BY 1, 2, pb.brand, fb.brand`
   }
 
   /**

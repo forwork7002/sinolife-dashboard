@@ -1,3 +1,4 @@
+import { FORM_BRAND_PATTERNS } from '@/server/domain/leads/leadSources'
 import { LEAD_SOURCE_VOCABULARY } from '@/server/integrations/crm/bitrix24/mapping'
 
 /**
@@ -125,4 +126,64 @@ export function leadFormTitleSql(title: string, sd: string, sourceId: string, al
 /** The form title of deal `deal` (its source joined as `source`), with `form_alias` joined as `alias`. */
 export function dealFormTitleSql(deal: string, source: string, alias: string): string {
   return leadFormTitleSql(`${deal}."title"`, sourceDescriptionSql(deal), `${source}."externalId"`, `${alias}.title`)
+}
+
+/**
+ * The brand a form TITLE's form name states — `formNameBrand` in SQL, off
+ * the same `FORM_BRAND_PATTERNS`: 'Zextra', 'Collagen', or NULL (no title, or
+ * a name that names neither). Only the name between the quotes is read.
+ */
+export function formBrandOfTitleSql(title: string): string {
+  const name = `substring(${title} from 'CRM-форм[аы][[:space:]]*[«"“]([^»"”]+)')`
+  const arms = FORM_BRAND_PATTERNS.map(([brand, pattern]) => `WHEN ${name} ~* '${pattern}' THEN '${brand}'`).join(' ')
+  return `CASE ${arms} END`
+}
+
+/** How far before a sales deal its ORIGIN LEAD may have opened (Roistat's join, and every sale's brand). */
+export const ORIGIN_LEAD_DAYS = 30
+
+/**
+ * A SALE'S FORM TITLE: its origin lead's form when it has an origin lead
+ * (`leadFound`), else the sales deal's own title when that names a form —
+ * Roistat's rule (a lead found decides, empty or not). Without `form_alias`:
+ * a lead known only by a form's short name reads as formless here, and its
+ * sale falls through to the product (`saleBrand`).
+ */
+export function saleFormTitleSql(leadFound: string, leadTitle: string, leadSd: string, saleTitle: string): string {
+  return `CASE
+            WHEN ${leadFound} THEN ${leadFormTitleSql(leadTitle, leadSd, 'NULL::text', 'NULL::text')}
+            WHEN ${saleTitle} LIKE '%CRM-форм%' THEN ${saleTitle}
+          END`
+}
+
+/**
+ * THE BRAND OF A SALE'S CRM FORM (the client, 2026-10-15: «shundan kelgani
+ * demak oʻsha collagen boʻldi» — an order from a «…-collagen» form's lead is
+ * Collagen's), for sales deal `sale`: its ORIGIN LEAD is Roistat's — the same
+ * contact's Регистрация deal opened up to `ORIGIN_LEAD_DAYS` before the sales
+ * deal, a WON one first («Сделка успешна» is what opens the sales deal), then
+ * the latest — and the brand is `formBrandOfTitleSql` over
+ * `saleFormTitleSql`. NULL when no form names a brand: `saleBrand` then reads
+ * the product, then the team. One indexed probe of `deal("customerId")` per
+ * sale. Measured on the portal for the orders opened 10–14.10: 155 of 345
+ * came from a form lead (Collagen 113, Zextra 41, one unnamed), 123 from a
+ * formless one (Исход, a hand-typed «Ген лид», DM, Telegram, a call) and 67
+ * had no lead in the 30 days (База, repeat customers).
+ */
+export function originFormBrandSql(sale: string): string {
+  return `(SELECT ${formBrandOfTitleSql(
+    saleFormTitleSql('ol."id" IS NOT NULL', 'ol."title"', 'ol.sd', `${sale}."title"`),
+  )}
+          FROM (SELECT 1) one
+          LEFT JOIN LATERAL (
+            SELECT l."id", l."title", ${sourceDescriptionSql('l')} AS sd
+            FROM "deal" l
+            JOIN "pipeline" lp ON lp."id" = l."pipelineId" AND lp."role" = 'LEAD'
+            WHERE ${sale}."customerId" IS NOT NULL
+              AND l."customerId" = ${sale}."customerId"
+              AND l."createdAtSource" <= ${sale}."createdAtSource"
+              AND l."createdAtSource" > ${sale}."createdAtSource" - interval '${ORIGIN_LEAD_DAYS} days'
+            ORDER BY (l."status" = 'WON') DESC, l."createdAtSource" DESC
+            LIMIT 1
+          ) ol ON true)`
 }

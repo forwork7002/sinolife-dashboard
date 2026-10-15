@@ -169,6 +169,8 @@ export interface RnpFaktDay {
   readonly refusedMinor: bigint
   /** The orders' product (`DealProductBrand`) — the brand P&L files them by it; absent reads as «no line item». */
   readonly productBrand?: DealProductBrand
+  /** The brand the orders' origin lead's CRM form names (`originFormBrandSql`) — read before the product; absent = none. */
+  readonly formBrand?: 'Collagen' | 'Zextra' | null
 }
 
 export interface RnpSheetInput {
@@ -283,13 +285,21 @@ export function teamBrand(team: string | null): 'Collagen' | 'Zextra' | null {
 }
 
 /**
- * The brand of a SALE (the client, 2026-10-06): the product it was paid for
- * (`DealProductBrand` — the line items' dominant product), and only for an
- * order with no line items at all the team that sold it (`teamBrand`). An
+ * The brand of a SALE: the brand its origin lead's CRM FORM names first
+ * (`formBrand`, `originFormBrandSql` — the client, 2026-10-15: an order from a
+ * «…-collagen» form's lead is Collagen's, whatever it was paid for). An order
+ * no form names reads on as it did since 2026-10-06: the product it was paid
+ * for (`DealProductBrand` — the line items' dominant product), and only for
+ * an order with no line items at all the team that sold it (`teamBrand`). An
  * order whose biggest line is neither brand's (Prox, Tibomed …) is
  * «Brendsiz», whichever team sold it.
  */
-export function saleBrand(product: DealProductBrand, team: string | null): 'Collagen' | 'Zextra' | null {
+export function saleBrand(
+  product: DealProductBrand,
+  team: string | null,
+  formBrand: 'Collagen' | 'Zextra' | null = null,
+): 'Collagen' | 'Zextra' | null {
+  if (formBrand !== null) return formBrand
   if (product === null) return teamBrand(team)
   return product === '-' ? null : product
 }
@@ -977,8 +987,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     for (const r of input.fakt) {
       const i = at.get(r.day)
       const team = canonical(r.rop)
-      // An order is its product's brand (the client, 2026-10-06); the team decides only one with no line item.
-      const brand = saleBrand(r.productBrand ?? null, team)
+      // An order is its origin lead's form's brand (2026-10-15), else its product's; the team only one with neither.
+      const brand = saleBrand(r.productBrand ?? null, team, r.formBrand ?? null)
       if (i === undefined || brand !== b) continue
       const base = isBase(team)
       g.fakt1[i]! += minorToSom(r.fakt1Minor)

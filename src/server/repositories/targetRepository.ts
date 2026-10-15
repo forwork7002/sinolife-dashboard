@@ -111,7 +111,7 @@ export interface MetaSpendRow {
 /**
  * The Meta lead-form leads of a window and the sales deals they became, by
  * form (`TargetRepository.formLeads`). The brand is decided in the service
- * (`leadBrand`: «Проект» first, then the source, then the form's name).
+ * (`leadBrand`: the form's name first, then «Проект», then the source).
  */
 export interface TargetFormRow extends TargetCountersRow {
   readonly formTitle: string

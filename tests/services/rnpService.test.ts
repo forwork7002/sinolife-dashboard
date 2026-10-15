@@ -379,16 +379,24 @@ describe('leadBrand', () => {
     expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Kamron-zextra 01.10»')).toBe('Zextra')
   })
 
-  it('takes the «Проект» field before the page and the form (2026-10-06)', () => {
+  it('takes the «Проект» field before the page (2026-10-06)', () => {
     expect(leadBrand('REPEAT_SALE', null, 'Collagen Marine')).toBe('Collagen')
     expect(leadBrand('REPEAT_SALE', null, 'Sinolife collagen tabletka')).toBe('Collagen')
     expect(leadBrand('UC_1X1J24', null, 'Zextra sure')).toBe('Zextra')
-    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Zextra Umar 3»', 'Collagen Marine')).toBe('Collagen')
     // A project that is neither brand is brandless, not its page's.
     expect(leadBrand('UC_1X1J24', null, 'Kosmetika')).toBeNull()
     // Empty, it decides nothing.
     expect(leadBrand('UC_AA84D0', null, '  ')).toBe('Zextra')
     expect(leadBrand('UC_AA84D0', null, null)).toBe('Zextra')
+  })
+
+  it('takes the brand the CRM form\'s name states before «Проект» and the page (the client, 2026-10-15)', () => {
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Zextra Umar 3»', 'Collagen Marine')).toBe('Zextra')
+    expect(leadBrand('UC_1X1J24', 'Заполнение CRM-формы "Sobirjon-zextra I.S | Long form new 14.09"', null)).toBe('Zextra')
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы "Umar-collagen Collagen (UMAR)"', 'Zextra sure')).toBe('Collagen')
+    // A name that names no brand decides nothing until the page and «Проект» have spoken.
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Kamron 6 etap filt forma 05.07»', 'Collagen Marine')).toBe('Collagen')
+    expect(leadBrand('UC_AA84D0', 'Заполнение CRM-формы «Sinolife (UMAR) 777»')).toBe('Zextra')
   })
 
   it('brands the Sinolife pages added on 2026-10-02, and a form title with no closing quote', () => {

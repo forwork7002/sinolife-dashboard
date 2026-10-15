@@ -35,7 +35,7 @@ import {
   spendCut,
   spendTotal,
 } from '@/server/domain/roistat/roistatCuts'
-import { leadChannel } from '@/server/domain/leads/leadSources'
+import { formNameBrand, formNameOf, leadChannel } from '@/server/domain/leads/leadSources'
 import type { DealProductBrand } from '@/server/domain/products/productBrand'
 import { isBaseTeam, saleBrand } from '@/server/domain/rnp/rnpSheet'
 import { type BrandFilter, brandMatches } from '@/server/domain/types'
@@ -193,14 +193,15 @@ export interface RoistatQuery {
 }
 
 /**
- * The Bitrix scan narrowed to one brand: a lead by RNP's `leadBrand` (its
- * «Проект», then its source, then its form), a sale by the product it was paid for (`saleBrand`;
- * its team only when it has no line item) — as RNP's «Коллаген / Зехтра
- * проект» reads it, so the switch and the P&L agree on every sale and on
- * every lead whose title names its form. A repeat lead («Такрор - обработка»)
- * is the exception since 2026-10-06: here its form is recovered from
- * SOURCE_DESCRIPTION (`RoistatRepository.formTitleSql`), RNP still reads
- * the title and calls it brandless.
+ * The Bitrix scan narrowed to one brand: a lead by RNP's `leadBrand` (its CRM
+ * form's name first — the client's rule of 2026-10-15 — then its «Проект»,
+ * then its source), a sale by its origin lead's form (`saleBrand`; the
+ * product it was paid for when no form names a brand, its team only when it
+ * has no line item either) — as RNP's «Коллаген / Зехтра проект» reads it,
+ * so the switch and the P&L agree on every sale and on every lead whose title
+ * names its form. A repeat lead («Такрор - обработка») is recovered from
+ * SOURCE_DESCRIPTION on both (`leadFormSql.ts`); a lead known only by a
+ * form's short name is recovered here (`form_alias`) and not on a sale.
  * Rows of a brand-keyed scan only (`RoistatRepository.bitrix`'s `brandKeys`).
  */
 function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: BrandFilter): Parameters<typeof bitrixCut>[1] {
@@ -209,7 +210,7 @@ function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: BrandFilter): P
     brandMatches(
       brand,
       row.brandTeam !== null
-        ? saleBrand(row.brandProduct as DealProductBrand, row.brandTeam)
+        ? saleBrand(row.brandProduct as DealProductBrand, row.brandTeam, formNameBrand(formNameOf(row.brandForm)))
         : leadBrand(row.brandSource, row.brandForm, row.brandLine),
     ),
   )
@@ -235,7 +236,7 @@ export function faktDays(rows: readonly RnpTeamDayRow[], brand: BrandFilter): Ro
   const acc = new Map<string, { fakt1Primary: bigint; fakt1Base: bigint; fakt2Primary: bigint }>()
   const total = { fakt1Primary: 0n, fakt1Base: 0n, fakt2Primary: 0n }
   for (const row of rows) {
-    if (brand !== 'all' && !brandMatches(brand, saleBrand(row.productBrand ?? null, row.rop))) continue
+    if (brand !== 'all' && !brandMatches(brand, saleBrand(row.productBrand ?? null, row.rop, row.formBrand))) continue
     const base = isBaseTeam(row.rop)
     const fakt1 = row.fakt1Minor
     const fakt2 = base ? 0n : row.fakt2Minor

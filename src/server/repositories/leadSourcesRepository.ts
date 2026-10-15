@@ -21,7 +21,7 @@ export interface RegistrationDayRow {
    * the domain's to read (`formNameOf`) — one regex, one home.
    */
   readonly formTitle: string | null
-  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  /** «Проект» (`productLine`) — named, it decides the brand after the form's name, before the source (`leadBrand`). */
   readonly productLine: string | null
   /** The deal's own «Таргетолог» field, as the portal lists it («Umar», «Элдор», «AI») — null when empty. */
   readonly targetolog: string | null
@@ -38,7 +38,7 @@ export interface QualifiedSourceRow {
   readonly sourceId: string | null
   /** The deal's title when it names a CRM form — what the Collagen / Zextra switch reads after the source. */
   readonly formTitle: string | null
-  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  /** «Проект» (`productLine`) — named, it decides the brand after the form's name, before the source (`leadBrand`). */
   readonly productLine: string | null
   readonly aiQualified: boolean
   readonly qualified: number
@@ -51,7 +51,7 @@ export interface AiQualifiedStageRow {
   /** Source and CRM-form title — for the Collagen / Zextra switch (`leadBrand`). */
   readonly sourceId: string | null
   readonly formTitle: string | null
-  /** «Проект» (`productLine`) — named, it decides the brand before source and form (`leadBrand`). */
+  /** «Проект» (`productLine`) — named, it decides the brand after the form's name, before the source (`leadBrand`). */
   readonly productLine: string | null
   readonly stage: string
   /** DealStatus: OPEN, WON or LOST. */
