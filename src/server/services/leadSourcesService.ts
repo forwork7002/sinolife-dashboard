@@ -325,14 +325,20 @@ export interface LeadSourcesOverviewDto {
   readonly tiles: {
     readonly rows: readonly ({ readonly tile: LeadTile } & ChannelTileDto)[]
     readonly total: ChannelTileDto
-    /** «Сммщик ии» by account (`SMM_ACCOUNTS`), the ones with a lead in the window, largest first. */
-    readonly smmAccounts: readonly ({ readonly key: string; readonly name: string } & ChannelTileDto)[]
     /**
-     * Регистрация deals whose «ИИ квал сана» is in the window, any creation
-     * day — «Сммщик ии»'s big number until 2026-10-09, a quiet line on it now.
+     * «Сммщик ии»'s card since 2026-10-15 (the client: «ИИ квал сана» is the
+     * right count): Регистрация deals whose «ИИ квал сана» is in the window,
+     * any creation day — duplicates «Дубликат (лид)», kval WON now. The
+     * `aiSmm` row stays the SMM sources by creation day, which is what
+     * «Jami» sums. No close-day count is read here, so none is sent.
      */
-    readonly aiQualified: number
-    /** The same, outside Регистрация now (Первичный отдел, Доставка, …) — said in that line's tip, summed nowhere. */
+    readonly ai: Omit<ChannelTileDto, 'closedQualified'>
+    /**
+     * `ai` by account (`SMM_ACCOUNTS`), largest first; a source that is no
+     * SMM account is one «Boshqa manbalar» row, last. They sum to `ai`.
+     */
+    readonly smmAccounts: readonly ({ readonly key: string; readonly name: string } & ChannelTileDto)[]
+    /** The same «ИИ квал сана», outside Регистрация now (Первичный отдел, Доставка, …) — said in a tip, summed nowhere. */
     readonly aiElsewhere: number
   }
   readonly sources: readonly SourceRowDto[]
@@ -437,6 +443,16 @@ interface TileAcc {
 }
 
 const tileZero = (): TileAcc => ({ leads: 0, duplicates: 0, qualified: 0, closed: 0 })
+
+/** One row's leads onto a tile: a «Дубликат (лид)» is a duplicate, a lead WON by now its kval. */
+function addTileLeads(tile: TileAcc, row: { stage: string; status: string; leads: number }) {
+  tile.leads += row.leads
+  if (isLeadDuplicate(row.stage)) tile.duplicates += row.leads
+  if (leadBucket(row.stage, row.status) === 'success') tile.qualified += row.leads
+}
+
+/** «Сммщик ии»'s list: the AI-marked deals whose source is no SMM account. */
+const AI_OTHER_SOURCE = 'non-smm'
 
 function tileCells(a: TileAcc): ChannelTileDto {
   const fresh = a.leads - a.duplicates
@@ -663,7 +679,6 @@ export function leadSourcesOverview(all: {
   // What «Жами лидлар» counts of it, and the «Ген лид» no form names (typed in by hand).
   const counted = outcomeZero()
   const manual = outcomeZero()
-  const smmAccounts = new Map<string, TileAcc>()
 
   /*
     ИИ обработка FIRST: a page is anything people write to, and the
@@ -699,14 +714,7 @@ export function leadSourcesOverview(all: {
     // A form's lead, or a formless «Ген лид» — whoever the form or the deal's «Таргетолог» names.
     const owner = form !== null || tileKey === 'generated' ? leadOwner(row, tails) : null
     if (tileKey === 'generated' && form === null && owner === null) addOutcome(manual, one)
-    // The tile, and under «Сммщик ии» its account — a page's second bot is the page's.
-    const tileAccs = [tiles.get(tileKey)!]
-    if (tileKey === 'aiSmm' && row.sourceId !== null) tileAccs.push(mapGet(smmAccounts, pageKeyOf(row.sourceId), tileZero))
-    for (const tile of tileAccs) {
-      tile.leads += row.leads
-      if (isLeadDuplicate(row.stage)) tile.duplicates += row.leads
-      if (bucket === 'success') tile.qualified += row.leads
-    }
+    addTileLeads(tiles.get(tileKey)!, row)
     const sourceKey = sourceKeyOf(form, row.sourceId)
     const source = mapGet(sources, sourceKey, () => ({
       key: sourceKey,
@@ -907,15 +915,22 @@ export function leadSourcesOverview(all: {
   const formLeads = outcomeCells(formOutcome).leads - formlessLeads
 
   /*
-    «ИИ квал сана» in the window, any creation day — «Сммщик ии»'s count until
-    2026-10-09, a quiet line on it since: what is in Регистрация, and apart
-    what has already moved on to Первичный отдел or Доставка.
+    «ИИ квал сана» in the window, any creation day — «Сммщик ии»'s card: what
+    is in Регистрация, by account (a page's second bot is the page's), and
+    apart what has already moved on to Первичный отдел or Доставка.
   */
-  let aiQualified = 0
+  const ai = tileZero()
+  const smmAccounts = new Map<string, TileAcc>()
   let aiElsewhere = 0
   for (const row of input.aiQualified) {
-    if (row.registration) aiQualified += row.leads
-    else aiElsewhere += row.leads
+    if (!row.registration) {
+      aiElsewhere += row.leads
+      continue
+    }
+    const account =
+      row.sourceId !== null && leadTile(row.sourceId, LEAD_TILE_SOURCES) === 'aiSmm' ? pageKeyOf(row.sourceId) : AI_OTHER_SOURCE
+    addTileLeads(ai, row)
+    addTileLeads(mapGet(smmAccounts, account, tileZero), row)
   }
 
   // Kval by the day it was WON, onto the tile its lead counts on — each tile's quiet second line.
@@ -935,6 +950,8 @@ export function leadSourcesOverview(all: {
     tilesTotal.closed += t.closed
   }
   const jami = tileCells(tilesTotal)
+  // The AI's card reads no close day: `closedQualified` is left off, never a 0 that reads as measured.
+  const { closedQualified: _unread, ...aiCells } = tileCells(ai)
 
   /*
     «Targetologlar»'s «Jami» and the headline's kval price, ONE figure (the
@@ -1009,17 +1026,26 @@ export function leadSourcesOverview(all: {
     tiles: {
       rows: LEAD_TILES.map((tile) => ({ tile, ...tileCells(tiles.get(tile)!) })),
       total: jami,
+      ai: aiCells,
       smmAccounts: [...smmAccounts]
-        .map(([key, t]) => ({ key, name: SMM_ACCOUNTS.find((a) => a.id === key)?.name ?? key, ...tileCells(t) }))
-        .sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name, 'ru')),
-      aiQualified,
+        .map(([key, t]) => ({
+          key,
+          name: key === AI_OTHER_SOURCE ? 'Boshqa manbalar' : (SMM_ACCOUNTS.find((a) => a.id === key)?.name ?? key),
+          ...tileCells(t),
+        }))
+        .sort(
+          (a, b) =>
+            Number(a.key === AI_OTHER_SOURCE) - Number(b.key === AI_OTHER_SOURCE) ||
+            b.leads - a.leads ||
+            a.name.localeCompare(b.name, 'ru'),
+        ),
       aiElsewhere,
       /*
         Not in the DTO: a tab opened before the 2026-10-09 deploy still reads
-        `toHeadline` on its next poll and would throw without it. Zeros read
-        «= Жами лидлар» there. Delete once those tabs are gone.
+        `toHeadline` on its next poll and would throw without it, and one from
+        before 2026-10-15 `aiQualified`. Delete once those tabs are gone.
       */
-      ...{ toHeadline: { outbound: 0, other: 0, ai: 0 } },
+      ...{ toHeadline: { outbound: 0, other: 0, ai: 0 }, aiQualified: ai.leads },
     },
     sources: [...sources.values()]
       .map((s) => ({

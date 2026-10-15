@@ -205,7 +205,6 @@ const TILES_IN_TOTAL = TILES.filter((t) => !(TILES_APART as readonly LeadTile[])
 /** What a tile counts, where its name alone does not say it. */
 const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   generated: 'lid-forma + qoʻlda kiritilgan',
-  aiSmm: 'Instagram / Telegram bot akkauntlari · yaratilgan kuni boʻyicha',
   sarafan: 'barcha voronkalar · «Jami»ga kirmaydi',
   outbound: 'operatorning chiquvchi qoʻngʻirogʻi — lid emas',
   other: 'roʻyxatda yoʻq manbalar: Сарафан маркетинг (Регистрация), manbasiz va boshqalar',
@@ -216,8 +215,6 @@ const TILE_NOTE: Partial<Record<LeadTile, string>> = {
  * as the day the count starts; it is only when the portal began the mark.
  */
 const TILE_NOTE_TITLE: Partial<Record<LeadTile, string>> = {
-  aiSmm:
-    'Регистрацияga shu davrda tushgan, manbasi SMM akkauntlaridan biri boʻlgan bitimlar (sinolifeuz, sinolife_otziv, sinolif_tg, collagen.marine, collagen.sinolife, zextra.uz, zextra.sinolife, zextra_life, sinogummy, Сммщик sinolifeuz, Сммщик sinolife_sedana, Instagram).',
   sarafan:
     'Barcha voronkalardagi «Сарафан маркетинг» manbali bitimlar: shu davrda ochilgani, kval — shu davrda muvaffaqiyatli yopilgani. «База» sanalmaydi — u Доставка buyurtmalarining nusxasi. Faqat Регистрация lidlari emas, shuning uchun «Jami»ga kirmaydi; Регистрацияdagi «Сарафан маркетинг» lidlari «Boshqa»da ham sanaladi.',
 }
@@ -257,7 +254,7 @@ function TipNote({
 }
 
 /** «N kval · X%» — the cohort's kval ÷ new leads, as «Квал %» above; a dash when the channel had no new lead. */
-const kvalHint = (t: ChannelTileDto) =>
+const kvalHint = (t: Omit<ChannelTileDto, 'closedQualified'>) =>
   `${formatNumber(t.qualified)} kval · ${t.qualifiedPercent === null ? NO_VALUE : formatPercent(t.qualifiedPercent)}`
 
 const note = (text: string, tip?: string) => <TipNote tip={tip}>{text}</TipNote>
@@ -266,7 +263,7 @@ const note = (text: string, tip?: string) => <TipNote tip={tip}>{text}</TipNote>
  * «shundan N dubl», quietly — the client, 2026-10-03: a duplicate is counted
  * in the big number and said under it, never left for the reader to guess.
  */
-const dublNote = (t: ChannelTileDto | undefined) => {
+const dublNote = (t: Omit<ChannelTileDto, 'closedQualified'> | undefined) => {
   const dubl = t ? t.leads - t.fresh : 0
   return dubl > 0 ? note(`shundan ${formatNumber(dubl)} dubl`, '«Дубликат (лид)» bosqichidagi lidlar — katta songa kirgan') : null
 }
@@ -286,13 +283,23 @@ const closedNote = (n: number) => (
 )
 
 /**
- * Under «Сммщик ии»: each account's leads (the client, 2026-10-09), then the
- * «ИИ квал сана» count the card showed as its big number until that day —
- * with the deals that have already left Регистрация said in its tip.
+ * Under «Сммщик ии» (the client, 2026-10-15: «ИИ квал сана» is the right
+ * count, the big number): what the card counts, each account's share of it,
+ * then the SMM sources by creation day — what «Jami» sums for this channel,
+ * the card's big number from 2026-10-09 until that day.
  */
-function SmmBreakdown({ tiles }: { tiles: LeadSourcesOverviewDto['tiles'] }) {
+function SmmBreakdown({ tiles, jamiRow }: { tiles: LeadSourcesOverviewDto['tiles']; jamiRow: ChannelTileDto | undefined }) {
   return (
     <>
+      <TipNote
+        tip={`Регистрацияdagi bitimlar, «ИИ квал сана»si shu davrga toʻgʻri kelgan — qaysi kuni yaratilganidan qatʼi nazar. Kval — hozir «Сделка успешна»da turganlari.${
+          tiles.aiElsewhere > 0
+            ? ` Yana ${formatNumber(tiles.aiElsewhere)} tasi Регистрацияdan oʻtib ketgan (Первичный отдел, Доставка …) — sanalmagan.`
+            : ''
+        }`}
+      >
+        «ИИ квал сана» boʻyicha · Регистрация
+      </TipNote>
       {tiles.smmAccounts.length > 0 && (
         <ul className="mt-1 flex flex-col gap-0.5 text-[11px] leading-snug" data-testid="smm-accounts">
           {tiles.smmAccounts.map((a) => (
@@ -305,16 +312,14 @@ function SmmBreakdown({ tiles }: { tiles: LeadSourcesOverviewDto['tiles'] }) {
           ))}
         </ul>
       )}
-      <TipNote
-        className="text-[10px]"
-        tip={`«ИИ квал сана» shu davrga toʻgʻri kelgan Регистрация bitimlari — qaysi kuni yaratilganidan qatʼi nazar (kartaning eski hisobi).${
-          tiles.aiElsewhere > 0
-            ? ` Yana ${formatNumber(tiles.aiElsewhere)} tasi Регистрацияdan oʻtib ketgan (Первичный отдел, Доставка …) — sanalmagan.`
-            : ''
-        }`}
-      >
-        «ИИ квал сана» boʻyicha: {formatNumber(tiles.aiQualified)}
-      </TipNote>
+      {jamiRow && (
+        <TipNote
+          className="text-[10px]"
+          tip="SMM akkauntlaridan (sinolifeuz, sinolife_otziv, sinolif_tg, collagen.marine, collagen.sinolife, zextra.uz, zextra.sinolife, zextra_life, sinogummy, Сммщик sinolifeuz, Сммщик sinolife_sedana, Instagram) shu davrda yaratilgan Регистрация bitimlari. «Jami» va «Жами лидлар» har bir lidni yaratilgan kuni sanaydi, shuning uchun ularga shu son qoʻshiladi."
+        >
+          «Jami»ga yaratilgan kuni boʻyicha: {formatNumber(jamiRow.leads)}
+        </TipNote>
+      )}
     </>
   )
 }
@@ -365,7 +370,9 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
         />
       )
     }
-    const o = byTile.get(tile)
+    // «Сммщик ии» prints the «ИИ квал сана» count (the client, 2026-10-15); its row is what «Jami» sums.
+    const row = byTile.get(tile)
+    const o = tile === 'aiSmm' ? data?.tiles.ai : row
     const text = TILE_NOTE[tile]
     const dubl = dublNote(o)
     return (
@@ -381,8 +388,8 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
           o || text || extra ? (
             <>
               {dubl}
-              {/* «Сарафан» is deals of every pipeline: its kval already is the closed count. */}
-              {o && tile !== 'sarafan' && closedNote(o.closedQualified)}
+              {/* «Сарафан» is deals of every pipeline: its kval already is the closed count. «Сммщик ии» reads none. */}
+              {row && tile !== 'sarafan' && tile !== 'aiSmm' && closedNote(row.closedQualified)}
               {text && note(text, TILE_NOTE_TITLE[tile])}
               {extra}
             </>
@@ -430,7 +437,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             !data
               ? undefined
               : t === 'aiSmm'
-                ? <SmmBreakdown tiles={data.tiles} />
+                ? <SmmBreakdown tiles={data.tiles} jamiRow={byTile.get('aiSmm')} />
                 : t === 'inbound'
                   ? isOneBrand(data.brand)
                     ? unsplitNote('Kiruvchi qoʻngʻiroqlar', '📞 qoʻngʻiroqlar')

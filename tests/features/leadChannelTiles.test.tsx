@@ -57,11 +57,13 @@ const data = {
     rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
     // The counted channels' sum, as the server builds it — «Исход» and «Boshqa» left out.
     total: cells(3224, 964, 40, 990),
+    // «ИИ квал сана» in Регистрация — the card's big number since 2026-10-15; the `aiSmm` row above is what «Jami» sums.
+    ai: (({ closedQualified: _unread, ...rest }) => rest)(cells(410, 120, 35)),
     smmAccounts: [
       { key: 'UC_1X1J24', name: 'sinolifeuz', ...cells(300, 100) },
-      { key: 'UC_MWIKOC', name: 'collagen.marine', ...cells(145, 50) },
+      { key: 'UC_MWIKOC', name: 'collagen.marine', ...cells(100, 20) },
+      { key: 'non-smm', name: 'Boshqa manbalar', ...cells(10, 0) },
     ],
-    aiQualified: 410,
     aiElsewhere: 17,
   },
 } as unknown as LeadSourcesOverviewDto
@@ -85,8 +87,7 @@ describe('ChannelTiles', () => {
     expect(within(tile('Входящий')).getByText('473')).toBeTruthy()
     expect(within(tile('Телеграм')).getByText('27')).toBeTruthy()
     expect(within(tile('Телеграм')).getByText('13 kval · 48.1%')).toBeTruthy()
-    expect(within(tile('Сммщик ии')).getByText('445')).toBeTruthy()
-    expect(await tipOf(within(tile('Сммщик ии')).getByText('Instagram / Telegram bot akkauntlari · yaratilgan kuni boʻyicha'))).toContain('collagen.marine')
+    expect(within(tile('Сммщик ии')).getByText('410')).toBeTruthy()
     expect(within(tile('Веб сайт')).getByText('1')).toBeTruthy()
   })
 
@@ -101,16 +102,25 @@ describe('ChannelTiles', () => {
     expect(within(tile('Входящий')).getByText('473')).toBeTruthy()
   })
 
-  it('lists «Сммщик ии» by account, and keeps «ИИ квал сана» as a quiet line with what left Регистрация in its tip (2026-10-09)', async () => {
+  it('prints «Сммщик ии» by «ИИ квал сана», its dubl and kval, by account, and what «Jami» counts of it apart (2026-10-15)', async () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const smm = tile('Сммщик ии')
-    const accounts = within(smm).getByTestId('smm-accounts')
-    expect([...accounts.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['sinolifeuz300', 'collagen.marine145'])
-    const line = within(smm).getByText('«ИИ квал сана» boʻyicha: 410')
+    // The big number is the AI's date, not the accounts' leads by creation day (445).
+    expect(within(smm).getByText('410')).toBeTruthy()
+    expect(within(smm).getByText('120 kval · 32.0%')).toBeTruthy()
+    expect(within(smm).getByText('shundan 35 dubl')).toBeTruthy()
+    const line = within(smm).getByText('«ИИ квал сана» boʻyicha · Регистрация')
     expect(await tipOf(line)).toMatch(/Yana 17 tasi Регистрацияdan oʻtib ketgan/)
-    // The big number is the accounts' leads by creation day, not the AI's date.
-    expect(within(smm).getByText('445')).toBeTruthy()
+    const accounts = within(smm).getByTestId('smm-accounts')
+    expect([...accounts.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      'sinolifeuz300',
+      'collagen.marine100',
+      'Boshqa manbalar10',
+    ])
+    expect(within(smm).getByText('«Jami»ga yaratilgan kuni boʻyicha: 445')).toBeTruthy()
+    // No close-day count is read for it.
+    expect(within(smm).queryByText(/shu davrda yopilgan/)).toBeNull()
   })
 
   it('names nothing past Регистрация when nothing is, and no list with no account', async () => {
@@ -118,10 +128,10 @@ describe('ChannelTiles', () => {
 
     const smm = tile('Сммщик ии')
     expect(within(smm).queryByTestId('smm-accounts')).toBeNull()
-    expect(await tipOf(within(smm).getByText('«ИИ квал сана» boʻyicha: 410'))).not.toMatch(/oʻtib ketgan/)
+    expect(await tipOf(within(smm).getByText('«ИИ квал сана» boʻyicha · Регистрация'))).not.toMatch(/oʻtib ketgan/)
   })
 
-  it('prints the count closed in the window as a quiet second line on every tile', async () => {
+  it('prints the count closed in the window as a quiet second line on every tile but «Сммщик ии»', async () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const line = within(tile('Телеграм')).getByText('shu davrda yopilgan: 14')

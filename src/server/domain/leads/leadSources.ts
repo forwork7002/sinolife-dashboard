@@ -73,6 +73,10 @@ export const LEAD_CHANNELS: readonly LeadChannel[] = Object.freeze([
  * лидлар». The AI's mark moves no lead between tiles any more, and «Жами /
  * Янги / Дубль лидлар» above are these tiles' «Jami»: «Исход» is an
  * operator's own call, not a lead, and is in neither.
+ *
+ * THE CARD READS THE AI'S DATE AGAIN SINCE 2026-10-15 (the client): «Сммщик
+ * ии» prints `tiles.ai`, «ИИ квал сана» in Регистрация. This tile is still
+ * what «Jami» sums — by source and creation day — and is a line under it.
  */
 export type LeadTile = 'generated' | 'inbound' | 'telegram' | 'aiSmm' | 'web' | 'sarafan' | 'outbound' | 'other'
 
