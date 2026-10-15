@@ -593,6 +593,25 @@ export const SMM_ACCOUNTS: readonly { readonly id: string; readonly name: string
 ])
 
 /**
+ * «Сммщик ии»'s «ИИ квал сана» card: the client's portal filter of
+ * 2026-10-15 — «ИИ квал сана» + these nine «Источник», any creation day. The
+ * SMM managers' own sources, «Instagram» and the page's second bot are not in
+ * it, nor «Телеграмм» (31 of the 141 AI-marked Регистрация deals that day,
+ * already on the «Телеграм» tile).
+ */
+export const AI_CARD_SOURCE_IDS: ReadonlySet<string> = new Set([
+  'UC_MWIKOC', // collagen.marine
+  'UC_NBCV5K', // collagen.sinolife
+  'UC_KX2114', // sinogummy
+  '38|NEXTBOT', // zextra_life
+  'UC_LBSZDU', // zextra.sinolife
+  'UC_A8LE21', // zextra.uz
+  'UC_1X1J24', // sinolifeuz
+  'UC_0FMQ5Q', // sinolife_otziv
+  'UC_Z1OF0D', // sinolif_tg
+])
+
+/**
  * The channel tiles' sources — the client's written list of 2026-10-09
  * (Регистрация, CATEGORY_ID 0), which is NOT `LEAD_SOURCE_VOCABULARY`: there
  * «sinolif_tg» is Telegram and the bot pages are ad pages; here both are

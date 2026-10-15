@@ -62,7 +62,7 @@ const data = {
     smmAccounts: [
       { key: 'UC_1X1J24', name: 'sinolifeuz', ...cells(300, 100) },
       { key: 'UC_MWIKOC', name: 'collagen.marine', ...cells(100, 20) },
-      { key: 'non-smm', name: 'Boshqa manbalar', ...cells(10, 0) },
+      { key: 'UC_A8LE21', name: 'zextra.uz', ...cells(10, 0) },
     ],
     aiElsewhere: 17,
   },
@@ -116,7 +116,7 @@ describe('ChannelTiles', () => {
     expect([...accounts.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
       'sinolifeuz300',
       'collagen.marine100',
-      'Boshqa manbalar10',
+      'zextra.uz10',
     ])
     expect(within(smm).getByText('«Jami»ga yaratilgan kuni boʻyicha: 445')).toBeTruthy()
     // No close-day count is read for it.

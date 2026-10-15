@@ -292,7 +292,7 @@ function SmmBreakdown({ tiles, jamiRow }: { tiles: LeadSourcesOverviewDto['tiles
   return (
     <>
       <TipNote
-        tip={`Регистрацияdagi bitimlar, «ИИ квал сана»si shu davrga toʻgʻri kelgan — qaysi kuni yaratilganidan qatʼi nazar. Kval — hozir «Сделка успешна»da turganlari.${
+        tip={`Регистрацияdagi bitimlar, «ИИ квал сана»si shu davrga toʻgʻri kelgan — qaysi kuni yaratilganidan qatʼi nazar — manbasi: collagen.marine, collagen.sinolife, sinogummy, zextra_life, zextra.sinolife, zextra.uz, sinolifeuz, sinolife_otziv, sinolif_tg. Kval — hozir «Сделка успешна»da turganlari.${
           tiles.aiElsewhere > 0
             ? ` Yana ${formatNumber(tiles.aiElsewhere)} tasi Регистрацияdan oʻtib ketgan (Первичный отдел, Доставка …) — sanalmagan.`
             : ''

@@ -32,6 +32,7 @@ import {
   LEAD_SOURCE_VOCABULARY,
   LEAD_TILE_SOURCES,
   SMM_ACCOUNTS,
+  AI_CARD_SOURCE_IDS,
 } from '@/server/integrations/crm/bitrix24/mapping'
 import {
   type CampaignChannel,
@@ -328,17 +329,15 @@ export interface LeadSourcesOverviewDto {
     /**
      * «Сммщик ии»'s card since 2026-10-15 (the client: «ИИ квал сана» is the
      * right count): Регистрация deals whose «ИИ квал сана» is in the window,
-     * any creation day — duplicates «Дубликат (лид)», kval WON now. The
+     * any creation day, on the client's nine sources (`AI_CARD_SOURCE_IDS`)
+     * — duplicates «Дубликат (лид)», kval WON now. The
      * `aiSmm` row stays the SMM sources by creation day, which is what
      * «Jami» sums. No close-day count is read here, so none is sent.
      */
     readonly ai: Omit<ChannelTileDto, 'closedQualified'>
-    /**
-     * `ai` by account (`SMM_ACCOUNTS`), largest first; a source that is no
-     * SMM account is one «Boshqa manbalar» row, last. They sum to `ai`.
-     */
+    /** `ai` by account (`SMM_ACCOUNTS`' names), largest first — they sum to `ai`. */
     readonly smmAccounts: readonly ({ readonly key: string; readonly name: string } & ChannelTileDto)[]
-    /** The same «ИИ квал сана», outside Регистрация now (Первичный отдел, Доставка, …) — said in a tip, summed nowhere. */
+    /** The same deals outside Регистрация now (Первичный отдел, Доставка, …) — said in a tip, summed nowhere. */
     readonly aiElsewhere: number
   }
   readonly sources: readonly SourceRowDto[]
@@ -450,9 +449,6 @@ function addTileLeads(tile: TileAcc, row: { stage: string; status: string; leads
   if (isLeadDuplicate(row.stage)) tile.duplicates += row.leads
   if (leadBucket(row.stage, row.status) === 'success') tile.qualified += row.leads
 }
-
-/** «Сммщик ии»'s list: the AI-marked deals whose source is no SMM account. */
-const AI_OTHER_SOURCE = 'non-smm'
 
 function tileCells(a: TileAcc): ChannelTileDto {
   const fresh = a.leads - a.duplicates
@@ -915,22 +911,22 @@ export function leadSourcesOverview(all: {
   const formLeads = outcomeCells(formOutcome).leads - formlessLeads
 
   /*
-    «ИИ квал сана» in the window, any creation day — «Сммщик ии»'s card: what
-    is in Регистрация, by account (a page's second bot is the page's), and
-    apart what has already moved on to Первичный отдел or Доставка.
+    «ИИ квал сана» in the window, any creation day, on the client's nine
+    sources — «Сммщик ии»'s card, their portal filter: what is in
+    Регистрация, by account, and apart what has already moved on to
+    Первичный отдел or Доставка.
   */
   const ai = tileZero()
   const smmAccounts = new Map<string, TileAcc>()
   let aiElsewhere = 0
   for (const row of input.aiQualified) {
+    if (row.sourceId === null || !AI_CARD_SOURCE_IDS.has(row.sourceId)) continue
     if (!row.registration) {
       aiElsewhere += row.leads
       continue
     }
-    const account =
-      row.sourceId !== null && leadTile(row.sourceId, LEAD_TILE_SOURCES) === 'aiSmm' ? pageKeyOf(row.sourceId) : AI_OTHER_SOURCE
     addTileLeads(ai, row)
-    addTileLeads(mapGet(smmAccounts, account, tileZero), row)
+    addTileLeads(mapGet(smmAccounts, row.sourceId, tileZero), row)
   }
 
   // Kval by the day it was WON, onto the tile its lead counts on — each tile's quiet second line.
@@ -1028,17 +1024,8 @@ export function leadSourcesOverview(all: {
       total: jami,
       ai: aiCells,
       smmAccounts: [...smmAccounts]
-        .map(([key, t]) => ({
-          key,
-          name: key === AI_OTHER_SOURCE ? 'Boshqa manbalar' : (SMM_ACCOUNTS.find((a) => a.id === key)?.name ?? key),
-          ...tileCells(t),
-        }))
-        .sort(
-          (a, b) =>
-            Number(a.key === AI_OTHER_SOURCE) - Number(b.key === AI_OTHER_SOURCE) ||
-            b.leads - a.leads ||
-            a.name.localeCompare(b.name, 'ru'),
-        ),
+        .map(([key, t]) => ({ key, name: SMM_ACCOUNTS.find((a) => a.id === key)?.name ?? key, ...tileCells(t) }))
+        .sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name, 'ru')),
       aiElsewhere,
       /*
         Not in the DTO: a tab opened before the 2026-10-09 deploy still reads

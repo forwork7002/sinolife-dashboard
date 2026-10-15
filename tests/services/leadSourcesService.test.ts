@@ -124,17 +124,18 @@ describe('leadSourcesOverview', () => {
       { sourceId: 'UC_KPZA32', formTitle: null, productLine: null, aiQualified: false, qualified: 1 },
       { sourceId: null, formTitle: null, productLine: null, aiQualified: false, qualified: 1 },
     ],
-    // «ИИ квал сана» in the window, any creation day — 6 in Регистрация (one a duplicate), 3 moved on.
+    // «ИИ квал сана» in the window, any creation day — on the client's nine sources 5 in Регистрация (one a duplicate), 3 moved on.
     aiQualified: [
       { registration: true, sourceId: 'UC_1X1J24', formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
-      // zextra.sinolife's second bot: the page's account.
-      { registration: true, sourceId: '46|NEXTBOT', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 3 },
+      { registration: true, sourceId: 'UC_LBSZDU', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 3 },
       { registration: true, sourceId: 'UC_1X1J24', formTitle: null, productLine: null, stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 },
-      // The red «Дубликат» is no «Дубль лид» (the client, 2026-10-02): still a fresh lead here.
+      // Not one of the nine «Источник» of the client's filter: «Телеграмм», no source.
+      { registration: true, sourceId: 'UC_8NZNYM', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 4 },
       { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Дубликат', status: 'OPEN', leads: 1 },
       // Already in Первичный отдел / Доставка: a repeat, counted on no tile (the client, 2026-10-03).
-      { registration: false, sourceId: null, formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', leads: 2 },
-      { registration: false, sourceId: null, formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
+      { registration: false, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', leads: 2 },
+      { registration: false, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
+      { registration: false, sourceId: 'UC_8NZNYM', formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', leads: 5 },
     ],
     // «Сарафан маркетинг» in every pipeline: 3 created, 2 won (the client, 2026-10-10).
     sarafan: { leads: 3, qualified: 2 },
@@ -390,13 +391,11 @@ describe('leadSourcesOverview', () => {
     // What «Jami» sums: the bot accounts by the day the deal was created — sinolifeuz 4 (one «Дубликат (лид)») and
     // collagen.sinolife 1 — whatever the AI marked.
     expect(tile('aiSmm')).toMatchObject({ leads: 5, fresh: 4, qualified: 2, qualifiedPercent: 50, closedQualified: 1 })
-    // The card itself (the client, 2026-10-15): «ИИ квал сана» in Регистрация, any creation day, by account.
-    expect(data.tiles.ai).toEqual({ leads: 6, fresh: 5, qualified: 1, qualifiedPercent: 20 })
+    // The card itself (the client's portal filter, 2026-10-15): «ИИ квал сана» + the nine sources, Регистрация, by account.
+    expect(data.tiles.ai).toEqual({ leads: 5, fresh: 4, qualified: 1, qualifiedPercent: 25 })
     expect(data.tiles.smmAccounts).toEqual([
       { key: 'UC_LBSZDU', name: 'zextra.sinolife', leads: 3, fresh: 3, qualified: 0, qualifiedPercent: 0, closedQualified: 0 },
       { key: 'UC_1X1J24', name: 'sinolifeuz', leads: 2, fresh: 1, qualified: 1, qualifiedPercent: 100, closedQualified: 0 },
-      // No source: no account of the list, so the last row.
-      { key: 'non-smm', name: 'Boshqa manbalar', leads: 1, fresh: 1, qualified: 0, qualifiedPercent: 0, closedQualified: 0 },
     ])
     expect(data.tiles.aiElsewhere).toBe(3)
     expect(tile('web')).toMatchObject({ leads: 1, qualified: 1 })
@@ -430,7 +429,7 @@ describe('leadSourcesOverview', () => {
     expect(total.leads + apart.reduce((n, r) => n + r.leads, 0)).toBe(data.totals.registration.leads)
   })
 
-  it('folds a page\'s second bot into its account, and a source no SMM account names into «Boshqa manbalar», last', () => {
+  it('counts the card on the client\'s nine sources alone — a page\'s second bot, «Сммщик» and «Ген лид» are not in it', () => {
     const ai = (sourceId: string, stage: string, status: string, leads: number): AiQualifiedStageRow => ({
       registration: true,
       sourceId,
@@ -456,16 +455,18 @@ describe('leadSourcesOverview', () => {
         ai('UC_LBSZDU', 'Сделка успешна', 'WON', 2),
         ai('46|NEXTBOT', 'Обработка', 'OPEN', 3),
         ai('REPEAT_SALE', 'Обработка', 'OPEN', 9),
+        ai('UC_5JW4YK', 'Обработка', 'OPEN', 4),
         ai('UC_Z1OF0D', 'Обработка', 'OPEN', 1),
       ],
       sarafan: NO_SARAFAN,
     })
     expect(d.tiles.smmAccounts.map((a) => [a.name, a.leads, a.qualified])).toEqual([
-      ['zextra.sinolife', 5, 2],
+      ['zextra.sinolife', 2, 2],
       ['sinolif_tg', 1, 0],
-      ['Boshqa manbalar', 9, 0],
     ])
-    expect(d.tiles.ai.leads).toBe(15)
+    expect(d.tiles.ai.leads).toBe(3)
+    // «Jami»'s row still reads the SMM sources by creation day, the second bot folded into its page.
+    expect(d.tiles.rows.find((r) => r.tile === 'aiSmm')!.leads).toBe(6)
     expect(d.tiles.rows.find((r) => r.tile === 'aiSmm')!.leads).toBe(6)
     expect(d.tiles.rows.find((r) => r.tile === 'telegram')!.leads).toBe(0)
   })
@@ -821,10 +822,10 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     expect(collagen.funnel.total + zextra.funnel.total + none.funnel.total).toBe(all.funnel.total)
     expect(collagen.funnel.qualified + zextra.funnel.qualified + none.funnel.qualified).toBe(all.funnel.qualified)
     expect(collagen.funnel.spendUsd + zextra.funnel.spendUsd + none.funnel.spendUsd).toBe(all.funnel.spendUsd)
-    // «Сммщик ии»'s «ИИ квал сана» card too: the sourceless AI deals are «Brendsiz»'s «Boshqa manbalar».
+    // «Сммщик ии»'s «ИИ квал сана» card too: zextra.uz is Zextra's, the sourceless AI deals are on no card.
     expect(collagen.tiles.ai.leads + zextra.tiles.ai.leads + none.tiles.ai.leads).toBe(all.tiles.ai.leads)
     expect(collagen.tiles.aiElsewhere + zextra.tiles.aiElsewhere + none.tiles.aiElsewhere).toBe(all.tiles.aiElsewhere)
-    expect(none.tiles.smmAccounts.map((a) => [a.name, a.leads])).toEqual([['Boshqa manbalar', 2]])
+    expect([all.tiles.ai.leads, zextra.tiles.ai.leads, none.tiles.smmAccounts.length]).toEqual([1, 1, 0])
     // «Сарафан» and the inbound calls carry no brand: they are «Brendsiz»'s, whole.
     expect(none.tiles.rows.find((r) => r.tile === 'sarafan')!.leads).toBe(3)
     expect(none.inboundCalls).toBe(9)

@@ -197,11 +197,11 @@ export interface LeadSourcesOverviewDto {
     readonly total: ChannelTileDto
     /**
      * «Сммщик ии»'s card: Регистрация deals whose «ИИ квал сана» is in the
-     * window, any creation day (the `aiSmm` row is what «Jami» sums — the SMM
+     * window, any creation day, on the client's nine sources (the `aiSmm` row is what «Jami» sums — the SMM
      * sources by creation day). No close-day count is read for it.
      */
     readonly ai: Omit<ChannelTileDto, 'closedQualified'>
-    /** `ai` by account, largest first, «Boshqa manbalar» (key `non-smm`) last — they sum to `ai`. */
+    /** `ai` by account, largest first — they sum to `ai`. */
     readonly smmAccounts: readonly ({ readonly key: string; readonly name: string } & ChannelTileDto)[]
     /** The same «ИИ квал сана», outside Регистрация now — said in a tip, summed nowhere. */
     readonly aiElsewhere: number
