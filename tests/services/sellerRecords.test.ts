@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { previousEquivalent, resolvePeriod } from '@/server/domain/period/period'
 import type { ConfirmationMonthlyRecordRow, InsightsRepository } from '@/server/repositories/insightsRepository'
@@ -198,5 +198,50 @@ describe('the wall’s memo', () => {
     await service.records(at(new Date('2026-09-08T09:00:00.037+05:00')))
 
     expect(calls).toBe(1)
+  })
+
+  it('hands a reader past the ten minutes the previous wall at once and rebuilds it behind them', async () => {
+    /*
+      The televisions poll every ten minutes — the memo's TTL — so each poll
+      found it expired and waited for the cohort (prod 2026-10-16: 2–15 s,
+      every ten minutes all day). Past the TTL the old wall is handed out and
+      ONE rebuild runs behind the reader.
+    */
+    vi.useFakeTimers()
+    try {
+      let release: (rows: ConfirmationMonthlyRecordRow[]) => void = () => undefined
+      let calls = 0
+      const insights = {
+        confirmationSellerRecords: () => {
+          calls += 1
+          if (calls === 1) return Promise.resolve([row({ month: '2026-09-01', confirmedMinor: mln(44) })])
+          return new Promise<ConfirmationMonthlyRecordRow[]>((resolve) => (release = resolve))
+        },
+      } as unknown as InsightsRepository
+      const service = new SellerBoardService({} as SellerBoardRepository, insights)
+      const period = resolvePeriod('today', { timeZone: TZ, now: NOW })
+      const ctx = {
+        period,
+        comparison: previousEquivalent(period),
+        currency: 'UZS',
+        filters: { restrictToEmployeeIds: null },
+        now: NOW,
+      } as unknown as AnalyticsContext
+
+      expect((await service.records(ctx)).months[0]!.amount.amount).toBe(44_000_000)
+      // Past the ten minutes and LIVE_CACHE's five more, within the wall's twenty.
+      vi.advanceTimersByTime(25 * 60_000)
+
+      // The rebuild has not landed, and the reader is not kept waiting for it.
+      expect((await service.records(ctx)).months[0]!.amount.amount).toBe(44_000_000)
+      expect(calls).toBe(2)
+
+      release([row({ month: '2026-09-01', confirmedMinor: mln(45) })])
+      await vi.runAllTimersAsync()
+      expect((await service.records(ctx)).months[0]!.amount.amount).toBe(45_000_000)
+      expect(calls).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

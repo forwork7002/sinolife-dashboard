@@ -49,7 +49,7 @@ import type {
   ConfirmationSourceRatingRow,
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
-import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
+import { LIVE_CACHE, type TtlCacheOptions, keyPart, ttlCache } from './ttlCache'
 import type {
   SellerBoardFilters,
   SellerBoardRepository,
@@ -489,11 +489,26 @@ export interface SellerMedalsDto {
 }
 
 /**
+ * The record wall's and the medals' memo options (2026-10-16, «dashboard
+ * sekin»): past the ten minutes the previous answer is handed out at once and
+ * ONE rebuild runs behind the reader, for up to twenty minutes more.
+ *
+ * Both screens poll every ten minutes — the TTL itself — so every poll found
+ * its entry expired and waited for the build: the records cohort and the
+ * medals' two, side by side. Production 2026-10-16 logged that pair at 2–15 s
+ * every ten minutes all day. Longer than `LIVE_CACHE`'s five minutes because
+ * these are month-long facts, not live counters: a screen back after up to
+ * thirty minutes since the last build shows the previous wall for one poll
+ * rather than waiting. So an answer is up to thirty minutes old.
+ */
+const SLOW_FACT_CACHE: TtlCacheOptions = { ...LIVE_CACHE, staleMs: 20 * 60_000 }
+
+/**
  * Medal rekord devori bilan bir xil sekin fakt, va uning kogortasi shu
  * ekrandagi eng keng o'qish. Taxtaning oltmish soniyasi emas, devorning
- * o'n daqiqasi.
+ * o'n daqiqasi — va devorning `SLOW_FACT_CACHE`i.
  */
-const medalsCache = ttlCache<SellerMedalsDto>(600_000)
+const medalsCache = ttlCache<SellerMedalsDto>(600_000, SLOW_FACT_CACHE)
 
 /** Test seam only — see `resetSellerBoardCache`, same hazard. */
 export function resetSellerMedalsCache(): void {
@@ -531,7 +546,7 @@ const RECORDS_FROM = '2026-08'
  * seconds: the wall is a slow fact and its query builds a cohort spanning
  * every month it covers, which is the most expensive read on this screen.
  */
-const recordsCache = ttlCache<SellerRecordsDto>(600_000)
+const recordsCache = ttlCache<SellerRecordsDto>(600_000, SLOW_FACT_CACHE)
 
 /** Test seam only — see `resetSellerBoardCache`, same hazard. */
 export function resetSellerRecordsCache(): void {
@@ -884,8 +899,9 @@ export class SellerBoardService {
       re-asked by every open television every ten minutes — was rebuilt on
       every request, and readers arriving together never shared a build. The
       start (`RECORDS_FROM`), the zone, the currency and the filters name the
-      question; the ten-minute TTL bounds how old the answer is, which at a
-      month's turn means `running` may lag the calendar by that much.
+      question; the TTL and its stale window (`SLOW_FACT_CACHE`, thirty
+      minutes in all) bound how old the answer is, which at a month's turn
+      means `running` may lag the calendar by that much.
     */
     const key = [
       period.start.toISOString(),
@@ -960,8 +976,8 @@ export class SellerBoardService {
       bo'lmasdi: ikkala kogorta qurilishi ham (~2 s o'lchangan) HAR
       SO'ROVDA ishga tushardi, va `ttlCache`ning promise'ni qo'shib
       yuborishi — butun floor bir vaqtda ochganda ishlashi uchun
-      yozilgan — hech qachon ishlamas edi. O'N DAQIQALIK TTL javobni yangi
-      ushlab turadi; kalitga esa faqat SAVOLNI aniqlash kerak, savol esa
+      yozilgan — hech qachon ishlamas edi. TTL va uning eskirish oynasi
+      (`SLOW_FACT_CACHE`, jami o'ttiz daqiqa) javobning yoshini chegaralaydi; kalitga esa faqat SAVOLNI aniqlash kerak, savol esa
       "RECORDS_FROM dan buyon qaysi medallar, shu filtrlar ostida" — buni
       `period.start` (RECORDS_FROM ning o'zi), mintaqa, valyuta va filtrlar
       to'liq aytib beradi, `end`siz ham.

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 process.env.DATABASE_URL ??= 'postgresql://test@127.0.0.1:5432/test'
 process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
@@ -153,5 +153,44 @@ describe('medal servisi', () => {
     await service.medals(contextAt(new Date('2026-09-15T06:00:00.000Z')))
     await service.medals(contextAt(new Date('2026-09-15T06:00:00.037Z')))
     expect(calls.n).toBe(1)
+  })
+
+  it('o‘n daqiqadan keyin eski medallar darhol beriladi, yangisi o‘quvchi orqasida quriladi', async () => {
+    /*
+      Ekran har o‘n daqiqada so‘raydi — keshning TTL i ham o‘n daqiqa — shuning
+      uchun har so‘rov keshni eskirgan holda topib, ikki kogortani kutardi
+      (prod 2026-10-16: 2–15 s, kun bo‘yi har o‘n daqiqada).
+    */
+    vi.useFakeTimers()
+    try {
+      let release: (facts: { months: unknown[]; days: unknown[] }) => void = () => undefined
+      let n = 0
+      const repo = {
+        sellerMedalFacts: () => {
+          n++
+          if (n === 1) return Promise.resolve({ months, days: [] })
+          return new Promise((resolve) => (release = resolve))
+        },
+      }
+      const service = new SellerBoardService({} as never, repo as never)
+      const ctx = contextAt(new Date('2026-09-15T06:00:00Z'))
+      const gold = (dto: Awaited<ReturnType<typeof service.medals>>) =>
+        dto.sellers.find((s) => s.employeeId === 'e1')?.medals.some((m) => m.code === 'month-gold') ?? false
+
+      expect(gold(await service.medals(ctx))).toBe(true)
+      // O‘n daqiqa va LIVE_CACHE ning besh daqiqasidan o‘tib, devorning yigirma daqiqasi ichida.
+      vi.advanceTimersByTime(25 * 60_000)
+
+      // Qayta qurish hali tugamagan, o‘quvchi esa uni kutmaydi.
+      expect(gold(await service.medals(ctx))).toBe(true)
+      expect(n).toBe(2)
+
+      release({ months: [], days: [] })
+      await vi.runAllTimersAsync()
+      expect(gold(await service.medals(ctx))).toBe(false)
+      expect(n).toBe(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
