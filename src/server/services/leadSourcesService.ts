@@ -33,6 +33,7 @@ import {
   LEAD_TILE_SOURCES,
   SMM_ACCOUNTS,
   AI_CARD_SOURCE_IDS,
+  type RepeatLeadKind,
 } from '@/server/integrations/crm/bitrix24/mapping'
 import {
   type CampaignChannel,
@@ -263,6 +264,13 @@ export interface LeadSourcesOverviewDto {
     readonly fresh: number
     /** Of `total`, repeat leads — «Такрор лид» filled (not the «Дубликат (лид)» stage, since 2026-10-16). */
     readonly duplicates: number
+    /**
+     * Of `duplicates`, «Такрор - харид қилган» and «Такрор - обработка» — the
+     * tile prints both (the client, 2026-10-16: «takror xarid qilgan shuncha,
+     * takror obrabotka shuncha»). What is left is a value the portal added later.
+     */
+    readonly repeatBought: number
+    readonly repeatProcessing: number
     /** Of `total`, WON («Сделка успешна») by now. */
     readonly qualified: number
     /** `qualified` ÷ `fresh`; null with no new leads. A repeat lead's kval is in `qualified` (16.10: 5 of 99). */
@@ -480,11 +488,14 @@ const formDayCells = (date: string, a: FormDayAcc, fillsBasis: boolean): FormDay
 interface TileAcc {
   leads: number
   duplicates: number
+  /** Of `duplicates`, «Такрор - харид қилган» / «Такрор - обработка». */
+  bought: number
+  processing: number
   qualified: number
   closed: number
 }
 
-const tileZero = (): TileAcc => ({ leads: 0, duplicates: 0, qualified: 0, closed: 0 })
+const tileZero = (): TileAcc => ({ leads: 0, duplicates: 0, bought: 0, processing: 0, qualified: 0, closed: 0 })
 
 /**
  * One row's leads onto a tile: a repeat lead is a duplicate, a lead WON by now its kval.
@@ -494,10 +505,28 @@ const tileZero = (): TileAcc => ({ leads: 0, duplicates: 0, qualified: 0, closed
  * one. It was the «Дубликат (лид)» stage — 16.10 on the portal: 24 there, 256
  * repeat leads, 21 of them both. So «Янги» is the field left empty.
  */
-function addTileLeads(tile: TileAcc, row: { repeat: boolean; stage: string; status: string; leads: number }) {
+function addTileLeads(tile: TileAcc, row: { repeat: RepeatLeadKind | null; stage: string; status: string; leads: number }) {
   tile.leads += row.leads
-  if (row.repeat) tile.duplicates += row.leads
+  if (row.repeat !== null) tile.duplicates += row.leads
+  if (row.repeat === 'BOUGHT') tile.bought += row.leads
+  if (row.repeat === 'PROCESSING') tile.processing += row.leads
   if (leadBucket(row.stage, row.status) === 'success') tile.qualified += row.leads
+}
+
+/**
+ * A tile's duplicates cut to `max`, its two named kinds with them so they never
+ * sum past it: the excess comes off the unnamed kind first, then «обработка»
+ * (the bulk), then «харид қилган».
+ */
+function capDuplicates(tile: TileAcc, max: number): void {
+  let excess = tile.duplicates - max
+  if (excess <= 0) return
+  const other = tile.duplicates - tile.bought - tile.processing
+  tile.duplicates = max
+  excess -= Math.min(excess, other)
+  const fromProcessing = Math.min(excess, tile.processing)
+  tile.processing -= fromProcessing
+  tile.bought -= excess - fromProcessing
 }
 
 function tileCells(a: TileAcc): ChannelTileDto {
@@ -1079,7 +1108,7 @@ export function leadSourcesOverview(all: {
   const generatedDeals = generatedTile.leads
   if (tileFills) {
     generatedTile.leads = formFills + outcomeCells(manual).leads
-    generatedTile.duplicates = Math.min(generatedTile.duplicates, generatedTile.leads)
+    capDuplicates(generatedTile, generatedTile.leads)
   }
 
   /*
@@ -1095,6 +1124,8 @@ export function leadSourcesOverview(all: {
     const shown = tile === 'aiSmm' ? ai : t
     tilesTotal.leads += shown.leads
     tilesTotal.duplicates += shown.duplicates
+    tilesTotal.bought += shown.bought
+    tilesTotal.processing += shown.processing
     tilesTotal.qualified += shown.qualified
     tilesTotal.closed += t.closed
   }
@@ -1129,6 +1160,8 @@ export function leadSourcesOverview(all: {
       total: jami.leads,
       fresh: jami.fresh,
       duplicates: tilesTotal.duplicates,
+      repeatBought: tilesTotal.bought,
+      repeatProcessing: tilesTotal.processing,
       qualified: jami.qualified,
       qualifiedPercent: jami.qualifiedPercent,
       closedQualified: jami.closedQualified,

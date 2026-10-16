@@ -4,7 +4,7 @@ import { CALL_DATA_FLOOR, callWindowStart } from '@/lib/callQuality'
 import type { FormFillCoverage, FormFillDayRow } from '@/server/domain/leads/formFills'
 import { type Period, zonedDateKey } from '@/server/domain/period/period'
 import type { DistributedDayRow } from '@/server/domain/registration/leadSplit'
-import { LEAD_TILE_SOURCES } from '@/server/integrations/crm/bitrix24/mapping'
+import { LEAD_TILE_SOURCES, type RepeatLeadKind } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { readFormFillCoverage, readFormFillDays } from './formFillRepository'
 import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
@@ -34,8 +34,8 @@ export interface RegistrationDayRow {
   readonly status: string
   /** The AI qualified it out of the DMs («ИИ квал сана» is filled). */
   readonly aiQualified: boolean
-  /** «Такрор лид» is filled — the portal made it a repeat lead; empty is a new one. */
-  readonly repeat: boolean
+  /** «Такрор лид»: «харид қилган» BOUGHT, «обработка» PROCESSING; null is a new lead. */
+  readonly repeat: RepeatLeadKind | null
   readonly leads: number
 }
 
@@ -62,8 +62,8 @@ export interface AiQualifiedStageRow {
   readonly stage: string
   /** DealStatus: OPEN, WON or LOST. */
   readonly status: string
-  /** «Такрор лид» is filled — the portal made it a repeat lead; empty is a new one. */
-  readonly repeat: boolean
+  /** «Такрор лид»: «харид қилган» BOUGHT, «обработка» PROCESSING; null is a new lead. */
+  readonly repeat: RepeatLeadKind | null
   readonly leads: number
 }
 
@@ -122,7 +122,7 @@ export class LeadSourcesRepository {
         stage: string | null
         status: string
         ai_qualified: boolean
-        repeat: boolean
+        repeat: RepeatLeadKind | null
         leads: bigint
       }[]
     >(
@@ -192,7 +192,7 @@ export class LeadSourcesRepository {
         st."name" AS stage,
         r."status"::text AS status,
         (r."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
-        (r."repeatLead" IS NOT NULL) AS repeat,
+        r."repeatLead" AS repeat,
         count(*)::bigint AS leads
       FROM reg r
       LEFT JOIN "deal_stage" st ON st."id" = r."stageId"
@@ -340,7 +340,7 @@ export class LeadSourcesRepository {
         product_line: string | null
         stage: string | null
         status: string
-        repeat: boolean
+        repeat: RepeatLeadKind | null
         leads: bigint
       }[]
     >(
@@ -359,7 +359,7 @@ export class LeadSourcesRepository {
         NULLIF(btrim(d."productLine"), '') AS product_line,
         st."name" AS stage,
         d."status"::text AS status,
-        (d."repeatLead" IS NOT NULL) AS repeat,
+        d."repeatLead" AS repeat,
         count(*)::bigint AS leads
       FROM "deal" d
       LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"

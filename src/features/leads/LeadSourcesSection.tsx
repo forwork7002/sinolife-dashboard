@@ -141,6 +141,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           value={f?.duplicates ?? null}
           unit="count"
           hint={f ? `«Такрор лид» toʻldirilgan${shareOfTotal(f.duplicates)}` : undefined}
+          context={f ? <RepeatKinds funnel={f} /> : undefined}
         />
         <StatTile
           compact
@@ -274,6 +275,27 @@ const kvalHint = (t: Omit<ChannelTileDto, 'closedQualified'>) =>
   `${formatNumber(t.qualified)} kval · ${t.qualifiedPercent === null ? NO_VALUE : formatPercent(t.qualifiedPercent)}`
 
 const note = (text: string, tip?: string) => <TipNote tip={tip}>{text}</TipNote>
+
+/**
+ * «Дубль лидлар»'s two kinds as the portal names them (the client,
+ * 2026-10-16: «takror xarid qilgan shuncha, takror obrabotka shuncha deb
+ * chiqib turadi»); a value the portal adds later is «boshqa».
+ */
+function RepeatKinds({ funnel }: { funnel: LeadSourcesOverviewDto['funnel'] }) {
+  const other = funnel.duplicates - funnel.repeatBought - funnel.repeatProcessing
+  const line = (label: string, n: number) => (
+    <TipNote>
+      {label}: <span className="tabular font-semibold">{formatNumber(n)}</span>
+    </TipNote>
+  )
+  return (
+    <>
+      {line('Такрор - харид қилган', funnel.repeatBought)}
+      {line('Такрор - обработка', funnel.repeatProcessing)}
+      {other > 0 && line('boshqa', other)}
+    </>
+  )
+}
 
 const HANDED_OUT_TIP =
   'Shu davrda ROPlarga berilgan lidlar — «Kimga qancha lid kelayapti» → «Квал» jadvalining «Jami» qatori, davr kunlari boʻyicha qoʻshilgan: «Bugun»da bir kun, «Shu oy»da butun oy. Bitrix24: «Лид таркатилган сана» shu davrda, «РОП (Первичка)», barcha voronkalar, dubllar bilan.'

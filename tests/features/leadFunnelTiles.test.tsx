@@ -31,6 +31,8 @@ const data = {
     total: 1000,
     fresh: 940,
     duplicates: 60,
+    repeatBought: 8,
+    repeatProcessing: 50,
     qualified: 300,
     qualifiedPercent: (300 / 940) * 100,
     closedQualified: 340,
@@ -70,10 +72,19 @@ describe('FunnelTiles', () => {
     expect(within(tile('Квал лид нархи $')).getByText('Meta sarfi 1 200 $ ÷ Ген лид kvali 200')).toBeTruthy()
   })
 
+  it('prints «Дубль лидлар»\'s two «Такрор лид» kinds under it, and the rest as «boshqa» (the client, 2026-10-16)', () => {
+    render(<FunnelTiles data={data} status="ready" />)
+
+    const dubl = tile('Дубль лидлар')
+    expect(within(dubl).getByText('«Такрор лид» toʻldirilgan · 6.0%')).toBeTruthy()
+    const lines = [...dubl.querySelectorAll('p')].map((p) => p.textContent).slice(-3)
+    expect(lines).toEqual(['Такрор - харид қилган: 8', 'Такрор - обработка: 50', 'boshqa: 2'])
+  })
+
   it('draws a dash, never a zero, for a rate or a price it cannot compute', () => {
     const quiet = {
       importedAt: null,
-      funnel: { total: 0, fresh: 0, duplicates: 0, qualified: 0, qualifiedPercent: null, closedQualified: 0, handedOut: 0, spendUsd: 0, generatedQualified: 0, costPerQualifiedUsd: null },
+      funnel: { total: 0, fresh: 0, duplicates: 0, repeatBought: 0, repeatProcessing: 0, qualified: 0, qualifiedPercent: null, closedQualified: 0, handedOut: 0, spendUsd: 0, generatedQualified: 0, costPerQualifiedUsd: null },
       tiles: { rows: [], total: { leads: 0 } },
     } as unknown as LeadSourcesOverviewDto
     render(<FunnelTiles data={quiet} status="ready" />)

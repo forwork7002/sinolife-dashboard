@@ -144,7 +144,11 @@ export interface LeadSourcesOverviewDto {
   readonly funnel: {
     readonly total: number
     readonly fresh: number
+    /** Repeat leads — «Такрор лид» filled. */
     readonly duplicates: number
+    /** Of `duplicates`: «Такрор - харид қилган», «Такрор - обработка». */
+    readonly repeatBought: number
+    readonly repeatProcessing: number
     readonly qualified: number
     readonly qualifiedPercent: number | null
     /** WON in the window by close day — the count until 2026-10-09. */

@@ -60,8 +60,8 @@ describe('LeadSourcesRepository.aiQualifiedStages', () => {
       $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
         seen.push({ sql, params })
         return [
-          { registration: true, source_id: 'UC_A8LE21', form_title: null, stage: 'Дубликат (лид)', status: 'OPEN', repeat: true, leads: 14n },
-          { registration: false, source_id: null, form_title: null, stage: null, status: 'WON', repeat: false, leads: 3n },
+          { registration: true, source_id: 'UC_A8LE21', form_title: null, stage: 'Дубликат (лид)', status: 'OPEN', repeat: 'PROCESSING', leads: 14n },
+          { registration: false, source_id: null, form_title: null, stage: null, status: 'WON', repeat: null, leads: 3n },
         ]
       },
     }
@@ -70,11 +70,11 @@ describe('LeadSourcesRepository.aiQualifiedStages', () => {
     const rows = await new LeadSourcesRepository(client as never).aiQualifiedStages({ start, end } as never)
 
     expect(rows).toEqual([
-      { registration: true, sourceId: 'UC_A8LE21', formTitle: null, stage: 'Дубликат (лид)', status: 'OPEN', repeat: true, leads: 14 },
-      { registration: false, sourceId: null, formTitle: null, stage: '—', status: 'WON', repeat: false, leads: 3 },
+      { registration: true, sourceId: 'UC_A8LE21', formTitle: null, stage: 'Дубликат (лид)', status: 'OPEN', repeat: 'PROCESSING', leads: 14 },
+      { registration: false, sourceId: null, formTitle: null, stage: '—', status: 'WON', repeat: null, leads: 3 },
     ])
-    // «Дубль» on the «Сммщик ии» card is the «Такрор лид» field (2026-10-16), grouped beside the stage.
-    expect(seen[0]!.sql).toMatch(/\(d\."repeatLead" IS NOT NULL\) AS repeat/)
+    // «Дубль» on the «Сммщик ии» card is the «Такрор лид» field (2026-10-16), its kind grouped beside the stage.
+    expect(seen[0]!.sql).toMatch(/d\."repeatLead" AS repeat,/)
     expect(seen[0]!.sql).toMatch(/GROUP BY 1, 2, 3, 4, 5, 6, 7\b/)
     const { sql, params } = seen[0]!
     expect(sql).toMatch(/d\."aiQualifiedAt" >= \$1 AND d\."aiQualifiedAt" < \$2/)
@@ -112,17 +112,17 @@ describe('LeadSourcesRepository.registrationDays — late «Qayta zayavka» copi
     expect(sql).toContain('WHERE NOT EXISTS (SELECT 1 FROM replayed rp WHERE rp.id = r.id)')
     expect(sql).toMatch(/pd\."createdAtSource" >= \$1 - interval '1 day' AND pd\."createdAtSource" < \$1/)
   })
-  it('flags a repeat lead by «Такрор лид», one group per flag — «Дубль лидлар» reads it (2026-10-16)', async () => {
+  it('reads «Такрор лид»\'s kind, one group per kind — «Дубль лидлар» and its two lines read it (2026-10-16)', async () => {
     const seen: string[] = []
     const client = {
       $queryRawUnsafe: async (sql: string) => {
         seen.push(sql)
-        return [{ day: '2026-10-16', source_id: 'REPEAT_SALE', source: 'Ген лид', form_title: null, product_line: null, targetolog: null, stage: 'Лид новый (лид)', status: 'OPEN', ai_qualified: false, repeat: true, leads: 7n }]
+        return [{ day: '2026-10-16', source_id: 'REPEAT_SALE', source: 'Ген лид', form_title: null, product_line: null, targetolog: null, stage: 'Лид новый (лид)', status: 'OPEN', ai_qualified: false, repeat: 'PROCESSING', leads: 7n }]
       },
     }
     const rows = await new LeadSourcesRepository(client as never).registrationDays({ start: new Date(0), end: new Date(1) } as never)
-    expect(rows).toMatchObject([{ stage: 'Лид новый (лид)', repeat: true, leads: 7 }])
-    expect(seen[0]!).toMatch(/\(r\."repeatLead" IS NOT NULL\) AS repeat/)
+    expect(rows).toMatchObject([{ stage: 'Лид новый (лид)', repeat: 'PROCESSING', leads: 7 }])
+    expect(seen[0]!).toMatch(/r\."repeatLead" AS repeat,/)
     expect(seen[0]!).toMatch(/GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10\b/)
   })
 })
