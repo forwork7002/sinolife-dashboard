@@ -277,7 +277,24 @@ const SCAN_TTL_MS = 120_000
   scan landed; the next read cuts it once, from the new scan.
 */
 const overviewCache = ttlCache<RoistatOverviewDto>(SCAN_TTL_MS + (LIVE_CACHE.staleMs ?? 0))
-const daysCache = ttlCache<RoistatDaysDto>(120_000, LIVE_CACHE)
+/*
+  «Kunlar boʻyicha»'s reads for a window, memoised WITHOUT the brand
+  (2026-10-16, «dashboard sekin»): the scans read it only as `keyed`, so
+  Collagen, Zextra and «Brendsiz» each ran the same month-long cohort scan and
+  FAKT scan (15–20 s on production) for rows the other slices had just read.
+  The table is cut from it per request — the scan's rows, no query. A failed
+  FAKT scan (`teamDays` null) now leaves every slice without FAKT for the
+  memo's life, as it left the one slice that asked before.
+*/
+interface DaysScan {
+  readonly today: string
+  readonly rateDay: string
+  readonly bitrix: readonly RoistatBitrixRow[]
+  readonly spend: readonly SpendDay[]
+  readonly rate: number | null | undefined
+  readonly teamDays: readonly RnpTeamDayRow[] | null
+}
+const daysScanCache = ttlCache<DaysScan>(120_000, LIVE_CACHE)
 /*
   The two scans, memoised apart from the table (2026-10-06). Neither depends
   on the cut or its drill parent, and the brand reaches them only as `keyed`:
@@ -293,7 +310,7 @@ let bitrixScanBuilds = 0
 /** Test seam: each case builds its own answer, and the memo would hand the first one to the rest. */
 export function resetRoistatCaches(): void {
   overviewCache.clear()
-  daysCache.clear()
+  daysScanCache.clear()
   bitrixScanCache.clear()
 }
 
@@ -326,8 +343,9 @@ export class RoistatService {
   }
 
   async days(period: Period, now: Date, brand: BrandFilter = 'all'): Promise<RoistatDaysDto> {
-    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), brand].join('|')
-    return daysCache.get(key, () => this.buildDays(period, now, brand))
+    const keyed = brand !== 'all'
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), keyed].join('|')
+    return this.daysTable(await daysScanCache.get(key, () => this.daysScan(period, now, keyed)), brand)
   }
 
   /** The overview's two scans for a window, shared by every cut, drill and brand slice of it. */
@@ -407,25 +425,31 @@ export class RoistatService {
     }
   }
 
-  /** The «Дни» table — the same rows `overview(period, { dim: 'days' })` draws, newest day first. */
-  private async buildDays(period: Period, now: Date, brand: BrandFilter): Promise<RoistatDaysDto> {
+  /** «Kunlar boʻyicha»'s reads for a window, every brand slice's — see `daysScanCache`. */
+  private async daysScan(period: Period, now: Date, keyed: boolean): Promise<DaysScan> {
     const today = zonedDateKey(now, period.timeZone)
     const window = dayRange(period)
     const rateDay = window.to < today ? window.to : today
     const [bitrix, spend, rates, teamDays] = await Promise.all([
-      this.repository.bitrix(period, now, 'days', brand !== 'all'),
+      this.repository.bitrix(period, now, 'days', keyed),
       this.spendDays(window.from, window.to),
       this.usd.forDays([rateDay], today),
       // An addition to the «Дни» table, never its price: a failed scan is logged and the table draws without FAKT.
       // Under «Hammasi» no order is filed by brand, so the per-order brand probes are skipped.
-      this.insights.rnpTeamDays(period, brand !== 'all').catch((error: unknown) => {
+      this.insights.rnpTeamDays(period, keyed).catch((error: unknown) => {
         void import('@/server/logging/logger').then(({ logger }) =>
           logger.warn({ err: error }, '«Kunlar boʻyicha» FAKT scan failed; the table draws without it'),
         )
         return null
       }),
     ])
-    const table = this.table('days', bitrixOfBrand(bitrix, brand), spendOfBrand(spend, brand), [], rates[0], rateDay, today)
+    return { today, rateDay, bitrix, spend, rate: rates[0], teamDays }
+  }
+
+  /** The «Дни» table — the same rows `overview(period, { dim: 'days' })` draws, newest day first. */
+  private daysTable(scan: DaysScan, brand: BrandFilter): RoistatDaysDto {
+    const { today, rateDay, teamDays } = scan
+    const table = this.table('days', bitrixOfBrand(scan.bitrix, brand), spendOfBrand(scan.spend, brand), [], scan.rate, rateDay, today)
     if (teamDays === null) return table
     const fakt = faktDays(teamDays, brand)
     // A day with orders in the queue and neither a lead nor a dollar still has its FAKT to show.

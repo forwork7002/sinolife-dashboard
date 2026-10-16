@@ -22,6 +22,7 @@ const { bitrixLabel } = await import('@/server/domain/roistat/roistatCuts')
 beforeEach(() => {
   resetRoistatCaches()
   teamDays = []
+  teamDaysScans = 0
 })
 const { RoistatRepository } = await import('@/server/repositories/roistatRepository')
 
@@ -41,8 +42,10 @@ function teamDay(fields: Partial<RnpTeamDayRow> & Pick<RnpTeamDayRow, 'day' | 'r
 /** The queue cohort's team-days under «Kunlar boʻyicha» — what a case puts here, `days` reads. */
 let teamDays: RnpTeamDayRow[] = []
 let teamDaysFail = false
+let teamDaysScans = 0
 const insights = {
   rnpTeamDays: async () => {
+    teamDaysScans += 1
     if (teamDaysFail) throw new Error('canceling statement due to statement timeout')
     return teamDays
   },
@@ -474,7 +477,34 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
     await service.overview(PERIOD, { dim: 'days', brand: 'all' }, NOW)
     await service.days(PERIOD, NOW, 'Zextra')
     await service.days(PERIOD, NOW, 'none')
-    expect(calls.map((c) => c.keyed)).toEqual([false, false, true, true])
+    // «Brendsiz» narrows the scan Zextra's read: one keyed scan serves every slice.
+    expect(calls.map((c) => c.keyed)).toEqual([false, false, true])
+  })
+
+  it('scans «Kunlar boʻyicha» once for Collagen, Zextra and «Brendsiz» — the brand narrows after the scan', async () => {
+    /*
+      The scans read the brand only as «keyed» (2026-10-16): each slice used
+      to run its own month-long cohort scan and FAKT scan, 15–20 s each on
+      production, for rows the other slices had just read.
+    */
+    teamDays = [
+      teamDay({ day: '2026-10-01', rop: 'Azizbek', productBrand: 'Collagen', fakt1Minor: 100_000_000n }),
+      teamDay({ day: '2026-10-01', rop: 'Azizbek', productBrand: 'Zextra', fakt1Minor: 40_000_000n }),
+      teamDay({ day: '2026-10-01', rop: 'Baza', productBrand: '-', fakt1Minor: 10_000_000n }),
+    ]
+    const { service, calls } = keyedHarness()
+    const zextra = await service.days(PERIOD, NOW, 'Zextra')
+    const collagen = await service.days(PERIOD, NOW, 'Collagen')
+    const none = await service.days(PERIOD, NOW, 'none')
+    expect(calls).toEqual([{ shape: 'days', keyed: true }])
+    expect(teamDaysScans).toBe(1)
+    // Still each brand's own rows: Zextra 13 leads (the page and the Kamron form), Collagen 20; FAKT by the P&L's rule.
+    expect(zextra.total.leads).toBe(13)
+    expect(collagen.total.leads).toBe(20)
+    expect(none.total.leads).toBe(0)
+    expect(zextra.fakt?.total.fakt1PrimaryUzs).toBe(400_000)
+    expect(collagen.fakt?.total.fakt1PrimaryUzs).toBe(1_000_000)
+    expect(none.fakt?.total.fakt1BaseUzs).toBe(100_000)
   })
 
   it('files a sale by the product it was paid for — the team only when it has no line item', async () => {
