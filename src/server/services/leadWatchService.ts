@@ -309,8 +309,9 @@ export class LeadWatchService {
   /**
    * «Yetib keldi» per targetolog over yesterday and today — «Targetologlar»'s
    * own `forms` block (`LeadSourcesService.targetologForms`), so the figure
-   * is that card's to the lead: the Регистрация deals a targetolog's CRM
-   * forms opened over Meta's lead count for their lead-form campaigns.
+   * is that card's to the lead: a targetolog's CRM-form fills — the deals
+   * their forms opened when the fills do not cover the window — over Meta's
+   * lead count for their lead-form campaigns.
    *
    * SOFT. A failed Meta read must not take the watch down with it — six of
    * the seven checks do not read Meta at all — so it is logged and the
@@ -331,8 +332,8 @@ export class LeadWatchService {
           targetolog: owner.targetolog,
           brand: owner.product === 'Boshqa' ? null : owner.product,
           metaLeads: owner.metaLeads,
-          // Forms only, as «Yetib keldi»: a field-filed lead never passed through a Meta form.
-          leads: owner.outcome.leads - owner.formlessLeads,
+          // As «Yetib keldi» counts: the fills, as Meta does — or, uncovered, the form deals (a field-filed lead never passed through a Meta form).
+          leads: owner.leadsBasis === 'fills' ? owner.bitrixLeads : owner.outcome.leads - owner.formlessLeads,
         }))
       })
       .catch((error: unknown) => {

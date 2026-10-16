@@ -51,10 +51,12 @@ import {
   LEAD_TILES_OUTSIDE_REGISTRATION,
   formNameOf,
   formOwner,
+  isCustomerForm,
   leadChannel,
   leadTile,
   targetologOfField,
 } from '@/server/domain/leads/leadSources'
+import { type FormFillDayRow, fillsCover, isIntegrationForm } from '@/server/domain/leads/formFills'
 import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type ChannelLeads, type ChannelLeadsDay, type ManualSpendDto, manualSpendBlocks } from '@/server/domain/reklama/manualSpend'
 import { type Period, type PeriodPreset, periodLengthInDays, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
@@ -122,6 +124,7 @@ export interface FormDayDto extends FormExpenseDto {
   /** The targetolog's lead-form campaigns' spend that day — «Отчёт Т»'s $. */
   readonly spendUsd: number
   readonly metaLeads: number
+  /** The day's Bitrix24 count of Meta's form leads — the fills, or the deals on `leadsBasis` 'deals'. */
   readonly leads: number
   readonly success: number
 }
@@ -137,10 +140,19 @@ export interface FormOwnerDto extends FormExpenseDto {
   readonly accounts: readonly string[]
   readonly spendUsd: number
   readonly metaLeads: number
+  /** What the Регистрация deals of these forms became — the deals' buckets, whatever `bitrixLeads` counts. */
   readonly outcome: LeadOutcomeDto
-  /** Регистрация leads ÷ Meta leads — how much of what Meta counted arrived. */
+  /**
+   * The Bitrix24 count of Meta's form leads beside `metaLeads`. On
+   * `leadsBasis` 'fills' (since 2026-10-15): every CRM-form fill of these
+   * forms, a returning contact's too, plus the AI targetolog's deals — as Meta
+   * counts. On 'deals': `outcome.leads`, for a window the fills do not cover.
+   */
+  readonly bitrixLeads: number
+  readonly leadsBasis: 'fills' | 'deals'
+  /** `bitrixLeads` ÷ Meta leads — how much of what Meta counted arrived. */
   readonly reachPercent: number | null
-  /** spend ÷ Регистрация leads — the lead the business actually got. */
+  /** spend ÷ `bitrixLeads`. */
   readonly costPerLeadUsd: number | null
   /** spend ÷ kval. */
   readonly costPerSuccessUsd: number | null
@@ -275,6 +287,9 @@ export interface LeadSourcesOverviewDto {
     readonly spendUsd: number
     readonly metaLeads: number
     readonly outcome: LeadOutcomeDto
+    /** The table's «Jami» Bitrix24 leads: the owners' `bitrixLeads` and the hand-typed «Ген лид». */
+    readonly bitrixLeads: number
+    readonly leadsBasis: 'fills' | 'deals'
     /** «Ген лид» typed in by hand — no form names a targetolog — so the table's «Jami» is every «Ген лид». */
     readonly manual: LeadOutcomeDto
     /**
@@ -422,14 +437,16 @@ interface FormDayAcc extends ExpenseAcc {
   spend: bigint
   metaLeads: number
   leads: number
+  /** The day's CRM-form fills (and AI targetolog deals) — `leads` on the fills' basis. */
+  fills: number
   success: number
 }
 
-const formDayCells = (date: string, a: FormDayAcc): FormDayDto => ({
+const formDayCells = (date: string, a: FormDayAcc, fillsBasis: boolean): FormDayDto => ({
   date,
   spendUsd: usd(a.spend),
   metaLeads: a.metaLeads,
-  leads: a.leads,
+  leads: fillsBasis ? a.fills : a.leads,
   success: a.success,
   ...expenseCells(a.spend, a),
 })
@@ -578,11 +595,24 @@ function ofBrand(input: LeadSourcesInput, brand: Exclude<BrandFilter, 'all'>): L
     triage: input.triage.filter((row) => brandMatches(brand, pageBrand(row.sourceId))),
     campaigns: input.campaigns.filter((row) => brandMatches(brand, adBudgetProduct(row))),
     fakt1: input.fakt1?.filter(lead) ?? null,
+    formFills: input.formFills?.filter((row) => brandMatches(brand, fillBrand(row.subject))) ?? null,
     qualified: input.qualified.filter(lead),
     aiQualified: input.aiQualified.filter(lead),
     sarafan: brandless ? input.sarafan : { leads: 0, qualified: 0 },
     inboundCalls: brandless ? input.inboundCalls : null,
   }
+}
+
+/**
+ * The brand a fill's subject («Заполнена CRM-форма "<form>"») is sliced
+ * under on «Lidlar»: its form's, by the rule the form's deals are sliced by
+ * (`leadBrand` with the form alone — a fill carries no «Проект» and no
+ * source), so a form's fills and its deals land in the same slice. Null for a
+ * vacancy's or the cosmetics line's form, whose fills are no customer's lead.
+ */
+function fillBrand(subject: string): TargetProduct | null {
+  const form = formNameOf(subject)
+  return form === null || !isCustomerForm(form) ? null : leadBrand(null, subject)
 }
 
 /**
@@ -599,6 +629,13 @@ export function leadSourcesOverview(all: {
    * reads null, the rest stands.
    */
   fakt1: readonly LeadFakt1ClientRow[] | null
+  /**
+   * The window's CRM-form fills by day (`LeadSourcesRepository.formFillDays`)
+   * — the Bitrix24 count of Meta's form leads on «Targetologlar». Null or
+   * absent when the fills do not cover the window (`fillsCover`): the deals
+   * are counted, as before 2026-10-15.
+   */
+  formFills?: readonly FormFillDayRow[] | null
   /** Регистрация deals WON in the window, by source (`LeadSourcesRepository.qualifiedSources`). */
   qualified: readonly QualifiedSourceRow[]
   /** Deals whose «ИИ квал сана» is in the window, any pipeline, flagged Регистрация or not (`LeadSourcesRepository.aiQualifiedStages`). */
@@ -614,6 +651,8 @@ export function leadSourcesOverview(all: {
   const brand = all.brand ?? 'all'
   const input = brand === 'all' ? all : ofBrand(all, brand)
   const days = calendarDays(input.window.from, input.window.to)
+  // «Brendsiz» has no fill to count — every customer form's fill names a brand — so it keeps the deals.
+  const fillsBasis = brand !== 'none' && input.formFills !== null && input.formFills !== undefined
 
   // --- Регистрация: every row into its source, channel and (for a form) its owner
   interface FormAcc {
@@ -628,6 +667,8 @@ export function leadSourcesOverview(all: {
     unlinked: bigint
     /** «Ген лид» with no form, filed here by the deal's «Таргетолог» field. */
     formless: number
+    /** CRM-form fills of this owner's forms, and the AI targetolog's deals (`isIntegrationForm`). */
+    fills: number
     expense: ExpenseAcc
     outcome: OutcomeAcc
     days: Map<string, FormDayAcc>
@@ -647,7 +688,7 @@ export function leadSourcesOverview(all: {
     counted: boolean
   }
 
-  const formDayZero = (): FormDayAcc => ({ spend: 0n, metaLeads: 0, leads: 0, success: 0, ...expenseZero() })
+  const formDayZero = (): FormDayAcc => ({ spend: 0n, metaLeads: 0, leads: 0, fills: 0, success: 0, ...expenseZero() })
   const owners = new Map<string, FormAcc>()
   const ownerAcc = (o: { key: string; targetolog: string; product: MetaProduct }) =>
     mapGet(owners, o.key, () => ({
@@ -658,6 +699,7 @@ export function leadSourcesOverview(all: {
       metaLeads: 0,
       unlinked: 0n,
       formless: 0,
+      fills: 0,
       expense: expenseZero(),
       outcome: outcomeZero(),
       days: new Map(),
@@ -690,11 +732,16 @@ export function leadSourcesOverview(all: {
   }
 
   // Every form named in the window, before the brand switch: a copy's short form name finds its owner's (`formTailOwners`).
-  const tails = formTailOwners(
-    new Set(
-      [...all.registration, ...(all.fakt1 ?? [])].map((row) => formNameOf(row.formTitle)).filter((f): f is string => f !== null),
-    ),
-  )
+  const dealForms = [...all.registration, ...(all.fakt1 ?? [])].map((row) => formNameOf(row.formTitle))
+  const named = (forms: readonly (string | null)[]) => new Set(forms.filter((f): f is string => f !== null))
+  const tails = formTailOwners(named(dealForms))
+  /*
+    The fills' own map, with their names in it — never the deals': a form
+    seen only among the fills could make a deal's tail ambiguous, and which
+    targetolog a DEAL is filed under (its kval, its недозвон) must not move
+    with whether the fills were read.
+  */
+  const fillTails = formTailOwners(named([...dealForms, ...(all.formFills ?? []).map((row) => formNameOf(row.subject))]))
   for (const row of input.registration) {
     const bucket = leadBucket(row.stage, row.status)
     const form = formNameOf(row.formTitle)
@@ -729,6 +776,11 @@ export function leadSourcesOverview(all: {
       const day = mapGet(acc.days, row.day, formDayZero)
       day.leads += row.leads
       if (bucket === 'success') day.success += row.leads
+      // The AI targetolog's leads are deals, never a CRM-form fill: on the fills' side they are these.
+      if (form !== null && isIntegrationForm(form)) {
+        acc.fills += row.leads
+        day.fills += row.leads
+      }
     } else if (row.sourceId !== null && (channel === 'page' || pages.has(pageKeyOf(row.sourceId)))) {
       const page = pageAcc(pageKeyOf(row.sourceId), row.source ?? row.sourceId)
       addOutcome(page.outcome, one)
@@ -736,6 +788,32 @@ export function leadSourcesOverview(all: {
       day.leads += row.leads
       if (bucket === 'success') day.success += row.leads
     }
+  }
+
+  /*
+    THE FILLS, AS META COUNTS ITS LEADS (2026-10-15/16, the client: «leadlar
+    qanday hisoblanayotgan bo'lsa huddi shunday»). Every CRM-form fill onto
+    the row its form's deals are filed on (`leadOwner`'s order: the person the
+    form names, the person whose named form it ends, else the form's own
+    row). A returning contact's fill counts here though the portal opened no
+    deal for it: Meta counted it. The website's form counts too — this
+    screen's «Meta lid» counts the «Sayt» campaigns' leads — a vacancy's or
+    the cosmetics line's does not (`isCustomerForm`).
+  */
+  for (const row of fillsBasis ? (input.formFills ?? []) : []) {
+    const form = formNameOf(row.subject)
+    if (form === null || !isCustomerForm(form)) continue
+    const byForm = formOwner(form)
+    const person = byForm?.targetolog ?? fillTails.get(form)
+    const product = byForm?.product ?? leadBrand(null, row.subject)
+    const acc = ownerAcc(
+      person !== undefined && product !== null
+        ? { key: `${product}|${person}`, targetolog: person, product }
+        : { key: `form|${form}`, targetolog: form, product: 'Boshqa' },
+    )
+    acc.forms.add(form)
+    acc.fills += row.fills
+    mapGet(acc.days, row.day, formDayZero).fills += row.fills
   }
 
   /*
@@ -801,9 +879,10 @@ export function leadSourcesOverview(all: {
   let formSpend = 0n
   let metaFormLeads = 0
   let formlessLeads = 0
+  let formFills = 0
   /* An owner whose ad money is all DM is a targetolog too: their row carries it in «DM / boshqa» (2026-10-14). */
   const hasLeadWork = (o: FormAcc) =>
-    o.spend > 0n || o.metaLeads > 0 || o.unlinked > 0n || LEAD_BUCKETS.some((b) => o.outcome[b] > 0)
+    o.spend > 0n || o.metaLeads > 0 || o.unlinked > 0n || o.fills > 0 || LEAD_BUCKETS.some((b) => o.outcome[b] > 0)
   const ownerDto = (o: FormAcc): FormOwnerDto => {
     const outcome = outcomeCells(o.outcome)
     return {
@@ -816,14 +895,16 @@ export function leadSourcesOverview(all: {
       metaLeads: o.metaLeads,
       ...expenseCells(o.spend, o.expense),
       outcome,
+      bitrixLeads: fillsBasis ? o.fills : outcome.leads,
+      leadsBasis: fillsBasis ? 'fills' : 'deals',
       // Forms only: a lead the field filed here never passed through a Meta form, so it may not hide a broken link.
-      reachPercent: percent(outcome.leads - o.formless, o.metaLeads),
-      costPerLeadUsd: perUnit(o.spend, outcome.leads),
+      reachPercent: fillsBasis ? percent(o.fills, o.metaLeads) : percent(outcome.leads - o.formless, o.metaLeads),
+      costPerLeadUsd: perUnit(o.spend, fillsBasis ? o.fills : outcome.leads),
       costPerSuccessUsd: perUnit(o.spend, outcome.success),
       unlinkedUsd: usd(o.unlinked),
       formlessLeads: o.formless,
       fakt1Clients: fakt1Ready ? (fakt1Owners.get(o.key)?.size ?? 0) : null,
-      days: days.map((date) => formDayCells(date, o.days.get(date) ?? formDayZero())),
+      days: days.map((date) => formDayCells(date, o.days.get(date) ?? formDayZero(), fillsBasis)),
     }
   }
   const formOwners: FormOwnerDto[] = [...owners.values()]
@@ -840,12 +921,14 @@ export function leadSourcesOverview(all: {
       formSpend += o.spend
       metaFormLeads += o.metaLeads
       formlessLeads += o.formless
+      formFills += o.fills
       days.forEach((date, i) => {
         const cell = o.days.get(date)
         if (!cell) return
         formDays[i]!.spend += cell.spend
         formDays[i]!.metaLeads += cell.metaLeads
         formDays[i]!.leads += cell.leads
+        formDays[i]!.fills += cell.fills
         formDays[i]!.success += cell.success
         addExpense(formDays[i]!, cell)
       })
@@ -908,7 +991,7 @@ export function leadSourcesOverview(all: {
     })
 
   // «Yetib keldi» is the forms': the leads the deal's «Таргетолог» field filed on an owner are out of it.
-  const formLeads = outcomeCells(formOutcome).leads - formlessLeads
+  const formLeads = fillsBasis ? formFills : outcomeCells(formOutcome).leads - formlessLeads
 
   /*
     «ИИ квал сана» in the window, any creation day, on the client's nine
@@ -963,6 +1046,8 @@ export function leadSourcesOverview(all: {
   addOutcome(totalOutcome, formOutcome)
   addOutcome(totalOutcome, manual)
   const totalCells = outcomeCells(totalOutcome)
+  // «Jami»'s Bitrix24 leads: on the fills' basis the owners' fills and the hand-typed «Ген лид».
+  const totalLeads = fillsBasis ? formFills + outcomeCells(manual).leads : totalCells.leads
   /* No spend read (Meta not imported yet, or down that day) is «unknown», never a free kval. */
   const costPerSuccessUsd = totalSpend > 0n ? perUnit(totalSpend, totalCells.success) : null
 
@@ -990,10 +1075,12 @@ export function leadSourcesOverview(all: {
     forms: {
       owners: formOwners,
       expenseOwners,
-      days: formDays.map((cell, i) => formDayCells(days[i]!, cell)),
+      days: formDays.map((cell, i) => formDayCells(days[i]!, cell, fillsBasis)),
       spendUsd: usd(formSpend),
       metaLeads: metaFormLeads,
       outcome: outcomeCells(formOutcome),
+      bitrixLeads: totalLeads,
+      leadsBasis: fillsBasis ? 'fills' : 'deals',
       manual: outcomeCells(manual),
       fakt1Targetologs: fakt1Ready
         ? [...fakt1People]
@@ -1009,7 +1096,7 @@ export function leadSourcesOverview(all: {
       total: {
         spendUsd: usd(totalSpend),
         outcome: totalCells,
-        costPerLeadUsd: totalSpend > 0n ? perUnit(totalSpend, totalCells.leads) : null,
+        costPerLeadUsd: totalSpend > 0n ? perUnit(totalSpend, totalLeads) : null,
         costPerSuccessUsd,
       },
     },
@@ -1123,6 +1210,8 @@ interface WindowScans {
   inboundCalls: number | null
 }
 const scanCache = processWide('sinolife.leads.scanCache', () => ttlCache<WindowScans>(120_000, LIVE_CACHE))
+/** The window's CRM-form fills, or null when they do not cover it — one index range, kept as long as the deals. */
+const fillCache = processWide('sinolife.leads.fillCache', () => ttlCache<FormFillDayRow[] | null>(120_000, LIVE_CACHE))
 
 /*
   KEPT WARM (2026-10-06, «Lidlar juda sekin ochilayapti»). The memos above
@@ -1226,8 +1315,9 @@ export class LeadSourcesService {
     // Started first, raced last: the budget counts from the start, never cutting it short of the other scans.
     const started = Date.now()
     const fakt1Scan = this.fakt1Scan(period)
-    const [registration, scans, campaigns, importedAt] = await Promise.all([
+    const [registration, formFills, scans, campaigns, importedAt] = await Promise.all([
       this.registrationDays(period),
+      this.formFills(period),
       scanCache.get(key, () => this.scans(period)),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),
@@ -1236,7 +1326,7 @@ export class LeadSourcesService {
     const fakt1 = await within(fakt1Scan, Math.max(FAKT1_GRACE_MS, FAKT1_WAIT_MS - (Date.now() - started)))
 
     // Narrowed after the memo: one scan serves both brands and the whole.
-    return leadSourcesOverview({ window, registration, ...scans, fakt1, campaigns, importedAt, brand })
+    return leadSourcesOverview({ window, registration, formFills, ...scans, fakt1, campaigns, importedAt, brand })
   }
 
   /** Builds the windows the tab opens on into the memos, one after another — see `LEADS_WARM_EVERY_MS`. */
@@ -1293,8 +1383,9 @@ export class LeadSourcesService {
     const window = periodWindow(period, timeZone)
     const started = Date.now()
     const fakt1Scan = options.fakt1 ? this.fakt1Scan(period) : null
-    const [registration, campaigns, importedAt, typed] = await Promise.all([
+    const [registration, formFills, campaigns, importedAt, typed] = await Promise.all([
       this.registrationDays(period),
+      this.formFills(period),
       this.meta.campaignDays(window.from, window.to),
       this.meta.campaignsImportedAt(),
       this.meta.manualSpend(window.from, window.to),
@@ -1304,6 +1395,7 @@ export class LeadSourcesService {
     const { forms, importedAt: imported } = leadSourcesOverview({
       window,
       registration,
+      formFills,
       triage: [],
       campaigns,
       fakt1,
@@ -1343,6 +1435,25 @@ export class LeadSourcesService {
         throw error
       }),
     )
+  }
+
+  /**
+   * The window's fills when they cover it (`fillsCover`), else null — the
+   * deals are counted then. A failed read is null too, logged: the fills are
+   * one column of the tab, never a reason to take it down.
+   */
+  private formFills(period: Period): Promise<FormFillDayRow[] | null> {
+    return fillCache.get(windowKey(period), async () => {
+      try {
+        const [coverage, rows] = await Promise.all([this.repository.formFillCoverage(), this.repository.formFillDays(period)])
+        return fillsCover(coverage, period, new Date()) ? rows : null
+      } catch (error) {
+        void import('@/server/logging/logger').then(({ logger }) =>
+          logger.warn({ err: error }, 'CRM-form fills read failed; «Targetologlar» counts the form deals'),
+        )
+        return null
+      }
+    })
   }
 
   private registrationDays(period: Period): Promise<RegistrationDayRow[]> {

@@ -22,6 +22,7 @@ import { type MetaProduct, campaignChannel, isSiteCampaign, ownerOf } from '@/se
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import { formFillBrand, formNameOf } from '@/server/domain/leads/leadSources'
+import { fillsCover, isIntegrationForm } from '@/server/domain/leads/formFills'
 import {
   NOT_STATED,
   type MetaCampaignTotalRow,
@@ -392,28 +393,12 @@ function ratio(numerator: number, denominator: number): number | null {
 
 const PRODUCT_ORDER: readonly MetaProduct[] = ['Collagen', 'Zextra', 'Boshqa']
 
-/** A form deal of the AI targetolog's own integration — the title `leadFormTitleSql` gives it. */
-const AI_FORM_TITLE = /^CRM-формы «AI targetolog · /
-
 /** The brand a fill's subject («Заполнена CRM-форма "<form>"») counts for, or null. */
 function fillProduct(subject: string): MetaProduct | null {
   const name = formNameOf(subject)
   return name === null ? null : formFillBrand(name)
 }
 
-/**
- * How old the fills' last whole pass may be before the card stops trusting
- * them for a window that runs to now. The worker reads every ~6 minutes; a
- * feed that has failed for half an hour would count today short under the
- * «every fill» label, so the deals are counted instead until it reads again.
- */
-const FILLS_STALE_MS = 30 * 60_000
-
-/** Whether the fills cover the whole window — read from its start and current to its end. */
-export function fillsCover(coverage: TargetFormFills['coverage'], period: Period, now: Date): boolean {
-  if (coverage === null || period.start < coverage.from) return false
-  return coverage.through.getTime() >= Math.min(period.end.getTime(), now.getTime()) - FILLS_STALE_MS
-}
 
 /** Spend, leads and delivery for one slice, with every rate null over nothing. */
 function metrics(spend: bigint, leads: number, impressions: number, clicks: number): MetaMetricsDto {
@@ -540,7 +525,10 @@ export function metaBlock(input: {
           const product = fillProduct(row.subject)
           return product === null ? [] : [{ product, fills: row.fills }]
         })
-  const aiForms = forms.filter((f) => AI_FORM_TITLE.test(f.row.formTitle))
+  const aiForms = forms.filter((f) => {
+    const name = formNameOf(f.row.formTitle)
+    return name !== null && isIntegrationForm(name)
+  })
 
   /*
     «Sayt» lead campaigns send people to the website, not to a Meta form, so
@@ -691,6 +679,8 @@ export interface TargetologFormsInput {
     readonly product: MetaProduct
     readonly formUsd: number
     readonly outcome: { readonly leads: number; readonly success: number }
+    /** The Bitrix24 count of Meta's form leads — the fills since 2026-10-15 (`FormOwnerDto.bitrixLeads`). */
+    readonly bitrixLeads: number
     readonly fakt1Clients: number | null
   }[]
   readonly fakt1Targetologs: readonly { readonly targetolog: string; readonly clients: number }[] | null
@@ -715,7 +705,7 @@ export function withTargetologLeads(
     if (product !== 'all' && o.product !== product) continue
     const acc = people.get(o.targetolog) ?? { formUsd: 0, leads: 0, success: 0, clients: 0 }
     acc.formUsd += o.formUsd
-    acc.leads += o.outcome.leads
+    acc.leads += o.bitrixLeads
     acc.success += o.outcome.success
     acc.clients = acc.clients === null || o.fakt1Clients === null ? null : acc.clients + o.fakt1Clients
     people.set(o.targetolog, acc)

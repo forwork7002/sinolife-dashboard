@@ -575,6 +575,8 @@ function formsView(data: LeadSourcesOverviewDto | undefined, status: Status): Ta
           unlinkedUsd: 0,
           metaLeads: 0,
           outcome: forms.manual,
+          leads: forms.manual.leads,
+          successPercent: forms.manual.successPercent,
           reachPercent: null,
           costPerLeadUsd: null,
           costPerSuccessUsd: null,
@@ -589,6 +591,8 @@ function formsView(data: LeadSourcesOverviewDto | undefined, status: Status): Ta
         unlinkedUsd: forms.unlinked.spendUsd,
         metaLeads: forms.metaLeads,
         outcome: forms.total.outcome,
+        leads: forms.bitrixLeads,
+        successPercent: share(forms.total.outcome.success, forms.bitrixLeads),
         reachPercent: data.totals.formReachPercent,
         costPerLeadUsd: forms.total.costPerLeadUsd,
         costPerSuccessUsd: forms.total.costPerSuccessUsd,
@@ -598,7 +602,7 @@ function formsView(data: LeadSourcesOverviewDto | undefined, status: Status): Ta
 
   return {
     title: 'Targetologlar · lid-forma — davr boʻyicha',
-    hint: 'Meta hisoblagan lidlar va shu targetologning CRM-formasi Bitrix24 Регистрация ga ochgan bitimlar — keyin ular nima boʻlgani. Targetolog forma nomidan olinadi («Sinolife (UMAR) 777», «… Eldor»), forma nomida boʻlmasa — bitimdagi «Таргетолог» maydonidan. «Yetib keldi» — Bitrix24 lid ÷ Meta lid; past boʻlsa, Meta formasi Bitrix24 ga ulanmagan boʻlishi mumkin.',
+    hint: 'Meta hisoblagan lidlar va Bitrix24 lid — targetolog CRM-formasining Bitrix24 ga tushgan har bir toʻldirilishi, Facebook sanaganidek (eski mijoz qayta toʻldirsa ham, yangi bitim ochilmasa ham); Kval, Недозвон va boshqalar — shu formalar Регистрация da ochgan bitimlar nima boʻlgani. Targetolog forma nomidan olinadi («Umar-collagen …», «… Eldor»), forma nomida boʻlmasa — bitimdagi «Таргетолог» maydonidan. «Yetib keldi» — Bitrix24 lid ÷ Meta lid; past boʻlsa, Meta formasi Bitrix24 ga ulanmagan boʻlishi mumkin.',
     footer:
       'Lid va kval narxi — forma sarfi ÷ Bitrix24 dagi lid (yoki kval). «DM / boshqa sarf» — shu targetolog akkauntlarining lid-formaga bogʻlanmagan pullari (DM / xabar va boshqa, vakansiyasiz). «Jami» — barcha Meta sarfi (forma + DM / boshqa) ÷ barcha «Ген лид» kvali; yuqoridagi «Квал лид нархи $» aynan shu raqam. «Yetib keldi» faqat formalar boʻyicha. Meta lid narxi «Reklama samarasi» boʻlimida.',
     table: (
@@ -627,13 +631,14 @@ function formDaysView(
   const chosen = owners.find((o) => o.key === slice)
   const days = chosen ? chosen.days : data?.forms.days
   const dayTotal: FormDayCells | undefined = chosen
-    ? { date: '', spendUsd: chosen.spendUsd, metaLeads: chosen.metaLeads, leads: chosen.outcome.leads, success: chosen.outcome.success }
+    ? { date: '', spendUsd: chosen.spendUsd, metaLeads: chosen.metaLeads, leads: chosen.bitrixLeads, success: chosen.outcome.success }
     : data
       ? {
           date: '',
           spendUsd: data.forms.spendUsd,
           metaLeads: data.forms.metaLeads,
-          leads: data.forms.outcome.leads,
+          // The owners' alone, as the days above: the hand-typed «Ген лид» are on no day of a targetolog.
+          leads: data.forms.leadsBasis === 'fills' ? data.forms.bitrixLeads - data.forms.manual.leads : data.forms.outcome.leads,
           success: data.forms.outcome.success,
         }
       : undefined
@@ -681,16 +686,24 @@ interface FormTotals {
   unlinkedUsd: number
   metaLeads: number
   outcome: LeadOutcomeDto
+  /** «Bitrix24 lid» — the fills, as Meta counts (`FormOwnerDto.bitrixLeads`), whatever `outcome` holds. */
+  leads: number
+  /** Kval ÷ `leads`. */
+  successPercent: number | null
   reachPercent: number | null
   costPerLeadUsd: number | null
   costPerSuccessUsd: number | null
 }
+
+const share = (part: number, whole: number): number | null => (whole > 0 ? (part / whole) * 100 : null)
 
 const ownerTotals = (o: FormOwnerDto): FormTotals => ({
   spendUsd: o.spendUsd,
   unlinkedUsd: o.unlinkedUsd,
   metaLeads: o.metaLeads,
   outcome: o.outcome,
+  leads: o.bitrixLeads,
+  successPercent: share(o.outcome.success, o.bitrixLeads),
   reachPercent: o.reachPercent,
   costPerLeadUsd: o.costPerLeadUsd,
   costPerSuccessUsd: o.costPerSuccessUsd,
@@ -777,7 +790,7 @@ const ownerColumns: readonly Column<OwnerRow>[] = [
     header: 'Bitrix24 lid',
     align: 'right',
     numeric: true,
-    render: (r) => <span className="font-medium">{count(r.cells.outcome.leads)}</span>,
+    render: (r) => <span className="font-medium">{count(r.cells.leads)}</span>,
   },
   {
     key: 'reach',
@@ -786,7 +799,12 @@ const ownerColumns: readonly Column<OwnerRow>[] = [
     numeric: true,
     render: (r) => <Reach value={r.cells.reachPercent} meta={r.cells.metaLeads} />,
   },
-  ...outcomeColumns<{ cells: FormTotals }>((r) => r.cells.outcome),
+  // Kval % over the «Bitrix24 lid» printed beside it, not over the deals.
+  ...outcomeColumns<{ cells: FormTotals }>((r) => r.cells.outcome).map((c) =>
+    c.key === 'successPercent'
+      ? { ...c, render: (r: { cells: FormTotals }) => <span className="font-medium">{pct(r.cells.successPercent)}</span> }
+      : c,
+  ),
   { key: 'cpl', header: 'Lid narxi', align: 'right', numeric: true, render: (r) => money(r.cells.costPerLeadUsd) },
   {
     key: 'cps',
@@ -800,8 +818,8 @@ const ownerColumns: readonly Column<OwnerRow>[] = [
 /** Forms the portal saw, then the Meta accounts — or which half is missing. */
 function OwnerSources({ owner }: { owner: FormOwnerDto }) {
   const named = owner.forms.length > 0 ? `Forma: ${owner.forms.join(', ')}` : null
-  // Formless «Ген лид» the deal's «Таргетолог» field files here — said, so the lead count reconciles.
-  const formless = owner.formlessLeads > 0 ? `${count(owner.formlessLeads)} ta formasiz — «Таргетолог» maydonidan` : null
+  // Formless «Ген лид» the deal's «Таргетолог» field files here — said, so the kval reconciles: no form fill stands behind them.
+  const formless = owner.formlessLeads > 0 ? `${count(owner.formlessLeads)} ta formasiz bitim — «Таргетолог» maydonidan` : null
   const forms = [named, formless].filter((x) => x !== null).join(' · ') || 'Bitrix24 da formasi yoʻq'
   const accounts = owner.accounts.length > 0 ? `Meta: ${owner.accounts.join(', ')}` : 'Meta akkaunti bogʻlanmagan'
   return (

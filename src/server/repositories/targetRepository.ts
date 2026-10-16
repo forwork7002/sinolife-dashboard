@@ -31,8 +31,9 @@ import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import type { Period } from '@/server/domain/period/period'
 
-import { parseFormFillsState } from '@/server/integrations/crm/sync/formFillFeed'
+import type { FormFillCoverage } from '@/server/domain/leads/formFills'
 
+import { readFormFillCoverage } from './formFillRepository'
 import { formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 
 /** A money column as Postgres returns it: text, to survive the driver. */
@@ -128,7 +129,7 @@ export interface TargetFormFills {
    * last pass that reached the newest one. Null until a pass has caught up —
    * a backfill still under way is no count.
    */
-  readonly coverage: { readonly from: Date; readonly through: Date } | null
+  readonly coverage: FormFillCoverage | null
   /** «Заполнена CRM-форма "<form>"» and how many fills carried it. */
   readonly rows: readonly { readonly subject: string; readonly fills: number }[]
 }
@@ -678,17 +679,16 @@ export class TargetRepository {
    * deal (`leadBrand`). One index range on `filledAt`, ~1 100 rows a day.
    */
   async formFills(period: Period): Promise<TargetFormFills> {
-    const [clock, rows] = await Promise.all([
-      this.prisma.leadWatchSync.findUnique({ where: { id: 'forms' }, select: { state: true, lastSuccessAt: true } }),
+    const [coverage, rows] = await Promise.all([
+      readFormFillCoverage(this.prisma),
       this.prisma.crmFormFill.groupBy({
         by: ['subject'],
         where: { filledAt: { gte: period.start, lt: period.end } },
         _count: { _all: true },
       }),
     ])
-    const state = parseFormFillsState(clock?.state ?? null)
     return {
-      coverage: state && clock?.lastSuccessAt ? { from: state.from, through: clock.lastSuccessAt } : null,
+      coverage,
       rows: rows.map((r) => ({ subject: r.subject, fills: r._count._all })),
     }
   }

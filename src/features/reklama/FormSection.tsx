@@ -70,7 +70,7 @@ export function FormSection({ form, status }: { form: FormBlockDto | undefined; 
       <TableCard
         title="Targetologlar — davr boʻyicha"
         hint="Lid-forma: Kval narxi = sarf ÷ kval, Kval % = kval ÷ Bitrix24 lid. DM: sarf va murojat — targetologning DM kampaniyalari (Meta), lid va kval — DM pul ketgan sahifaning Регистрация lidlari (Bitrix24)."
-        footer="Kval — targetologning CRM-formalari ochgan Регистрация lidlaridan «Сделка успешна» boʻlgani, «Lidlar» boʻlimidagi bilan bir xil; «Jami»ga targetologi aniqlanmagan formalar ham kiradi. DM lidda reklama yoki kampaniya izi yoʻq, shuning uchun bir nechta targetolog DM qiladigan sahifa (sinolifeuz) lidlari har kuni ularning Meta murojatlari ulushiga koʻra boʻlinadi — bunday raqam «≈» bilan; yolgʻiz targetologning sahifasi (zextrauzb, collagen.sinolife) aniq."
+        footer="Kval — targetologning CRM-formalari ochgan Регистрация lidlaridan «Сделка успешна» boʻlgani; Bitrix24 lid — shu formalarning Bitrix24 ga tushgan har bir toʻldirilishi, Facebook sanaganidek; ikkalasi «Lidlar» boʻlimidagi bilan bir xil, «Jami»ga targetologi aniqlanmagan formalar ham kiradi. DM lidda reklama yoki kampaniya izi yoʻq, shuning uchun bir nechta targetolog DM qiladigan sahifa (sinolifeuz) lidlari har kuni ularning Meta murojatlari ulushiga koʻra boʻlinadi — bunday raqam «≈» bilan; yolgʻiz targetologning sahifasi (zextrauzb, collagen.sinolife) aniq."
       >
         <DataTable<OwnerRow>
           columns={ownerColumns}

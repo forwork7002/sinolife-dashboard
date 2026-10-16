@@ -71,6 +71,8 @@ const day = (date: string): FormDayDto => ({
 
 const owner = (o: Pick<FormOwnerDto, 'key' | 'targetolog' | 'product'> & { spendUsd: number; leads: number }): FormOwnerDto => ({
   ...o,
+  bitrixLeads: o.leads,
+  leadsBasis: 'fills',
   forms: [],
   accounts: [],
   metaLeads: 0,

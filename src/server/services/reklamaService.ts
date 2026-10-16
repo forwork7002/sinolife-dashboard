@@ -156,7 +156,7 @@ export interface FormOwnerDto {
   readonly dmShared: boolean
   /** Kval of the Регистрация leads «Lidlar» files on this targetolog — their CRM forms, then the deal's «Таргетолог» (`withFormKval`); null = not read. */
   readonly qualified: number | null
-  /** Those Регистрация leads — «Lidlar»'s «Bitrix лид», kval %'s divisor; null = not read. */
+  /** «Lidlar»'s «Bitrix лид» — the CRM-form fills since 2026-10-15, as Meta counts (`FormOwnerDto.bitrixLeads`) — kval %'s divisor; null = not read. */
   readonly formLeads: number | null
   readonly days: readonly FormDayDto[]
 }
@@ -165,7 +165,7 @@ export interface FormBlockDto {
   readonly total: FormCellsDto
   /** Every form lead's kval — «Lidlar»'s «Targetologlar» «Jami»; null = not read. */
   readonly qualified: number | null
-  /** Every form's Регистрация leads; null = not read. */
+  /** The owners' «Bitrix лид» summed — every form's fills, or deals for a window the fills do not cover; null = not read. */
   readonly formLeads: number | null
   readonly days: readonly FormDayDto[]
   readonly owners: readonly FormOwnerDto[]
@@ -1001,18 +1001,23 @@ export function dmLeadsByOwner(
 export function withFormKval(
   overview: ReklamaOverviewDto,
   forms: {
-    readonly owners: readonly { readonly key: string; readonly outcome: { readonly success: number; readonly leads: number } }[]
-    readonly outcome: { readonly success: number; readonly leads: number }
+    readonly owners: readonly {
+      readonly key: string
+      readonly outcome: { readonly success: number }
+      /** «Lidlar»'s «Bitrix лид» — the fills since 2026-10-15, as Meta counts (`FormOwnerDto.bitrixLeads`). */
+      readonly bitrixLeads: number
+    }[]
+    readonly outcome: { readonly success: number }
   } | null,
 ): ReklamaOverviewDto {
   if (forms === null) return overview
-  const read = new Map(forms.owners.map((o) => [o.key, o.outcome]))
+  const read = new Map(forms.owners.map((o) => [o.key, { success: o.outcome.success, leads: o.bitrixLeads }]))
   return {
     ...overview,
     form: {
       ...overview.form,
       qualified: forms.outcome.success,
-      formLeads: forms.outcome.leads,
+      formLeads: forms.owners.reduce((n, o) => n + o.bitrixLeads, 0),
       owners: overview.form.owners.map((o) => ({
         ...o,
         qualified: read.get(o.key)?.success ?? 0,

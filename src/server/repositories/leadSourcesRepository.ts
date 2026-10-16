@@ -1,9 +1,11 @@
 import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import { CALL_DATA_FLOOR, callWindowStart } from '@/lib/callQuality'
+import type { FormFillCoverage, FormFillDayRow } from '@/server/domain/leads/formFills'
 import type { Period } from '@/server/domain/period/period'
 import { LEAD_TILE_SOURCES } from '@/server/integrations/crm/bitrix24/mapping'
 
+import { readFormFillCoverage, readFormFillDays } from './formFillRepository'
 import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 
 /**
@@ -90,6 +92,16 @@ export class LeadSourcesRepository {
 
   constructor(private readonly prisma: PrismaClient) {
     this.tz = env.APP_TIMEZONE
+  }
+
+  /** The window's CRM-form fills by Tashkent day (`crm_form_fill`) — «Targetologlar»' Bitrix24 leads. */
+  formFillDays(period: Period): Promise<FormFillDayRow[]> {
+    return readFormFillDays(this.prisma, period, this.tz)
+  }
+
+  /** What `crm_form_fill` covers; null until the feed has caught up once. */
+  formFillCoverage(): Promise<FormFillCoverage | null> {
+    return readFormFillCoverage(this.prisma)
   }
 
   async registrationDays(period: Period): Promise<RegistrationDayRow[]> {

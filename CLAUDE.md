@@ -567,7 +567,23 @@ Per-screen traps worth knowing before you touch one:
   on the deals. A window the fills do not cover — starting before the
   backfill, or running past a last whole pass more than 30 minutes old
   (`fillsCover`) — is counted by deals as before (`formLeadsBasis: 'deals'`).
-  «Lidlar» and «Лид назорати»'s «Yetib keldi» still divide deals.
+  THE SAME ON EVERY META-BESIDE-BITRIX LEAD COUNT (2026-10-16, the client:
+  «leadlar qanday hisoblanayotgan bo'lsa huddi shunday qilib o'tkaz»):
+  «Lidlar»' `forms` block takes the fills by day (`formFillDays`, shared
+  helpers in `formFillRepository.ts` / `domain/leads/formFills.ts`), files
+  each on the row its form's deals are filed on (`formOwner`, then a tail map
+  of its own that also knows the fills' names — the deals' map never sees
+  them, so a fill cannot move a deal — else the form's own `form|` row),
+  sliced by `leadBrand` on the form alone; the website's form counts there
+  (that «Meta lid» counts «Sayt»), a vacancy's or Kosmetika's never
+  (`isCustomerForm`); «Brendsiz» keeps the deals. Every owner carries
+  `bitrixLeads` + `leadsBasis` — «Targetologlar»' «Bitrix24 lid», its
+  «Yetib keldi», «Lid narxi» and Kval % divisor, the day cards' «Bitrix лид»
+  (`FormDayDto.leads` is the fills on that basis), /target's targetolog
+  cards (`withTargetologLeads`), «Отчёт Т»'s kval % divisor (`withFormKval`)
+  and «Лид назорати»'s «Yetib keldi». `outcome` (kval, недозвон, sifatsiz,
+  dubl, jarayonda) stays the deals'. A failed fills read is the deals'
+  basis, logged — never the tab down.
   Company-wide (`analytics:read:all`, in `COMPANY_WIDE`): it names customers
   and phones, and neither half has a team to narrow by.
 

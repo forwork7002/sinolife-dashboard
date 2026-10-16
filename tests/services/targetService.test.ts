@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import { fillsCover } from '@/server/domain/leads/formFills'
 import type { Period } from '@/server/domain/period/period'
 import { TARGET_SOURCE_IDS } from '@/server/integrations/crm/bitrix24/mapping'
 import type { MarketingRepository } from '@/server/repositories/marketingRepository'
@@ -21,7 +22,7 @@ process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
 const { NOT_STATED } = await import('@/server/repositories/targetRepository')
-const { TargetService, countersDto, fillDays, fillsCover, metaBlock, resetTargetCaches, withTargetologLeads } = await import(
+const { TargetService, countersDto, fillDays, metaBlock, resetTargetCaches, withTargetologLeads } = await import(
   '@/server/services/targetService'
 )
 
@@ -487,7 +488,9 @@ describe('withTargetologLeads — the cards\' kval, kval % and FAKT 1 clients', 
     targetolog,
     product,
     formUsd,
-    outcome: { leads, success },
+    // The deals a little fewer than the fills: the card reads the fills, as Meta counts.
+    outcome: { leads: leads - 1, success },
+    bitrixLeads: leads,
     fakt1Clients,
   })
   const forms = {

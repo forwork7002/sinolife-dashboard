@@ -70,6 +70,7 @@ export interface FormOwnerDto {
   readonly dmQualified: number
   readonly dmShared: boolean
   readonly qualified: number | null
+  /** «Lidlar»'s «Bitrix лид»: the CRM-form fills, as Meta counts (deals for a window the fills do not cover). */
   readonly formLeads: number | null
   readonly days: readonly FormDayDto[]
 }

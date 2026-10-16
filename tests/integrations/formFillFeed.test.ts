@@ -11,6 +11,7 @@ import {
   refreshFormFills,
 } from '@/server/integrations/crm/sync/formFillFeed'
 import { formFillBrand, formNameOf } from '@/server/domain/leads/leadSources'
+import { isIntegrationForm } from '@/server/domain/leads/formFills'
 
 /**
  * THE CRM-FORM FILLS (2026-10-15) — the Bitrix24 side of Meta's form leads,
@@ -284,6 +285,14 @@ describe('refreshFormFills', () => {
     ).rejects.toThrow(/boshlanish nuqtasi topilmadi/)
     expect(written).toEqual([])
     expect(log).toEqual(['read:forms'])
+  })
+})
+
+describe('isIntegrationForm', () => {
+  it('names the AI targetolog\'s forms, an empty one too', () => {
+    expect(isIntegrationForm('AI targetolog · Sinolife AI forma 26.09.2026 17:44')).toBe(true)
+    expect(isIntegrationForm(formNameOf('CRM-формы «AI targetolog · »')!)).toBe(true)
+    expect(isIntegrationForm('Umar-collagen Collagen (UMAR)')).toBe(false)
   })
 })
 

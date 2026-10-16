@@ -1327,3 +1327,101 @@ describe('telegramLeads — the «Telegram» card\'s Bitrix лид / кв лид
     expect(await hr('Zextra')).toBe(0)
   })
 })
+
+describe('«Targetologlar» counts Meta\'s way — every CRM-form fill (2026-10-15)', () => {
+  /*
+    01–15.10.2026: Meta 13 197 Collagen form leads, the portal 13 174 fills,
+    10 896 Регистрация deals — a returning contact's fill lands on the old
+    deal. The client: «leadlar qanday hisoblanayotgan bo'lsa huddi shunday».
+  */
+  const UMAR = 'Umar-collagen Collagen (UMAR)'
+  const fill = (day: string, form: string, fills: number) => ({ day, subject: `Заполнена CRM-форма "${form}"`, fills })
+  const input = {
+    window: WINDOW,
+    importedAt: null,
+    registration: [
+      // Umar's form opened three deals, all kval.
+      reg({ formTitle: `Заполнение CRM-формы "${UMAR}"`, leads: 3 }),
+      // The AI targetolog's leads arrive as deals, never as a CRM-form fill.
+      reg({ formTitle: 'CRM-формы «AI targetolog · Sinolife AI forma»', leads: 2, stage: 'Недозвон', status: 'OPEN' }),
+    ],
+    formFills: [
+      fill('2026-09-18', UMAR, 4),
+      fill('2026-09-19', UMAR, 1),
+      fill('2026-09-18', 'Timur-zextra zextra - 27 / 09 Варианты', 2),
+      // The website's form: the «Sayt» campaigns' leads land there.
+      fill('2026-09-18', 'collagen form web', 5),
+    ],
+    triage: [],
+    campaigns: [campaign({ leads: 6, spendMicroUsd: 3_000_000n })],
+    fakt1: [],
+    qualified: [],
+    aiQualified: [],
+    sarafan: NO_SARAFAN,
+  }
+  const owner = (d: ReturnType<typeof leadSourcesOverview>, key: string) => d.forms.owners.find((o) => o.key === key)!
+
+  it('sets the fills beside Meta\'s leads, and keeps what the deals became', () => {
+    const d = leadSourcesOverview(input)
+    const umar = owner(d, 'Collagen|Umar')
+    expect(umar).toMatchObject({ bitrixLeads: 5, leadsBasis: 'fills', metaLeads: 6 })
+    expect(umar.outcome).toMatchObject({ leads: 3, success: 3 })
+    expect(umar.reachPercent).toBeCloseTo((5 / 6) * 100, 6)
+    expect(umar.costPerLeadUsd).toBeCloseTo(3 / 5, 6)
+    expect(umar.days.map((day) => day.leads)).toEqual([4, 1])
+    expect(owner(d, 'Zextra|Timur').bitrixLeads).toBe(2)
+    expect(owner(d, 'Collagen|AI targetolog').bitrixLeads).toBe(2)
+    // The website form's fills are on its own row: this screen's «Meta lid» counts the «Sayt» leads.
+    expect(owner(d, 'form|collagen form web').bitrixLeads).toBe(5)
+    expect(d.forms).toMatchObject({ bitrixLeads: 14, leadsBasis: 'fills' })
+    expect(d.forms.days.map((day) => day.leads)).toEqual([13, 1])
+    expect(d.totals.formReachPercent).toBeCloseTo((14 / 6) * 100, 6)
+  })
+
+  it('narrows the fills by the brand their form states', () => {
+    const zextra = leadSourcesOverview({ ...input, brand: 'Zextra' })
+    expect(zextra.forms.owners.map((o) => [o.key, o.bitrixLeads])).toEqual([['Zextra|Timur', 2]])
+  })
+
+  it('files a fill where its form\'s deals are filed — a form naming nobody keeps its fills on its own row', () => {
+    const d = leadSourcesOverview({
+      ...input,
+      registration: [...input.registration, reg({ formTitle: 'Заполнение CRM-формы "Collagen marine forma"', leads: 4 })],
+      formFills: [...input.formFills, fill('2026-09-18', 'Collagen marine forma', 6)],
+    })
+    expect(owner(d, 'form|Collagen marine forma')).toMatchObject({ bitrixLeads: 6, outcome: expect.objectContaining({ leads: 4 }) })
+    // The website form too: this screen's «Meta lid» counts the «Sayt» campaigns' leads.
+    expect(owner(d, 'form|collagen form web').bitrixLeads).toBe(5)
+    expect(d.forms.bitrixLeads).toBe(5 + 2 + 2 + 6 + 5)
+  })
+
+  it('counts no vacancy or cosmetics form\'s fill', () => {
+    const d = leadSourcesOverview({ ...input, formFills: [fill('2026-09-18', 'Eldor kosmetika forma', 7), fill('2026-09-18', 'Umar vakansiya', 3)] })
+    expect(d.forms.owners.some((o) => o.bitrixLeads > 0 && o.key !== 'Collagen|AI targetolog')).toBe(false)
+  })
+
+  it('never lets a fill move a deal to another targetolog', () => {
+    const copy = 'Qayta zayavka (forma akt #4663340) Заполнена CRM-форма "zextra - 27 / 09 Варианты"'
+    const base = {
+      ...input,
+      registration: [reg({ formTitle: 'Заполнение CRM-формы "Timur-zextra zextra - 27 / 09 Варианты"', leads: 1 }), reg({ formTitle: copy, leads: 5 })],
+    }
+    const without = leadSourcesOverview({ ...base, formFills: [] })
+    // Kamron's form ending alike appears among the fills alone: the copy's five deals stay Timur's.
+    const withFill = leadSourcesOverview({ ...base, formFills: [fill('2026-09-18', 'Kamron-zextra zextra - 27 / 09 Варианты', 1)] })
+    expect(owner(without, 'Zextra|Timur').outcome.leads).toBe(6)
+    expect(owner(withFill, 'Zextra|Timur').outcome.leads).toBe(6)
+  })
+
+  it('keeps the deals on «Brendsiz», where no customer form\'s fill can land', () => {
+    const d = leadSourcesOverview({ ...input, registration: [reg({ targetolog: 'Элдор', leads: 3 })], brand: 'none' })
+    expect(owner(d, 'brandless|Элдор')).toMatchObject({ bitrixLeads: 3, leadsBasis: 'deals' })
+  })
+
+  it('counts the deals, as before, for a window the fills do not cover', () => {
+    const d = leadSourcesOverview({ ...input, formFills: null })
+    expect(owner(d, 'Collagen|Umar')).toMatchObject({ bitrixLeads: 3, leadsBasis: 'deals' })
+    expect(owner(d, 'Collagen|Umar').reachPercent).toBeCloseTo(50, 6)
+    expect(d.forms.leadsBasis).toBe('deals')
+  })
+})

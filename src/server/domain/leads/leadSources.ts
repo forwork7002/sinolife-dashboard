@@ -206,13 +206,16 @@ export function formNameBrand(formName: string | null): TargetProduct | null {
   return null
 }
 
-/**
- * Forms no Meta customer campaign answers: the website's («collagen form
- * web», one fill over 01–15.10.2026 — Meta's form figure leaves «Sayt» out,
- * `isSiteCampaign`), a vacancy's and the cosmetics line's (Meta leaves the
- * hiring campaigns and Kosmetika Eldor out of both brands).
- */
-const NOT_A_META_CUSTOMER_FORM = /\bweb\b|website|\bsite\b|sayt|сайт|vakans|вакан|vacanc|ishga\s+olish|\bhr\b|kosmetik|косметик/i
+/** A form on the WEBSITE («collagen form web») — the «Sayt» campaigns' leads land there, not on a Meta form. */
+const WEBSITE_FORM = /\bweb\b|website|\bsite\b|sayt|сайт/i
+
+/** A vacancy's or the cosmetics line's form: Meta's form leads leave hiring and Kosmetika Eldor out of both brands. */
+const NOT_A_CUSTOMER_FORM = /vakans|вакан|vacanc|ishga\s+olish|\bhr\b|kosmetik|косметик/i
+
+/** Whether a CRM form takes customers' leads at all — not a vacancy's, not the cosmetics line's. */
+export function isCustomerForm(formName: string): boolean {
+  return !NOT_A_CUSTOMER_FORM.test(formName)
+}
 
 /**
  * The brand a CRM-form FILL counts for on «Target tahlili» (2026-10-15) — or
@@ -223,7 +226,8 @@ const NOT_A_META_CUSTOMER_FORM = /\bweb\b|website|\bsite\b|sayt|сайт|vakans|
  * collagen» guess, which would file an unnamed HR or cosmetics form under it.
  */
 export function formFillBrand(formName: string): TargetProduct | null {
-  if (NOT_A_META_CUSTOMER_FORM.test(formName)) return null
+  // The website's too: «Target tahlili»'s Meta figure leaves the «Sayt» campaigns out (`isSiteCampaign`).
+  if (WEBSITE_FORM.test(formName) || !isCustomerForm(formName)) return null
   return formNameBrand(formName) ?? formOwner(formName)?.product ?? null
 }
 

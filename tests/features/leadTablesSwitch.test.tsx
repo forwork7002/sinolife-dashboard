@@ -48,6 +48,9 @@ const data = {
     spendUsd: 167.48,
     metaLeads: 130,
     outcome: outcome(91, 23),
+    // The fills, as Meta counts: 95 of Sobirjon's form and the 9 hand-typed — more than the 91 deals.
+    bitrixLeads: 104,
+    leadsBasis: 'fills',
     manual: outcome(9, 2),
     unlinked: { spendUsd: 32.52, accounts: [{ name: 'Collagen Eldor', spendUsd: 30 }, { name: 'Umar 63', spendUsd: 2.52 }] },
     total: { spendUsd: 200, outcome: outcome(100, 25), costPerLeadUsd: 2, costPerSuccessUsd: 8 },
@@ -62,7 +65,9 @@ const data = {
         spendUsd: 167.48,
         metaLeads: 130,
         outcome: outcome(91, 23),
-        reachPercent: 70,
+        bitrixLeads: 95,
+        leadsBasis: 'fills',
+        reachPercent: 73.1,
         costPerLeadUsd: 1.84,
         costPerSuccessUsd: 7.28,
         unlinkedUsd: 32.52,
@@ -116,7 +121,10 @@ describe('TablesBlock', () => {
     // Forma sarfi · DM / boshqa sarf · Meta lid · Bitrix24 lid · Yetib keldi · Kval · … · Lid narxi · Kval narxi
     const sobirjon = rowOf(screen.getByText('Sobirjon'))
     expect(sobirjon.slice(0, 2)).toEqual(['167.48 $', '32.52 $'])
-    expect(screen.getByText(/4 ta formasiz — «Таргетолог» maydonidan/)).toBeTruthy()
+    // «Bitrix24 lid» is the fills, and Kval % divides them — not the 91 deals.
+    expect(sobirjon[3]).toBe('95')
+    expect(sobirjon[6]).toBe(`${(23 / 95 * 100).toFixed(1)}%`)
+    expect(screen.getByText(/4 ta formasiz bitim — «Таргетолог» maydonidan/)).toBeTruthy()
     expect(screen.queryByTestId('forms-row-unlinked')).toBeNull()
     expect(screen.queryByText(/Bogʻlanmagan sarf/)).toBeNull()
     // What names nobody at all is still said — the deal has neither a form nor «Таргетолог».
@@ -125,7 +133,7 @@ describe('TablesBlock', () => {
     const total = rowOf(screen.getByText('Jami'))
     // The two money columns add up to «Jami»'s spend, and its kval price stays the headline's.
     expect(total.slice(0, 2)).toEqual(['167.48 $', '32.52 $'])
-    expect(total[3]).toBe('100')
+    expect(total[3]).toBe('104')
     expect(total[5]).toBe('25')
     expect(total.at(-1)).toBe('8.00 $')
   })

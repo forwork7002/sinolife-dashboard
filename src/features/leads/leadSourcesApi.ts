@@ -64,7 +64,15 @@ export interface FormOwnerDto extends FormExpenseDto {
   readonly accounts: readonly string[]
   readonly spendUsd: number
   readonly metaLeads: number
+  /** What the Регистрация deals of these forms became. */
   readonly outcome: LeadOutcomeDto
+  /**
+   * «Bitrix24 lid» beside Meta's: every CRM-form fill ('fills' — a returning
+   * contact's too, as Meta counts) or, for a window the fills do not cover,
+   * `outcome.leads` ('deals').
+   */
+  readonly bitrixLeads: number
+  readonly leadsBasis: 'fills' | 'deals'
   readonly reachPercent: number | null
   readonly costPerLeadUsd: number | null
   readonly costPerSuccessUsd: number | null
@@ -163,6 +171,9 @@ export interface LeadSourcesOverviewDto {
     readonly spendUsd: number
     readonly metaLeads: number
     readonly outcome: LeadOutcomeDto
+    /** «Jami»'s «Bitrix24 lid»: the owners' `bitrixLeads` and the hand-typed «Ген лид». */
+    readonly bitrixLeads: number
+    readonly leadsBasis: 'fills' | 'deals'
     /** «Ген лид» typed in by hand, no form. */
     readonly manual: LeadOutcomeDto
     /** «Факт1 мижоз» per targetolog across both products, distinct; null while not read. */

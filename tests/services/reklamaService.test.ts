@@ -932,11 +932,12 @@ describe('withFormKval — «Отчёт Т» with «Lidlar»\'s kval (2026-10-10
   it('meets each targetolog on the owner key; one with money and no form lead is 0, and «Jami» is every form\'s', () => {
     const out = withFormKval(overview, {
       owners: [
-        { key: 'Collagen|Umar', outcome: { success: 21, leads: 70 } },
+        // «Bitrix лид» is «Lidlar»'s: the fills, as Meta counts — 70 though the forms opened 61 deals.
+        { key: 'Collagen|Umar', outcome: { success: 21 }, bitrixLeads: 70 },
         // A form no targetolog is read from: in «Jami», on no row here.
-        { key: 'form|Sinolife umumiy', outcome: { success: 2, leads: 9 } },
+        { key: 'form|Sinolife umumiy', outcome: { success: 2 }, bitrixLeads: 9 },
       ],
-      outcome: { success: 23, leads: 79 },
+      outcome: { success: 23 },
     })
     expect(out.form.owners.map((o) => [o.key, o.qualified, o.formLeads])).toEqual([
       ['Collagen|Umar', 21, 70],
