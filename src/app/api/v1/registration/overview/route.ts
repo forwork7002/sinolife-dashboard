@@ -21,6 +21,7 @@ export const GET = getHandler(ACCESS, overviewQuerySchema, async (ctx) => {
     // Not on a widened read: the write is judged on the stored scope and refused.
     canEdit: can(ctx.principal, 'kpi:manage') && !ctx.principal.widened,
     brand: ctx.query.brand,
+    now: ctx.now,
   })
   return { data }
 })

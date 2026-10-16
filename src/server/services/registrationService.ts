@@ -1,5 +1,5 @@
 import { callFloorApplied } from '@/lib/callQuality'
-import { resolvePeriod } from '@/server/domain/period/period'
+import { resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import { buildGroupPlan, type GroupPlanDto, monthStart } from '@/server/domain/registration/groupPlan'
 import {
   addDays,
@@ -33,8 +33,34 @@ const faktCache = ttlCache<SellerFaktDayRow[]>(120_000, LIVE_CACHE)
   and «Безквал» is 31 days of Регистрация deals with correlated subplans per
   deal (the owner's ROP, the hand-over history). They carry no brand — it is
   applied after (`leadSplitOfBrand`) — so a switch costs no query.
+
+  THE SETTLED DAYS APART FROM THE LAST TWO (2026-10-16, «dashboard sekin»).
+  Past this memo's few minutes every reader waited for all 31 days again:
+  10–14 s on production that day. Today and yesterday stay on the live clock
+  — «Безквал» credits a deal to its CURRENT owner and drops it once it is
+  re-staged as «Дубликат (лид)», which happens to last evening's leads the
+  next morning. The 29 days before them have settled (a late hand-over
+  re-credits one now and then), so they are read once per half hour, and
+  past that handed out — up to 12 h old, for the one poll a rebuild behind
+  the reader takes — rather than waited for: «RNP jadvali» keeps its closed
+  Регистрация and «Безквал» days the same way, without even that bound. The
+  price: those days may trail «Guruhlar», which reads the month on the live
+  clock, by that long.
+  Both statements bucket by day and are bounded to their own days (a
+  duplicate is a contact's — for «Безквал» a phone number's — later deal THAT
+  day), so the two reads never overlap and their rows simply add up.
 */
-const splitDaysCache = ttlCache<{ rows: DistributedDayRow[]; bezkval: BezkvalDayRow[] }>(120_000, LIVE_CACHE)
+type SplitDays = { readonly rows: readonly DistributedDayRow[]; readonly bezkval: readonly BezkvalDayRow[] }
+const splitDaysCache = ttlCache<SplitDays>(120_000, LIVE_CACHE)
+const SETTLED_DAYS_MS = 30 * 60_000
+const settledDaysCache = ttlCache<SplitDays>(SETTLED_DAYS_MS, { ...LIVE_CACHE, staleMs: 12 * 60 * 60_000 })
+const NO_DAYS: Promise<SplitDays> = Promise.resolve({ rows: [], bezkval: [] })
+
+/** Test seam: the memos are module-wide, and each case builds its own answer. */
+export function resetRegistrationCaches(): void {
+  splitDaysCache.clear()
+  settledDaysCache.clear()
+}
 
 /* «Guruhlar»' month of «Безквал», the same statement on the same terms; brand applied after. */
 const monthBezkvalCache = ttlCache<BezkvalDayRow[]>(120_000, LIVE_CACHE)
@@ -51,20 +77,33 @@ export class RegistrationService {
     private readonly insights: InsightsRepository,
   ) {}
 
-  async overview(input: { day: string; timeZone: string; canEdit: boolean; brand?: BrandFilter }): Promise<LeadSplitDto> {
+  async overview(input: { day: string; timeZone: string; canEdit: boolean; brand?: BrandFilter; now: Date }): Promise<LeadSplitDto> {
     const from = addDays(input.day, -(GRID_DAYS - 1))
-    const [{ rows, bezkval }, split, previous] = await Promise.all([
-      splitDaysCache.get(`${from}:${input.day}:${input.timeZone}`, async () => {
-        const [rows, bezkval] = await Promise.all([
-          this.repository.distributedDays(from, input.day),
-          this.repository.bezkvalDays(from, input.day, input.timeZone),
-        ])
-        return { rows, bezkval }
-      }),
+    // Yesterday and today live; every day before them settled — see `settledDaysCache`.
+    const yesterday = addDays(zonedDateKey(input.now, input.timeZone), -1)
+    const settledTo = input.day < yesterday ? input.day : addDays(yesterday, -1)
+    const liveFrom = from > yesterday ? from : yesterday
+    const days = (lo: string, hi: string) => async (): Promise<SplitDays> => {
+      const [rows, bezkval] = await Promise.all([
+        this.repository.distributedDays(lo, hi),
+        this.repository.bezkvalDays(lo, hi, input.timeZone),
+      ])
+      return { rows, bezkval }
+    }
+    const [settled, live, split, previous] = await Promise.all([
+      settledTo >= from ? settledDaysCache.get(`${from}:${settledTo}:${input.timeZone}`, days(from, settledTo)) : NO_DAYS,
+      input.day >= liveFrom ? splitDaysCache.get(`${liveFrom}:${input.day}:${input.timeZone}`, days(liveFrom, input.day)) : NO_DAYS,
       this.repository.split(input.day),
       this.repository.previousSplit(input.day),
     ])
-    const whole = buildLeadSplit({ day: input.day, rows, bezkval, split, previous, canEdit: input.canEdit })
+    const whole = buildLeadSplit({
+      day: input.day,
+      rows: [...settled.rows, ...live.rows],
+      bezkval: [...settled.bezkval, ...live.bezkval],
+      split,
+      previous,
+      canEdit: input.canEdit,
+    })
     return leadSplitOfBrand(whole, input.brand ?? 'all')
   }
 
