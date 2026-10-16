@@ -24,7 +24,7 @@
  */
 
 import { betterAuth } from 'better-auth'
-import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { APIError, createAuthMiddleware, getIP } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { twoFactor } from 'better-auth/plugins/two-factor'
 import { username } from 'better-auth/plugins/username'
@@ -44,6 +44,7 @@ import {
   refuseUnusedEndpoint,
   settleSignIn,
 } from './signInHooks'
+import { signInThrottle } from './signInThrottle'
 import { resolveTrustedOrigins } from './trustedOrigins'
 import { resolveTrustedProxies } from './trustedProxies'
 
@@ -65,6 +66,49 @@ export const TRUSTED_ORIGINS = resolveTrustedOrigins(
  * bucket by writing an X-Forwarded-For header.
  */
 export const TRUSTED_PROXIES = resolveTrustedProxies(process.env.APP_TRUSTED_PROXIES)
+
+/**
+ * How a client address is read — ONE object, given to better-auth below (the
+ * limiter's key, the session row's `ipAddress`) and to the sign-in throttle,
+ * so the address the throttle judges is the bucket the limiter counts.
+ */
+const IP_ADDRESS = { trustedProxies: TRUSTED_PROXIES }
+
+/** When the known-address lookup last logged a failure; see `onLookupError`. */
+let knownIpWarnedAt = 0
+
+/**
+ * `/sign-in/username`'s rate-limit rule: thirty a minute from an address three
+ * different people signed in from this week, five from any other. See
+ * `signInThrottle.ts`.
+ */
+const signInRule = signInThrottle({
+  clientIp: (request) => getIP(request, { advanced: { ipAddress: IP_ADDRESS } }),
+  // `groupBy` + `take` is a GROUP BY … LIMIT in SQL; `findMany` with
+  // `distinct` reads every matching row and de-duplicates in JavaScript.
+  // `expiresAt > since` removes nothing (a session expires after it was
+  // created) and lets Postgres start from `session_expiresAt_idx` rather than
+  // every session ever written — nothing deletes expired rows.
+  usersSignedInFrom: async (ip, since, enough) =>
+    (
+      await prisma.session.groupBy({
+        by: ['userId'],
+        where: { ipAddress: ip, createdAt: { gte: since }, expiresAt: { gt: since } },
+        orderBy: { userId: 'asc' },
+        take: enough,
+      })
+    ).length,
+  onLookupError: (error) => {
+    // Once a minute: during an outage every new address fails, and a line
+    // per sign-in request would bury the outage's own log.
+    if (Date.now() - knownIpWarnedAt < 60_000) return
+    knownIpWarnedAt = Date.now()
+    // Imported on use: the logger validates the environment as it loads.
+    void import('@/server/logging/logger').then(({ childLogger }) =>
+      childLogger('auth').warn({ err: error }, 'known-address lookup failed; sign-in stays at five a minute'),
+    )
+  },
+})
 
 /** Session lifetime, in seconds. Referenced twice, so it is named once. */
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7
@@ -420,7 +464,7 @@ export const auth = betterAuth({
    * runs, and so sign-in gets a rule of its own. The general budget is
    * generous — one open dashboard refetching every minute makes a lot of
    * legitimate requests — while the password endpoint gets five attempts a
-   * minute.
+   * minute (thirty from a known address on `/sign-in/username`, see below).
    *
    * FIVE, DOWN FROM TEN. Ten was already far beyond human typing, and the
    * lower number is now doing something specific: it means the per-IP throttle
@@ -440,6 +484,16 @@ export const auth = betterAuth({
    * The two-factor plugin adds its own rule for `/two-factor/*` (three
    * requests per ten seconds). It is left alone: enrolment is two requests
    * minutes apart, and a sign-in challenge is one code at a time.
+   *
+   * THIRTY FROM A KNOWN ADDRESS ON `/sign-in/username` (2026-10-16). The
+   * office is one address, so five a minute was shared by the whole floor and
+   * the sixth colleague signing in was refused for a minute. An address three
+   * different people signed in from this week gets thirty; the «same scale»
+   * above still holds for every other address, and the lockout, not this, is
+   * what limits guesses at one account. See `signInThrottle.ts`. Only the path
+   * the login form posts to: `/sign-in/email` is a recovery door nobody uses
+   * day to day, and the limiter counts each path apart, so giving it thirty
+   * too would hand a known address sixty a minute.
    */
   rateLimit: {
     enabled: true,
@@ -449,7 +503,7 @@ export const auth = betterAuth({
       '/sign-in/email': { window: 60, max: 5 },
       // The path every login-name account uses. Without its own rule it fell
       // under the general 200-per-minute budget.
-      '/sign-in/username': { window: 60, max: 5 },
+      '/sign-in/username': signInRule,
       '/forget-password': { window: 60, max: 5 },
     },
   },
@@ -505,9 +559,7 @@ export const auth = betterAuth({
      */
     useSecureCookies: env.BETTER_AUTH_URL.startsWith('https://'),
 
-    ipAddress: {
-      trustedProxies: TRUSTED_PROXIES,
-    },
+    ipAddress: IP_ADDRESS,
   },
 
   /**
