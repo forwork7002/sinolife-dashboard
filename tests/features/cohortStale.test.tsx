@@ -214,8 +214,11 @@ function mockFetch() {
     const url = String(input)
     requested.push(url)
     const concentration = url.includes('/insights/concentration')
+    /* The brand cards get their own, empty answer — see cohortExplains. */
     const data = url.includes('/insights/cohorts')
-      ? COHORTS
+      ? url.includes('brand=')
+        ? { ...COHORTS, rows: [] }
+        : COHORTS
       : concentration
         ? CONCENTRATION
         : url.includes('/insights/customers')

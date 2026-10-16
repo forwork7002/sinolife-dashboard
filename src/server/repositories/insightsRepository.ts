@@ -1223,6 +1223,18 @@ export class InsightsRepository {
     rop?: string | null
     /** Also emit the list of teams and how many customers each brought in. */
     includeRops?: boolean
+    /**
+     * Narrow the matrix to the customers ONE brand brought in, or null for all
+     * (2026-10-16, the client: «kogorta collagenga va zextraga alohida»).
+     *
+     * THE BRAND OF THE CUSTOMER'S FIRST ORDER — the earliest WON revenue deal
+     * of their cohort month — by the rule every screen's brand switch reads
+     * (`brandSliceSql`: the origin lead's CRM form, then the product, then the
+     * team that sold it). Returns are NOT re-attributed, exactly as with `rop`:
+     * a Collagen customer's later order counts as their return whatever it
+     * sold. A DIMENSION, NOT A SCOPE, like `rop`.
+     */
+    brand?: BrandSlice | null
   }): Promise<CohortMatrix> {
     /*
       THE ROP CTEs ARE INTERPOLATED, NOT PARAMETERISED AWAY — so a page that
@@ -1241,7 +1253,8 @@ export class InsightsRepository {
       path is a different, slower statement that only a reader who asked for it
       ever runs. The shared CTEs are shared, not copied: the two forms differ
       by two optional CTEs, one optional JOIN on each of two passthroughs, and
-      one optional UNION arm.
+      one optional UNION arm. The brand cut (2026-10-16) is a third form built
+      the same way — two CTEs of its own and its own JOIN on each passthrough.
 
       NOT MEASURED AGAINST PRODUCTION. Nothing in this repository has yet run
       EXPLAIN on the scoped form; the default form is unchanged and is
@@ -1253,6 +1266,19 @@ export class InsightsRepository {
     const scoped = typeof options.rop === 'string'
     const wantsRops = options.includeRops === true
     const needsOwner = scoped || wantsRops
+    const brand = options.brand ?? null
+    const params: unknown[] = [this.tz, options.months, ...(scoped ? [options.rop] : [])]
+    /*
+      THE BRAND IS ASKED OF ONE DEAL PER CUSTOMER, never of every purchase.
+      `brandSliceSql` costs a lateral origin-lead probe and a `deal_item` probe
+      per row; over the ~180 000 rows of `purchases_all` that is the price this
+      statement cannot pay, over the first orders it is one per customer. The
+      team fallback reads the first order's own team (`dealTeamSql`) and only
+      when neither the form nor the product names a brand, so the brand form
+      needs none of the `owner_rop` CTEs. NOT MEASURED AGAINST PRODUCTION.
+    */
+    const brandMatch =
+      brand === null ? '' : InsightsRepository.brandSliceSql('fd', InsightsRepository.dealTeamSql('fd'), brand, params)
 
     const rows = await this.prisma.$queryRawUnsafe<
       {
@@ -1355,6 +1381,14 @@ export class InsightsRepository {
           d."operatorTeamSource" AS team_source,
           COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id,`
               : ''
+          }${
+            brand !== null
+              ? `
+          /* Carried only when a brand is asked about: which deal was the
+             customer's first order (\`first_order\` below). */
+          d."id" AS deal_id,
+          d."closedAt" AS closed_at,`
+              : ''
           }
           (
             (EXTRACT(YEAR FROM date_trunc('month', d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE $1)) -
@@ -1412,6 +1446,35 @@ export class InsightsRepository {
         LEFT JOIN "department" dep ON dep."id" = e."departmentId"
       ),`
           : ''
+      }${
+        brand !== null
+          ? `
+      /*
+        WHICH BRAND BROUGHT EACH CUSTOMER IN — the brand of their FIRST order.
+
+        The earliest WON revenue deal of the customer's own cohort month
+        (\`months_since = 0\`, already computed — one or two rows per customer,
+        so this sort is tens of thousands of rows, not the ~180 000 the
+        window-function rewrite spilled on). The id breaks a tie on one
+        instant, so the pick is deterministic.
+
+        ONE ORDER, NOT \`first_owner\`'s month: a brand belongs to what was
+        bought, so it is read off one deal, while the team reads any stamp in
+        the month. Both stay inside \`months_since = 0\`.
+      */
+      first_order AS (
+        SELECT DISTINCT ON (p.customer_id) p.customer_id, p.deal_id
+          FROM purchases_all p
+         WHERE p.months_since = 0
+         ORDER BY p.customer_id, p.closed_at, p.deal_id
+      ),
+      owner_brand AS (
+        SELECT f.customer_id
+          FROM first_order f
+          JOIN "deal" fd ON fd."id" = f.deal_id
+         WHERE ${brandMatch}
+      ),`
+          : ''
       }
       /*
         THE TWO PASSTHROUGHS ARE WHERE THE CUT HAPPENS, AND WHERE IT DOES NOT.
@@ -1427,12 +1490,18 @@ export class InsightsRepository {
         SELECT f.* FROM first_win_all f${
           scoped ? `
         JOIN owner_rop o ON o.customer_id = f.customer_id AND o.rop = $3` : ''
+        }${
+          brand !== null ? `
+        JOIN owner_brand b ON b.customer_id = f.customer_id` : ''
         }
       ),
       purchases AS (
         SELECT p.* FROM purchases_all p${
           scoped ? `
         JOIN owner_rop o ON o.customer_id = p.customer_id AND o.rop = $3` : ''
+        }${
+          brand !== null ? `
+        JOIN owner_brand b ON b.customer_id = p.customer_id` : ''
         }
       ),
       sized AS (
@@ -1676,7 +1745,7 @@ export class InsightsRepository {
 
       ORDER BY 1 ASC, 2 DESC, 4 ASC
       `,
-      ...([this.tz, options.months, ...(scoped ? [options.rop] : [])] as unknown[]),
+      ...params,
     )
 
     /*

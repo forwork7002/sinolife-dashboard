@@ -101,11 +101,28 @@ describe('InsightsService.cohorts', () => {
     await service.cohorts('UZS', 3, { includeRops: true })
 
     expect(asked).toEqual([
-      { months: 18, rop: undefined, includeRops: undefined },
-      { months: 18, rop: 'Sevinch', includeRops: undefined },
-      { months: 3, rop: undefined, includeRops: true },
+      { months: 18, rop: undefined, includeRops: undefined, brand: null },
+      { months: 18, rop: 'Sevinch', includeRops: undefined, brand: null },
+      { months: 3, rop: undefined, includeRops: true, brand: null },
     ])
     /* The База card is not cut with the matrix, so a cut does not rebuild it. */
+    expect(stageBuilds()).toBe(1)
+  })
+
+  it('builds each brand cut as its own entry, with both brands\u2019 teams for the fallback', async () => {
+    const { service, asked, stageBuilds } = cohortService()
+
+    await service.cohorts('UZS', 18)
+    await service.cohorts('UZS', 18, { brand: 'Collagen' })
+    await service.cohorts('UZS', 18, { brand: 'Zextra' })
+    await service.cohorts('UZS', 18, { brand: 'Collagen' })
+
+    expect(asked).toHaveLength(3)
+    expect(asked[1]).toMatchObject({ brand: { slice: 'Collagen' } })
+    expect(asked[2]).toMatchObject({ brand: { slice: 'Zextra' } })
+    const slice = (asked[1] as { brand: { collagenTeams: string[]; zextraTeams: string[] } }).brand
+    expect(slice.collagenTeams.length).toBeGreaterThan(0)
+    expect(slice.zextraTeams.length).toBeGreaterThan(0)
     expect(stageBuilds()).toBe(1)
   })
 

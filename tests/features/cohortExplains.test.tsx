@@ -182,8 +182,12 @@ const FLOW_PERIOD = {
 function mockFetch() {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input)
+    /* The brand cards get their own, empty answer: the company fixture under
+       three cards would put every legend sentence on the page three times. */
     const data = url.includes('/insights/cohorts')
-      ? COHORTS
+      ? url.includes('brand=')
+        ? { ...COHORTS, rows: [] }
+        : COHORTS
       : url.includes('/insights/concentration')
         ? CONCENTRATION
         : url.includes('/insights/customers')
@@ -331,6 +335,16 @@ describe('the matrix and «База» already name their own clock', () => {
     await openPage()
 
     expect(screen.getByText(/kogortadagi jami mijozlar/i)).toBeDefined()
+  })
+
+  it('names each brand card and says so when a brand has no cohort yet', async () => {
+    await openPage()
+
+    /* The brand reads answer empty here, so each card says why its grid is
+       missing in words, under its own brand — never a blank card. */
+    expect(await screen.findByText('Collagen boʻyicha kogorta yoʻq')).toBeDefined()
+    expect(await screen.findByText('Zextra boʻyicha kogorta yoʻq')).toBeDefined()
+    expect(screen.getByText(/Birinchi xaridi Collagen boʻlgan mijozlar/)).toBeDefined()
   })
 
   it('states «База» is a snapshot, not a historical curve', async () => {

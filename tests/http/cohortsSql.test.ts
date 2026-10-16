@@ -388,3 +388,86 @@ describe('the team cut is absent unless it was asked for', () => {
     expect(scoped).not.toMatch(/assignee|ownerId|restrictTo/i)
   })
 })
+
+/**
+ * THE BRAND CUT (2026-10-16, «kogorta collagenga va zextraga alohida»), and
+ * the two promises it rests on: the default statement does not carry it, and
+ * the brand is asked of each customer's FIRST order alone — `brandSliceSql`
+ * costs two probes per row, which over every purchase is the price this
+ * statement cannot pay.
+ */
+describe('the brand cut is absent unless it was asked for', () => {
+  const brand = { slice: 'Collagen', collagenTeams: ['Sevinch'], zextraTeams: ['Asliddin'] } as const
+
+  async function built(options: { months: number; rop?: string | null; brand?: typeof brand }) {
+    let sql = ''
+    let params: unknown[] = []
+    const prisma = {
+      $queryRawUnsafe: async (text: string, ...values: unknown[]) => {
+        sql = text
+        params = values
+        return []
+      },
+    }
+    await new InsightsRepository(prisma as never).cohorts(options)
+    return { sql, params }
+  }
+
+  it('leaves the default statement free of every part of it', async () => {
+    const { sql, params } = await built({ months: 18 })
+
+    expect(sql).not.toContain('owner_brand')
+    expect(sql).not.toContain('first_order')
+    expect(sql).not.toContain('deal_item')
+    expect(params).toHaveLength(2)
+  })
+
+  it('asks the brand of the first order only, and cuts both passthroughs', async () => {
+    const { sql, params } = await built({ months: 18, brand })
+
+    const purchasesAll = sql.slice(sql.indexOf('purchases_all AS ('), sql.indexOf('first_order AS ('))
+    const ownerBrand = sql.slice(sql.indexOf('owner_brand AS ('), sql.indexOf('first_win AS ('))
+    const first = sql.slice(sql.indexOf('first_win AS ('), sql.indexOf('purchases AS ('))
+    const purchases = sql.slice(sql.indexOf('purchases AS ('), sql.indexOf('sized AS ('))
+
+    /* The brand probes live in `owner_brand`, over one deal per customer —
+       never on the walk of every purchase. */
+    expect(purchasesAll).not.toContain('deal_item')
+    expect(ownerBrand).toContain('deal_item')
+    expect(sql).toContain('WHERE p.months_since = 0')
+    expect(sql).toContain('ORDER BY p.customer_id, p.closed_at, p.deal_id')
+    /* BOTH PASSTHROUGHS, for the reason the team cut gives. */
+    expect(first).toContain('JOIN owner_brand b')
+    expect(purchases).toContain('JOIN owner_brand b')
+    /* The team fallback is the first order's own team; no `owner_rop`. */
+    expect(sql).not.toContain('owner_rop')
+    /* tz, months, then the brand's two team lists and its slice. */
+    expect(params).toEqual([expect.any(String), 18, ['Sevinch'], ['Asliddin'], 'Collagen'])
+    expect(sql).toContain('= $5')
+  })
+
+  it('leaves the team list unnarrowed when it rides a brand read', async () => {
+    let sql = ''
+    const prisma = {
+      $queryRawUnsafe: async (text: string) => {
+        sql = text
+        return []
+      },
+    }
+    await new InsightsRepository(prisma as never).cohorts({ months: 3, includeRops: true, brand })
+
+    /* The list arm reads `owner_rop`, never `owner_brand`: the picker lists
+       every team whichever brand card asked. */
+    const listArm = sql.slice(sql.indexOf('3 AS is_total'))
+    expect(listArm).toContain('FROM owner_rop o')
+    expect(listArm).not.toContain('owner_brand')
+  })
+
+  it('numbers its parameters after the team cut when both are asked', async () => {
+    const { sql, params } = await built({ months: 18, rop: 'Sevinch', brand })
+
+    expect(params).toEqual([expect.any(String), 18, 'Sevinch', ['Sevinch'], ['Asliddin'], 'Collagen'])
+    expect(sql).toContain('o.rop = $3')
+    expect(sql).toContain('= $6')
+  })
+})

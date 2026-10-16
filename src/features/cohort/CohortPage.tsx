@@ -190,6 +190,101 @@ function useWarmFlowChart() {
   }, [])
 }
 
+/**
+ * One brand's matrix read: the company grid cut to the customers whose FIRST
+ * order was that brand's — the rule every screen's brand switch reads (the CRM
+ * form name, then the product, then the team), applied to the first order
+ * only. Its own cache entry, constant per brand, so a card never shows another
+ * cut's rows. `enabled` chains the reads (see the call site).
+ */
+function useBrandCohort(brand: 'Collagen' | 'Zextra', enabled: boolean) {
+  return useQuery({
+    queryKey: ['cohort-brand', brand],
+    queryFn: ({ signal }) =>
+      apiGet<CohortSummaryDto>('/insights/cohorts', { months: COHORT_HISTORY_MONTHS, brand }, signal),
+    enabled,
+    /* The company matrix's cadence, for its reason: a cell moves once a day. */
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  })
+}
+
+/**
+ * One brand's matrix card.
+ *
+ * RETURNS ARE NOT RE-ATTRIBUTED, as with the team cut: a later order counts
+ * as that customer's return whatever it sold, and a customer whose first order
+ * neither brand claims is on neither card — so Collagen + Zextra is the
+ * company less «Brendsiz», not the company. Its own reading and window
+ * controls, because a reader at this card should not scroll up to the company
+ * card to change what it draws.
+ */
+function BrandCohortCard({
+  brand,
+  query,
+}: {
+  readonly brand: 'Collagen' | 'Zextra'
+  readonly query: ReturnType<typeof useBrandCohort>
+}) {
+  const [view, setView] = useState<CohortView>('cumulative')
+  const [months, setMonths] = useState<MonthWindow>('12')
+
+  const data = query.data?.data
+  const rows = useMemo(() => (data ? data.rows.map(toMatrixRow) : []), [data])
+  /* The footer is the column above it, as on the company card. */
+  const revenueTotal = useMemo(() => rows.reduce((sum, row) => sum + row.revenueTotalAmount, 0), [rows])
+
+  return (
+    <ChartCard
+      title={`Kogorta matritsasi · ${brand}`}
+      hint={`Birinchi xaridi ${brand} boʻlgan mijozlar (forma nomi, mahsulot yoki jamoa boʻyicha); keyingi har qanday xaridi qaytish hisoblanadi.`}
+      action={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SegmentedControl
+            value={view}
+            onChange={setView}
+            ariaLabel={`${brand} matritsasi koʻrinishi`}
+            options={[
+              { value: 'cumulative', label: 'Jami qaytgan' },
+              { value: 'monthly', label: 'Oylik' },
+              { value: 'money', label: 'Pul' },
+            ]}
+          />
+          <SegmentedControl
+            value={months}
+            onChange={setMonths}
+            ariaLabel={`${brand} matritsasida nechta oy koʻrsatilsin`}
+            options={[
+              { value: '6', label: '6 oy' },
+              { value: '12', label: '12 oy' },
+              { value: 'all', label: 'Hammasi' },
+            ]}
+          />
+        </div>
+      }
+    >
+      {query.isPending && <ChartSkeleton height={320} />}
+      {statusOf(query) === 'error' && (
+        <ErrorState message={(query.error as Error).message} onRetry={() => void query.refetch()} />
+      )}
+      {data && data.rows.length === 0 && (
+        <EmptyState
+          title={`${brand} boʻyicha kogorta yoʻq`}
+          body="Birinchi xaridi shu brendga tegishli yetkazilgan buyurtma topilmadi."
+        />
+      )}
+      {data && data.rows.length > 0 && (
+        <CohortHeatmap
+          rows={rows}
+          view={view}
+          months={MONTH_WINDOWS[months]}
+          totalRevenue={{ compact: formatCompactUzs(revenueTotal), exact: formatUzs(revenueTotal) }}
+        />
+      )}
+    </ChartCard>
+  )
+}
+
 export function CohortPage() {
   useWarmFlowChart()
 
@@ -280,6 +375,19 @@ export function CohortPage() {
     staleTime: 5 * 60_000,
     refetchInterval: 5 * 60_000,
   })
+
+  /*
+    THE BRAND MATRICES ARE ASKED ONE AT A TIME, AFTER THE COMPANY'S.
+
+    Each is the cohort statement plus a brand probe per customer, and the
+    database answering it has one vCPU: Collagen waits for the company matrix,
+    Zextra for Collagen, so a cold load never runs two of these at once and
+    the matrix at the top is not slowed by the cards under it. Once a read has
+    answered, `isPending` stays false (the app's `placeholderData`), so a team
+    pick on the company card does not re-gate them.
+  */
+  const collagen = useBrandCohort('Collagen', !query.isPending)
+  const zextra = useBrandCohort('Zextra', !collagen.isPending)
 
 
   /*
@@ -623,8 +731,9 @@ export function CohortPage() {
               Qaytib kelgan xaridni keyin kim sotgani muhim emas — u ham shu
               jamoaga yoziladi, chunki bu «kim mijoz olib keladi» savoli,
               «kim ushlab qoladi» emas.{' '}
-              Pastdagi «База» va mijozlar kontsentratsiyasi bloklari
-              kesilmaydi — ular butun kompaniya boʻyicha qoladi.
+              Pastdagi Collagen va Zextra matritsalari jamoa boʻyicha
+              kesilmaydi, «База» va mijozlar kontsentratsiyasi bloklari esa
+              butun kompaniya boʻyicha qoladi.
             </p>
           )}
           {data && data.rows.length > 0 && (
@@ -669,6 +778,12 @@ export function CohortPage() {
             />
           )}
         </ChartCard>
+
+        {/* The two brands' matrices, directly under the company's (the
+            client, 2026-10-16: «kogorta collagenga va zextraga alohida
+            alohida»). */}
+        <BrandCohortCard brand="Collagen" query={collagen} />
+        <BrandCohortCard brand="Zextra" query={zextra} />
 
         {/*
           «MIJOZLAR OQIMI» — THE BAND THIS SCREEN WAS MISSING, AND THE SECOND
