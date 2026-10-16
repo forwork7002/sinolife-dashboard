@@ -303,11 +303,11 @@ const closedNote = (n: number) => (
 
 /**
  * Under «Сммщик ии» (the client, 2026-10-15: «ИИ квал сана» is the right
- * count, the big number): what the card counts, each account's share of it,
- * then the SMM sources by creation day — what «Jami» sums for this channel,
- * the card's big number from 2026-10-09 until that day.
+ * count, the big number): what the card counts and each account's share of
+ * it. «Jami» sums this card since 2026-10-16; the SMM sources by creation
+ * day, its quiet last line until then, are gone with that.
  */
-function SmmBreakdown({ tiles, jamiRow }: { tiles: LeadSourcesOverviewDto['tiles']; jamiRow: ChannelTileDto | undefined }) {
+function SmmBreakdown({ tiles }: { tiles: LeadSourcesOverviewDto['tiles'] }) {
   return (
     <>
       <TipNote
@@ -330,14 +330,6 @@ function SmmBreakdown({ tiles, jamiRow }: { tiles: LeadSourcesOverviewDto['tiles
             </li>
           ))}
         </ul>
-      )}
-      {jamiRow && (
-        <TipNote
-          className="text-[10px]"
-          tip="SMM akkauntlaridan (sinolifeuz, sinolife_otziv, sinolif_tg, collagen.marine, collagen.sinolife, zextra.uz, zextra.sinolife, zextra_life, sinogummy, Сммщик sinolifeuz, Сммщик sinolife_sedana, Instagram) shu davrda yaratilgan Регистрация bitimlari. «Jami» va «Жами лидлар» har bir lidni yaratilgan kuni sanaydi, shuning uchun ularga shu son qoʻshiladi."
-        >
-          «Jami»ga yaratilgan kuni boʻyicha: {formatNumber(jamiRow.leads)}
-        </TipNote>
       )}
     </>
   )
@@ -457,7 +449,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
             !data
               ? undefined
               : t === 'aiSmm'
-                ? <SmmBreakdown tiles={data.tiles} jamiRow={byTile.get('aiSmm')} />
+                ? <SmmBreakdown tiles={data.tiles} />
                 : t === 'generated'
                   ? data.tiles.generatedBasis === 'fills' && generatedDealsNote(data.tiles.generatedDeals)
                   : t === 'inbound'
@@ -493,8 +485,10 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
         </div>
         {/* «Kimga qancha lid kelayapti» → «Квал»'s «Jami» over the window, in the row's free room (the client, 2026-10-16). */}
         <div className="col-span-2 grid sm:col-span-1" data-testid="lead-handed-out">
+          {/* Washed green as «Янги лидлар» (the client, 2026-10-16). */}
           <StatTile
             compact
+            fill="good"
             status={status}
             label="Квал лидлар сони · ROP"
             value={data?.funnel.handedOut ?? null}
@@ -1112,7 +1106,7 @@ function sourcesView(data: LeadSourcesOverviewDto | undefined, status: Status): 
 
   return {
     title: 'Barcha manbalar · Регистрация',
-    hint: 'Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. «Jami» — bitimlar: «Исход» (operatorning chiquvchi qoʻngʻirogʻi) va roʻyxatda yoʻq manbalar jadvalda koʻrinadi, lekin «jamiga kirmaydi». Yuqoridagi «Жами лидлар» «Ген лид»ni har bir forma toʻldirish boʻyicha sanaydi (eski mijozning qayta toʻldirishi ham), shuning uchun undan koʻproq boʻlishi mumkin. Kval — shu davrda kelgan lidlardan hozirgacha «Сделка успешна» boʻlganlari, yuqoridagi «Квал лидлар сони» kabi. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz).',
+    hint: 'Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. «Jami» — bitimlar: «Исход» (operatorning chiquvchi qoʻngʻirogʻi) va roʻyxatda yoʻq manbalar jadvalda koʻrinadi, lekin «jamiga kirmaydi». Yuqoridagi «Жами лидлар» «Ген лид»ni har bir forma toʻldirish boʻyicha (eski mijozning qayta toʻldirishi ham), «Сммщик ии»ni «ИИ квал сана» boʻyicha sanaydi, shuning uchun undan farq qilishi mumkin. Kval — shu davrda kelgan lidlardan hozirgacha «Сделка успешна» boʻlganlari, yuqoridagi «Квал лидлар сони» kabi. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz).',
     table: (
       <DataTable<Row>
         columns={[

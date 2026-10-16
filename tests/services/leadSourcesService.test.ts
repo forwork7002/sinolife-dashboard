@@ -152,9 +152,9 @@ describe('leadSourcesOverview', () => {
       total: 18,
       fresh: 17,
       duplicates: 1,
-      // The cohort: of those 18, WON by now — «Ген лид» 5, sinolifeuz 1, collagen.sinolife 1, Telegram 1, the site 1.
-      qualified: 9,
-      qualifiedPercent: (9 / 17) * 100,
+      // The cohort: of those 18, WON by now — «Ген лид» 5, «Сммщик ии»'s card 1 (sinolifeuz), Telegram 1, the site 1.
+      qualified: 8,
+      qualifiedPercent: (8 / 17) * 100,
       // WON in the window whenever it arrived, the old count: «Ген лид» 3 + sinolifeuz 1 («Исход» and the sourceless kval apart).
       closedQualified: 4,
       // Handed out to a ROP in the window, the grid's «Jami» summed — every team, nobody's, duplicates in.
@@ -395,10 +395,11 @@ describe('leadSourcesOverview', () => {
     expect(tile('generated')).toEqual({ tile: 'generated', leads: 7, fresh: 7, qualified: 5, qualifiedPercent: (5 / 7) * 100, closedQualified: 3 })
     expect(tile('inbound')).toMatchObject({ leads: 3, qualified: 0, qualifiedPercent: 0, closedQualified: 0 })
     expect(tile('telegram')).toMatchObject({ leads: 2, qualified: 1, closedQualified: 0 })
-    // What «Jami» sums: the bot accounts by the day the deal was created — sinolifeuz 4 (one «Дубликат (лид)») and
-    // collagen.sinolife 1 — whatever the AI marked.
+    // The bot accounts by the day the deal was created — sinolifeuz 4 (one «Дубликат (лид)») and
+    // collagen.sinolife 1 — whatever the AI marked; «Jami» summed it until 2026-10-16.
     expect(tile('aiSmm')).toMatchObject({ leads: 5, fresh: 4, qualified: 2, qualifiedPercent: 50, closedQualified: 1 })
-    // The card itself (the client's portal filter, 2026-10-15): «ИИ квал сана» + the nine sources, Регистрация, by account.
+    // The card itself (the client's portal filter, 2026-10-15): «ИИ квал сана» + the nine sources, Регистрация, by account —
+    // what «Jami» sums since 2026-10-16.
     expect(data.tiles.ai).toEqual({ leads: 5, fresh: 4, qualified: 1, qualifiedPercent: 25 })
     expect(data.tiles.smmAccounts).toEqual([
       { key: 'UC_LBSZDU', name: 'zextra.sinolife', leads: 3, fresh: 3, qualified: 0, qualifiedPercent: 0, closedQualified: 0 },
@@ -411,12 +412,14 @@ describe('leadSourcesOverview', () => {
     // Out of «Jami»: the operators' own calls, and the Регистрация «Сарафан маркетинг» lead (with the sourceless closed kval).
     expect(tile('outbound')).toMatchObject({ leads: 7, qualified: 0, closedQualified: 1 })
     expect(tile('other')).toMatchObject({ leads: 1, fresh: 1, qualified: 0, closedQualified: 1 })
+    // «Jami» = the cards on screen (the client, 2026-10-16): «Сммщик ии» as its card, its close-day count the row's.
     const inTotal = data.tiles.rows.filter((r) => !['outbound', 'other', 'sarafan'].includes(r.tile))
+    const shown = inTotal.map((r) => (r.tile === 'aiSmm' ? { ...r, ...data.tiles.ai } : r))
     expect(data.tiles.total).toEqual({
-      leads: inTotal.reduce((n, r) => n + r.leads, 0),
-      fresh: inTotal.reduce((n, r) => n + r.fresh, 0),
-      qualified: inTotal.reduce((n, r) => n + r.qualified, 0),
-      qualifiedPercent: (9 / 17) * 100,
+      leads: shown.reduce((n, r) => n + r.leads, 0),
+      fresh: shown.reduce((n, r) => n + r.fresh, 0),
+      qualified: shown.reduce((n, r) => n + r.qualified, 0),
+      qualifiedPercent: (8 / 17) * 100,
       closedQualified: inTotal.reduce((n, r) => n + r.closedQualified, 0),
     })
   })
@@ -431,9 +434,10 @@ describe('leadSourcesOverview', () => {
       qualifiedPercent: total.qualifiedPercent,
       closedQualified: total.closedQualified,
     })
-    // And with «Исход» and «Boshqa» it is every Регистрация deal — nothing is lost, only kept apart.
+    // And with «Исход» and «Boshqa», «Сммщик ии» by creation day, it is every Регистрация deal — nothing is lost, only kept apart.
     const apart = data.tiles.rows.filter((r) => r.tile === 'outbound' || r.tile === 'other')
-    expect(total.leads + apart.reduce((n, r) => n + r.leads, 0)).toBe(data.totals.registration.leads)
+    const smmRow = data.tiles.rows.find((r) => r.tile === 'aiSmm')!
+    expect(total.leads - data.tiles.ai.leads + smmRow.leads + apart.reduce((n, r) => n + r.leads, 0)).toBe(data.totals.registration.leads)
   })
 
   it('counts the card on the client\'s nine sources alone — a page\'s second bot, «Сммщик» and «Ген лид» are not in it', () => {
@@ -788,13 +792,15 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     expect(all.brand).toBe('all')
     expect(zextra.brand).toBe('Zextra')
     // Kval is the cohort's (the Kamron form's 3 leads, WON); the 2 closed in the window ride beside it,
-    // and the handed-out card counts the leads given to the brand's teams.
-    expect(zextra.funnel).toMatchObject({ total: 7, qualified: 3, closedQualified: 2, handedOut: 4, spendUsd: 8 })
-    expect(collagen.funnel).toMatchObject({ total: 5, qualified: 0, closedQualified: 1, handedOut: 6, spendUsd: 20 })
+    // and the handed-out card counts the leads given to the brand's teams. «Jami» adds «Сммщик ии»'s card (2026-10-16):
+    // Zextra the form's 3 and zextrauzb's 1 by «ИИ квал сана»; sinolifeuz's 5 carry none in the window, so Collagen reads 0.
+    expect(zextra.funnel).toMatchObject({ total: 4, qualified: 3, closedQualified: 2, handedOut: 4, spendUsd: 8 })
+    expect(collagen.funnel).toMatchObject({ total: 0, qualified: 0, closedQualified: 1, handedOut: 6, spendUsd: 20 })
     expect(all.funnel.handedOut).toBe(12)
     // The outgoing call is no lead, so the two brands make «Жами лидлар»; with it they make Регистрация.
     expect(all.funnel.total).toBe(zextra.funnel.total + collagen.funnel.total)
-    expect(all.totals.registration.leads).toBe(all.funnel.total + 7)
+    const smmRow = all.tiles.rows.find((r) => r.tile === 'aiSmm')!.leads
+    expect(all.totals.registration.leads).toBe(all.funnel.total - all.tiles.ai.leads + smmRow + 7)
     expect(zextra.totals.fakt1Clients).toBe(1)
   })
 

@@ -1075,12 +1075,20 @@ export function leadSourcesOverview(all: {
     generatedTile.duplicates = Math.min(generatedTile.duplicates, generatedTile.leads)
   }
 
+  /*
+    «JAMI» IS THE CARDS ON SCREEN (2026-10-16, the client over 1 014 beside
+    882 + 39 + 23 + 97: «barchasini jamiga to'g'rilash kerak»). «Сммщик ии»
+    adds the card it prints — «ИИ квал сана» on the nine sources (`ai`) —
+    not its sources by creation day, which «Jami» summed since 2026-10-09.
+    Its close-day count stays the row's: the card reads none.
+  */
   const tilesTotal = tileZero()
   for (const [tile, t] of tiles) {
     if (LEAD_TILES_APART.has(tile) || LEAD_TILES_OUTSIDE_REGISTRATION.has(tile)) continue
-    tilesTotal.leads += t.leads
-    tilesTotal.duplicates += t.duplicates
-    tilesTotal.qualified += t.qualified
+    const shown = tile === 'aiSmm' ? ai : t
+    tilesTotal.leads += shown.leads
+    tilesTotal.duplicates += shown.duplicates
+    tilesTotal.qualified += shown.qualified
     tilesTotal.closed += t.closed
   }
   const jami = tileCells(tilesTotal)

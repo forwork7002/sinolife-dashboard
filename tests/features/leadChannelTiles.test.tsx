@@ -102,7 +102,7 @@ describe('ChannelTiles', () => {
     expect(within(tile('Входящий')).getByText('473')).toBeTruthy()
   })
 
-  it('prints «Сммщик ии» by «ИИ квал сана», its dubl and kval, by account, and what «Jami» counts of it apart (2026-10-15)', async () => {
+  it('prints «Сммщик ии» by «ИИ квал сана», its dubl and kval, by account (2026-10-15)', async () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const smm = tile('Сммщик ии')
@@ -118,7 +118,8 @@ describe('ChannelTiles', () => {
       'collagen.marine100',
       'zextra.uz10',
     ])
-    expect(within(smm).getByText('«Jami»ga yaratilgan kuni boʻyicha: 445')).toBeTruthy()
+    // «Jami» sums this card since 2026-10-16: the creation-day line is gone.
+    expect(within(smm).queryByText(/yaratilgan kuni boʻyicha/)).toBeNull()
     // No close-day count is read for it.
     expect(within(smm).queryByText(/shu davrda yopilgan/)).toBeNull()
   })
@@ -147,6 +148,8 @@ describe('ChannelTiles', () => {
     expect(within(card).getByText('Квал лидлар сони · ROP')).toBeTruthy()
     expect(within(card).getByText('ROPlarga tarqatilgan lidlar')).toBeTruthy()
     expect(within(card).getByText('118')).toBeTruthy()
+    // Washed green, as «Янги лидлар».
+    expect(card.querySelector('[style*="--status-good"]')).not.toBeNull()
     expect(await tipOf(within(card).getByText('= jadvalning «Jami» qatori'))).toMatch(/Kimga qancha lid kelayapti/)
   })
 
