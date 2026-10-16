@@ -271,9 +271,9 @@ export class RoistatRepository {
           NULLIF(btrim(d."registrar"), '') AS registrar,
           1 AS lead,
           /*
-            «Дубликат (лид)» only — isLeadDuplicate's rule, as rnpRepository
-            spells it: the case written out, because ~* on Cyrillic follows the
-            database's ctype and under a C locale matches nothing.
+            «Дубликат (лид)» only, as rnpRepository spells it: the case
+            written out, because ~* on Cyrillic follows the database's
+            ctype and under a C locale matches nothing.
           */
           CASE WHEN COALESCE(st."name", '') ~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид' THEN 0 ELSE 1 END AS clean,
           CASE WHEN d."status" = 'WON' THEN 1 ELSE 0 END AS kval,

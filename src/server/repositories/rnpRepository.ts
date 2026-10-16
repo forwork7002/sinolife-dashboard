@@ -266,10 +266,10 @@ export class RnpRepository {
   /**
    * Three clocks, one day column: a lead on the day it was registered, a
    * kval on the day the registrar closed it, a conversation on the day it
-   * opened. A duplicate is «Дубликат (лид)» only, read by NAME — the same
-   * rule as `isLeadDuplicate` on «Lid manbalari», so the two screens agree on
-   * what one is. The red «Дубликат» at the end of the pipeline is a lead here
-   * (the client's rule, 2026-10-02).
+   * opened. A duplicate is «Дубликат (лид)» only, read by NAME. The red
+   * «Дубликат» at the end of the pipeline is a lead here (the client's rule,
+   * 2026-10-02). «Lid manbalari»'s «Дубль лидлар» reads the «Такрор лид»
+   * field instead since 2026-10-16.
    *
    * THE CASE IS SPELLED OUT, NOT `~*`: case-insensitive matching of Cyrillic
    * follows the database's ctype, and under a C locale «Дубликат» does not

@@ -140,7 +140,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
           label="Дубль лидлар"
           value={f?.duplicates ?? null}
           unit="count"
-          hint={f ? `«Дубликат (лид)» bosqichida${shareOfTotal(f.duplicates)}` : undefined}
+          hint={f ? `«Такрор лид» toʻldirilgan${shareOfTotal(f.duplicates)}` : undefined}
         />
         <StatTile
           compact
@@ -284,7 +284,7 @@ const HANDED_OUT_TIP =
  */
 const dublNote = (t: Omit<ChannelTileDto, 'closedQualified'> | undefined) => {
   const dubl = t ? t.leads - t.fresh : 0
-  return dubl > 0 ? note(`shundan ${formatNumber(dubl)} dubl`, '«Дубликат (лид)» bosqichidagi lidlar — katta songa kirgan') : null
+  return dubl > 0 ? note(`shundan ${formatNumber(dubl)} dubl`, 'Takroriy lidlar — Bitrix24ʼda «Такрор лид» maydoni toʻldirilgan; katta songa kirgan') : null
 }
 
 /**

@@ -57,7 +57,7 @@ import {
   targetologOfField,
 } from '@/server/domain/leads/leadSources'
 import { type FormFillDayRow, fillsCover, isIntegrationForm } from '@/server/domain/leads/formFills'
-import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
+import { LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type ChannelLeads, type ChannelLeadsDay, type ManualSpendDto, manualSpendBlocks } from '@/server/domain/reklama/manualSpend'
 import { type Period, type PeriodPreset, periodLengthInDays, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import type { DistributedDayRow } from '@/server/domain/registration/leadSplit'
@@ -261,11 +261,11 @@ export interface LeadSourcesOverviewDto {
     readonly total: number
     /** `total` less the duplicates. */
     readonly fresh: number
-    /** Of `total`, standing in «Дубликат (лид)» now (not the red «Дубликат»). */
+    /** Of `total`, repeat leads — «Такрор лид» filled (not the «Дубликат (лид)» stage, since 2026-10-16). */
     readonly duplicates: number
     /** Of `total`, WON («Сделка успешна») by now. */
     readonly qualified: number
-    /** `qualified` ÷ `fresh`; null with no new leads. One cohort, so never above 100%. */
+    /** `qualified` ÷ `fresh`; null with no new leads. A repeat lead's kval is in `qualified` (16.10: 5 of 99). */
     readonly qualifiedPercent: number | null
     /** The counted tiles' deals WON in the window by `closedAt` — «Квал лидлар сони» until 2026-10-09. */
     readonly closedQualified: number
@@ -359,7 +359,7 @@ export interface LeadSourcesOverviewDto {
      * «Сммщик ии»'s card since 2026-10-15 (the client: «ИИ квал сана» is the
      * right count): Регистрация deals whose «ИИ квал сана» is in the window,
      * any creation day, on the client's nine sources (`AI_CARD_SOURCE_IDS`)
-     * — duplicates «Дубликат (лид)», kval WON now. The
+     * — duplicates «Такрор лид», kval WON now. The
      * `aiSmm` row stays the SMM sources by creation day, which is what
      * «Jami» sums. No close-day count is read here, so none is sent.
      */
@@ -486,10 +486,17 @@ interface TileAcc {
 
 const tileZero = (): TileAcc => ({ leads: 0, duplicates: 0, qualified: 0, closed: 0 })
 
-/** One row's leads onto a tile: a «Дубликат (лид)» is a duplicate, a lead WON by now its kval. */
-function addTileLeads(tile: TileAcc, row: { stage: string; status: string; leads: number }) {
+/**
+ * One row's leads onto a tile: a repeat lead is a duplicate, a lead WON by now its kval.
+ * «Дубль» IS «ТАКРОР ЛИД» SINCE 2026-10-16 (the client: «dublikat lid degan
+ * joydagi emas … takroriy deb yaratilganlar jami nechtaligi»): the portal
+ * fills that field on every repeat lead it opens and leaves it empty on a new
+ * one. It was the «Дубликат (лид)» stage — 16.10 on the portal: 24 there, 256
+ * repeat leads, 21 of them both. So «Янги» is the field left empty.
+ */
+function addTileLeads(tile: TileAcc, row: { repeat: boolean; stage: string; status: string; leads: number }) {
   tile.leads += row.leads
-  if (isLeadDuplicate(row.stage)) tile.duplicates += row.leads
+  if (row.repeat) tile.duplicates += row.leads
   if (leadBucket(row.stage, row.status) === 'success') tile.qualified += row.leads
 }
 

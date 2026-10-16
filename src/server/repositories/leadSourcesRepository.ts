@@ -34,6 +34,8 @@ export interface RegistrationDayRow {
   readonly status: string
   /** The AI qualified it out of the DMs («ИИ квал сана» is filled). */
   readonly aiQualified: boolean
+  /** «Такрор лид» is filled — the portal made it a repeat lead; empty is a new one. */
+  readonly repeat: boolean
   readonly leads: number
 }
 
@@ -60,6 +62,8 @@ export interface AiQualifiedStageRow {
   readonly stage: string
   /** DealStatus: OPEN, WON or LOST. */
   readonly status: string
+  /** «Такрор лид» is filled — the portal made it a repeat lead; empty is a new one. */
+  readonly repeat: boolean
   readonly leads: number
 }
 
@@ -118,6 +122,7 @@ export class LeadSourcesRepository {
         stage: string | null
         status: string
         ai_qualified: boolean
+        repeat: boolean
         leads: bigint
       }[]
     >(
@@ -130,7 +135,7 @@ export class LeadSourcesRepository {
       WITH reg AS MATERIALIZED (
         SELECT d."id" AS id, d."createdAtSource" AS created, d."title" AS title, d."customerId" AS customer, ${sourceDescriptionSql('d')} AS sd,
                ${replayActSql(sourceDescriptionSql('d'))} AS act,
-               d."sourceId", d."stageId", d."status", d."aiQualifiedAt", NULLIF(btrim(d."productLine"), '') AS product_line,
+               d."sourceId", d."stageId", d."status", d."aiQualifiedAt", d."repeatLead", NULLIF(btrim(d."productLine"), '') AS product_line,
                NULLIF(btrim(d."targetolog"), '') AS targetolog
         FROM "deal" d
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
@@ -187,6 +192,7 @@ export class LeadSourcesRepository {
         st."name" AS stage,
         r."status"::text AS status,
         (r."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
+        (r."repeatLead" IS NOT NULL) AS repeat,
         count(*)::bigint AS leads
       FROM reg r
       LEFT JOIN "deal_stage" st ON st."id" = r."stageId"
@@ -194,7 +200,7 @@ export class LeadSourcesRepository {
       LEFT JOIN form_alias fa ON fa.sd = r.sd
       WHERE NOT EXISTS (SELECT 1 FROM replayed rp WHERE rp.id = r.id)
         AND NOT EXISTS (SELECT 1 FROM telegram_extra te WHERE te.id = r.id)
-      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
+      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
       `,
       period.start,
       period.end,
@@ -211,6 +217,7 @@ export class LeadSourcesRepository {
       stage: r.stage ?? '—',
       status: r.status,
       aiQualified: r.ai_qualified,
+      repeat: r.repeat,
       leads: Number(r.leads),
     }))
   }
@@ -333,6 +340,7 @@ export class LeadSourcesRepository {
         product_line: string | null
         stage: string | null
         status: string
+        repeat: boolean
         leads: bigint
       }[]
     >(
@@ -351,13 +359,14 @@ export class LeadSourcesRepository {
         NULLIF(btrim(d."productLine"), '') AS product_line,
         st."name" AS stage,
         d."status"::text AS status,
+        (d."repeatLead" IS NOT NULL) AS repeat,
         count(*)::bigint AS leads
       FROM "deal" d
       LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
       LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
       LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
       WHERE d."aiQualifiedAt" >= $1 AND d."aiQualifiedAt" < $2
-      GROUP BY 1, 2, 3, 4, 5, 6
+      GROUP BY 1, 2, 3, 4, 5, 6, 7
       `,
       period.start,
       period.end,
@@ -369,6 +378,7 @@ export class LeadSourcesRepository {
       productLine: r.product_line,
       stage: r.stage ?? '—',
       status: r.status,
+      repeat: r.repeat,
       leads: Number(r.leads),
     }))
   }

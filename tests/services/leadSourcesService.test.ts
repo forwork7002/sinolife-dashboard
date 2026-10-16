@@ -29,6 +29,7 @@ const reg = (over: Partial<RegistrationDayRow>): RegistrationDayRow => ({
   stage: 'Сделка успешна',
   status: 'WON',
   aiQualified: false,
+  repeat: false,
   leads: 1,
   ...over,
 })
@@ -76,9 +77,9 @@ describe('leadSourcesOverview', () => {
       // Umar's form: 3 kval on the 18th, 2 недозвон on the 19th.
       reg({ formTitle: UMAR_FORM, leads: 3 }),
       reg({ formTitle: UMAR_FORM, day: '2026-09-19', stage: 'Недозвон', status: 'OPEN', leads: 2 }),
-      // sinolifeuz: 4 leads, 1 kval (the one the AI qualified), 1 duplicate.
+      // sinolifeuz: 4 leads, 1 kval (the one the AI qualified), 1 duplicate (a repeat lead).
       reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', aiQualified: true, leads: 1 }),
-      reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 }),
+      reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Дубликат (лид)', status: 'OPEN', repeat: true, leads: 1 }),
       reg({ sourceId: 'UC_1X1J24', source: 'sinolifeuz', stage: 'Обработка', status: 'OPEN', leads: 2 }),
       // Not ad leads, but Регистрация: outgoing calls and a hand-typed «Ген лид».
       reg({ sourceId: 'UC_KPZA32', source: 'Исход', stage: 'Отказ', status: 'LOST', leads: 7 }),
@@ -126,16 +127,16 @@ describe('leadSourcesOverview', () => {
     ],
     // «ИИ квал сана» in the window, any creation day — on the client's nine sources 5 in Регистрация (one a duplicate), 3 moved on.
     aiQualified: [
-      { registration: true, sourceId: 'UC_1X1J24', formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
-      { registration: true, sourceId: 'UC_LBSZDU', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 3 },
-      { registration: true, sourceId: 'UC_1X1J24', formTitle: null, productLine: null, stage: 'Дубликат (лид)', status: 'OPEN', leads: 1 },
+      { registration: true, sourceId: 'UC_1X1J24', formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', repeat: false, leads: 1 },
+      { registration: true, sourceId: 'UC_LBSZDU', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', repeat: false, leads: 3 },
+      { registration: true, sourceId: 'UC_1X1J24', formTitle: null, productLine: null, stage: 'Дубликат (лид)', status: 'OPEN', repeat: true, leads: 1 },
       // Not one of the nine «Источник» of the client's filter: «Телеграмм», no source.
-      { registration: true, sourceId: 'UC_8NZNYM', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 4 },
-      { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Дубликат', status: 'OPEN', leads: 1 },
+      { registration: true, sourceId: 'UC_8NZNYM', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', repeat: false, leads: 4 },
+      { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Дубликат', status: 'OPEN', repeat: false, leads: 1 },
       // Already in Первичный отдел / Доставка: a repeat, counted on no tile (the client, 2026-10-03).
-      { registration: false, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', leads: 2 },
-      { registration: false, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', leads: 1 },
-      { registration: false, sourceId: 'UC_8NZNYM', formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', leads: 5 },
+      { registration: false, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', repeat: false, leads: 2 },
+      { registration: false, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Сделка успешна', status: 'WON', repeat: false, leads: 1 },
+      { registration: false, sourceId: 'UC_8NZNYM', formTitle: null, productLine: null, stage: 'Новая', status: 'OPEN', repeat: false, leads: 5 },
     ],
     // «Сарафан маркетинг» in every pipeline: 3 created, 2 won (the client, 2026-10-10).
     sarafan: { leads: 3, qualified: 2 },
@@ -323,13 +324,16 @@ describe('leadSourcesOverview', () => {
     expect(leadSourcesOverview(input).totals.formReachPercent).toBe(60)
   })
 
-  it('counts only «Дубликат (лид)» as Дубль, not the red «Дубликат» at the end', () => {
+  it('counts the repeat leads («Такрор лид») as Дубль, whatever stage they sit in (the client, 2026-10-16)', () => {
     const d = leadSourcesOverview({
       window: WINDOW,
       importedAt: null,
       registration: [
-        reg({ stage: 'Дубликат (лид)', status: 'OPEN', leads: 16 }),
-        reg({ stage: 'Дубликат', status: 'OPEN', leads: 10 }),
+        reg({ stage: 'Дубликат (лид)', status: 'OPEN', repeat: true, leads: 12 }),
+        reg({ stage: 'Лид новый (лид)', status: 'OPEN', repeat: true, leads: 4 }),
+        // In «Дубликат (лид)» with the field empty, and the red «Дубликат»: new leads now.
+        reg({ stage: 'Дубликат (лид)', status: 'OPEN', leads: 3 }),
+        reg({ stage: 'Дубликат', status: 'OPEN', leads: 7 }),
         reg({ stage: 'Обработка', status: 'OPEN', leads: 74 }),
       ],
       triage: [],
@@ -448,6 +452,7 @@ describe('leadSourcesOverview', () => {
       productLine: null,
       stage,
       status,
+      repeat: false,
       leads,
     })
     const d = leadSourcesOverview({
@@ -772,8 +777,8 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
       { sourceId: 'UC_1X1J24', formTitle: null, productLine: null, aiQualified: false, qualified: 1 },
     ],
     aiQualified: [
-      { registration: true, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 1 },
-      { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', leads: 2 },
+      { registration: true, sourceId: 'UC_A8LE21', formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', repeat: false, leads: 1 },
+      { registration: true, sourceId: null, formTitle: null, productLine: null, stage: 'Обработка', status: 'OPEN', repeat: false, leads: 2 },
     ],
     sarafan: { leads: 3, qualified: 2 },
     inboundCalls: 9,
@@ -1494,7 +1499,7 @@ describe('«Targetologlar» counts Meta\'s way — every CRM-form fill (2026-10-
   it('«Ген лид» never prints more duplicates than leads while the fills trail the deals', () => {
     const d = leadSourcesOverview({
       ...input,
-      registration: [reg({ formTitle: `Заполнение CRM-формы "${UMAR}"`, leads: 4, stage: 'Дубликат (лид)', status: 'OPEN' })],
+      registration: [reg({ formTitle: `Заполнение CRM-формы "${UMAR}"`, leads: 4, stage: 'Дубликат (лид)', status: 'OPEN', repeat: true })],
       formFills: [fill('2026-09-18', UMAR, 2)],
     })
     expect(d.tiles.rows.find((r) => r.tile === 'generated')).toMatchObject({ leads: 2, fresh: 0 })

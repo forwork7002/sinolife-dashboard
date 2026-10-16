@@ -147,7 +147,7 @@ export class RegistrationRepository {
    * ONE LEAD IS COUNTED ONCE (the user, 2026-10-14: «dublikatlar ikkita
    * birxillikni olmasligi kerak … yaqqol qancha tushganini bilishim uchun»). A deal in
    * «Дубликат (лид)» is left out (read by NAME, as RNP's `registrationDaysSql`
-   * and «Lid manbalari»'s `isLeadDuplicate` read it), and of one PHONE NUMBER's
+   * reads it), and of one PHONE NUMBER's
    * deals on one Tashkent day only the first counts, credited by its own ROP
    * (the user, the same day: «hamma kelib tushgan raqamlar»). The number is
    * the contact's first, last nine digits (as «Факт1 мижоз» and the Meta lead

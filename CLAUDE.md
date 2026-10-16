@@ -644,7 +644,11 @@ Per-screen traps worth knowing before you touch one:
   БАЗА») are measured by connected calls, not leads.
   **A duplicate is «Дубликат (лид)» ONLY** (UC_GV19A1, the client's rule of
   2026-10-02 — the red «Дубликат» UC_V1NS34 at the pipeline's end is a lead
-  in «Тушган лид»), the same as «Дубль лидлар» on /leads (`isLeadDuplicate`).
+  in «Тушган лид»). «Дубль лидлар» on /leads is NOT this since 2026-10-16:
+  it counts the «Такрор лид» field (`deal."repeatLead"` filled), every tile's
+  «shundan N dubl» and «Янги» (= Jami − it) with it — the client: «dublikat
+  lid degan joydagi emas … takroriy deb yaratilganlar» (portal 16.10: 24 in
+  the stage, 256 repeat leads, 21 both).
   Matched `~ '[Дд]убл[^(]*\([[:space:]]*[Лл]ид'`, never `~*`: Cyrillic case
   folding follows the ctype, and under a C locale every duplicate was a lead.
   **A LATE «QAYTA ZAYAVKA» IS NOT A LEAD OF ITS DAY** (2026-10-07, the
