@@ -496,10 +496,10 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
           <StatTile
             compact
             status={status}
-            label="ROPlarga berilgan"
+            label="Квал лидлар сони · ROP"
             value={data?.funnel.handedOut ?? null}
             unit="count"
-            hint="«Kimga qancha lid kelayapti» · Квал"
+            hint="ROPlarga tarqatilgan lidlar"
             context={data ? note('= jadvalning «Jami» qatori', HANDED_OUT_TIP) : undefined}
           />
         </div>

@@ -143,7 +143,9 @@ describe('ChannelTiles', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const card = within(screen.getByTestId('lead-channel-apart')).getByTestId('lead-handed-out')
-    expect(within(card).getByText('ROPlarga berilgan')).toBeTruthy()
+    // Named as the client calls a ROP's handed-out leads (2026-10-16).
+    expect(within(card).getByText('Квал лидлар сони · ROP')).toBeTruthy()
+    expect(within(card).getByText('ROPlarga tarqatilgan lidlar')).toBeTruthy()
     expect(within(card).getByText('118')).toBeTruthy()
     expect(await tipOf(within(card).getByText('= jadvalning «Jami» qatori'))).toMatch(/Kimga qancha lid kelayapti/)
   })
@@ -179,7 +181,7 @@ describe('ChannelTiles', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const apart = screen.getByRole('group', { name: 'Jamiga kirmaydi' })
-    // The picker's card, and beside it «ROPlarga berilgan» (2026-10-16).
+    // The picker's card, and beside it «Квал лидлар сони · ROP» (2026-10-16).
     expect(apart.querySelectorAll('.card')).toHaveLength(2)
     // «Исход» first, the picker on the card.
     expect(within(tile('Исход')).getByText('2,410')).toBeTruthy()
@@ -199,7 +201,7 @@ describe('ChannelTiles', () => {
   })
 
   it('says loading and failure on every tile rather than printing zeros', () => {
-    // «Jami», the six channels, «Исход | Boshqa» and «ROPlarga berilgan».
+    // «Jami», the six channels, «Исход | Boshqa» and «Квал лидлар сони · ROP».
     const { unmount } = render(<ChannelTiles data={undefined} status="loading" />)
     expect(screen.getAllByRole('status')).toHaveLength(9)
     unmount()
