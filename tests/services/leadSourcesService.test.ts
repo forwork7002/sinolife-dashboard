@@ -1418,6 +1418,20 @@ describe('«Targetologlar» counts Meta\'s way — every CRM-form fill (2026-10-
     expect(owner(d, 'brandless|Элдор')).toMatchObject({ bitrixLeads: 3, leadsBasis: 'deals' })
   })
 
+  it('«Ген лид» — and «Жами лидлар» through it — is the fills, read from Bitrix24 (2026-10-16); its kval stays the deals\'', () => {
+    const d = leadSourcesOverview(input)
+    const generated = d.tiles.rows.find((t) => t.tile === 'generated')!
+    expect(d.tiles.generatedBasis).toBe('fills')
+    expect(generated).toMatchObject({ leads: 14, qualified: 3 })
+    expect(d.funnel).toMatchObject({ total: 14, qualified: 3 })
+    // The «Ген лид» deals themselves stay where they were: «Barcha manbalar».
+    expect(d.totals.counted.leads).toBe(5)
+
+    const deals = leadSourcesOverview({ ...input, formFills: null })
+    expect(deals.tiles.generatedBasis).toBe('deals')
+    expect(deals.funnel.total).toBe(5)
+  })
+
   it('counts the deals, as before, for a window the fills do not cover', () => {
     const d = leadSourcesOverview({ ...input, formFills: null })
     expect(owner(d, 'Collagen|Umar')).toMatchObject({ bitrixLeads: 3, leadsBasis: 'deals' })

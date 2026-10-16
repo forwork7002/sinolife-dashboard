@@ -216,6 +216,8 @@ export interface LeadSourcesOverviewDto {
     readonly smmAccounts: readonly ({ readonly key: string; readonly name: string } & ChannelTileDto)[]
     /** The same «ИИ квал сана», outside Регистрация now — said in a tip, summed nowhere. */
     readonly aiElsewhere: number
+    /** «Ген лид»'s big number: every CRM-form fill in Bitrix24 ('fills') or its Регистрация deals ('deals'). */
+    readonly generatedBasis: 'fills' | 'deals'
   }
   readonly sources: readonly SourceRowDto[]
 }

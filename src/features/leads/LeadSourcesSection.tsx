@@ -210,6 +210,11 @@ const TILE_NOTE: Partial<Record<LeadTile, string>> = {
   other: 'roʻyxatda yoʻq manbalar: Сарафан маркетинг (Регистрация), manbasiz va boshqalar',
 }
 
+/** «Ген лид» counted by its Bitrix24 CRM-form fills (`tiles.generatedBasis`, 2026-10-16) — the note says so. */
+const GENERATED_FILLS_NOTE = 'Bitrix24 dagi har bir forma toʻldirish + qoʻlda kiritilgan'
+const GENERATED_FILLS_TIP =
+  'Bitrix24 da qayd etilgan har bir CRM-forma toʻldirilishi (Facebook sanaganidek) — eski mijoz qayta toʻldirsa ham, Bitrix yangi bitim ochmagan boʻlsa ham — va qoʻlda kiritilgan «Ген лид». Dubl va kval — shu formalar ochgan bitimlardan.'
+
 /**
  * On hover only — the client, 2026-10-05, read «14.09.2026 dan» on the card
  * as the day the count starts; it is only when the portal began the mark.
@@ -373,7 +378,8 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
     // «Сммщик ии» prints the «ИИ квал сана» count (the client, 2026-10-15); its row is what «Jami» sums.
     const row = byTile.get(tile)
     const o = tile === 'aiSmm' ? data?.tiles.ai : row
-    const text = TILE_NOTE[tile]
+    const fills = tile === 'generated' && data?.tiles.generatedBasis === 'fills'
+    const text = fills ? GENERATED_FILLS_NOTE : TILE_NOTE[tile]
     const dubl = dublNote(o)
     return (
       <StatTile
@@ -390,7 +396,7 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
               {dubl}
               {/* «Сарафан» is deals of every pipeline: its kval already is the closed count. «Сммщик ии» reads none. */}
               {row && tile !== 'sarafan' && tile !== 'aiSmm' && closedNote(row.closedQualified)}
-              {text && note(text, TILE_NOTE_TITLE[tile])}
+              {text && note(text, fills ? GENERATED_FILLS_TIP : TILE_NOTE_TITLE[tile])}
               {extra}
             </>
           ) : undefined

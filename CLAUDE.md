@@ -583,7 +583,15 @@ Per-screen traps worth knowing before you touch one:
   cards (`withTargetologLeads`), «Отчёт Т»'s kval % divisor (`withFormKval`)
   and «Лид назорати»'s «Yetib keldi». `outcome` (kval, недозвон, sifatsiz,
   dubl, jarayonda) stays the deals'. A failed fills read is the deals'
-  basis, logged — never the tab down.
+  basis, logged — never the tab down. SINCE 2026-10-16 «Lid manbalari»'s
+  «Ген лид» tile too (the client: «bitrix24dan ol facebookdan emas»): its big
+  number is `forms.bitrixLeads` — every fill, the AI targetolog's deals, the
+  hand-typed «Ген лид» (`tiles.generatedBasis`) — so «Жами / Янги лидлар»
+  sum it; its dubl and kval stay the deals'. Portal 01–16.10 09:40: 15 806
+  «Ген лид» deals, 1 068 of them the 05.10 late copies, ~17 300 fills; every
+  form deal (14 179) on «Ген лид»'s source, so no other tile counts a fill
+  twice. «Barcha manbalar» (`totals.counted`) stays deals, so its «Jami» is
+  no longer the tiles' «Jami».
   Company-wide (`analytics:read:all`, in `COMPANY_WIDE`): it names customers
   and phones, and neither half has a team to narrow by.
 

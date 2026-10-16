@@ -251,7 +251,11 @@ export interface LeadSourcesOverviewDto {
    * counts every Регистрация deal and kval by the day it was WON.
    */
   readonly funnel: {
-    /** `tiles.total.leads`: Регистрация deals created in the window on a counted tile, duplicates included. */
+    /**
+     * `tiles.total.leads`: Регистрация deals created in the window on a
+     * counted tile, duplicates included — «Ген лид»'s as its CRM-form fills
+     * since 2026-10-16 (`tiles.generatedBasis`).
+     */
     readonly total: number
     /** `total` less the duplicates. */
     readonly fresh: number
@@ -354,6 +358,15 @@ export interface LeadSourcesOverviewDto {
     readonly smmAccounts: readonly ({ readonly key: string; readonly name: string } & ChannelTileDto)[]
     /** The same deals outside Регистрация now (Первичный отдел, Доставка, …) — said in a tip, summed nowhere. */
     readonly aiElsewhere: number
+    /**
+     * What «Ген лид»'s big number counts (2026-10-16, the client: «bitrix24dan
+     * ol facebookdan emas»): 'fills' — every CRM-form fill the portal
+     * recorded, a returning contact's too, plus the AI targetolog's deals and
+     * the «Ген лид» typed in by hand (`forms.bitrixLeads`); 'deals' — the
+     * Регистрация deals on its source, for a window the fills do not cover.
+     * Its «dubl» and kval are the deals' either way.
+     */
+    readonly generatedBasis: 'fills' | 'deals'
   }
   readonly sources: readonly SourceRowDto[]
 }
@@ -1020,6 +1033,20 @@ export function leadSourcesOverview(all: {
   sarafanTile.qualified = input.sarafan.qualified
   sarafanTile.closed = input.sarafan.qualified
 
+  /*
+    «ГЕН ЛИД» IS THE FILLS, READ FROM BITRIX24 (2026-10-16, the client:
+    «bitrix24dan ol facebookdan emas»). The portal records every CRM-form
+    fill, but opens a Регистрация deal for only some — a returning contact's
+    fill lands on the old deal — so the deals read ~2 500 short over 01–16.10
+    of what came in. The tile is the «Targetologlar» table's «Jami» «Bitrix24
+    lid»: every fill, the AI targetolog's deals (no CRM form behind them) and
+    the «Ген лид» typed in by hand. A formless deal the «Таргетолог» field
+    files on a person is left out: most are retitled form leads whose fill is
+    counted already. Every form deal of 01–16.10 sat on «Ген лид»'s source
+    (14 179 of 14 179, portal), so no other tile counts a fill twice.
+  */
+  if (fillsBasis) tiles.get('generated')!.leads = formFills + outcomeCells(manual).leads
+
   const tilesTotal = tileZero()
   for (const [tile, t] of tiles) {
     if (LEAD_TILES_APART.has(tile) || LEAD_TILES_OUTSIDE_REGISTRATION.has(tile)) continue
@@ -1114,6 +1141,7 @@ export function leadSourcesOverview(all: {
         .map(([key, t]) => ({ key, name: SMM_ACCOUNTS.find((a) => a.id === key)?.name ?? key, ...tileCells(t) }))
         .sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name, 'ru')),
       aiElsewhere,
+      generatedBasis: fillsBasis ? 'fills' : 'deals',
       /*
         Not in the DTO: a tab opened before the 2026-10-09 deploy still reads
         `toHeadline` on its next poll and would throw without it, and one from
