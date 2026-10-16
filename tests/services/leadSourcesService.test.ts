@@ -139,6 +139,11 @@ describe('leadSourcesOverview', () => {
     ],
     // «Сарафан маркетинг» in every pipeline: 3 created, 2 won (the client, 2026-10-10).
     sarafan: { leads: 3, qualified: 2 },
+    // «Kimga qancha lid kelayapti» → «Квал», two days: 5 to Sevinch, 2 to nobody's team (one a repeat contact).
+    handedOut: [
+      { day: '2026-09-18', rop: 'Sevinch', leads: 5, duplicates: 0 },
+      { day: '2026-09-19', rop: null, leads: 2, duplicates: 1 },
+    ],
   })
 
   it('reads the six headline figures off the counted tiles — «Исход» is in none (the client, 2026-10-09)', () => {
@@ -152,6 +157,8 @@ describe('leadSourcesOverview', () => {
       qualifiedPercent: (9 / 17) * 100,
       // WON in the window whenever it arrived, the old count: «Ген лид» 3 + sinolifeuz 1 («Исход» and the sourceless kval apart).
       closedQualified: 4,
+      // Handed out to a ROP in the window, the grid's «Jami» summed — every team, nobody's, duplicates in.
+      handedOut: 7,
       // Umar's forms 20 + 5, the unmapped account's form 1, and his DM 9; the hiring campaign is no ad money.
       spendUsd: 35,
       // Every «Ген лид» kval of the cohort: the form's 3 and the hand-typed 2 — not the free channels'.
@@ -766,6 +773,12 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     ],
     sarafan: { leads: 3, qualified: 2 },
     inboundCalls: 9,
+    // Handed out to a ROP («Kimga qancha lid kelayapti» → «Квал»): a Zextra team, a Collagen team, and nobody's.
+    handedOut: [
+      { day: '2026-09-18', rop: 'Asliddin', leads: 4, duplicates: 0 },
+      { day: '2026-09-19', rop: 'Sevinch', leads: 6, duplicates: 1 },
+      { day: '2026-09-19', rop: null, leads: 2, duplicates: 0 },
+    ],
   }
   const all = leadSourcesOverview(input)
   const zextra = leadSourcesOverview({ ...input, brand: 'Zextra' })
@@ -774,9 +787,11 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
   it('narrows leads by source then form, kval and FAKT 1 clients alike, and money by ad account', () => {
     expect(all.brand).toBe('all')
     expect(zextra.brand).toBe('Zextra')
-    // Kval is the cohort's (the Kamron form's 3 leads, WON); the 2 closed in the window ride beside it.
-    expect(zextra.funnel).toMatchObject({ total: 7, qualified: 3, closedQualified: 2, spendUsd: 8 })
-    expect(collagen.funnel).toMatchObject({ total: 5, qualified: 0, closedQualified: 1, spendUsd: 20 })
+    // Kval is the cohort's (the Kamron form's 3 leads, WON); the 2 closed in the window ride beside it,
+    // and the handed-out card counts the leads given to the brand's teams.
+    expect(zextra.funnel).toMatchObject({ total: 7, qualified: 3, closedQualified: 2, handedOut: 4, spendUsd: 8 })
+    expect(collagen.funnel).toMatchObject({ total: 5, qualified: 0, closedQualified: 1, handedOut: 6, spendUsd: 20 })
+    expect(all.funnel.handedOut).toBe(12)
     // The outgoing call is no lead, so the two brands make «Жами лидлар»; with it they make Регистрация.
     expect(all.funnel.total).toBe(zextra.funnel.total + collagen.funnel.total)
     expect(all.totals.registration.leads).toBe(all.funnel.total + 7)
@@ -822,6 +837,7 @@ describe('leadSourcesOverview — the Collagen / Zextra switch', () => {
     expect(collagen.funnel.total + zextra.funnel.total + none.funnel.total).toBe(all.funnel.total)
     expect(collagen.funnel.qualified + zextra.funnel.qualified + none.funnel.qualified).toBe(all.funnel.qualified)
     expect(collagen.funnel.spendUsd + zextra.funnel.spendUsd + none.funnel.spendUsd).toBe(all.funnel.spendUsd)
+    expect(collagen.funnel.handedOut + zextra.funnel.handedOut + none.funnel.handedOut).toBe(all.funnel.handedOut)
     // «Сммщик ии»'s «ИИ квал сана» card too: zextra.uz is Zextra's, the sourceless AI deals are on no card.
     expect(collagen.tiles.ai.leads + zextra.tiles.ai.leads + none.tiles.ai.leads).toBe(all.tiles.ai.leads)
     expect(collagen.tiles.aiElsewhere + zextra.tiles.aiElsewhere + none.tiles.aiElsewhere).toBe(all.tiles.aiElsewhere)
@@ -860,6 +876,7 @@ describe('LeadSourcesService.targetologForms', () => {
           aiQualifiedStages: slow ? never('aiQualifiedStages') : async () => [],
           sourceCount: slow ? never('sourceCount') : async () => NO_SARAFAN,
           inboundCallCount: slow ? never('inboundCallCount') : async () => null,
+          handedOutDays: slow ? never('handedOutDays') : async () => [],
         } as never,
         { campaignDays: async () => campaigns, campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
         { leadFakt1Clients: slow ? never('leadFakt1Clients') : async () => [] } as never,
@@ -908,6 +925,7 @@ describe('LeadSourcesService.overview — «Факт1 мижоз» never takes L
         aiQualifiedStages: async () => [],
         sourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
+        handedOutDays: async () => [],
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       {
@@ -955,6 +973,7 @@ describe('LeadSourcesService.overview — a slow «Факт1 мижоз»', () =
         aiQualifiedStages: async () => [],
         sourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
+        handedOutDays: async () => [],
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       {
@@ -1008,6 +1027,7 @@ describe('LeadSourcesService.overview — the leads and their kval from one rebu
         aiQualifiedStages: async () => [],
         sourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
+        handedOutDays: async () => [],
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       { leadFakt1Clients: async () => [] } as never,
@@ -1052,6 +1072,7 @@ describe('LeadSourcesService.overview — a reader\'s cold miss (2026-10-06 revi
         aiQualifiedStages: read('aiQualifiedStages', []),
         sourceCount: read('sourceCount', NO_SARAFAN),
         inboundCallCount: read('inboundCallCount', null),
+        handedOutDays: read('handedOutDays', []),
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
@@ -1059,9 +1080,10 @@ describe('LeadSourcesService.overview — a reader\'s cold miss (2026-10-06 revi
 
     const answer = service.overview(period, 'Asia/Tashkent')
     await new Promise((resolve) => setTimeout(resolve, 0))
-    // Nothing has answered and every read is out — the five scans with them, where the warmer's pace shows two.
+    // Nothing has answered and every read is out — the six scans with them, where the warmer's pace shows two.
     expect([...inFlight].sort()).toEqual([
       'aiQualifiedStages',
+      'handedOutDays',
       'inboundCallCount',
       'leadFakt1Clients',
       'qualifiedSources',
@@ -1090,6 +1112,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
         aiQualifiedStages: async () => [],
         sourceCount: async () => NO_SARAFAN,
         inboundCallCount: async () => null,
+        handedOutDays: async () => [],
       } as never,
       { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
       { leadFakt1Clients: async () => [] } as never,
@@ -1130,6 +1153,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           aiQualifiedStages: read([]),
           sourceCount: read(NO_SARAFAN),
           inboundCallCount: read(null),
+          handedOutDays: async () => [],
         } as never,
         { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
         { leadFakt1Clients: read([]) } as never,
@@ -1172,6 +1196,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           aiQualifiedStages: read('aiQualifiedStages', []),
           sourceCount: read('sourceCount', NO_SARAFAN),
           inboundCallCount: read('inboundCallCount', null),
+          handedOutDays: read('handedOutDays', []),
         } as never,
         { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
         { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
@@ -1185,6 +1210,7 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
       await expect(service.warm(new Date('2026-08-12T05:00:00Z'), 'Asia/Tashkent')).rejects.toThrow('statement timeout')
       expect(reads.filter((r) => r.endsWith(' this_month')).map((r) => r.split(' ')[0]).sort()).toEqual([
         'aiQualifiedStages',
+        'handedOutDays',
         'inboundCallCount',
         'leadFakt1Clients',
         'qualifiedSources',
@@ -1221,12 +1247,13 @@ describe('LeadSourcesService.warm — the windows the tab opens on, kept warm', 
           aiQualifiedStages: read('aiQualifiedStages', []),
           sourceCount: read('sourceCount', NO_SARAFAN),
           inboundCallCount: read('inboundCallCount', null),
+          handedOutDays: read('handedOutDays', []),
         } as never,
         { campaignDays: async () => [], campaignsImportedAt: async () => null, manualSpend: async () => [] } as never,
         { leadFakt1Clients: read('leadFakt1Clients', []) } as never,
       )
     await service(warmers.LeadSourcesService).warm(now, 'Asia/Tashkent')
-    expect(reads).toHaveLength(14)
+    expect(reads).toHaveLength(16)
 
     // A second instance of the module, as the route handlers' bundle holds one.
     vi.resetModules()

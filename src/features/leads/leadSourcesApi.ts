@@ -149,6 +149,8 @@ export interface LeadSourcesOverviewDto {
     readonly qualifiedPercent: number | null
     /** WON in the window by close day — the count until 2026-10-09. */
     readonly closedQualified: number
+    /** Handed out to a ROP in the window — «Kimga qancha lid kelayapti» → «Квал»'s «Jami» summed; the «ROPlarga berilgan» card. */
+    readonly handedOut: number
     /** `forms.total`'s spend, kval and price — «Targetologlar»'s «Jami». */
     readonly spendUsd: number
     readonly generatedQualified: number

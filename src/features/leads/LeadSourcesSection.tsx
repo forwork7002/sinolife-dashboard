@@ -275,6 +275,9 @@ const kvalHint = (t: Omit<ChannelTileDto, 'closedQualified'>) =>
 
 const note = (text: string, tip?: string) => <TipNote tip={tip}>{text}</TipNote>
 
+const HANDED_OUT_TIP =
+  'Shu davrda ROPlarga berilgan lidlar — «Kimga qancha lid kelayapti» → «Квал» jadvalining «Jami» qatori, davr kunlari boʻyicha qoʻshilgan: «Bugun»da bir kun, «Shu oy»da butun oy. Bitrix24: «Лид таркатилган сана» shu davrda, «РОП (Первичка)», barcha voronkalar, dubllar bilan.'
+
 /**
  * «shundan N dubl», quietly — the client, 2026-10-03: a duplicate is counted
  * in the big number and said under it, never left for the reader to guess.
@@ -487,6 +490,18 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
               />
             </div>,
           )}
+        </div>
+        {/* «Kimga qancha lid kelayapti» → «Квал»'s «Jami» over the window, in the row's free room (the client, 2026-10-16). */}
+        <div className="col-span-2 grid sm:col-span-1" data-testid="lead-handed-out">
+          <StatTile
+            compact
+            status={status}
+            label="ROPlarga berilgan"
+            value={data?.funnel.handedOut ?? null}
+            unit="count"
+            hint="«Kimga qancha lid kelayapti» · Квал"
+            context={data ? note('= jadvalning «Jami» qatori', HANDED_OUT_TIP) : undefined}
+          />
         </div>
       </div>
     </section>

@@ -2,11 +2,13 @@ import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
 import { CALL_DATA_FLOOR, callWindowStart } from '@/lib/callQuality'
 import type { FormFillCoverage, FormFillDayRow } from '@/server/domain/leads/formFills'
-import type { Period } from '@/server/domain/period/period'
+import { type Period, zonedDateKey } from '@/server/domain/period/period'
+import type { DistributedDayRow } from '@/server/domain/registration/leadSplit'
 import { LEAD_TILE_SOURCES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { readFormFillCoverage, readFormFillDays } from './formFillRepository'
 import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
+import { RegistrationRepository } from './registrationRepository'
 
 /**
  * Регистрация deals created on one day, from one source, sitting in one stage
@@ -299,6 +301,20 @@ export class LeadSourcesRepository {
       period.end,
     )
     return Number(row?.calls ?? 0)
+  }
+
+  /**
+   * The deals handed out to a ROP on each Tashkent day of the window —
+   * `RegistrationRepository.distributedDaysSql`, the very statement behind
+   * «Kimga qancha lid kelayapti» → «Квал» on this tab, so the «ROPlarga
+   * berilgan» card is that grid's «Jami» summed over the window and the two
+   * never disagree.
+   */
+  handedOutDays(period: Period): Promise<DistributedDayRow[]> {
+    return new RegistrationRepository(this.prisma).distributedDays(
+      zonedDateKey(period.start, this.tz),
+      zonedDateKey(new Date(period.end.getTime() - 1), this.tz),
+    )
   }
 
   /**

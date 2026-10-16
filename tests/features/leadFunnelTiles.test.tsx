@@ -34,6 +34,7 @@ const data = {
     qualified: 300,
     qualifiedPercent: (300 / 940) * 100,
     closedQualified: 340,
+    handedOut: 350,
     spendUsd: 1200,
     generatedQualified: 200,
     costPerQualifiedUsd: 6,
@@ -72,7 +73,7 @@ describe('FunnelTiles', () => {
   it('draws a dash, never a zero, for a rate or a price it cannot compute', () => {
     const quiet = {
       importedAt: null,
-      funnel: { total: 0, fresh: 0, duplicates: 0, qualified: 0, qualifiedPercent: null, closedQualified: 0, spendUsd: 0, generatedQualified: 0, costPerQualifiedUsd: null },
+      funnel: { total: 0, fresh: 0, duplicates: 0, qualified: 0, qualifiedPercent: null, closedQualified: 0, handedOut: 0, spendUsd: 0, generatedQualified: 0, costPerQualifiedUsd: null },
       tiles: { rows: [], total: { leads: 0 } },
     } as unknown as LeadSourcesOverviewDto
     render(<FunnelTiles data={quiet} status="ready" />)

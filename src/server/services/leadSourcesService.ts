@@ -60,6 +60,8 @@ import { type FormFillDayRow, fillsCover, isIntegrationForm } from '@/server/dom
 import { isLeadDuplicate, LEAD_BUCKETS, type LeadBucket, leadBucket } from '@/server/domain/reklama/leadQuality'
 import { type ChannelLeads, type ChannelLeadsDay, type ManualSpendDto, manualSpendBlocks } from '@/server/domain/reklama/manualSpend'
 import { type Period, type PeriodPreset, periodLengthInDays, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
+import type { DistributedDayRow } from '@/server/domain/registration/leadSplit'
+import { teamBrand } from '@/server/domain/rnp/rnpSheet'
 import { type BrandFilter, type TargetProduct, brandMatches } from '@/server/domain/types'
 import type { InsightsRepository, LeadFakt1ClientRow } from '@/server/repositories/insightsRepository'
 import type {
@@ -267,6 +269,14 @@ export interface LeadSourcesOverviewDto {
     readonly qualifiedPercent: number | null
     /** The counted tiles' deals WON in the window by `closedAt` — «Квал лидлар сони» until 2026-10-09. */
     readonly closedQualified: number
+    /**
+     * The deals handed out to a ROP in the window («Лид таркатилган сана»),
+     * every pipeline, duplicates in — «Kimga qancha lid kelayapti» → «Квал»'s
+     * «Jami» summed over the window: a day on «Bugun», the month on «Shu oy».
+     * Its own card beside «Исход | Boshqa» (the client, 2026-10-16: «shu
+     * yerdagi 118 ta … alohida … oʻng tomondagi boʻsh tomonga»).
+     */
+    readonly handedOut: number
     /** `forms.total.spendUsd` — the Meta money the kval price divides. */
     readonly spendUsd: number
     /** `forms.total.outcome.success` — the «Ген лид» cohort's kval, the price's divisor. */
@@ -614,6 +624,8 @@ function ofBrand(input: LeadSourcesInput, brand: Exclude<BrandFilter, 'all'>): L
     formFills: input.formFills?.filter((row) => brandMatches(brand, fillBrand(row.subject))) ?? null,
     qualified: input.qualified.filter(lead),
     aiQualified: input.aiQualified.filter(lead),
+    // By the team the lead went to, as the grid narrows its rows (`teamRowsOfBrand`); a lead given to no team is «Brendsiz».
+    handedOut: input.handedOut?.filter((row) => brandMatches(brand, teamBrand(row.rop))),
     sarafan: brandless ? input.sarafan : { leads: 0, qualified: 0 },
     inboundCalls: brandless ? input.inboundCalls : null,
   }
@@ -658,6 +670,8 @@ export function leadSourcesOverview(all: {
   aiQualified: readonly AiQualifiedStageRow[]
   /** «Сарафан маркетинг» deals of every pipeline (`LeadSourcesRepository.sourceCount`) — the «Сарафан» tile. */
   sarafan: PipelineSourceCount
+  /** Deals handed out to a ROP in the window (`LeadSourcesRepository.handedOutDays`); absent reads as none. */
+  handedOut?: readonly DistributedDayRow[]
   importedAt: Date | null
   /** `LeadSourcesRepository.inboundCallCount`; absent reads as null. */
   inboundCalls?: number | null
@@ -1103,6 +1117,7 @@ export function leadSourcesOverview(all: {
       qualified: jami.qualified,
       qualifiedPercent: jami.qualifiedPercent,
       closedQualified: jami.closedQualified,
+      handedOut: (input.handedOut ?? []).reduce((n, row) => n + row.leads, 0),
       spendUsd: usd(totalSpend),
       generatedQualified: totalCells.success,
       costPerQualifiedUsd: costPerSuccessUsd,
@@ -1251,6 +1266,7 @@ interface WindowScans {
   aiQualified: AiQualifiedStageRow[]
   sarafan: PipelineSourceCount
   inboundCalls: number | null
+  handedOut: DistributedDayRow[]
 }
 const scanCache = processWide('sinolife.leads.scanCache', () => ttlCache<WindowScans>(120_000, LIVE_CACHE))
 /** The window's CRM-form fills, or null when they do not cover it — one index range, kept as long as the deals. */
@@ -1503,16 +1519,17 @@ export class LeadSourcesService {
     return registrationCache.get(windowKey(period), () => this.repository.registrationDays(period))
   }
 
-  /** `scanCache`'s build: its five reads, at most `width` at a time — all at once for a reader. */
+  /** `scanCache`'s build: its six reads, at most `width` at a time — all at once for a reader. */
   private async scans(period: Period, width = Infinity): Promise<WindowScans> {
-    const [triage, qualified, aiQualified, sarafan, inboundCalls] = await atMost(width, [
+    const [triage, qualified, aiQualified, sarafan, inboundCalls, handedOut] = await atMost(width, [
       () => this.repository.triageDays(period),
       () => this.repository.qualifiedSources(period),
       () => this.repository.aiQualifiedStages(period),
       () => this.repository.sourceCount(period, [...LEAD_SOURCE_VOCABULARY.sarafan]),
       () => this.repository.inboundCallCount(period),
+      () => this.repository.handedOutDays(period),
     ])
-    return { triage, qualified, aiQualified, sarafan, inboundCalls }
+    return { triage, qualified, aiQualified, sarafan, inboundCalls, handedOut }
   }
 }
 

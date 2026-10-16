@@ -52,7 +52,7 @@ const TILES: Record<LeadTile, ChannelTileDto> = {
 const data = {
   brand: 'all',
   // The headline is the channels' «Jami» — «Исход» 2 410 and «Boshqa» 120 in neither.
-  funnel: { total: 3224 },
+  funnel: { total: 3224, handedOut: 118 },
   tiles: {
     rows: (Object.keys(TILES) as LeadTile[]).map((tile) => ({ tile, ...TILES[tile] })),
     // The counted channels' sum, as the server builds it — «Исход» and «Boshqa» left out.
@@ -139,6 +139,15 @@ describe('ChannelTiles', () => {
     expect(within(screen.getByTestId('lead-channel-total')).getByText('shu davrda yopilgan: 990')).toBeTruthy()
   })
 
+  it('puts the leads handed out to the ROPs on a card of its own beside «Исход | Boshqa» (the client, 2026-10-16)', async () => {
+    render(<ChannelTiles data={data} status="ready" />)
+
+    const card = within(screen.getByTestId('lead-channel-apart')).getByTestId('lead-handed-out')
+    expect(within(card).getByText('ROPlarga berilgan')).toBeTruthy()
+    expect(within(card).getByText('118')).toBeTruthy()
+    expect(await tipOf(within(card).getByText('= jadvalning «Jami» qatori'))).toMatch(/Kimga qancha lid kelayapti/)
+  })
+
   it('shows a quiet channel at 0, with a dash for its rate', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
@@ -170,7 +179,8 @@ describe('ChannelTiles', () => {
     render(<ChannelTiles data={data} status="ready" />)
 
     const apart = screen.getByRole('group', { name: 'Jamiga kirmaydi' })
-    expect(apart.querySelectorAll('.card')).toHaveLength(1)
+    // The picker's card, and beside it «ROPlarga berilgan» (2026-10-16).
+    expect(apart.querySelectorAll('.card')).toHaveLength(2)
     // «Исход» first, the picker on the card.
     expect(within(tile('Исход')).getByText('2,410')).toBeTruthy()
     expect(within(tile('Исход')).getByText('operatorning chiquvchi qoʻngʻirogʻi — lid emas')).toBeTruthy()
@@ -189,11 +199,12 @@ describe('ChannelTiles', () => {
   })
 
   it('says loading and failure on every tile rather than printing zeros', () => {
+    // «Jami», the six channels, «Исход | Boshqa» and «ROPlarga berilgan».
     const { unmount } = render(<ChannelTiles data={undefined} status="loading" />)
-    expect(screen.getAllByRole('status')).toHaveLength(8)
+    expect(screen.getAllByRole('status')).toHaveLength(9)
     unmount()
 
     render(<ChannelTiles data={undefined} status="error" />)
-    expect(screen.getAllByText('Olinmadi')).toHaveLength(8)
+    expect(screen.getAllByText('Olinmadi')).toHaveLength(9)
   })
 })
