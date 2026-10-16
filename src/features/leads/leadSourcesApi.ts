@@ -218,6 +218,8 @@ export interface LeadSourcesOverviewDto {
     readonly aiElsewhere: number
     /** «Ген лид»'s big number: every CRM-form fill in Bitrix24 ('fills') or its Регистрация deals ('deals'). */
     readonly generatedBasis: 'fills' | 'deals'
+    /** The Регистрация «Ген лид» deals, whichever the basis — the tile's quiet line on 'fills'. */
+    readonly generatedDeals: number
   }
   readonly sources: readonly SourceRowDto[]
 }

@@ -591,7 +591,10 @@ Per-screen traps worth knowing before you touch one:
   «Ген лид» deals, 1 068 of them the 05.10 late copies, ~17 300 fills; every
   form deal (14 179) on «Ген лид»'s source, so no other tile counts a fill
   twice. «Barcha manbalar» (`totals.counted`) stays deals, so its «Jami» is
-  no longer the tiles' «Jami».
+  no longer the tiles' «Jami». A formless deal filed on an owner is its
+  fill, so under «Brendsiz» the tile is the hand-typed «Ген лид» alone and
+  Collagen + Zextra + Brendsiz still add up; dubl is capped at the fills;
+  `tiles.generatedDeals` is the deals' quiet line «Bitrix24 bitimlari».
   Company-wide (`analytics:read:all`, in `COMPANY_WIDE`): it names customers
   and phones, and neither half has a team to narrow by.
 

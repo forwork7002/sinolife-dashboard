@@ -1432,6 +1432,42 @@ describe('«Targetologlar» counts Meta\'s way — every CRM-form fill (2026-10-
     expect(deals.funnel.total).toBe(5)
   })
 
+  it('«Ген лид» keeps its deals beside the fills, for the quiet line', () => {
+    expect(leadSourcesOverview(input).tiles.generatedDeals).toBe(5)
+    expect(leadSourcesOverview({ ...input, formFills: null }).tiles.generatedDeals).toBe(5)
+  })
+
+  it('«Ген лид»: a formless deal filed on an owner is its fill, so Collagen + Zextra + Brendsiz is «Hammasi»', () => {
+    const withOwned = {
+      ...input,
+      registration: [
+        ...input.registration,
+        // A form lead whose name was lost, filed on Eldor by the «Таргетолог» field, no «Проект»: «Brendsiz».
+        reg({ targetolog: 'Элдор', leads: 3 }),
+        reg({ stage: 'Недозвон', status: 'OPEN' }),
+      ],
+    }
+    const view = (brand?: 'Collagen' | 'Zextra' | 'none') => leadSourcesOverview({ ...withOwned, brand })
+    const generated = (brand?: 'Collagen' | 'Zextra' | 'none') => view(brand).tiles.rows.find((r) => r.tile === 'generated')!
+    // 12 fills + 2 AI targetolog deals + 1 typed by hand; Eldor's three are in none of it.
+    expect(generated().leads).toBe(15)
+    // «Brendsiz»: the hand-typed one alone; its deals are Eldor's three and it.
+    expect(generated('none').leads).toBe(1)
+    expect(view('none').tiles).toMatchObject({ generatedBasis: 'fills', generatedDeals: 4 })
+    expect(generated('Collagen').leads + generated('Zextra').leads + generated('none').leads).toBe(generated().leads)
+    expect(generated('Collagen').qualified + generated('Zextra').qualified + generated('none').qualified).toBe(generated().qualified)
+  })
+
+  it('«Ген лид» never prints more duplicates than leads while the fills trail the deals', () => {
+    const d = leadSourcesOverview({
+      ...input,
+      registration: [reg({ formTitle: `Заполнение CRM-формы "${UMAR}"`, leads: 4, stage: 'Дубликат (лид)', status: 'OPEN' })],
+      formFills: [fill('2026-09-18', UMAR, 2)],
+    })
+    expect(d.tiles.rows.find((r) => r.tile === 'generated')).toMatchObject({ leads: 2, fresh: 0 })
+    expect(d.funnel).toMatchObject({ total: 2, fresh: 0, duplicates: 2 })
+  })
+
   it('counts the deals, as before, for a window the fills do not cover', () => {
     const d = leadSourcesOverview({ ...input, formFills: null })
     expect(owner(d, 'Collagen|Umar')).toMatchObject({ bitrixLeads: 3, leadsBasis: 'deals' })

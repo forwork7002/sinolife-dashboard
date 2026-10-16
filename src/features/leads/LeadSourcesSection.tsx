@@ -216,6 +216,17 @@ const GENERATED_FILLS_TIP =
   'Bitrix24 da qayd etilgan har bir CRM-forma toʻldirilishi (Facebook sanaganidek) — eski mijoz qayta toʻldirsa ham, Bitrix yangi bitim ochmagan boʻlsa ham — va qoʻlda kiritilgan «Ген лид». Dubl va kval — shu formalar ochgan bitimlardan.'
 
 /**
+ * «Bitrix24 bitimlari: N» under «Ген лид» on the fills' basis — the deals it
+ * counted until 2026-10-16, so the two figures never read as one.
+ */
+const generatedDealsNote = (deals: number | undefined) =>
+  deals === undefined ? null : (
+    <TipNote tip="Регистрацияdagi «Ген лид» bitimlari. Eski mijoz formani qayta toʻldirsa, Bitrix24 yangi bitim ochmaydi — toʻldirishni eski bitimiga yozadi, shuning uchun bitimlar toʻldirishlardan kam.">
+      Bitrix24 bitimlari: {formatNumber(deals)}
+    </TipNote>
+  )
+
+/**
  * On hover only — the client, 2026-10-05, read «14.09.2026 dan» on the card
  * as the day the count starts; it is only when the portal began the mark.
  */
@@ -444,7 +455,9 @@ export function ChannelTiles({ data, status }: { data: LeadSourcesOverviewDto | 
               ? undefined
               : t === 'aiSmm'
                 ? <SmmBreakdown tiles={data.tiles} jamiRow={byTile.get('aiSmm')} />
-                : t === 'inbound'
+                : t === 'generated'
+                  ? data.tiles.generatedBasis === 'fills' && generatedDealsNote(data.tiles.generatedDeals)
+                  : t === 'inbound'
                   ? isOneBrand(data.brand)
                     ? unsplitNote('Kiruvchi qoʻngʻiroqlar', '📞 qoʻngʻiroqlar')
                     : inboundCallsNote(data.inboundCalls)
@@ -1084,7 +1097,7 @@ function sourcesView(data: LeadSourcesOverviewDto | undefined, status: Status): 
 
   return {
     title: 'Barcha manbalar · Регистрация',
-    hint: 'Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. «Jami» — yuqoridagi «Жами лидлар»: «Исход» (operatorning chiquvchi qoʻngʻirogʻi) va roʻyxatda yoʻq manbalar jadvalda koʻrinadi, lekin «jamiga kirmaydi». Kval — shu davrda kelgan lidlardan hozirgacha «Сделка успешна» boʻlganlari, yuqoridagi «Квал лидлар сони» kabi. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz).',
+    hint: 'Регистрация voronkasiga tushgan har bir bitim — reklamadan boʻlmaganlari ham. Qalin qator — kanal jami, ostida uning manbalari. «Jami» — bitimlar: «Исход» (operatorning chiquvchi qoʻngʻirogʻi) va roʻyxatda yoʻq manbalar jadvalda koʻrinadi, lekin «jamiga kirmaydi». Yuqoridagi «Жами лидлар» «Ген лид»ni har bir forma toʻldirish boʻyicha sanaydi (eski mijozning qayta toʻldirishi ham), shuning uchun undan koʻproq boʻlishi mumkin. Kval — shu davrda kelgan lidlardan hozirgacha «Сделка успешна» boʻlganlari, yuqoridagi «Квал лидлар сони» kabi. Факт1 мижоз — shu lidlarning telefon raqamidan davr ichida, liddan keyin FAKT 1 buyurtma qilgan mijozlar soni (bir raqam — bir mijoz).',
     table: (
       <DataTable<Row>
         columns={[

@@ -364,9 +364,12 @@ export interface LeadSourcesOverviewDto {
      * recorded, a returning contact's too, plus the AI targetolog's deals and
      * the «Ген лид» typed in by hand (`forms.bitrixLeads`); 'deals' — the
      * Регистрация deals on its source, for a window the fills do not cover.
-     * Its «dubl» and kval are the deals' either way.
+     * Its «dubl» and kval are the deals' either way. Under «Brendsiz» 'fills'
+     * is the hand-typed «Ген лид» alone (no customer form's fill is brandless).
      */
     readonly generatedBasis: 'fills' | 'deals'
+    /** The Регистрация «Ген лид» deals, whichever the basis — the tile's quiet line on 'fills'. */
+    readonly generatedDeals: number
   }
   readonly sources: readonly SourceRowDto[]
 }
@@ -1044,8 +1047,19 @@ export function leadSourcesOverview(all: {
     files on a person is left out: most are retitled form leads whose fill is
     counted already. Every form deal of 01–16.10 sat on «Ген лид»'s source
     (14 179 of 14 179, portal), so no other tile counts a fill twice.
+    Under «Brendsiz», where no customer form's fill lands (`fillsBasis` off),
+    the row is therefore the hand-typed «Ген лид» alone — those owners' deals
+    are their fills under Collagen / Zextra, and counting them here too broke
+    Collagen + Zextra + Brendsiz = «Hammasi». Duplicates are capped at the
+    fills, which may trail the deals by `FILLS_STALE_MS`.
   */
-  if (fillsBasis) tiles.get('generated')!.leads = formFills + outcomeCells(manual).leads
+  const generatedTile = tiles.get('generated')!
+  const tileFills = input.formFills !== null && input.formFills !== undefined
+  const generatedDeals = generatedTile.leads
+  if (tileFills) {
+    generatedTile.leads = formFills + outcomeCells(manual).leads
+    generatedTile.duplicates = Math.min(generatedTile.duplicates, generatedTile.leads)
+  }
 
   const tilesTotal = tileZero()
   for (const [tile, t] of tiles) {
@@ -1141,7 +1155,8 @@ export function leadSourcesOverview(all: {
         .map(([key, t]) => ({ key, name: SMM_ACCOUNTS.find((a) => a.id === key)?.name ?? key, ...tileCells(t) }))
         .sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name, 'ru')),
       aiElsewhere,
-      generatedBasis: fillsBasis ? 'fills' : 'deals',
+      generatedBasis: tileFills ? 'fills' : 'deals',
+      generatedDeals,
       /*
         Not in the DTO: a tab opened before the 2026-10-09 deploy still reads
         `toHeadline` on its next poll and would throw without it, and one from
