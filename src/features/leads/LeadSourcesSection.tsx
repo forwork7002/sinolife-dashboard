@@ -145,7 +145,7 @@ export function FunnelTiles({ data, status }: { data: LeadSourcesOverviewDto | u
         <StatTile
           compact
           status={status}
-          label="Квал лидлар сони"
+          label="Квал лидлар сони · когорта"
           value={f?.qualified ?? null}
           unit="count"
           hint="shu davr lidlaridan «Сделка успешна»"
