@@ -53,7 +53,7 @@ function stateOf(r: UnansweredCallerDto): Exclude<State, 'all'> {
 }
 
 /** The portal's own contact card. */
-function bitrixContactUrl(bitrixId: string): string {
+export function bitrixContactUrl(bitrixId: string): string {
   return `https://obey.bitrix24.kz/crm/contact/details/${encodeURIComponent(bitrixId)}/`
 }
 

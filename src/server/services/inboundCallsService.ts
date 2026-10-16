@@ -7,6 +7,7 @@ import {
   type InboundGroup,
   type InboundTotal,
   callbackOf,
+  groupCallers,
   inboundReport,
   unansweredCallers,
 } from '@/server/domain/calls/inboundCalls'
@@ -60,6 +61,32 @@ export interface UnansweredCallsDto {
   readonly reached: number
 }
 
+/** One number behind a group tile; `GroupCaller` with the contact and the callback. */
+export interface GroupCallerDto {
+  readonly key: string
+  readonly phone: string | null
+  readonly tel: string | null
+  readonly contact: { readonly name: string; readonly bitrixId: string | null } | null
+  readonly calls: number
+  readonly talked: boolean
+  readonly talkSec: number
+  readonly firstCallAt: string
+  readonly lastCallAt: string
+  /** As on «Javobsiz qolgan raqamlar»: outbound calls after the latest inbound one, up to now. */
+  readonly callback: {
+    readonly at: string
+    readonly talked: boolean
+    readonly operator: string | null
+    readonly attempts: number
+  } | null
+}
+
+export interface GroupCallersDto {
+  readonly group: InboundGroup
+  /** Oldest first call first — the tile's numbers, as many as it counts. */
+  readonly rows: readonly GroupCallerDto[]
+}
+
 export type { GroupCounts }
 
 interface Basis {
@@ -70,7 +97,20 @@ interface Basis {
 
 /** The window's calls and contacts, read once for the report and its callback list. */
 const basisCache = ttlCache<Basis>(120_000, LIVE_CACHE)
-const reportCache = ttlCache<InboundCallsDto>(120_000, LIVE_CACHE)
+/**
+ * The report AND the calls it was counted from. A group list is built from
+ * this snapshot, never from a newer read: the report is served stale for up
+ * to five minutes while it rebuilds, and on «Bugun» calls land every two —
+ * a list read beside it would say «43 ta» under a tile reading 41.
+ */
+interface Snapshot {
+  readonly dto: InboundCallsDto
+  readonly basis: Basis
+  /** Which build this is — the group lists' memo key. */
+  readonly seq: number
+}
+let snapshotSeq = 0
+const reportCache = ttlCache<Snapshot>(120_000, LIVE_CACHE)
 /*
   No stale window: once a callback is written it must leave «Qilinmagan» on the
   next poll, not up to five minutes later. It is written only by the CALLS pass,
@@ -80,6 +120,8 @@ const reportCache = ttlCache<InboundCallsDto>(120_000, LIVE_CACHE)
   minute or two». The calls under it may also be up to one basis TTL old.
 */
 const unansweredCache = ttlCache<UnansweredCallsDto>(120_000)
+/** No stale window either, for the same callback column. */
+const callersCache = ttlCache<GroupCallersDto>(120_000)
 
 /** Waiting, then tried, then reached; newest call first inside each. */
 function urgency(row: UnansweredCallerDto): number {
@@ -113,7 +155,7 @@ export class InboundCallsService {
   ) {}
 
   async report(period: Period, now: Date): Promise<InboundCallsDto> {
-    return reportCache.get(this.key(period), () => this.build(period, now))
+    return (await this.snapshot(period, now)).dto
   }
 
   /**
@@ -161,6 +203,54 @@ export class InboundCallsService {
     })
   }
 
+  /**
+   * A group tile's numbers, number by number — the tile's own grouping
+   * (`groupCallers`), the contact card and the callback column of
+   * «Javobsiz qolgan raqamlar», so a number on both lists reads the same.
+   */
+  async callers(period: Period, group: InboundGroup, now: Date): Promise<GroupCallersDto> {
+    const snapshot = await this.snapshot(period, now)
+    return callersCache.get(`${this.key(period)}|${group}|${snapshot.seq}`, async () => {
+      const { calls, contacts } = snapshot.basis
+      const callers = groupCallers(calls, contacts, group)
+      // A number nobody can dial (none, or an extension) has no callback to find.
+      const dialable = callers.filter((c) => c.key.length === 9 && !c.key.startsWith('#'))
+      const customerIds = [...new Set(callers.map((c) => c.customerId).filter((id): id is string => !!id))]
+      const [outbound, cards] = await Promise.all([
+        this.repository.outboundTo(dialable.map((c) => ({ key: c.key, after: c.lastCallAt }))),
+        this.repository.contactCards(customerIds),
+      ])
+      const byKey = new Map<string, OutboundCall[]>()
+      for (const call of outbound) {
+        const list = byKey.get(call.key)
+        if (list) list.push(call)
+        else byKey.set(call.key, [call])
+      }
+      return {
+        group,
+        rows: callers.map((c): GroupCallerDto => {
+          const callback = callbackOf(c, byKey.get(c.key) ?? [])
+          return {
+            key: c.key,
+            phone: c.phone,
+            tel: c.tel,
+            contact: c.customerId ? (cards.get(c.customerId) ?? null) : null,
+            calls: c.calls,
+            talked: c.talked,
+            talkSec: c.talkSec,
+            firstCallAt: c.firstCallAt.toISOString(),
+            lastCallAt: c.lastCallAt.toISOString(),
+            callback: callback && { ...callback, at: callback.at.toISOString() },
+          }
+        }),
+      }
+    })
+  }
+
+  private snapshot(period: Period, now: Date): Promise<Snapshot> {
+    return reportCache.get(this.key(period), () => this.build(period, now))
+  }
+
   private key(period: Period): string {
     return `inbound|${period.start.toISOString()}|${periodLengthInDays(period)}`
   }
@@ -179,10 +269,11 @@ export class InboundCallsService {
     })
   }
 
-  private async build(period: Period, now: Date): Promise<InboundCallsDto> {
+  private async build(period: Period, now: Date): Promise<Snapshot> {
     const start = callWindowStart(period.start)
     const end = period.end
-    const { calls, outbound, contacts } = await this.basis(period)
+    const basis = await this.basis(period)
+    const { calls, outbound, contacts } = basis
 
     const today = zonedDateKey(now, this.timeZone)
     const { days, total } = inboundReport(calls, contacts, outbound, start < end ? windowDays(start, end, this.timeZone) : [])
@@ -190,7 +281,7 @@ export class InboundCallsService {
     let undated = 0
     for (const contact of contacts.values()) if (contact.createdAt === null) undated += 1
 
-    return {
+    const dto: InboundCallsDto = {
       days: days.map((d) => ({
         ...d,
         talkedPercent: percent(d.talked, d.numbers),
@@ -201,5 +292,7 @@ export class InboundCallsService {
       undatedContacts: undated,
       floorApplied: callFloorApplied(period.start),
     }
+    snapshotSeq += 1
+    return { dto, basis, seq: snapshotSeq }
   }
 }

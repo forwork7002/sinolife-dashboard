@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 
 import { statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
@@ -10,6 +10,7 @@ import { StatTile } from '@/components/ui/Stat'
 import { apiGet } from '@/lib/api'
 import { NO_VALUE, formatDateTime, formatNumber, formatPercent } from '@/lib/format'
 
+import { GROUP_CALLERS_ID, GroupCallersCard } from './GroupCallersCard'
 import { UnansweredCallsCard } from './UnansweredCallsCard'
 
 /**
@@ -65,6 +66,8 @@ const GROUP_RULE: Record<Group, string> = {
 }
 
 const muted = { color: 'var(--ink-muted)' } as const
+
+const tileId = (g: Group) => `inbound-group-tile-${g}`
 
 /** `2026-10-05` → `05.10`. */
 const dayLabel = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}`
@@ -132,6 +135,15 @@ export function InboundCallsSection({ windowParams }: { windowParams: Record<str
       errorMessage={query.error instanceof Error ? query.error.message : undefined}
       onRetry={() => void query.refetch()}
       unanswered={<UnansweredCallsCard windowParams={windowParams} groupLabel={GROUP_LABEL} />}
+      groupList={({ group, onClose }) => (
+        <GroupCallersCard
+          key={group}
+          windowParams={windowParams}
+          group={group}
+          label={GROUP_LABEL[group]}
+          onClose={onClose}
+        />
+      )}
     />
   )
 }
@@ -142,6 +154,7 @@ export function InboundCalls({
   errorMessage,
   onRetry,
   unanswered,
+  groupList,
 }: {
   data: InboundCallsDto | undefined
   status: 'loading' | 'error' | 'ready'
@@ -149,7 +162,15 @@ export function InboundCalls({
   onRetry?: () => void
   /** «Javobsiz qolgan raqamlar», under the tiles it opens up. */
   unanswered?: ReactNode
+  /** A pressed group tile's numbers; without it the tiles are not buttons. */
+  groupList?: (args: { group: Group; onClose: () => void }) => ReactNode
 }) {
+  const [openGroup, setOpenGroup] = useState<Group | null>(null)
+  // «Yopish» unmounts the card under the reader's focus: hand it back to the tile.
+  const closeList = () => {
+    if (openGroup) document.getElementById(tileId(openGroup))?.focus()
+    setOpenGroup(null)
+  }
   const total = data?.total
   const rows: Row[] = data
     ? [
@@ -214,24 +235,54 @@ export function InboundCalls({
       </div>
 
       <div className="stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" data-testid="inbound-groups">
-        {GROUPS.map((g) => (
-          <StatTile
-            key={g}
-            compact
-            status={status}
-            label={GROUP_LABEL[g]}
-            value={total?.groups[g] ?? null}
-            unit="count"
-            fill={g === 'fresh' ? 'good' : undefined}
-            hint={total ? `shundan ${formatNumber(total.unreached[g])} tasi qoʻngʻiroq qilgan, lekin ulanmagan` : undefined}
-            context={
-              <p className="text-[11px] leading-snug" style={muted}>
-                {GROUP_RULE[g]}
-              </p>
-            }
-          />
-        ))}
+        {GROUPS.map((g) => {
+          const open = openGroup === g
+          const tile = (
+            <StatTile
+              compact
+              status={status}
+              label={GROUP_LABEL[g]}
+              value={total?.groups[g] ?? null}
+              unit="count"
+              fill={g === 'fresh' ? 'good' : undefined}
+              hint={total ? `shundan ${formatNumber(total.unreached[g])} tasi qoʻngʻiroq qilgan, lekin ulanmagan` : undefined}
+              context={
+                <>
+                  <p className="text-[11px] leading-snug" style={muted}>
+                    {GROUP_RULE[g]}
+                  </p>
+                  {groupList && (
+                    <p className="mt-1.5 text-[11.5px] font-medium" style={{ color: 'var(--accent-ink)' }}>
+                      {open ? 'Roʻyxatni yopish ↑' : 'Raqamlarni koʻrish ↓'}
+                    </p>
+                  )}
+                </>
+              }
+            />
+          )
+          if (!groupList) return <Fragment key={g}>{tile}</Fragment>
+          /*
+            The whole tile is the button — the figure is what gets pressed.
+            A ring, not a fill, marks the open one: `fill` already means
+            «find this tile» («Соф янги» green).
+          */
+          return (
+            <button
+              key={g}
+              id={tileId(g)}
+              type="button"
+              onClick={() => setOpenGroup(open ? null : g)}
+              aria-expanded={open}
+              aria-controls={open ? GROUP_CALLERS_ID : undefined}
+              className="focusable flex min-w-0 cursor-pointer flex-col rounded-[var(--radius-panel)] text-left [&>.card]:flex-1"
+              style={open ? { boxShadow: '0 0 0 2px var(--accent)' } : undefined}
+            >
+              {tile}
+            </button>
+          )
+        })}
       </div>
+      {groupList && openGroup && groupList({ group: openGroup, onClose: closeList })}
       <div className="flex flex-col gap-1 text-[11px] leading-snug" style={muted} data-testid="inbound-unreached-rule">
         <p>
           «Ulanmagan» — qoʻngʻiroqlar soni emas, raqamlar soni: shu davrda bizga qoʻngʻiroq qilgan, lekin

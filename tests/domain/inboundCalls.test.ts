@@ -4,6 +4,7 @@ import {
   type ContactHistory,
   type InboundCall,
   callbackOf,
+  groupCallers,
   inboundGroup,
   inboundReport,
   phoneKey,
@@ -173,6 +174,78 @@ describe('unansweredCallers', () => {
 
   it('leaves out an internal extension', () => {
     expect(unansweredCallers([call('101', min(0), 0, null)], contacts)).toEqual([])
+  })
+})
+
+describe('groupCallers', () => {
+  const contacts = new Map<string, ContactHistory>([
+    ['new', { createdAt: min(0), deals: [] }],
+    ['buyer', { createdAt: min(-10_000), deals: [deal('6', 'C6:WON', min(-9_000))] }],
+  ])
+  const call = (phone: string | null, at: Date, durationSec: number, customerId: string | null): InboundCall => ({
+    phone,
+    startedAt: at,
+    durationSec,
+    customerId,
+    day: '2026-10-01',
+  })
+  const calls = [
+    // Out of order on purpose: the list sorts by start.
+    call('901112233', min(5), 25, 'new'),
+    call('+998901112233', min(0), 0, 'new'),
+    call('+998901112233', min(9), 40, 'new'),
+    call('+998935554433', min(10), 0, 'buyer'),
+    // No contact linked and no number: fresh on the tile, so on the list too.
+    call(null, min(20), 0, null),
+    call('101', min(30), 0, null),
+  ]
+
+  it('lists the tile numbers oldest first, with calls, talk and seconds over the window', () => {
+    expect(groupCallers(calls, contacts, 'fresh')).toEqual([
+      {
+        key: '901112233',
+        phone: '+998901112233',
+        tel: '+998901112233',
+        customerId: 'new',
+        calls: 3,
+        talked: true,
+        talkSec: 65,
+        firstCallAt: min(0),
+        lastCallAt: min(9),
+      },
+      {
+        key: '#4',
+        phone: null,
+        tel: null,
+        customerId: null,
+        calls: 1,
+        talked: false,
+        talkSec: 0,
+        firstCallAt: min(20),
+        lastCallAt: min(20),
+      },
+      {
+        key: '101',
+        phone: '101',
+        tel: null,
+        customerId: null,
+        calls: 1,
+        talked: false,
+        talkSec: 0,
+        firstCallAt: min(30),
+        lastCallAt: min(30),
+      },
+    ])
+    expect(groupCallers(calls, contacts, 'buyer').map((r) => [r.key, r.talked])).toEqual([['935554433', false]])
+  })
+
+  it('is exactly as long as every tile says, and its unconnected rows as many as the tile «ulanmagan»', () => {
+    const { groups, unreached } = inboundReport(calls, contacts, new Map(), ['2026-10-01']).total
+    for (const g of ['fresh', 'notReached', 'talkedNoBuy', 'buyer', 'noDeal'] as const) {
+      const rows = groupCallers(calls, contacts, g)
+      expect(rows.length).toBe(groups[g])
+      expect(rows.filter((r) => !r.talked).length).toBe(unreached[g])
+    }
   })
 })
 

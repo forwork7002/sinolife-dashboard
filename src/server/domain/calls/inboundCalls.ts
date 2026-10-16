@@ -128,6 +128,8 @@ interface Numbers {
   readonly calls: Map<string, number>
   readonly contactOf: Map<string, string>
   readonly talked: Set<string>
+  /** Seconds of conversation over the number's calls. */
+  readonly seconds: Map<string, number>
 }
 
 /** `calls` must be in start order: the first one seen per number is its first call. */
@@ -142,6 +144,7 @@ function byNumber(calls: readonly InboundCall[]): Numbers {
   */
   const contactOf = new Map<string, string>()
   const talked = new Set<string>()
+  const seconds = new Map<string, number>()
   calls.forEach((call, index) => {
     // A call with no usable number is its own caller rather than everybody's.
     const key = phoneKey(call.phone) ?? `#${index}`
@@ -150,8 +153,9 @@ function byNumber(calls: readonly InboundCall[]): Numbers {
     count.set(key, (count.get(key) ?? 0) + 1)
     if (call.customerId && !contactOf.has(key)) contactOf.set(key, call.customerId)
     if (call.durationSec > 0) talked.add(key)
+    seconds.set(key, (seconds.get(key) ?? 0) + Math.max(0, call.durationSec))
   })
-  return { first, last, calls: count, contactOf, talked }
+  return { first, last, calls: count, contactOf, talked, seconds }
 }
 
 /** `calls` must be in start order: the first one seen per number is its first call. */
@@ -275,6 +279,59 @@ export function unansweredCallers(
   return out
 }
 
+/**
+ * One number behind a group tile — «Соф янги» opened up (the client,
+ * 2026-10-16: «ustiga bossa aniq koʻrinsin qaysi qoʻngʻiroqlar»).
+ */
+export interface GroupCaller {
+  /** `phoneKey`; `#n` for a call with no usable number. */
+  readonly key: string
+  /** As the PBX wrote it on the first call; null when it wrote none. */
+  readonly phone: string | null
+  readonly tel: string | null
+  readonly customerId: string | null
+  /** Inbound calls in the window. */
+  readonly calls: number
+  /** At least one inbound call got a second of conversation. */
+  readonly talked: boolean
+  /** Seconds of conversation over those calls. */
+  readonly talkSec: number
+  readonly firstCallAt: Date
+  readonly lastCallAt: Date
+}
+
+/**
+ * A group tile's numbers, one row each, grouped exactly as `inboundReport`'s
+ * total is (the period's first call, the same contact) — so the list is as
+ * long as the tile says, a number with no usable digits included. Oldest
+ * first call first.
+ */
+export function groupCallers(
+  calls: readonly InboundCall[],
+  contacts: ReadonlyMap<string, ContactHistory>,
+  group: InboundGroup,
+): GroupCaller[] {
+  const ordered = [...calls].sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
+  const { first, last, calls: count, contactOf, talked, seconds } = byNumber(ordered)
+  const out: GroupCaller[] = []
+  for (const [key, call] of first) {
+    const customerId = contactOf.get(key) ?? null
+    if (inboundGroup(call.startedAt, customerId ? contacts.get(customerId) : undefined) !== group) continue
+    out.push({
+      key,
+      phone: call.phone,
+      tel: call.phone ? telTarget(call.phone) : null,
+      customerId,
+      calls: count.get(key) ?? 1,
+      talked: talked.has(key),
+      talkSec: seconds.get(key) ?? 0,
+      firstCallAt: call.startedAt,
+      lastCallAt: last.get(key)!.startedAt,
+    })
+  }
+  return out
+}
+
 /** An outbound call to a number, `phoneKey`ed. */
 export interface CallbackCall {
   readonly key: string
@@ -297,7 +354,10 @@ export interface Callback {
  * latest inbound call — an earlier one answered nothing they asked. A callback
  * that got through wins over the attempts around it.
  */
-export function callbackOf(caller: UnansweredCaller, outbound: readonly CallbackCall[]): Callback | null {
+export function callbackOf(
+  caller: Pick<UnansweredCaller, 'key' | 'lastCallAt'>,
+  outbound: readonly CallbackCall[],
+): Callback | null {
   const after = outbound
     .filter((c) => c.key === caller.key && c.startedAt.getTime() > caller.lastCallAt.getTime())
     .sort((a, b) => a.startedAt.getTime() - b.startedAt.getTime())
