@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { FORM_BRAND_PATTERNS, formNameBrand } from '@/server/domain/leads/leadSources'
+import { FORM_BRAND_PATTERNS, FORM_RENAMED, UNNAMED_FORM_BRANDS, currentFormName, foldFormName, formNameBrand } from '@/server/domain/leads/leadSources'
 import {
   ORIGIN_LEAD_DAYS,
+  SPACE_CLASS_SQL,
   dealFormTitleSql,
+  foldedFormNameSql,
   formAliasCteSql,
   formBrandOfTitleSql,
   originFormBrandSql,
+  renamedFormNameSql,
 } from '@/server/repositories/leadFormSql'
 
 /*
@@ -27,7 +30,16 @@ describe('leadFormSql', () => {
 
   it('lends a short name to a «Ген лид» deal only, and only a name that is one form', () => {
     expect(sql).not.toMatch(/ELSE fa\.title/)
-    expect(formAliasCteSql('$1', '$2')).toMatch(/HAVING count\(DISTINCT btrim\(translate\(/)
+    const alias = formAliasCteSql('$1', '$2')
+    // Every titled deal one form's, or 95 % when every form sharing the short name is one brand.
+    expect(alias).toContain('WHERE fan.place = 1 AND (fan.deals = fan.named OR (fan.one_brand AND fan.deals * 20 >= fan.named * 19))')
+    expect(alias).toContain('min(fg.brand) OVER (PARTITION BY fg.sd) = max(fg.brand) OVER (PARTITION BY fg.sd) AS one_brand')
+    // Its old and new names one form; the title printed one under its name today.
+    expect(alias).toContain(`GROUP BY fdn.sd, fdn.form`)
+    expect(alias).toContain(`${renamedFormNameSql('fdf.folded')} AS form`)
+    expect(alias).toContain('COALESCE(min(fdn.title) FILTER (WHERE fdn.folded = fdn.form), min(fdn.title)) AS title')
+    // Each step fenced, so the fold runs once a row.
+    expect(alias.match(/OFFSET 0/g)).toHaveLength(2)
     expect(formAliasCteSql('$1', '$2')).toContain(`ad."createdAtSource" >= $1 AND ad."createdAtSource" < $2`)
   })
 })
@@ -42,8 +54,57 @@ describe('the form\'s brand', () => {
     expect(formNameBrand('Sobirjon-zextra I.S | Long form new 14.09')).toBe('Zextra')
     expect(formNameBrand('Kamron Коллаген тест')).toBe('Collagen')
     expect(formNameBrand('Kamron КОЛЛАГЕН тест')).toBe('Collagen')
-    expect(formNameBrand('Kamron 6 etap filt forma 05.07')).toBeNull()
+    expect(formNameBrand('Аббос янги таргетолог Зехтра')).toBe('Zextra')
+    expect(formNameBrand('Zekstra forma')).toBe('Zextra')
+    expect(formNameBrand('Umar kolagen')).toBe('Collagen')
+    expect(formNameBrand('Колаген тест')).toBe('Collagen')
+    expect(formNameBrand('Kamron 7 etap filtr forma')).toBeNull()
     expect(formNameBrand(null)).toBeNull()
+  })
+
+  it('reads a form by its name today, and a form that names no brand by its sales (2026-10-16)', () => {
+    // Form 198 wore «collagen» for a week; its leads and its sale were Zextra sure.
+    expect(formNameBrand('Sobirjon-collagen I.S | Short form new 14.09')).toBe('Zextra')
+    expect(formNameBrand('Sobirjon-collagen\u00a0 I.S | Short form new 14.09 \n')).toBe('Zextra')
+    expect(currentFormName('Sinolife (UMAR) 777')).toBe('Umar-collagen Sinolife (UMAR) 777')
+    expect(formNameBrand('Kamron 6 etap filt forma 05.07')).toBe('Zextra')
+    expect(formNameBrand('Sobirjon')).toBe('Zextra')
+    expect(formNameBrand('I.S | Short form | 01.08.2026')).toBe('Collagen')
+    // Only the whole name: a form that merely contains one keeps its own words.
+    expect(formNameBrand('Sobirjon-collagen I.S | Short form | 14.09.2026')).toBe('Collagen')
+    for (const [old, now] of FORM_RENAMED) {
+      expect(foldFormName(old)).toBe(old)
+      expect(foldFormName(now)).toBe(now)
+      // A name today is never renamed again: one step reaches it.
+      expect(FORM_RENAMED.has(now)).toBe(false)
+      expect(formNameBrand(now)).not.toBeNull()
+    }
+    for (const [name] of UNNAMED_FORM_BRANDS) expect(foldFormName(name)).toBe(name)
+  })
+
+  it('reads the same names in SQL, quoted, before the patterns', () => {
+    expect(foldedFormNameSql('x')).toBe(`NULLIF(btrim(regexp_replace(x, '${SPACE_CLASS_SQL}+', ' ', 'g')), '')`)
+    expect(renamedFormNameSql('f')).toBe(
+      'CASE f ' + [...FORM_RENAMED].map(([old, now]) => `WHEN '${old}' THEN '${now}'`).join(' ') + ' ELSE f END',
+    )
+    const sql = formBrandOfTitleSql('t')
+    expect(sql).toContain(`WHEN fbn.name IN ('Sobirjon') THEN 'Zextra'`)
+    expect(sql).toContain(`WHEN fbn.name IN ('I.S | Short form | 01.08.2026', 'Umar Sinolife (UMAR) TEST-1', 'Sinolife (UMAR) TEST-2') THEN 'Collagen'`)
+    expect(sql.indexOf('fbn.name IN')).toBeLessThan(sql.indexOf('fbn.name ~*'))
+    // The title is spliced once and each step fenced — a sale's title expression is long.
+    expect(sql.split('substring(t from').length).toBe(2)
+    expect(sql.match(/OFFSET 0/g)).toHaveLength(3)
+  })
+
+  it('folds in SQL exactly the characters JS `\\s` folds', () => {
+    // `[[:space:]]` under a C locale is the ASCII six; the rest is spelled out.
+    const sqlClass = new RegExp(`^${SPACE_CLASS_SQL.replace('[:space:]', ' \\t\\n\\v\\f\\r')}$`)
+    const differ: string[] = []
+    for (let code = 0; code <= 0xffff; code++) {
+      const ch = String.fromCharCode(code)
+      if (/\s/.test(ch) !== sqlClass.test(ch)) differ.push(code.toString(16))
+    }
+    expect(differ).toEqual([])
   })
 
   it('spells every Cyrillic letter with both cases — `~*` folds only Latin under a C locale', () => {
@@ -56,8 +117,8 @@ describe('the form\'s brand', () => {
     }
     expect(Number.isInteger(ORIGIN_LEAD_DAYS)).toBe(true)
     const sql = formBrandOfTitleSql('t')
-    expect(sql).toContain(`substring(t from 'CRM-форм[аы][[:space:]\u00a0]*[«"“]([^»"”]+)') AS name`)
-    expect(sql).toContain(`WHEN fbn.name ~* 'zextra' THEN 'Zextra'`)
+    expect(sql).toContain(`(SELECT substring(t from 'CRM-форм[аы]${SPACE_CLASS_SQL}*[«"“]([^»"”]+)') AS name OFFSET 0) fbt`)
+    expect(sql).toContain(`WHEN fbn.name ~* 'zextra|zekstra|`)
     expect(sql.indexOf(`'Zextra'`)).toBeLessThan(sql.indexOf(`'Collagen'`))
   })
 

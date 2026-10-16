@@ -114,7 +114,7 @@ describe('RoistatRepository.bitrix — the form of a repeat lead (2026-10-06)', 
     // A short name borrows a form only on a «Ген лид» deal, and only when it names one form.
     expect(sql).toContain(`= 'REPEAT_SALE' THEN fa.title`)
     expect(sql).toContain(`= 'REPEAT_SALE' THEN ofa.title`)
-    expect(sql).toMatch(/HAVING count\(DISTINCT btrim\(translate\(/)
+    expect(sql).toContain('WHERE fan.place = 1 AND (fan.deals = fan.named OR (fan.one_brand AND fan.deals * 20 >= fan.named * 19))')
     expect(calls[0]!.params[6]).toEqual(new Date(PERIOD.start.getTime() - 30 * 86_400_000))
   })
 

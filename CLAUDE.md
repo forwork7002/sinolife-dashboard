@@ -849,8 +849,26 @@ Per-screen traps worth knowing before you touch one:
     stay team blocks. A SALE reads no `form_alias`: a lead known only by its
     form's short name (452 of 6 320 leads in the week of 01–06.10) is that
     form's brand, its order the product's. Roistat's «Товар» cut for a sale is
-    the same brand (`sfb`), so cut and switch agree. The rest of this
-    paragraph is the fallback.
+    the same brand (`sfb`), so cut and switch agree. A FORM IS ITS NAME
+    TODAY (2026-10-16): a deal and a fill keep the name AS IT WAS when the
+    form was filled, and the forms were renamed on 29.09, so an old name is
+    read as its form's current one (`FORM_RENAMED`, each checked to one form
+    id on the portal's fill activities) and a form whose name names no brand
+    even now by what its leads' sales sold (`UNNAMED_FORM_BRANDS`) — both in
+    JS (`currentFormName`, `formNameBrand`, `formOwner`) and SQL
+    (`renamedFormNameSql`, `formBrandOfTitleSql`; every step fenced with
+    `OFFSET 0`, or the planner inlines the fold into each arm — 4–6× slower;
+    the space class `SPACE_CLASS_SQL` is JS `\s`'s, pinned by a test). «Sobirjon» (form 140, 804 leads 31.07–17.09) is
+    Zextra, where the guess below said the collagen; «Sobirjon-collagen I.S |
+    Short form new 14.09» (form 198, 29.09–05.10) is Zextra too. `form_alias`
+    gives a short name to the form holding every titled deal, or ≥ 95 % of
+    them when no form sharing it names another brand, its old and new names
+    one form: «Sinolife Collagen - 30.04» was Eldor's on 909
+    of 911 deals of 01–16.10 and the strict «one name only» left 230 repeat
+    leads formless. Portal, deal by deal, old → new: August 685 leads
+    Collagen → Zextra; September 310 moved (Collagen → Zextra 142, brandless
+    → a brand 168); 01–16.10 117 (Collagen → Zextra 51, brandless → a brand
+    66); nothing the other way. The rest of this paragraph is the fallback.
   · Brand P&L: an ORDER's brand is the PRODUCT most of its money was paid
     for (2026-10-06, the client: «mahsulot bo'yicha») — its paid `deal_item`
     lines summed per brand (`PRODUCT_BRAND_PATTERNS`: «collagen|kollagen»,

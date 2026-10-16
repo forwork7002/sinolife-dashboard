@@ -428,8 +428,9 @@ export class RnpService {
  * brand, «Kosmetika», is brandless), then its source when the source is a
  * brand's page or line, and only then the old guess for a form that names no
  * product — a Kamron or Tursunbek form is Zextra (their Meta accounts all
- * are; «Kamron 6 etap filt forma» names none), any other the collagen (every
- * form of 18–24.09 without «zextra» sold it). Null: a lead nothing ties to a
+ * are), any other the collagen (every form of 18–24.09 without «zextra» sold
+ * it). The forms the portal settled are not guessed: `formNameBrand` reads
+ * an old name as its form's name today and an unnamed form by its sales. Null: a lead nothing ties to a
  * brand (an operator's outgoing call, a lead typed in by hand) — the P&L
  * prints those as «brendsiz».
  */

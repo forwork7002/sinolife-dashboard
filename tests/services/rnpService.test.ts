@@ -395,8 +395,20 @@ describe('leadBrand', () => {
     expect(leadBrand('UC_1X1J24', 'Заполнение CRM-формы "Sobirjon-zextra I.S | Long form new 14.09"', null)).toBe('Zextra')
     expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы "Umar-collagen Collagen (UMAR)"', 'Zextra sure')).toBe('Collagen')
     // A name that names no brand decides nothing until the page and «Проект» have spoken.
-    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Kamron 6 etap filt forma 05.07»', 'Collagen Marine')).toBe('Collagen')
-    expect(leadBrand('UC_AA84D0', 'Заполнение CRM-формы «Sinolife (UMAR) 777»')).toBe('Zextra')
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Kamron 7 etap filtr forma»', 'Collagen Marine')).toBe('Collagen')
+    expect(leadBrand('UC_AA84D0', 'Заполнение CRM-формы «Sinolife (UMAR) 888»')).toBe('Zextra')
+  })
+
+  it('reads a form\'s brand off the portal for a name that never said it, or said the wrong one (2026-10-16)', () => {
+    // Form 198 wore «collagen» for a week; its leads and its sale were Zextra sure.
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы "Sobirjon-collagen\u00a0I.S | Short form new 14.09"')).toBe('Zextra')
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы "Sobirjon-collagen I.S | Short form | 14.09.2026"')).toBe('Collagen')
+    // «Sobirjon» (form 140): 10 of 10 sales Zextra sure — the old guess said the collagen.
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы "Sobirjon"')).toBe('Zextra')
+    // A pre-29.09 name is its form's brand before «Проект» and the page, as a named one is.
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы «Kamron 6 etap filt forma 05.07»', 'Collagen Marine')).toBe('Zextra')
+    expect(leadBrand('UC_AA84D0', 'Заполнение CRM-формы «Sinolife (UMAR) 777»')).toBe('Collagen')
+    expect(leadBrand('REPEAT_SALE', 'Заполнение CRM-формы "Umar\u00a0Sinolife (UMAR) TEST-1"', 'Zextra sure')).toBe('Collagen')
   })
 
   it('brands the Sinolife pages added on 2026-10-02, and a form title with no closing quote', () => {

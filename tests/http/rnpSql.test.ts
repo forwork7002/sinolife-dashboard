@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { FORM_BRAND_PATTERNS } from '@/server/domain/leads/leadSources'
+
 /*
   Same preamble as the other SQL-shape tests: the repositories read `env` at
   module scope, and `env` refuses to load without a complete configuration.
@@ -119,7 +121,9 @@ describe('RnpRepository statements', () => {
   it('spells the duplicate stage\'s case out rather than trusting the locale', () => {
     const sql = bare(RnpRepository.registrationDaysSql())
     expect(sql).toContain(`NOT COALESCE(r.stage, '') ~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'`)
-    expect(sql).not.toContain('~*')
+    // The one case-blind match is a form's brand words, which spell every Cyrillic letter both ways (`FORM_BRAND_PATTERNS`).
+    const brandArms = FORM_BRAND_PATTERNS.reduce((rest, [, pattern]) => rest.replaceAll(`~* '${pattern}'`, ''), sql)
+    expect(brandArms).not.toContain('~*')
     expect(sql).toMatch(/d\."status" = 'WON' AND d\."closedAt"/)
   })
 

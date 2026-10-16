@@ -183,11 +183,71 @@ export function formNameOf(title: string | null | undefined): string | null {
  * locale folds nothing, so only this spelling matches alike on both sides.
  */
 export const FORM_BRAND_PATTERNS: readonly (readonly [TargetProduct, string])[] = [
-  ['Zextra', 'zextra'],
-  ['Collagen', 'collagen|kollagen|[Кк][Оо][Лл][Лл][Аа][Гг][Ее][Нн]'],
+  // The Cyrillic spellings too: form 110 «Аббос янги таргетолог Зехтра» is live on the portal (2026-10-16).
+  ['Zextra', 'zextra|zekstra|[Зз][Ее][Кк][Сс][Тт][Рр][Аа]|[Зз][Ее][Хх][Тт][Рр][Аа]'],
+  ['Collagen', 'collagen|kollagen|colagen|kolagen|[Кк][Оо][Лл][Лл][Аа][Гг][Ее][Нн]|[Кк][Оо][Лл][Аа][Гг][Ее][Нн]'],
 ]
 
 const FORM_BRAND_REGEXES = FORM_BRAND_PATTERNS.map(([brand, pattern]) => [brand, new RegExp(pattern, 'i')] as const)
+
+/**
+ * A CRM FORM IS KNOWN BY ITS NAME TODAY (2026-10-16, the client: «toʻgʻri
+ * chiqarsin, xato boʻlmasin»). A deal and a fill keep the form's name AS IT
+ * WAS when the form was filled, and the portal's forms were renamed
+ * «<targetolog>-collagen …» / «<targetolog>-zextra …» on 29.09 — so a lead
+ * from before carries the old name, and one form wore the wrong word for a
+ * week. Each old name below was read back to its form's id off the portal's
+ * fill activities (`crm.activity` CRM_WEBFORM, PROVIDER_TYPE_ID):
+ *
+ *   «Sobirjon-collagen I.S | Short form new 14.09» — form 198, 29.09–05.10
+ *       (42 leads); «Sobirjon-zextra …» since 06.10. All 43 leads under the
+ *       new name carry «Проект» Zextra sure, and the one sale the old name's
+ *       leads made sold Zextra sure.
+ *   «Kamron 6 etap», «Kamron 6 etap filt forma 05.07» — form 144; 4 of its
+ *       leads whose «Проект» said Collagen Marine read the form's Zextra now.
+ *   the rest only gained their targetolog's prefix; they are here so that a
+ *   window across 29.09 knows the two names for one form (`form_alias`).
+ *
+ * Keyed by the name with its spaces folded (`foldFormName`).
+ */
+export const FORM_RENAMED: ReadonlyMap<string, string> = new Map([
+  ['Sobirjon-collagen I.S | Short form new 14.09', 'Sobirjon-zextra I.S | Short form new 14.09'],
+  ['Kamron 6 etap', 'Kamron-zextra Zextra 6 etapli filtr forma 05.07'],
+  ['Kamron 6 etap filt forma 05.07', 'Kamron-zextra Zextra 6 etapli filtr forma 05.07'],
+  ['Sinolife (UMAR) 777', 'Umar-collagen Sinolife (UMAR) 777'],
+  ['Sinolife Collagen - 30.04 Eldor', 'Eldor-collagen Sinolife Collagen - 30.04'],
+  ['Collagen (Umar)', 'Umar-collagen Collagen (UMAR)'],
+  ['zextra - 27 / 09 Варианты', 'Timur-zextra zextra - 27 / 09 Варианты'],
+])
+
+/**
+ * FORMS WHOSE NAME NAMES NO BRAND EVEN TODAY, by what the sales of their
+ * leads sold (portal, 2026-10-16):
+ *
+ *   «Sobirjon» — form 140, 31.07–17.09 (804 leads): 40 of 40 sales read
+ *       Zextra sure, where the old guess in `leadBrand` filed them under the
+ *       collagen.
+ *   «I.S | Short form | 01.08.2026», «Umar Sinolife (UMAR) TEST-1»,
+ *       «Sinolife (UMAR) TEST-2» — forms 170 / 166 / 168: every sale read
+ *       (15, 15, 4) the collagen.
+ */
+export const UNNAMED_FORM_BRANDS: ReadonlyMap<string, TargetProduct> = new Map<string, TargetProduct>([
+  ['Sobirjon', 'Zextra'],
+  ['I.S | Short form | 01.08.2026', 'Collagen'],
+  ['Umar Sinolife (UMAR) TEST-1', 'Collagen'],
+  ['Sinolife (UMAR) TEST-2', 'Collagen'],
+])
+
+/** The name the portal gives a form today (`FORM_RENAMED`), from any name it carried — folded. */
+export function currentFormName(name: string): string {
+  const folded = foldFormName(name)
+  return FORM_RENAMED.get(folded) ?? folded
+}
+
+/** A form's name with every run of spaces — no-break ones and line breaks too — one space, trimmed. */
+export function foldFormName(name: string): string {
+  return name.replace(/\s+/g, ' ').trim()
+}
 
 /**
  * The brand a CRM form's name states, or null when it names neither.
@@ -202,7 +262,10 @@ const FORM_BRAND_REGEXES = FORM_BRAND_PATTERNS.map(([brand, pattern]) => [brand,
  */
 export function formNameBrand(formName: string | null): TargetProduct | null {
   if (formName === null) return null
-  for (const [brand, pattern] of FORM_BRAND_REGEXES) if (pattern.test(formName)) return brand
+  const name = currentFormName(formName)
+  const unnamed = UNNAMED_FORM_BRANDS.get(name)
+  if (unnamed) return unnamed
+  for (const [brand, pattern] of FORM_BRAND_REGEXES) if (pattern.test(name)) return brand
   return null
 }
 
@@ -302,7 +365,9 @@ export const ZEXTRA_ONLY_TARGETOLOGS: ReadonlySet<string> = new Set(['Kamron', '
  * apart from his own Zextra spend.
  */
 export function formOwner(formName: string): FormOwner | null {
-  const hit = FORM_TARGETOLOGS.find(([pattern]) => pattern.test(formName))
+  // By its name today: «zextra - 27 / 09 Варианты» named nobody until it gained Timur's prefix (`FORM_RENAMED`).
+  const name = currentFormName(formName)
+  const hit = FORM_TARGETOLOGS.find(([pattern]) => pattern.test(name))
   if (!hit) return null
   const product: TargetProduct = formNameBrand(formName) ?? (ZEXTRA_ONLY_TARGETOLOGS.has(hit[1]) ? 'Zextra' : 'Collagen')
   return { targetolog: hit[1], product }

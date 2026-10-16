@@ -758,7 +758,8 @@ describe('reklamaOverview — the Collagen / Zextra switch', () => {
 describe('LeadSourcesService.targetologForms — «Targetologlar · kunlik» under the brand switch', () => {
   // A form naming no targetolog: «Boshqa» by its name, Collagen by `leadBrand` (no brand word, no owner).
   const UNNAMED_FORM = 'Заполнение CRM-формы "Sinolife filtr forma 3"'
-  const UMAR_FORM = 'Заполнение CRM-формы "Sinolife (UMAR) 777"'
+  // Not «Sinolife (UMAR) 777»: that name is «Umar-collagen …» today (`FORM_RENAMED`), and «Проект» would not speak.
+  const UMAR_FORM = 'Заполнение CRM-формы "Sinolife (UMAR) 888"'
   const registration = [
     { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UNNAMED_FORM, productLine: null, targetolog: null, stage: 'Сделка успешна', status: 'WON', aiQualified: false, leads: 9 },
     { day: '2026-08-01', sourceId: 'REPEAT_SALE', source: 'Ген лид', formTitle: UMAR_FORM, productLine: null, targetolog: null, stage: 'Сделка успешна', status: 'WON', aiQualified: false, leads: 5 },

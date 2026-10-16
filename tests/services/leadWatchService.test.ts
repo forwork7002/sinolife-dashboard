@@ -95,7 +95,8 @@ describe('watchLeads', () => {
   })
 
   it('takes the brand from «Проект» when the form names none, and keeps the feed’s own', () => {
-    const [lead] = watchLeads([leadRow({ productLine: 'Zextra sure' })])
+    // A name no brand word and no settled form names (`FORM_RENAMED` reads «Sinolife (UMAR) 777» as Umar's collagen form).
+    const [lead] = watchLeads([leadRow({ formTitle: 'Заполнение CRM-формы "Sinolife (UMAR) 888"', productLine: 'Zextra sure' })])
     expect(lead!.brand).toBe('Zextra')
     expect(lead!.projectFilled).toBe(true)
     // The form sells the collagen whatever one lead's project says.

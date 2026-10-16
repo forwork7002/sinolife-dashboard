@@ -87,7 +87,7 @@ describe('the confirmation-queue readers', () => {
     const clause = ratingFilterSql({ brand: slice('Collagen') }, [])
     const form = clause.indexOf('JOIN "pipeline" ofb_lp ON ofb_lp."id" = ofb_l."pipelineId" AND ofb_lp."role" = \'LEAD\'')
     expect(form).toBeGreaterThan(-1)
-    expect(clause).toContain('CASE COALESCE((SELECT (SELECT CASE WHEN fbn.name')
+    expect(clause).toContain('CASE COALESCE((SELECT (SELECT CASE WHEN fbn.name IN (')
     expect(form).toBeLessThan(clause.indexOf('FROM "deal_item" di'))
     expect(clause).toContain('ofb_l."customerId" = d."customerId"')
   })

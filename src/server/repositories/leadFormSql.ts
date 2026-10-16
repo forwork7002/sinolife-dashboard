@@ -1,4 +1,5 @@
-import { FORM_BRAND_PATTERNS } from '@/server/domain/leads/leadSources'
+import { FORM_BRAND_PATTERNS, FORM_RENAMED, UNNAMED_FORM_BRANDS } from '@/server/domain/leads/leadSources'
+import type { TargetProduct } from '@/server/domain/types'
 import { LEAD_SOURCE_VOCABULARY } from '@/server/integrations/crm/bitrix24/mapping'
 
 /**
@@ -20,9 +21,11 @@ import { LEAD_SOURCE_VOCABULARY } from '@/server/integrations/crm/bitrix24/mappi
  *   «<short name>» — the name Meta knows the form by, which an ordinary
  *       form deal also carries beside its title: `form_alias` maps it back
  *       to that title (452). Only for a «Ген лид» deal — what a form files
- *       under — and only a short name that names ONE form in the scan: an
- *       «Исход» or a DM-page lead never borrows a form, and two targetologs
- *       naming their Meta forms alike make the name nobody's.
+ *       under — and only a short name ONE form holds in the scan
+ *       (`formAliasOverSql`: every titled deal, or 95 % of them when every
+ *       form sharing it is one brand): an «Исход» or a DM-page lead never
+ *       borrows a form, and two brands' forms sharing a name make it
+ *       nobody's.
  *
  * 31 of the week's «Ген лид» deals were left with no form — typed in by hand.
  * The result is a TITLE that `formNameOf` reads, null when no form is named.
@@ -77,19 +80,103 @@ export function replayedCteSql(rows: string, from: string): string {
       )`
 }
 
+/** A SQL string literal — the names and patterns are the code's own, never a reader's, but quoted all the same. */
+const literal = (text: string): string => `'${text.replaceAll("'", "''")}'`
+
+/**
+ * Every character JS `\s` reads as a space (`foldFormName`, `formNameOf`),
+ * as one SQL bracket: `[[:space:]]` is only the ASCII six under a C locale,
+ * so the no-break space and the other Unicode spaces are spelled out —
+ * otherwise «Sobirjon\u00a0» would be a form in JS and nobody's in SQL.
+ */
+export const SPACE_CLASS_SQL = '[[:space:]\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]'
+
+/** The form name a title carries, cut out between the quotes. */
+const titleFormNameSql = (title: string): string =>
+  `substring(${title} from 'CRM-форм[аы]${SPACE_CLASS_SQL}*[«"“]([^»"”]+)')`
+
+/** `foldFormName` in SQL: every run of spaces one space, trimmed; an empty name is no name. NULL stays NULL. */
+export function foldedFormNameSql(name: string): string {
+  return `NULLIF(btrim(regexp_replace(${name}, '${SPACE_CLASS_SQL}+', ' ', 'g')), '')`
+}
+
+/**
+ * `currentFormName` in SQL, over an already FOLDED name — pass a column, not
+ * an expression: the CASE reads it in every arm and again in its ELSE.
+ */
+export function renamedFormNameSql(folded: string): string {
+  if (FORM_RENAMED.size === 0) return folded
+  const arms = [...FORM_RENAMED].map(([old, now]) => `WHEN ${literal(old)} THEN ${literal(now)}`).join(' ')
+  return `CASE ${folded} ${arms} ELSE ${folded} END`
+}
+
+/**
+ * `formNameBrand` in SQL, over a form's CURRENT name (a column): the forms
+ * whose name names no brand first (`UNNAMED_FORM_BRANDS`), then
+ * `FORM_BRAND_PATTERNS`: 'Zextra', 'Collagen', or NULL.
+ */
+function currentNameBrandSql(name: string): string {
+  const unnamed = new Map<TargetProduct, string[]>()
+  for (const [form, brand] of UNNAMED_FORM_BRANDS) unnamed.set(brand, [...(unnamed.get(brand) ?? []), literal(form)])
+  const arms = [
+    ...[...unnamed].map(([brand, names]) => `WHEN ${name} IN (${names.join(', ')}) THEN '${brand}'`),
+    ...FORM_BRAND_PATTERNS.map(([brand, pattern]) => `WHEN ${name} ~* ${literal(pattern)} THEN '${brand}'`),
+  ].join(' ')
+  return `CASE ${arms} END`
+}
+
 /**
  * The `form_alias` CTE (without `WITH`) over `rows` — a relation aliased
- * `fd` with an `sd` and a `title` column, Регистрация deals only: each
- * unambiguous short name of a form.
+ * `fd` with an `sd` and a `title` column, Регистрация deals only: each short
+ * name of a form that ONE form holds.
+ *
+ * A form is its name today (`renamedFormNameSql`), so its old and new names
+ * are one form — form 198 was «Sobirjon-collagen …» before 06.10 and
+ * «Sobirjon-zextra …» after, and a window across the rename lost both. And
+ * a short name every titled deal of which names one form is that form's, as
+ * before; one that a form holds on 95 % of them is too, when every form
+ * sharing it is that form's brand (2026-10-16, portal): «Sinolife Collagen -
+ * 30.04» named Eldor's form on 909 deals of 01–16.10 and two hand-retitled
+ * deals named two other collagen forms — the strict count made it nobody's,
+ * and 230 repeat leads lost their form (66 with no «Проект» fell to
+ * «Brendsiz»). Forms of two brands sharing a short name leave it nobody's
+ * below 100 %, so a form's leads never outvote «Проект» for another brand;
+ * a form whose name names no brand («Sinolifecollgen marine», one deal)
+ * contradicts none.
+ * The title printed is one under the form's name today, if any carries it.
+ *
+ * `OFFSET 0` fences each step: unfenced, the planner inlines the fold into
+ * every place that reads it, and the CTE cost five times the strict one
+ * (measured on PostgreSQL 18 over 60 000 titles).
  */
 export function formAliasOverSql(rows: string): string {
   return `form_alias AS MATERIALIZED (
-        SELECT fd.sd, min(fd.title) AS title
-        FROM ${rows}
-        WHERE fd.title LIKE '%CRM-форм%' AND fd.sd IS NOT NULL
-        GROUP BY 1
-        -- One form per short name, its NBSP and quote spellings folded; an ambiguous name is nobody's.
-        HAVING count(DISTINCT btrim(translate(substring(fd.title from 'CRM-форм[аы][[:space:]]*[«"“]([^»"”]+)'), chr(160), ' '))) = 1
+        SELECT fan.sd, fan.title
+        FROM (
+          SELECT fg.sd, fg.title, fg.deals,
+                 sum(fg.deals) OVER (PARTITION BY fg.sd) AS named,
+                 row_number() OVER (PARTITION BY fg.sd ORDER BY fg.deals DESC, fg.form) AS place,
+                 -- min / max skip a form that names no brand: it contradicts none.
+                 min(fg.brand) OVER (PARTITION BY fg.sd) = max(fg.brand) OVER (PARTITION BY fg.sd) AS one_brand
+          FROM (
+            SELECT fdn.sd, fdn.form, ${currentNameBrandSql('fdn.form')} AS brand, count(*) AS deals,
+                   COALESCE(min(fdn.title) FILTER (WHERE fdn.folded = fdn.form), min(fdn.title)) AS title
+            FROM (
+              SELECT fdf.sd, fdf.title, fdf.folded, ${renamedFormNameSql('fdf.folded')} AS form
+              FROM (
+                SELECT fd.sd, fd.title, ${foldedFormNameSql(titleFormNameSql('fd.title'))} AS folded
+                FROM ${rows}
+                WHERE fd.title LIKE '%CRM-форм%' AND fd.sd IS NOT NULL
+                OFFSET 0
+              ) fdf
+              -- A title the form name cannot be cut from names no form, as the strict count read it.
+              WHERE fdf.folded IS NOT NULL
+              OFFSET 0
+            ) fdn
+            GROUP BY fdn.sd, fdn.form
+          ) fg
+        ) fan
+        WHERE fan.place = 1 AND (fan.deals = fan.named OR (fan.one_brand AND fan.deals * 20 >= fan.named * 19))
       )`
 }
 
@@ -129,16 +216,18 @@ export function dealFormTitleSql(deal: string, source: string, alias: string): s
 }
 
 /**
- * The brand a form TITLE's form name states — `formNameBrand` in SQL, off
- * the same `FORM_BRAND_PATTERNS`: 'Zextra', 'Collagen', or NULL (no title, or
- * a name that names neither). Only the name between the quotes is read, cut
- * out once; the space before the quote may be a no-break one, as JS `\s`
- * allows (`formNameOf`) and `[[:space:]]` under a C locale does not.
+ * The brand a form TITLE's form name states — `formNameBrand` in SQL: the
+ * form's name today, read against `UNNAMED_FORM_BRANDS`, then
+ * `FORM_BRAND_PATTERNS`: 'Zextra', 'Collagen', or NULL (no title, or a name
+ * that names neither). The name is cut out, folded and renamed ONCE —
+ * `OFFSET 0` fences each step, or the planner inlines the caller's long title
+ * expression (a sale's, `saleFormTitleSql`) into every arm.
  */
 export function formBrandOfTitleSql(title: string): string {
-  const arms = FORM_BRAND_PATTERNS.map(([brand, pattern]) => `WHEN fbn.name ~* '${pattern}' THEN '${brand}'`).join(' ')
-  return `(SELECT CASE ${arms} END
-            FROM (SELECT substring(${title} from 'CRM-форм[аы][[:space:]\u00a0]*[«"“]([^»"”]+)') AS name) fbn)`
+  return `(SELECT ${currentNameBrandSql('fbn.name')}
+            FROM (SELECT ${renamedFormNameSql('fbf.folded')} AS name
+                  FROM (SELECT ${foldedFormNameSql('fbt.name')} AS folded
+                        FROM (SELECT ${titleFormNameSql(title)} AS name OFFSET 0) fbt OFFSET 0) fbf OFFSET 0) fbn)`
 }
 
 /** How far before a sales deal its ORIGIN LEAD may have opened (Roistat's join, and every sale's brand). */
