@@ -130,56 +130,124 @@ function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; 
   const dmLeads = dmPages.reduce((n, p) => n + p.total.leads, 0)
   const dmPagesSpend = dmPages.reduce((n, p) => n + p.total.spendUsd, 0)
   const dmPageNames = dmPages.map((p) => p.name).join(', ')
+  /*
+    Three rows since 2026-10-17 (the user: «Жами реклама / Жами лид (ДМ+ГЕНЛИД)
+    / Жами лид нархи / Жами квал лидлар», then «Ген лид» and «ДМ» each as
+    реклама / сони / квал). «Ген лид» сони / квал are «Отчёт Т»'s «Jami» row —
+    `form.formLeads` (the CRM-form fills, «Lidlar»'s «Bitrix24 lid») and
+    `form.qualified` — so the tiles equal the table under them; null when the
+    route could not read «Lidlar»'s forms block, and every «Жами» built on it
+    is then «—» too rather than a DM-only total under a «Жами» label. «Жами
+    реклама» is Ген + ДМ: the vacancy / other-goal money is named under it and
+    left out, or «Жами лид нархи» would price leads with money that bought none.
+  */
+  const genLeads = data?.form.formLeads ?? null
+  const genQualified = data?.form.qualified ?? null
+  const totalSpend = spend ? spend.formUsd + spend.dmUsd : null
+  const totalLeads = data && genLeads !== null ? genLeads + dmLeads : null
+  const totalQualified = data && genQualified !== null ? genQualified + dmQualified : null
+  const unread = 'Bitrix24 lid-forma hisobi oʻqilmadi'
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           status={status}
           unit="usd"
-          label="Jami reklama sarfi"
-          value={spend?.totalUsd ?? null}
+          label="Жами реклама"
+          value={totalSpend}
           hint={
             spend && outside > 0
-              ? `shundan ${[
+              ? `Ген лид + ДМ; ${[
                   spend.hiringUsd > 0 ? `${usd(spend.hiringUsd)} vakansiya` : null,
                   spend.otherUsd > 0 ? `${usd(spend.otherUsd)} boshqa maqsad` : null,
                 ]
                   .filter(Boolean)
-                  .join(', ')} — jadvallarga kirmaydi`
+                  .join(', ')} kirmaydi`
               : brand === 'all'
-                ? 'Meta, barcha akkauntlar'
+                ? 'Ген лид + ДМ, Meta barcha akkauntlar'
                 : brand === 'none'
-                  ? 'Meta: vakansiya, HR, Kosmetika va brendsiz akkauntlar'
-                  : `Meta, ${brand} reklama byudjeti`
+                  ? 'Ген лид + ДМ, brendsiz akkauntlar'
+                  : `Ген лид + ДМ, ${brand} reklama byudjeti`
           }
         />
-        <StatTile status={status} unit="usd" label="Lid-forma sarfi" value={spend?.formUsd ?? null} hint="«Отчёт Т»" />
-        <StatTile status={status} unit="usd" label="DM sarfi" value={spend?.dmUsd ?? null} hint="«DM», vakansiyasiz" />
         <StatTile
           status={status}
           unit="count"
-          label="DM lid"
+          label="Жами лид"
+          value={totalLeads}
+          hint={data ? (genLeads === null ? unread : `${formatNumber(genLeads)} ген + ${formatNumber(dmLeads)} ДМ`) : undefined}
+        />
+        <StatTile
+          status={status}
+          unit="usd"
+          label="Жами лид нархи"
+          value={totalSpend !== null && totalLeads ? totalSpend / totalLeads : null}
+          hint={data && totalLeads !== null ? `Жами реклама ÷ ${formatNumber(totalLeads)} лид` : undefined}
+        />
+        <StatTile
+          status={status}
+          unit="count"
+          label="Жами квал лидлар"
+          value={totalQualified}
+          hint={
+            data
+              ? genQualified === null
+                ? unread
+                : `${formatNumber(genQualified)} ген + ${formatNumber(dmQualified)} ДМ`
+              : undefined
+          }
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatTile status={status} unit="usd" label="Ген лид реклама" value={spend?.formUsd ?? null} hint="«Отчёт Т», lid-forma kampaniyalari" />
+        <StatTile
+          status={status}
+          unit="count"
+          label="Ген лид сони"
+          value={genLeads}
+          hint={data ? (genLeads === null ? unread : 'CRM-forma toʻldirishlari, Bitrix24') : undefined}
+        />
+        <StatTile
+          status={status}
+          unit="count"
+          label="Ген лид квал"
+          value={genQualified}
+          hint={
+            data
+              ? genQualified === null || genLeads === null
+                ? unread
+                : `${formatNumber(genLeads)} liddan, «Сделка успешна»`
+              : undefined
+          }
+        />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <StatTile status={status} unit="usd" label="ДМ лид реклама" value={spend?.dmUsd ?? null} hint="«DM», vakansiyasiz" />
+        <StatTile
+          status={status}
+          unit="count"
+          label="ДМ лид сони"
           value={data ? dmLeads : null}
           hint={data ? `${dmPageNames}: Регистрация lidlari` : undefined}
         />
         <StatTile
           status={status}
           unit="count"
-          label="DM kval"
+          label="ДМ квал"
           value={data ? dmQualified : null}
           hint={data ? `${formatNumber(dmLeads)} liddan, «Сделка успешна»` : undefined}
         />
         <StatTile
           status={status}
           unit="usd"
-          label="DM lid narxi"
+          label="ДМ лид нархи"
           value={data && dmLeads > 0 ? dmPagesSpend / dmLeads : null}
           hint={data ? `DM sarfi ÷ ${formatNumber(dmLeads)} lid` : undefined}
         />
         <StatTile
           status={status}
           unit="usd"
-          label="DM kval narxi"
+          label="ДМ квал нархи"
           value={data?.dm.total.costPerQualifiedUsd ?? null}
           hint={
             data
@@ -187,6 +255,8 @@ function Tiles({ data, status, brand }: { data: ReklamaOverviewDto | undefined; 
               : undefined
           }
         />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           status={status}
           label="Lid → kval"
