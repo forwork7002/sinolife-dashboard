@@ -7,6 +7,7 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
+import { NutritionistCard } from '@/features/kpi/NutritionistCard'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { ApiClientError, apiGet, type MoneyDto, type PeriodDto } from '@/lib/api'
@@ -308,6 +309,8 @@ export function KpiPage() {
           </>
         )}
       </section>
+
+      <NutritionistCard />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <CountCard

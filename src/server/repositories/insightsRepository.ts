@@ -3346,8 +3346,13 @@ export class InsightsRepository {
    * «Sverka»: every order of the queue cohort, one row per deal — FAKT 1 and
    * FAKT 2 flagged by the very constants `ratingSql` groups by, so the totals
    * «Sverka» prints are Savdo dinamikasi's to the soʻm.
+   *
+   * `brand` narrows the cohort by the brand switch's rule (`brandSliceSql`),
+   * so a brand's count here is the one every brand-switched screen prints.
    */
-  async sverkaCohort(window: ScopedWindow): Promise<readonly SverkaDealRow[]> {
+  async sverkaCohort(window: ScopedWindow, brand?: BrandSlice): Promise<readonly SverkaDealRow[]> {
+    const params: unknown[] = [window.start, window.end, InsightsRepository.scopeValue(window)]
+    const brandWhere = brand ? `\n     WHERE ${InsightsRepository.brandSliceSql('d', 'c.rop', brand, params)}` : ''
     const rows = await this.prisma.$queryRawUnsafe<
       {
         deal_id: string
@@ -3366,10 +3371,8 @@ export class InsightsRepository {
         region: string | null
       }[]
     >(
-      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.sverkaCohortSql()}`,
-      window.start,
-      window.end,
-      InsightsRepository.scopeValue(window),
+      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.sverkaCohortSql()}${brandWhere}`,
+      ...params,
     )
     return rows.map((r) => ({
       dealId: r.deal_id,

@@ -38,8 +38,10 @@ import {
   sverkaTotals,
   teamRows,
 } from '@/server/domain/sverka/sverka'
+import { type NutritionistPay, nutritionistPay } from '@/server/domain/sverka/nutritionist'
 import type { Period } from '@/server/domain/period/period'
-import { InsightsRepository } from '@/server/repositories/insightsRepository'
+import { brandTeams } from '@/server/domain/rnp/rnpSheet'
+import { InsightsRepository, type SverkaDealRow } from '@/server/repositories/insightsRepository'
 import type { MoyskladOrderRow, SverkaRepository } from '@/server/repositories/sverkaRepository'
 
 import { LIVE_CACHE, ttlCache } from './ttlCache'
@@ -323,7 +325,27 @@ function severity(line: SverkaLine): number {
 
 const amountOf = (line: SverkaLine): bigint => line.bitrix?.amountMinor ?? line.moysklad?.sumMinor ?? 0n
 
+/** One cohort deal as `compareDeal`'s Bitrix24 side. */
+function bitrixSideOf(d: SverkaDealRow, items: readonly SverkaItem[]): BitrixSide {
+  return {
+    externalId: d.externalId ?? d.dealId,
+    amountMinor: d.amountMinor,
+    fakt1: d.fakt1,
+    delivered: d.delivered,
+    logisticsRole: d.logisticsRole,
+    stageExternalId: d.stageExternalId,
+    stageName: d.stageName,
+    seller: d.sellerSource,
+    rop: d.rop,
+    ropSource: d.ropSource,
+    region: d.region,
+    queuedAt: d.queuedAt,
+    items,
+  }
+}
+
 const cache = ttlCache<SverkaOverviewDto>(120_000, LIVE_CACHE)
+const nutritionistCache = ttlCache<NutritionistPay>(120_000, LIVE_CACHE)
 
 export class SverkaService {
   constructor(
@@ -334,6 +356,27 @@ export class SverkaService {
   async overview(period: Period): Promise<SverkaOverviewDto> {
     const key = [period.preset, period.start.toISOString(), period.end.toISOString()].join('|')
     return cache.get(key, () => this.build(period))
+  }
+
+  /**
+   * «Нутрицолог · Collagen» on «KPI rejalari»: FAKT 1 / FAKT 2 order counts
+   * over Collagen's cohort, Bitrix24 against MoySklad, priced per order
+   * (`nutritionistPay`). Only the counts are read, so no product rows are
+   * fetched: without them `compareDeal` skips the product test, which no
+   * count depends on.
+   */
+  async nutritionist(period: Period): Promise<NutritionistPay> {
+    const key = [period.preset, period.start.toISOString(), period.end.toISOString()].join('|')
+    return nutritionistCache.get(key, async () => {
+      const brand = { slice: 'Collagen', collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') } as const
+      const cohort = await this.insights.sverkaCohort({ ...period, restrictToEmployeeIds: null }, brand)
+      const externalIds = cohort.flatMap((d) => (d.externalId ? [d.externalId] : []))
+      const ordersByDeal = byDeal(await this.repository.ordersForDeals(externalIds))
+      const lines = cohort.map((d) =>
+        compareDeal(bitrixSideOf(d, []), d.externalId ? (ordersByDeal.get(d.externalId) ?? []) : []),
+      )
+      return nutritionistPay(sverkaTotals(lines))
+    })
   }
 
   private async build(period: Period): Promise<SverkaOverviewDto> {
@@ -348,24 +391,9 @@ export class SverkaService {
     ])
 
     const ordersByDeal = byDeal(forDeals)
-    const lines: SverkaLine[] = cohort.map((d) => {
-      const side: BitrixSide = {
-        externalId: d.externalId ?? d.dealId,
-        amountMinor: d.amountMinor,
-        fakt1: d.fakt1,
-        delivered: d.delivered,
-        logisticsRole: d.logisticsRole,
-        stageExternalId: d.stageExternalId,
-        stageName: d.stageName,
-        seller: d.sellerSource,
-        rop: d.rop,
-        ropSource: d.ropSource,
-        region: d.region,
-        queuedAt: d.queuedAt,
-        items: items.get(d.dealId) ?? [],
-      }
-      return compareDeal(side, d.externalId ? (ordersByDeal.get(d.externalId) ?? []) : [])
-    })
+    const lines: SverkaLine[] = cohort.map((d) =>
+      compareDeal(bitrixSideOf(d, items.get(d.dealId) ?? []), d.externalId ? (ordersByDeal.get(d.externalId) ?? []) : []),
+    )
 
     // MoySklad orders dated in the window whose deal is not in the cohort.
     const inCohort = new Set(externalIds)

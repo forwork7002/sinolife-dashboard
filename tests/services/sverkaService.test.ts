@@ -156,3 +156,35 @@ describe('SverkaService.overview', () => {
     expect(out.moysklad.since).toBe('2026-06-14T19:00:00.000Z')
   })
 })
+
+describe('SverkaService.nutritionist', () => {
+  it('counts Collagen FAKT 1 / FAKT 2 on both systems and prices each at 2 $ an order', async () => {
+    const delivered = deal({ dealId: 'd2', externalId: '1070001', delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' })
+    // FAKT 1 with no MoySklad order yet, past the warehouse.
+    const missing = deal({ dealId: 'd3', externalId: '1070002' })
+    const brands: unknown[] = []
+    const insights = {
+      sverkaCohort: async (_window: unknown, brand: unknown) => {
+        brands.push(brand)
+        return [deal({}), delivered, missing]
+      },
+    } as unknown as InsightsRepository
+    const repository = {
+      ordersForDeals: async () => [order({}), order({ orderId: 'ms-2', bitrixDealId: '1070001', stateName: 'Касса' })],
+    } as unknown as SverkaRepository
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      now: new Date('2026-10-17T09:00:00+05:00'),
+      customStart: new Date('2026-10-01T00:00:00+05:00'),
+      customEnd: new Date('2026-10-16T00:00:00+05:00'),
+    })
+
+    const out = await new SverkaService(insights, repository).nutritionist(period)
+
+    expect(brands).toHaveLength(1)
+    expect(brands[0]).toMatchObject({ slice: 'Collagen' })
+    expect(out.usdPerOrder).toBe(2)
+    expect(out.fakt1).toEqual({ bitrix: 3, moysklad: 2, bitrixUsd: 6, moyskladUsd: 4 })
+    expect(out.fakt2).toEqual({ bitrix: 1, moysklad: 1, bitrixUsd: 2, moyskladUsd: 2 })
+  })
+})

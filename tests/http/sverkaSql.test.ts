@@ -50,6 +50,42 @@ describe('sverkaCohortSql', () => {
   })
 })
 
+describe('sverkaCohort under a brand', () => {
+  const window = {
+    start: new Date('2026-10-01T00:00:00+05:00'),
+    end: new Date('2026-10-17T00:00:00+05:00'),
+    timeZone: 'Asia/Tashkent',
+    preset: 'custom',
+    restrictToEmployeeIds: null,
+  } as const
+  const capture = () => {
+    const calls: { sql: string; params: unknown[] }[] = []
+    const prisma = {
+      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
+        calls.push({ sql, params })
+        return []
+      },
+    }
+    return { calls, repo: new InsightsRepository(prisma as never) }
+  }
+
+  it('reads the whole cohort with no brand, binding only the window and the scope', async () => {
+    const { calls, repo } = capture()
+    await repo.sverkaCohort(window)
+    expect(calls[0].params).toHaveLength(3)
+    expect(bare(calls[0].sql)).not.toMatch(/WHERE\s+\(CASE COALESCE/)
+  })
+
+  it('narrows to one brand by the brand switch\'s rule, its teams bound after the scope', async () => {
+    const { calls, repo } = capture()
+    await repo.sverkaCohort(window, { slice: 'Collagen', collagenTeams: ['Lola'], zextraTeams: ['Charos'] })
+    const sql = bare(calls[0].sql)
+    expect(sql).toMatch(/WHERE \(CASE COALESCE/)
+    expect(sql).toContain('= $6')
+    expect(calls[0].params.slice(3)).toEqual([['Lola'], ['Charos'], 'Collagen'])
+  })
+})
+
 const { SverkaRepository } = await import('@/server/repositories/sverkaRepository')
 
 /**
