@@ -148,3 +148,21 @@ describe('the period picker on a fixed day', () => {
     expect(screen.getByText('01.10 – 10.10')).toBeTruthy()
   })
 })
+
+describe('the «Shu yil» button', () => {
+  it('sits beside the other presets and selects this year', () => {
+    const onChange = vi.fn()
+    render(<PeriodFilter value="today" onChange={onChange} />)
+
+    fireEvent.click(screen.getByRole('button', { name: t.period.this_year }))
+
+    expect(onChange).toHaveBeenCalledWith({ preset: 'this_year' })
+  })
+
+  it('is left off a screen with a window limit, whose API refuses a year', () => {
+    render(<PeriodFilter value="today" onChange={vi.fn()} maxDays={31} />)
+
+    expect(screen.queryByRole('button', { name: t.period.this_year })).toBeNull()
+    expect(screen.getByRole('button', { name: t.period.this_month })).toBeTruthy()
+  })
+})

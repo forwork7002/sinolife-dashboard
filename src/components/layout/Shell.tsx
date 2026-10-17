@@ -597,7 +597,7 @@ export function Shell({
     })),
 
     /*
-      The same three presets the page's own control shows, from the same list.
+      The same presets the page's own control shows, from the same list.
 
       Only where there ARE dates. Marketing keeps its own period control and
       the account screen has none, so on those two a preset chosen here wrote a
