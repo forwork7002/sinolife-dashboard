@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  comparablePayrollPeriod,
-  payrollPeriod,
-  payrollWeekPeriod,
-} from '@/server/domain/period/period'
+import { type Period, comparablePayrollPeriod, resolvePeriod } from '@/server/domain/period/period'
 import type { ConfirmationSellerRatingRow, InsightsRepository } from '@/server/repositories/insightsRepository'
 import { PayrollService, resetPayrollCache } from '@/server/services/payrollService'
 
@@ -17,6 +13,39 @@ import { PayrollService, resetPayrollCache } from '@/server/services/payrollServ
  * across the tiers: 30 + 20 mln is two sellers under the 45 mln fiksa tier,
  * where the person actually delivered 50 and earns 4 000 000 + 500 000.
  */
+
+/*
+  WINDOWS BY THE DAY. The payroll takes the dashboard's window since
+  2026-10-17 and picks its table by length (`payrollSchemeOf`): a calendar
+  month is the month's table, 1–15 / 16–end the fortnight's, seven days the
+  week's. These name the windows the cases below were written against.
+*/
+const DAY_TZ = 'Asia/Tashkent'
+const pad = (n: number) => String(n).padStart(2, '0')
+
+function days(from: string, to: string, timeZone = DAY_TZ): Period {
+  return resolvePeriod('custom', {
+    timeZone,
+    now: new Date('2030-01-01T00:00:00Z'),
+    // Noon UTC is the same calendar day in Tashkent.
+    customStart: new Date(`${from}T12:00:00Z`),
+    customEnd: new Date(`${to}T12:00:00Z`),
+  })
+}
+
+function payrollPeriod(month: string, half: 'full' | 'first' | 'second', timeZone = DAY_TZ): Period {
+  const [year, monthIndex] = month.split('-').map(Number)
+  const last = new Date(Date.UTC(year!, monthIndex!, 0)).getUTCDate()
+  const from = half === 'second' ? 16 : 1
+  const to = half === 'first' ? 15 : last
+  return days(`${month}-${pad(from)}`, `${month}-${pad(to)}`, timeZone)
+}
+
+function payrollWeekPeriod(monday: string, timeZone = DAY_TZ): Period {
+  const end = new Date(`${monday}T00:00:00Z`)
+  end.setUTCDate(end.getUTCDate() + 6)
+  return days(monday, end.toISOString().slice(0, 10), timeZone)
+}
 
 // Both payroll memos are module state; a case that reads another's entry
 // asserts against the wrong fixtures with no error anywhere.
@@ -48,10 +77,41 @@ function slice(employeeId: string, rop: string, fakt2Mln: number, day: number): 
 }
 
 describe('payroll over per-team slices', () => {
+  it('pays only the sellers who delivered — the cohort also carries the queued and refused', async () => {
+    const insights = {
+      ropHeadNames: async () => new Map<string, string>(),
+      confirmationSellerRating: async () => [
+        slice('paid', 'Lola', 10, 10),
+        { ...slice('queued', 'Lola', 5, 10), deliveredOrders: 0, deliveredMinor: 0n },
+      ],
+    } as unknown as InsightsRepository
+    const period = payrollPeriod('2024-03', 'full')
+    const now = new Date('2026-10-17T06:00:00Z')
+    const dto = await new PayrollService(insights).payroll(period, payrollPeriod('2024-02', 'full'), 'UZS', now)
+    expect(dto.sellers.map((s) => s.employeeId)).toEqual(['paid'])
+    expect(dto.scheme).toBe('month')
+  })
+
+  it('asks the board query, company-wide', async () => {
+    const asked: unknown[] = []
+    const insights = {
+      ropHeadNames: async () => new Map<string, string>(),
+      confirmationSellerRating: async (...args: unknown[]) => {
+        asked.push(args)
+        return [slice('a', 'Lola', 10, 10)]
+      },
+    } as unknown as InsightsRepository
+    const period = payrollPeriod('2024-04', 'first')
+    const empty = { ...period, end: period.start }
+    await new PayrollService(insights).payroll(period, empty, 'UZS', new Date('2026-10-17T06:00:00Z'))
+    expect(asked).toHaveLength(1)
+    expect((asked[0] as [{ restrictToEmployeeIds: unknown }])[0].restrictToEmployeeIds).toBeNull()
+  })
+
   it('pays a seller who moved team once, on their whole FAKT 2', async () => {
     const insights = {
       ropHeadNames: async () => new Map<string, string>(),
-      deliveredSellerRows: async () => [
+      confirmationSellerRating: async () => [
         slice('moved', 'Sevinchxon', 30, 10),
         slice('other', 'Lola', 45, 20),
         slice('moved', 'Sadriddin', 20, 24),
@@ -61,7 +121,7 @@ describe('payroll over per-team slices', () => {
     const period = payrollPeriod('2026-08', 'full', 'Asia/Tashkent')
     const now = new Date('2026-09-26T06:00:00Z')
     const previous = comparablePayrollPeriod(period, payrollPeriod('2026-07', 'full', 'Asia/Tashkent'), now)
-    const dto = await service.sellers(period, previous, 'full', 'UZS', now)
+    const dto = await service.payroll(period, previous, 'UZS', now)
 
     expect(dto.sellers.map((s) => s.employeeId)).toEqual(['moved', 'other'])
     const moved = dto.sellers[0]!
@@ -77,7 +137,7 @@ describe('payroll over per-team slices', () => {
   it('pays a week off the weekly table, with the rate on every row', async () => {
     const insights = {
       ropHeadNames: async () => new Map<string, string>(),
-      deliveredSellerRows: async () => [
+      confirmationSellerRating: async () => [
         slice('a', 'Lola', 34.9, 29),
         slice('b', 'Lola', 12, 29),
       ],
@@ -86,7 +146,7 @@ describe('payroll over per-team slices', () => {
     const period = payrollWeekPeriod('2026-09-28', 'Asia/Tashkent')
     const now = new Date('2026-10-03T06:00:00Z')
     const previous = comparablePayrollPeriod(period, payrollWeekPeriod('2026-09-21', 'Asia/Tashkent'), now)
-    const dto = await service.weekly(period, previous, 'UZS', now)
+    const dto = await service.payroll(period, previous, 'UZS', now)
 
     expect(dto.scheme).toBe('week')
     expect(dto.open).toBe(true)
@@ -103,7 +163,7 @@ describe('ROP pay (2026-10-07)', () => {
   it('pays each ROP 2% of the team FAKT 2, the oklad on the month only, and names the head', async () => {
     const insights = {
       ropHeadNames: async () => new Map([['Lola', 'Lola Karimova']]),
-      deliveredSellerRows: async () => [
+      confirmationSellerRating: async () => [
         slice('a', 'Lola', 60, 10),
         slice('b', 'Lola', 40, 12),
         { ...slice('c', 'x', 10, 12), rop: null },
@@ -112,10 +172,9 @@ describe('ROP pay (2026-10-07)', () => {
     const service = new PayrollService(insights)
     const now = new Date('2026-10-05T06:00:00Z')
     const month = payrollPeriod('2026-09', 'full', 'Asia/Tashkent')
-    const monthDto = await service.sellers(
+    const monthDto = await service.payroll(
       month,
       comparablePayrollPeriod(month, payrollPeriod('2026-08', 'full', 'Asia/Tashkent'), now),
-      'full',
       'UZS',
       now,
     )
@@ -132,10 +191,9 @@ describe('ROP pay (2026-10-07)', () => {
 
     resetPayrollCache()
     const half = payrollPeriod('2026-09', 'first', 'Asia/Tashkent')
-    const halfDto = await service.sellers(
+    const halfDto = await service.payroll(
       half,
       comparablePayrollPeriod(half, payrollPeriod('2026-08', 'first', 'Asia/Tashkent'), now),
-      'first',
       'UZS',
       now,
     )
@@ -153,12 +211,12 @@ describe('ROP pay follows the sale, not the seller', () => {
   it('leaves a moved seller\'s old share with the old ROP, and sums every ROP into ropTotals', async () => {
     const insights = {
       ropHeadNames: async () => new Map([['Sadriddin', 'Sadriddin B']]),
-      deliveredSellerRows: async () => [
+      confirmationSellerRating: async () => [
         slice('moved', 'Sevinchxon', 30, 10),
         slice('moved', 'Sadriddin', 20, 24),
       ],
     } as unknown as InsightsRepository
-    const dto = await new PayrollService(insights).sellers(month, previous, 'full', 'UZS', now)
+    const dto = await new PayrollService(insights).payroll(month, previous, 'UZS', now)
 
     const team = (rop: string) => dto.teams.find((t) => t.rop === rop)!
     expect(team('Sevinchxon').sellers).toBe(0)
@@ -180,9 +238,9 @@ describe('ROP pay follows the sale, not the seller', () => {
       ropHeadNames: async () => {
         throw new Error('db down')
       },
-      deliveredSellerRows: async () => [slice('a', 'Lola', 10, 10)],
+      confirmationSellerRating: async () => [slice('a', 'Lola', 10, 10)],
     } as unknown as InsightsRepository
-    const dto = await new PayrollService(insights).sellers(month, previous, 'full', 'UZS', now)
+    const dto = await new PayrollService(insights).payroll(month, previous, 'UZS', now)
     expect(dto.teams[0]!.ropPay!.head).toBeNull()
     expect(dto.teams[0]!.ropPay!.total.amount).toBe(2_200_000)
   })
@@ -208,7 +266,7 @@ describe('payroll growth and ROP cards', () => {
     const service = (current: ConfirmationSellerRatingRow[], then: ConfirmationSellerRatingRow[]) =>
       new PayrollService({
         ropHeadNames: async () => new Map<string, string>(),
-        deliveredSellerRows: async (window: { start: Date }) =>
+        confirmationSellerRating: async (window: { start: Date }) =>
           window.start.getTime() === period.start.getTime() ? current : then,
       } as unknown as InsightsRepository)
     return { period, previous, service }
@@ -219,7 +277,7 @@ describe('payroll growth and ROP cards', () => {
     const dto = await service(
       [slice('a', 'Lola', 30, 10), slice('b', 'Lola', 10, 10), slice('new', 'Aziz', 5, 10)],
       [slice('a', 'Lola', 20, 5), slice('b', 'Lola', 20, 5)],
-    ).sellers(period, previous, 'first', 'UZS', now)
+    ).payroll(period, previous, 'UZS', now)
 
     const [a, b, fresh] = dto.sellers
     // 30 mln in a half clears 30 → 2 400 000 + 750 000; 20 mln is 8% only.
@@ -248,7 +306,7 @@ describe('payroll growth and ROP cards', () => {
         { ...slice('lone', 'Lola', 1, 10), rop: null },
       ],
       [slice('x', 'Aziz', 10, 5), slice('y', 'Aziz', 30, 5)],
-    ).sellers(period, previous, 'first', 'UZS', now)
+    ).payroll(period, previous, 'UZS', now)
 
     expect(dto.teams.map((t) => t.rop)).toEqual(['Aziz', 'Lola', null])
     const sum = (pick: (t: (typeof dto.teams)[number]) => { amountMinor: string }) =>
@@ -273,7 +331,7 @@ describe('payroll growth and ROP cards', () => {
     const dto = await service(
       [slice('a', 'Lola', 12, 10), slice('b', 'Lola', 9, 10)],
       [{ ...slice('a', 'Lola', 5, 5), deliveredMinor: 0n }, slice('b', 'Lola', 10, 5)],
-    ).sellers(period, previous, 'first', 'UZS', now)
+    ).payroll(period, previous, 'UZS', now)
     const a = dto.sellers.find((s) => s.employeeId === 'a')!
     expect(a.previous).toBeNull()
     expect(a.fakt2Delta.kind).toBe('no_baseline')
@@ -286,7 +344,7 @@ describe('payroll growth and ROP cards', () => {
     const dto = await service(
       [slice('a', 'Lola', 12, 10)],
       [slice('a', 'Lola', 10, 5), slice('gone', 'Aziz', 8, 5)],
-    ).sellers(period, previous, 'first', 'UZS', now)
+    ).payroll(period, previous, 'UZS', now)
     expect(dto.teams.map((t) => t.rop)).toEqual(['Lola', 'Aziz'])
     const aziz = dto.teams[1]!
     expect(aziz.sellers).toBe(0)
@@ -305,7 +363,7 @@ describe('payroll growth and ROP cards', () => {
     const dto = await service(
       [slice('a', 'Lola', 9, 10)],
       [slice('a', 'Lola', 0.4, 5)],
-    ).sellers(period, previous, 'first', 'UZS', now)
+    ).payroll(period, previous, 'UZS', now)
     expect(dto.sellers[0]!.fakt2Delta).toEqual({ kind: 'small_base', current: 9_000_000, previous: 400_000 })
   })
 
@@ -316,13 +374,13 @@ describe('payroll growth and ROP cards', () => {
     const cut = comparablePayrollPeriod(period, payrollPeriod('2025-07', 'first', TZ_), new Date('2025-08-05T06:00:00Z'))
     const service = new PayrollService({
       ropHeadNames: async () => new Map<string, string>(),
-      deliveredSellerRows: async (window: { start: Date; end: Date }) =>
+      confirmationSellerRating: async (window: { start: Date; end: Date }) =>
         window.start.getTime() === period.start.getTime()
           ? [slice('a', 'Lola', 10, 10)]
           : [slice('a', 'Lola', window.end.getTime() === whole.end.getTime() ? 20 : 5, 5)],
     } as unknown as InsightsRepository)
-    const first = await service.sellers(period, whole, 'first', 'UZS', now)
-    const second = await service.sellers(period, cut, 'first', 'UZS', now)
+    const first = await service.payroll(period, whole, 'UZS', now)
+    const second = await service.payroll(period, cut, 'UZS', now)
     expect(first.previous.fakt2.amount).toBe(20_000_000)
     expect(second.previous.fakt2.amount).toBe(5_000_000)
   })
@@ -331,14 +389,14 @@ describe('payroll growth and ROP cards', () => {
     let calls = 0
     const insights = {
       ropHeadNames: async () => new Map<string, string>(),
-      deliveredSellerRows: async () => {
+      confirmationSellerRating: async () => {
         calls += 1
         return [slice('a', 'Lola', 1, 10)]
       },
     } as unknown as InsightsRepository
     const week = payrollWeekPeriod('2026-10-12', TZ)
     const empty = comparablePayrollPeriod(week, payrollWeekPeriod('2026-10-05', TZ), now)
-    const dto = await new PayrollService(insights).weekly(week, empty, 'UZS', now)
+    const dto = await new PayrollService(insights).payroll(week, empty, 'UZS', now)
     expect(calls).toBe(1)
     expect(dto.previous.sellers).toBe(0)
   })
@@ -358,7 +416,7 @@ describe('the payroll memo across polls', () => {
     const asked: string[] = []
     const insights = {
       ropHeadNames: async () => new Map<string, string>(),
-      deliveredSellerRows: async (window: { start: Date; end: Date }) => {
+      confirmationSellerRating: async (window: { start: Date; end: Date }) => {
         asked.push(`${window.start.toISOString()}|${window.end.toISOString()}`)
         return [slice('a', 'Lola', 20, 10)]
       },
@@ -369,7 +427,7 @@ describe('the payroll memo across polls', () => {
     const weekBefore = payrollWeekPeriod('2026-10-26', TZ)
     const poll = (instant: string) => {
       const now = new Date(instant)
-      return service.weekly(week, comparablePayrollPeriod(week, weekBefore, now), 'UZS', now)
+      return service.payroll(week, comparablePayrollPeriod(week, weekBefore, now), 'UZS', now)
     }
 
     // Twelve minutes apart on the REQUEST clock, so the comparison's
@@ -410,7 +468,7 @@ describe('the payroll a poll is served', () => {
     let reads = 0
     const insights = {
       ropHeadNames: async () => new Map<string, string>(),
-      deliveredSellerRows: async () => {
+      confirmationSellerRating: async () => {
         // Every read finds one more million delivered than the read before it.
         reads += 1
         return [slice('a', 'Lola', reads, 10)]
@@ -422,7 +480,7 @@ describe('the payroll a poll is served', () => {
     // read, so every read above is the current week's.
     const nothing = comparablePayrollPeriod(week, payrollWeekPeriod('2026-10-05', TZ), new Date('2026-10-10T06:00:00Z'))
     const now = new Date('2026-10-13T06:00:00Z')
-    const poll = async () => (await service.weekly(week, nothing, 'UZS', now)).totals.fakt2.amount
+    const poll = async () => (await service.payroll(week, nothing, 'UZS', now)).totals.fakt2.amount
 
     expect(await poll()).toBe(1_000_000)
 

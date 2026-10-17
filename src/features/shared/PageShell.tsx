@@ -103,6 +103,7 @@ export function PageShell({
   stale = false,
   children,
   period = true,
+  periodMaxDays,
   fill = false,
   controlsAlign = 'start',
   devMark = true,
@@ -203,6 +204,12 @@ export function PageShell({
    */
   period?: boolean
   /**
+   * The longest window the screen's API answers («Sotuvchilar oyligi»: 31 —
+   * a payroll is at most a month). Handed to the picker, which then offers no
+   * «Yil». Omitted: no limit.
+   */
+  periodMaxDays?: number
+  /**
    * Stretch the page body to the screen instead of to its own content.
    *
    * For a page whose content is an instrument rather than a document. Two
@@ -281,6 +288,7 @@ export function PageShell({
       from={filters.from}
       to={filters.to}
       onChange={setPeriod}
+      maxDays={periodMaxDays}
     />
   ) : null
 

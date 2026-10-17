@@ -1,11 +1,10 @@
 import {
   comparablePayrollPeriod,
-  payrollPeriod,
-  previousPayrollMonth,
+  previousEquivalent,
   toPeriodDto,
 } from '@/server/domain/period/period'
+import { getHandler, periodFrom } from '@/server/http/handler'
 import { payrollQuerySchema } from '@/server/http/queryParams'
-import { getHandler } from '@/server/http/handler'
 import { payrollService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
@@ -26,21 +25,19 @@ const ACCESS = { permission: 'analytics:read:all', section: 'payroll' } as const
 
 export const GET = getHandler(ACCESS, payrollQuerySchema, async (ctx) => {
   /*
-    THE WINDOW IS BUILT FROM THE TWO WORDS THE CLIENT USES — a month and which
-    half of it — in Asia/Tashkent, not from a from/to pair the browser worked
-    out. `payrollPeriod` carries the reason at length.
+    THE DASHBOARD'S OWN WINDOW (2026-10-17, the client: «huddi savdo
+    dinamikasidek») — the same preset / from / to Savdo dinamikasi sends,
+    resolved by the same `periodFrom`, so «Shu oy» here and there is one
+    window and its FAKT 2 one number.
   */
-  const period = payrollPeriod(ctx.query.month, ctx.query.half, ctx.timeZone)
+  const period = periodFrom(ctx.query, ctx.timeZone, ctx.now)
   /*
-    «KIM QANCHAGA OʻSGAN»: the same half (or the whole month) of the month
-    before, cut to the elapsed time while this period runs.
+    «KIM QANCHAGA OʻSGAN»: the dashboard's like period before, cut to the same
+    elapsed time while this one runs — «Shu oy» at 11:00 on the 17th against
+    1 Sep to 11:00 on 17 Sep, not against the whole of 17 Sep.
   */
-  const previous = comparablePayrollPeriod(
-    period,
-    payrollPeriod(previousPayrollMonth(ctx.query.month), ctx.query.half, ctx.timeZone),
-    ctx.now,
-  )
-  const data = await payrollService.sellers(period, previous, ctx.query.half, ctx.currency, ctx.now)
+  const previous = comparablePayrollPeriod(period, previousEquivalent(period), ctx.now)
+  const data = await payrollService.payroll(period, previous, ctx.currency, ctx.now)
   return {
     data,
     meta: { period: toPeriodDto(period), comparisonPeriod: toPeriodDto(previous) },

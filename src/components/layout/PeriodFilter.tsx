@@ -1,6 +1,6 @@
 'use client'
 
-import { type RefObject, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/Button'
 import { DateInput } from '@/components/ui/DateInput'
@@ -99,7 +99,29 @@ export function PeriodFilter({
         ? t.period.pick
         : t.period[value]
 
-  useDismiss(open, container, setOpen)
+  // Dismiss on an outside click or Escape — a popover that can only be closed
+  // by re-clicking its own trigger is a trap on a dense page.
+  useEffect(() => {
+    if (!open) return
+
+    const onPointerDown = (event: MouseEvent) => {
+      if (!container.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      // `defaultPrevented` is the layering contract with the ⌘K palette: its
+      // Escape is preventDefault-ed before this document-level listener runs
+      // (React's delegated handlers were registered first), so one keypress
+      // closes the palette without also folding this popover underneath it.
+      if (event.key === 'Escape' && !event.defaultPrevented) setOpen(false)
+    }
+
+    document.addEventListener('mousedown', onPointerDown)
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown)
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
 
   return (
     /*
@@ -197,102 +219,6 @@ export function PeriodFilter({
       )}
     </div>
   )
-}
-
-/**
- * The «Sana» chip and its picker WITHOUT the preset row — for a screen whose
- * other windows are its own, not the dashboard's presets: Sotuvchilar oyligi,
- * where the client asked for «sana orqali» beside Haftalik / 15 kunlik / Oylik
- * (2026-10-17). Lit, it reads the picked days; unlit, «Sana».
- */
-export function RangePickerButton({
-  from,
-  to,
-  active,
-  maxDays,
-  onPick,
-}: {
-  /** The last picked days, lit or not — the picker reopens on them. */
-  from?: string
-  to?: string
-  /** True while the screen shows the picked days rather than its own window. */
-  active: boolean
-  maxDays?: number
-  onPick: (selection: { from: string; to: string }) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const container = useRef<HTMLDivElement>(null)
-  useDismiss(open, container, setOpen)
-
-  const label = active && from ? shortRange(from, to) : t.period.pick
-
-  return (
-    // The popover hangs off this wrapper: full width on a phone, as in PeriodFilter.
-    <div ref={container} className="relative w-full sm:w-auto">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        aria-label={`${t.period.label}: ${label}`}
-        title={t.period.pick}
-        className={`focusable flex h-10 shrink-0 items-center gap-1.5 rounded-[var(--radius-panel-sm)] border px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors hover:bg-[image:linear-gradient(var(--glass-hover),var(--glass-hover))] sm:h-8 sm:text-xs ${active ? '' : 'shadow-[var(--glass-highlight)]'}`}
-        style={{
-          borderColor: active ? 'var(--accent)' : 'var(--border-strong)',
-          backgroundColor: active ? 'var(--accent-soft)' : 'var(--glass-raised)',
-          color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
-        }}
-      >
-        <CalendarIcon />
-        {label}
-      </button>
-
-      {open && (
-        <PeriodPicker
-          from={from}
-          to={to}
-          maxDays={maxDays}
-          onPick={(selection) => {
-            // PeriodPicker only ever applies a whole custom window.
-            if (selection.from && selection.to) onPick({ from: selection.from, to: selection.to })
-            setOpen(false)
-          }}
-        />
-      )}
-    </div>
-  )
-}
-
-/**
- * Dismiss on an outside click or Escape — a popover that can only be closed
- * by re-clicking its own trigger is a trap on a dense page.
- */
-function useDismiss(
-  open: boolean,
-  container: RefObject<HTMLDivElement | null>,
-  setOpen: (open: boolean) => void,
-) {
-  useEffect(() => {
-    if (!open) return
-
-    const onPointerDown = (event: MouseEvent) => {
-      if (!container.current?.contains(event.target as Node)) setOpen(false)
-    }
-    const onKeyDown = (event: KeyboardEvent) => {
-      // `defaultPrevented` is the layering contract with the ⌘K palette: its
-      // Escape is preventDefault-ed before this document-level listener runs
-      // (React's delegated handlers were registered first), so one keypress
-      // closes the palette without also folding this popover underneath it.
-      if (event.key === 'Escape' && !event.defaultPrevented) setOpen(false)
-    }
-
-    document.addEventListener('mousedown', onPointerDown)
-    document.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown)
-      document.removeEventListener('keydown', onKeyDown)
-    }
-  }, [open, container, setOpen])
 }
 
 type Mode = 'day' | 'month' | 'year' | 'range'

@@ -13,8 +13,7 @@
 
 import { z } from 'zod'
 
-import { PAYROLL_SCHEMES } from '@/server/domain/payroll/sellerPayroll'
-import { PAYROLL_HALVES, PERIOD_PRESETS } from '@/server/domain/period/period'
+import { PERIOD_PRESETS } from '@/server/domain/period/period'
 import { ROISTAT_DIMS } from '@/server/domain/roistat/roistatCuts'
 import {
   BRAND_FILTERS,
@@ -165,100 +164,27 @@ const filterQuerySchema = z.object({
 export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
 
 /**
- * «Oyliklar» — a payroll period, which is a MONTH and a HALF, never from/to.
- *
- * The office pays on the 1st-15th and the 16th-end, so the window is a
- * calendar fact rather than a range somebody drags. Taking `month` + `half`
- * and resolving them on the server (`payrollPeriod`) is what keeps a laptop in
- * another timezone from shifting a day of pay from one half into the other —
- * and it makes the URL say what the reader chose rather than what their clock
- * computed.
- *
- * NO `preset`, NO from/to, and no filters: this screen answers one question
- * about the whole company, and an employee filter on a payroll would produce a
- * fund total for a subset that reads like the payroll.
+ * «Sotuvchilar oyligi» — the dashboard's window (2026-10-17), but AT MOST A
+ * MONTH. The window's length picks the pay table and the month's is the
+ * longest; a quarter or a year read by it would pay one fiksa and one ROP
+ * oklad over many months and print it as somebody's salary. So «Shu yil» and
+ * a range over `PAYROLL_MAX_DAYS` are a 400, never a figure.
  */
-export const payrollQuerySchema = z.object({
-  month: z
-    .string()
-    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected a month in YYYY-MM format')
-    /*
-      Year 0001 at the earliest: the comparison window is the month BEFORE,
-      and year 0000 has none a YYYY-MM can name — a 400 here, not a 500 there.
-    */
-    .refine((value) => !value.startsWith('0000'), 'Expected a year from 0001'),
-  half: z.enum(PAYROLL_HALVES).default('full'),
+export const PAYROLL_MAX_DAYS = 31
+
+export const payrollQuerySchema = periodQuerySchema.superRefine((value, ctx) => {
+  if (value.preset === 'this_year') {
+    ctx.addIssue({ code: 'custom', path: ['preset'], message: 'A payroll is at most a month' })
+  }
+  if (
+    value.preset === 'custom' &&
+    value.from &&
+    value.to &&
+    Math.round((value.to.getTime() - value.from.getTime()) / 86_400_000) + 1 > PAYROLL_MAX_DAYS
+  ) {
+    ctx.addIssue({ code: 'custom', path: ['to'], message: `At most ${PAYROLL_MAX_DAYS} days` })
+  }
 })
-
-/**
- * «Haftalik daromad» — a payroll WEEK, named by its Monday (`YYYY-MM-DD`).
- *
- * The same reasoning as `payrollQuerySchema`: the browser names the week, the
- * server builds the window in Tashkent (`payrollWeekPeriod`). No filters, no
- * preset.
- */
-export const payrollWeekQuerySchema = z.object({
-  week: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a Monday in YYYY-MM-DD format')
-    /*
-      Checked here as well as in `payrollWeekPeriod`, so a wrong date is a 400
-      naming the field rather than a 500. A calendar date's weekday does not
-      depend on the zone, so UTC is enough for the question.
-    */
-    .refine((value) => {
-      const [year, month, day] = value.split('-').map(Number)
-      // setUTCFullYear, not Date.UTC: the latter reads years 0–99 as 1900–1999.
-      const date = new Date(0)
-      date.setUTCFullYear(year!, month! - 1, day!)
-      return (
-        date.getUTCFullYear() === year &&
-        date.getUTCMonth() === month! - 1 &&
-        date.getUTCDate() === day &&
-        date.getUTCDay() === 1
-      )
-    }, 'Expected a date that is a Monday')
-    // The comparison week is seven days earlier; year 0000 cannot name it.
-    .refine((value) => !value.startsWith('0000'), 'Expected a year from 0001'),
-})
-
-/**
- * The payroll's «Sana» — two calendar days the reader picked, and the table the
- * pay is worked out by (`scheme`: the tab lit beside the picker).
- *
- * Days, never instants: the server builds the window in Tashkent
- * (`payrollRangePeriod`), for the reason `payrollQuerySchema` gives. At most
- * `PAYROLL_RANGE_MAX_DAYS` — the same 93 the ROP otchet takes — because each
- * load reads the window and the one before it.
- */
-export const PAYROLL_RANGE_MAX_DAYS = 93
-
-const payrollDay = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date in YYYY-MM-DD format')
-  .refine((value) => {
-    const [year, month, day] = value.split('-').map(Number)
-    // setUTCFullYear, not Date.UTC: the latter reads years 0–99 as 1900–1999.
-    const date = new Date(0)
-    date.setUTCFullYear(year!, month! - 1, day!)
-    return date.toISOString().slice(0, 10) === value
-  }, 'Expected a real date')
-  /*
-    No payroll before 2000. The comparison window runs before `from`, and a
-    year under 100 is read as 19xx by the zone's date constructor — a 200 for
-    the wrong window, where this is a 400 naming the field.
-  */
-  .refine((value) => value >= '2000-01-01', 'Expected a date from 2000-01-01')
-
-export const payrollRangeQuerySchema = z
-  .object({ from: payrollDay, to: payrollDay, scheme: z.enum(PAYROLL_SCHEMES) })
-  .refine((query) => query.from <= query.to, { message: 'from must not be after to', path: ['to'] })
-  .refine(
-    (query) =>
-      (Date.parse(`${query.to}T00:00:00Z`) - Date.parse(`${query.from}T00:00:00Z`)) / 86_400_000 + 1 <=
-      PAYROLL_RANGE_MAX_DAYS,
-    { message: `At most ${PAYROLL_RANGE_MAX_DAYS} days`, path: ['to'] },
-  )
 
 /**
  * One department's roster, for the panel the org chart opens.

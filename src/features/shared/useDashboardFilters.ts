@@ -341,6 +341,8 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   '/rnp',
   // «Lidlar»: `src/app/leads/page.tsx` reads none either; its tab and day are local state (2026-10-06 audit).
   '/leads',
+  // «Sotuvchilar oyligi»: `src/app/payroll/page.tsx` reads none either; on the dashboard window since 2026-10-17.
+  '/payroll',
 ])
 
 export function useDashboardFilters() {

@@ -37,9 +37,38 @@
  * client's published DASHBOARD ladder); this is the PAYROLL the office runs.
  */
 
+import { TZDate } from '@date-fns/tz'
+import { differenceInCalendarDays } from 'date-fns'
+
+import { fullUnitWindow } from '@/server/domain/analytics/pulse'
+import type { Period } from '@/server/domain/period/period'
+
 /** Which of the client's tables applies. */
 export const PAYROLL_SCHEMES = ['month', 'half', 'week'] as const
 export type PayrollSchemeValue = (typeof PAYROLL_SCHEMES)[number]
+
+/**
+ * WHICH TABLE A WINDOW IS PAID BY — its LENGTH (2026-10-17, the client: the
+ * tabs went, the screen takes the dashboard's own window — «huddi savdo
+ * dinamikasidek» — and the table follows how long it is). Up to 7 days the
+ * week's, up to 16 the fortnight's (16 is the longest second half), longer
+ * the month's.
+ *
+ * MEASURED ON THE WHOLE CALENDAR UNIT (`fullUnitWindow`), not the to-date
+ * window: «Shu oy» on the 5th is five days long and is still a month's pay
+ * running — paying it by the week's table would print a weekly oklad under a
+ * monthly heading. A picked range is its own length.
+ */
+export function payrollSchemeOf(period: Period): PayrollSchemeValue {
+  const full = fullUnitWindow(period)
+  const days = differenceInCalendarDays(
+    new TZDate(full.end.getTime(), full.timeZone),
+    new TZDate(full.start.getTime(), full.timeZone),
+  )
+  if (days <= 7) return 'week'
+  if (days <= 16) return 'half'
+  return 'month'
+}
 
 export interface PayrollTier {
   /** FAKT 2 at or above this, in minor units, is paid at this tier. */
@@ -151,7 +180,7 @@ function percentOf(basisMinor: bigint, bp: bigint): bigint {
 
 /**
  * A ROP's pay — the client, 2026-10-07: «ROPlar guruhi FAKT 2 dan 2% + 2 mln
- * oklad». 2% of the whole team's FAKT 2 on every tab; the 2 000 000 oklad is
+ * oklad». 2% of the whole team's FAKT 2 on every table; the 2 000 000 oklad is
  * monthly and is added on the month only (the client chose «hamma tabda 2%»).
  */
 export const ROP_PERCENT_BP = 200n

@@ -479,7 +479,7 @@ wrong basis is the mistake that produces plausible, wrong numbers.
 | Logistika | `/logistics` | `logistics/LogisticsPage` + `DailySection` | `/insights/logistics` | Insights → Insights | **the arrival in `C4:NEW`** (`queued_at`) — the confirmation queue's own cohort, since 2026-09-10. It was `createdAtSource` until then |
 | Sverka | `/sverka` (section `sverka`, 2026-10-06) | `sverka/SverkaPage` — four Bitrix24 ↔ MoySklad pair tiles (FAKT 1, FAKT 2, Yoʻlda, Qaytgan) + «Kassa» (2026-10-08; since 2026-10-14 FAKT 2 owed against the PAYMENT MoySklad booked on each deal's order, `payedSum`, deal by deal — `totals.kassa`, received + left = due = FAKT 2 inside MoySklad's reach; the «Касса» / «Успешно» statuses are only listed with how many carry a payment, their order in the client's process being unconfirmed; `payedSum` moves without the order's `updated`, so every import re-reads it for 62 days of orders and for all of them on a sweep run — `refreshPayments`; Bitrix24 keeps no payment sum) + «Toʻliq mos», the difference list (chips by issue, a row opens both sides), products by code, ROP teams | `/sverka/overview` (`analytics:read:all`) | Sverka → Insights (`sverkaCohort`), Sverka | **the arrival in `C4:NEW`** (`queued_at`) for the Bitrix24 side — FAKT 1 / FAKT 2 are Savdo dinamikasi's to the soʻm; each deal's MoySklad orders whatever their date. Plus MoySklad orders whose `moment` is in the window and whose deal is not in the cohort |
 | Tasdiqlash navbati | `/confirmation` | `confirmation/ConfirmationPage` | `/insights/confirmations/orders` | Insights → Insights | **the arrival in `C4:NEW`** — since 2026-10-09 EVERY Tashkent day the order arrived on is a row, in the state that visit ended in (`queueSql` unit `'day'`; every other queue-cohort screen keeps the latest arrival only); `?queue=backlog` (where the bell lands) drops the window entirely |
-| Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` + `PayrollTeams` — three tabs, «Haftalik», «15 kunlik» (1–15 / 16–oxiri) and «Oylik» (2026-10-05), plus «Sana» (2026-10-17, `RangePickerButton`): days the reader picks, ≤ 93, paid by the lit tab's table, set against as many days just before; pressing a tab returns to its own period; sellers in one card per ROP, every figure against the like period before | `/payroll/weekly`, `/payroll/sellers`, `/payroll/range` | Payroll → Insights (`deliveredSellerRows`) | **a payroll period, on the DELIVERY day** (2026-10-05) — a Monday-to-Sunday week (`week`, its Monday) or a calendar month / one half of it (`month` + `half`), resolved on the server. No dashboard preset reaches it |
+| Sotuvchilar oyligi | `/payroll` | `payroll/PayrollPage` + `PayrollTeams` — the dashboard's own window since 2026-10-17 (Bugun · Kecha · Shu oy · Sana, the client: «huddi savdo dinamikasidek»; the «Haftalik / 15 kunlik / Oylik» tabs went); the table is picked by the window's length (`payrollSchemeOf`: ≤ 7 days the week's, ≤ 16 the fortnight's, longer the month's, measured on the whole unit so «Shu oy» is a month); sellers in one card per ROP, every figure against the dashboard's `previousEquivalent` | `/payroll/sellers` (preset / from / to) | Payroll → Insights (`confirmationSellerRating`) | **the arrival in `C4:NEW`** (`queued_at`) since 2026-10-17 — Savdo dinamikasi's FAKT 2 to the soʻm (the client: «savdo dinamikasidagi to'g'ri malumot ekan»); it was the DELIVERY day from 2026-10-05 |
 | Sotuvchilar reytingi | `/sellers` | `sellers/SellersPage` | `/analytics/sellers` | SellerBoard, Analytics → SellerBoard | the arrival in `C4:NEW` (`queued_at`) — the confirmation queue's own cohort. **The television board**: two podiums and two ranked lists (sellers left, teams right) — the sellers' seats and rows carry medals, the teams' carry none — and ONE control, the FAKT 1 / FAKT 2 switch in each heading; the FAKT 1 / FAKT 2 totals, conversion, bonus fund and ladder render on Savdo dinamikasi (`sales/ConfirmationFaktSection`), which is why the route lists both sections |
 | KPI rejalari | `/kpi` | `kpi/KpiPage` | `/kpi` | Kpi, Analytics → Reference, Deal | **the plan's own `periodStart`/`periodEnd`** — the dashboard window only *selects* which plan is live |
 | Struktura | `/structure` | `structure/StructurePage` | `/insights/structure`, `/insights/structure/roster` | Insights → Insights | **nothing — the screen is DATELESS.** `period={false}`, no window control, and neither endpoint takes one |
@@ -2113,25 +2113,29 @@ Per-screen traps worth knowing before you touch one:
   part. Reinstating a dismissal rule would delete real pay. (The WEEK is
   different by its own table: under 15 mln it pays 0, and the row still shows,
   with the distance to 15 mln.)
-  **FAKT 2 AND NOTHING ELSE, DATED BY THE DELIVERY (2026-10-05).** The client,
-  asked which date pays: «yetkazilgan sana» — the money delivered IN the
-  period. `deliveredSellerRows` is the board's FAKT 2 (current stage DELIVERED,
-  passed through the queue, operator else owner, the deal's team) dated by the
-  LAST entry into a delivery stage (`closedAt` when there is no history row).
-  It was `confirmationSellerRating`, dated by the queue arrival: the running
-  week read low, a closed month kept growing, and a parcel delivered this week
-  was paid into last. So a seller's payroll FAKT 2 and their Успешно on
-  «Sotuvchilar reytingi» now differ BY THE DATE ONLY. The service does NOT go
-  through `SellerBoardService`.
-  **THE WINDOW IS A CALENDAR FACT.** `payrollPeriod(month, half, tz)` and
-  `payrollWeekPeriod(monday, tz)` (Monday 00:00 → next Monday, Tashkent; a
-  non-Monday is a 400 at the schema) in `period.ts`; the endpoints take
-  `month` + `half` / `week` — or, for «Sana» (`/payroll/range`,
-  `payrollRangePeriod`), two CALENDAR days the server builds — and never
-  from/to instants, because a
-  browser in another timezone would otherwise shift a day of pay from one half
-  into the other. It is **not clipped to now** — a running period reports what
-  has been delivered so far and the screen says so (`open`).
+  **FAKT 2 AND NOTHING ELSE — SAVDO DINAMIKASI'S, SINCE 2026-10-17.** The
+  client, shown the same seller at 25.6 mln here and 32.9 mln there: «savdo
+  dinamikasidagi to'g'ri malumot ekan, sotuvchilar oylikida xato». So the
+  rows are `confirmationSellerRating` again (company-wide, no filters, no
+  brand) — the queue cohort, an order counted in the window it ARRIVED in and
+  delivered now — folded by `mergeSellerTeamSlices` like the board's, and
+  only sellers with FAKT 2 > 0 are printed. From 2026-10-05 to 10-17 it was
+  `deliveredSellerRows` (dated by the LAST delivery-stage entry, the client's
+  «yetkazilgan sana» then), deleted with the switch. **The cost, stated to the
+  client before the switch:** a closed month keeps growing while its late
+  parcels land, so a payroll read on the 3rd can rise by the 10th.
+  **THE WINDOW IS THE DASHBOARD'S** (2026-10-17): `periodQuerySchema` →
+  `periodFrom`, the comparison `previousEquivalent`, exactly what Savdo
+  dinamikasi sends; `/payroll` is in `SHALLOW_ROUTES`. The table is
+  `payrollSchemeOf(period)` — `fullUnitWindow`'s length in Tashkent calendar
+  days — so «Bugun» pays by the week's table and «Shu oy» by the month's on
+  any day of it. `payrollPeriod`, `payrollWeekPeriod` and the «Sana» range
+  route of that morning went with the tabs; `comparablePayrollPeriod` stays
+  and cuts `previousEquivalent` to the elapsed time while the window runs.
+  **AT MOST A MONTH:** `payrollQuerySchema` refuses «Shu yil» and a range over
+  `PAYROLL_MAX_DAYS` (31) with a 400, and PageShell's `periodMaxDays` takes
+  «Yil» off the picker — a quarter read by the month's table would print one
+  fiksa as a quarter's salary.
   **COMPANY-WIDE, AND FOR A DIFFERENT REASON FROM THE REST OF `COMPANY_WIDE`.**
   It could be narrowed; it is refused to a narrowed account because a team's
   payroll is twelve people's salaries. Opening it to a ROP takes three changes
@@ -2146,7 +2150,7 @@ Per-screen traps worth knowing before you touch one:
   probe: time a query from something that sits beside the database, or time
   the endpoint.
   **BY ROP, WITH GROWTH — 2026-10-05** («ROP larga ajratilsin … kim qanchaga
-  oʻsganligi … grafiklar bilan»). Tabs «Haftalik | 15 kunlik | Oylik»; one
+  oʻsganligi … grafiklar bilan»). Tabs «Haftalik | 15 kunlik | Oylik» (gone 2026-10-17, see above); one
   card per ROP (`teams`, summed on the server from the printed rows, so the
   cards add up to the fund); every figure set against the LIKE period before
   — the week before, the same half of the month before, the month before —

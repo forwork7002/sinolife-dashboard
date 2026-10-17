@@ -3,15 +3,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
-import { RangePickerButton } from '@/components/layout/PeriodFilter'
 import { ErrorState, statusOf } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
-import { SearchInput, SegmentedControl } from '@/components/ui/Controls'
+import { SearchInput } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
-import { ChevronGlyph } from '@/components/ui/Icons'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { PageShell } from '@/features/shared/PageShell'
+import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
   type DeltaDto,
   type PayrollDto,
@@ -24,7 +23,6 @@ import {
   NO_VALUE,
   formatCompactUzs,
   formatDateShort,
-  formatDateTime,
   formatFullUzs,
   formatNumber,
 } from '@/lib/format'
@@ -32,12 +30,14 @@ import {
 import { NO_ROP, NewChip, PayrollMovers, RopCards, RopCompareChart } from './PayrollTeams'
 
 /**
- * «Sotuvchilar oyligi» — what the office owes each seller, in THREE TABS.
+ * «Sotuvchilar oyligi» — what the office owes each seller over the dashboard's
+ * window, by one of THREE TABLES the window's length picks.
  *
- * «Haftalik» and «Oylik», one tab each (2026-10-03, «ikkita boʻlim boʻladi.
- * haftalik alohida va oylik alohida»), and «15 kunlik» beside them since
- * 2026-10-05 («15 kunlik ni ham tanla … oyning 1 chi kunidan»): the half
- * table, 1–15 or 16–end, which used to hide behind the month tab. They are the client's two Word files
+ * They were three tabs — «Haftalik», «15 kunlik», «Oylik» (2026-10-03 /
+ * 10-05) — until 2026-10-17, when the client asked for the window of every
+ * other screen («huddi savdo dinamikasidek»): up to 7 days pays by the week's
+ * table, up to 16 by the fortnight's, longer by the month's (`payrollSchemeOf`,
+ * «Shu oy» counted as the whole month). They are the client's two Word files
  * on one screen: the weekly income — a rate that rises with the tier (5 / 8 /
  * 10 / 12%) plus a weekly oklad, and nothing under 15 mln — and the monthly
  * payroll — 8% from the first soʻm plus a fixed part per tier, for the whole
@@ -47,10 +47,10 @@ import { NO_ROP, NewChip, PayrollMovers, RopCards, RopCompareChart } from './Pay
  * columns, and the rate is printed on every row of a week, because there it
  * IS the tier and a seller checks their pay by redoing one multiplication.
  *
- * FAKT 2, NEVER FAKT 1. «sotuvchilar oyligi fakt 2 ga qarab olinadi» —
- * delivered money, BY THE DAY IT WAS DELIVERED since 2026-10-05 (the client:
- * «yetkazilgan sana»). The sellers board dates the same FAKT 2 by the queue
- * arrival, so the two differ by the date only — same orders, same seller.
+ * FAKT 2, NEVER FAKT 1. «sotuvchilar oyligi fakt 2 ga qarab olinadi» — and
+ * since 2026-10-17 Savdo dinamikasi's FAKT 2 to the soʻm (the client:
+ * «savdo dinamikasidagi to'g'ri malumot ekan»): the queue cohort, orders that
+ * arrived in the window and are delivered now.
  *
  * THIS IS THE ONE SCREEN WHERE A NUMBER IS SOMEBODY'S MONEY: ONE hero figure —
  * the fund actually paid out — with the three inputs beside it and a rail
@@ -63,14 +63,12 @@ import { NO_ROP, NewChip, PayrollMovers, RopCards, RopCompareChart } from './Pay
  * BY ROP, WITH GROWTH (2026-10-05, «ROP larga ajratilsin … kim qanchaga
  * oʻsganligi … grafiklar bilan»). The money is handed out through the team
  * leaders, so the sellers sit in one card per ROP; every figure is set against
- * the like period before (`meta.comparisonPeriod`, cut to the same elapsed
- * time while this one runs); a bar per ROP and the five biggest movers each
+ * the like period before (`meta.comparisonPeriod`, the dashboard's
+ * `previousEquivalent`); a bar per ROP and the five biggest movers each
  * way sit above the cards. See `PayrollTeams`.
  *
- * THE PERIOD IS A CALENDAR FACT, not the dashboard's window: a Monday-to-
- * Sunday week, or 1–15 / 16–end / the whole month. This screen carries its own
- * control and PageShell's period row is switched off. The window is resolved on
- * the SERVER (`payrollWeekPeriod`, `payrollPeriod`).
+ * THE PERIOD IS THE DASHBOARD'S: PageShell's Bugun · Kecha · Shu oy · Sana,
+ * in the URL, resolved on the server by `periodFrom` like every screen's.
  *
  * NOBODY IS MISSING. Every seller with delivered money in the period is on the
  * table — in a week under 15 mln with a zero and the distance to 15 mln, in a
@@ -78,76 +76,48 @@ import { NO_ROP, NewChip, PayrollMovers, RopCards, RopCompareChart } from './Pay
  */
 export function PayrollPage() {
   /*
-    SCREEN STATE, NOT URL STATE. A payroll period is a question — «sentabrning
-    birinchi yarmi», «shu hafta» — and it would belong in the URL if this page
-    shared the dashboard's filter bar. It does not: `useDashboardFilters`
-    carries a preset and a from/to these endpoints refuse to take.
+    THE DASHBOARD'S OWN WINDOW (2026-10-17, the client: «huddi savdo
+    dinamikasidek»). The Haftalik / 15 kunlik / Oylik tabs went: PageShell
+    draws Bugun · Kecha · Shu oy · Sana, the window rides the URL like every
+    other screen's, and the server picks the table by its length
+    (`payrollSchemeOf`). Only the window is sent — no brand, no people: a
+    payroll is the whole company's.
   */
-  const [view, setView] = useState<PayrollView>('week')
-  const [week, setWeek] = useState(() => currentMonday())
-  const [month, setMonth] = useState(() => currentMonth())
-  /* Which half on the «15 kunlik» tab — from the 1st by default, as asked. */
-  const [half, setHalf] = useState<HalfOfMonth>('first')
-  /*
-    «SANA» — days the reader picked (2026-10-17, the client: «15 kunlik emas
-    1 oylik emas, sana orqali kiritsak»). While it is on, it is the window and
-    the lit tab only names the table the pay is worked out by; pressing a tab
-    goes back to that tab's own period. The last pick is kept, so the picker
-    reopens on it.
-  */
-  const [range, setRange] = useState<{ from: string; to: string } | null>(null)
-  const [rangeOn, setRangeOn] = useState(false)
-  const picked = rangeOn ? range : null
+  const { filters } = useDashboardFilters()
+  const params = useMemo(() => {
+    const out: Record<string, string> = { preset: filters.preset }
+    if (filters.preset === 'custom' && filters.from && filters.to) {
+      out.from = filters.from
+      out.to = filters.to
+    }
+    return out
+  }, [filters.preset, filters.from, filters.to])
   const [search, setSearch] = useState('')
 
-  const monthHalf = view === 'half' ? half : 'full'
   const query = useQuery({
-    queryKey: picked
-      ? ['payroll', 'range', view, picked.from, picked.to]
-      : view === 'week'
-        ? ['payroll', 'week', week]
-        : ['payroll', 'month', month, monthHalf],
-    queryFn: ({ signal }) =>
-      picked
-        ? apiGet<PayrollDto>('/payroll/range', { from: picked.from, to: picked.to, scheme: view }, signal)
-        : view === 'week'
-          ? apiGet<PayrollDto>('/payroll/weekly', { week }, signal)
-          : apiGet<PayrollDto>('/payroll/sellers', { month, half: monthHalf }, signal),
+    queryKey: ['payroll', params],
+    queryFn: ({ signal }) => apiGet<PayrollDto>('/payroll/sellers', params, signal),
   })
 
   const viewStatus = statusOf(query)
   const errorMessage = (query.error as Error | null)?.message
   const retry = () => void query.refetch()
 
-  const scheme: Scheme = view
+  /*
+    NEVER A PREVIOUS WINDOW'S FIGURES UNDER THIS ONE'S HEADING.
+    `placeholderData` keeps the last answer while a new window loads; here it
+    reads as loading instead. The headings keep the last table meanwhile.
+  */
+  const data = query.isPlaceholderData ? undefined : query.data?.data
+  const scheme: Scheme = query.data?.data.scheme ?? 'month'
   const words = WORDS[scheme]
-  const periodText = picked
-    ? rangeLabel(picked.from, picked.to)
-    : view === 'week'
-      ? weekLabel(week)
-      : view === 'half'
-        ? `${monthLabel(month)} · ${halfLabel(half)}`
-        : monthLabel(month)
+  const period = data ? query.data?.meta.period : undefined
+  const periodText = period ? windowText(period) : ''
 
-  /*
-    A week's rows never sit under the month's headings, not even for a frame:
-    the payload is used only when it answers the scheme on screen.
-  */
-  /*
-    Nor a previous window's: `placeholderData` keeps the last answer while a
-    new key loads, and the month's payload has the very scheme a «Sana» range
-    on the Oylik tab asks for — so it would sit under the new dates' heading.
-  */
-  const data =
-    !query.isPlaceholderData && query.data?.data.scheme === scheme ? query.data.data : undefined
-  /*
-    The hero's own reading of the request: a previous tab's payload held over
-    a new one is still loading here, not a period with nothing in it.
-  */
   const heroStatus = viewStatus === 'ready' && !data ? 'loading' : viewStatus
   const totals = data?.totals
   const comparison = data ? query.data?.meta.comparisonPeriod : undefined
-  const comparisonLabel = comparison ? comparisonText(comparison, data?.open ?? false) : null
+  const comparisonLabel = comparison ? windowText(comparison) : null
   /* A delta over an empty comparison window (a period not started) says nothing. */
   const compared = Boolean(comparison && comparison.start !== comparison.end)
   /*
@@ -178,98 +148,11 @@ export function PayrollPage() {
   return (
     <PageShell
       title="Sotuvchilar oyligi"
-      description="Haftalik daromad va oylik maosh — mijozning ikki jadvali boʻyicha. Ikkalasi ham faqat FAKT 2 (Успешно — yetkazib berilgan pul) dan hisoblanadi."
-      period={false}
+      description="FAKT 2 — Savdo dinamikasidagi bilan bir xil. Jadval davr uzunligiga qarab: 7 kungacha haftalik, 16 kungacha 15 kunlik, undan uzun — oylik."
       accent="var(--series-3)"
+      periodMaxDays={PAYROLL_MAX_DAYS}
       toolbar={
         <>
-          <SegmentedControl<PayrollView>
-            value={view}
-            onChange={(next) => {
-              setView(next)
-              setRangeOn(false)
-            }}
-            ariaLabel="Boʻlim"
-            options={[
-              { value: 'week', label: 'Haftalik' },
-              { value: 'half', label: '15 kunlik' },
-              { value: 'month', label: 'Oylik' },
-            ]}
-          />
-          {picked ? null : view === 'week' ? (
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                onClick={() => setWeek(shiftWeek(week, -1))}
-                aria-label="Oldingi hafta"
-              >
-                <ChevronGlyph direction="left" />
-              </Button>
-              <span
-                className="tabular min-w-[150px] text-center text-xs font-semibold"
-                style={{ color: 'var(--ink-primary)' }}
-              >
-                {weekLabel(week)}
-              </span>
-              <Button
-                variant="ghost"
-                onClick={() => setWeek(shiftWeek(week, 1))}
-                aria-label="Keyingi hafta"
-                /* Nothing has been delivered in a week that has not started. */
-                disabled={week >= currentMonday()}
-              >
-                <ChevronGlyph direction="right" />
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  onClick={() => setMonth(shiftMonth(month, -1))}
-                  aria-label="Oldingi oy"
-                >
-                  <ChevronGlyph direction="left" />
-                </Button>
-                <span
-                  className="tabular min-w-[120px] text-center text-xs font-semibold"
-                  style={{ color: 'var(--ink-primary)' }}
-                >
-                  {monthLabel(month)}
-                </span>
-                <Button
-                  variant="ghost"
-                  onClick={() => setMonth(shiftMonth(month, 1))}
-                  aria-label="Keyingi oy"
-                  /* Nothing has been delivered in a month that has not started. */
-                  disabled={month >= currentMonth()}
-                >
-                  <ChevronGlyph direction="right" />
-                </Button>
-              </div>
-              {view === 'half' && (
-                <SegmentedControl<HalfOfMonth>
-                  value={half}
-                  onChange={setHalf}
-                  ariaLabel="Oyning qaysi yarmi"
-                  options={[
-                    { value: 'first', label: '1–15' },
-                    { value: 'second', label: '16–oxiri' },
-                  ]}
-                />
-              )}
-            </>
-          )}
-          <RangePickerButton
-            from={range?.from}
-            to={range?.to}
-            active={rangeOn}
-            maxDays={PAYROLL_RANGE_MAX_DAYS}
-            onPick={(next) => {
-              setRange(next)
-              setRangeOn(true)
-            }}
-          />
           <SearchInput value={search} onChange={setSearch} placeholder="Ism yoki ROP…" />
           <CopyButton
             rows={sellers}
@@ -324,7 +207,7 @@ export function PayrollPage() {
                 </p>
               )}
               <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
-                {picked ? 'Tanlangan kunlar uchun jami toʻlov' : words.fund}
+                Davr uchun jami toʻlov
                 {data && compared && (
                   <>
                     <TrendIndicator delta={data.deltas.total} />
@@ -413,13 +296,12 @@ export function PayrollPage() {
         {data?.open && (
           /*
             A period that has not finished is a partial payroll, and it looks
-            exactly like a final one. The window is deliberately not clipped to
-            today, so this line is the only thing between a mid-period figure
-            and somebody paying it.
+            exactly like a final one; this line is the only thing between a
+            mid-period figure and somebody paying it.
           */
           <p className="mt-4 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            Davr hali tugamagan — raqamlar hozirgacha yetkazilgan buyurtmalar boʻyicha va davr
-            oxirigacha oʻsadi.
+            Davr hali tugamagan — raqamlar oʻsib boradi: bu davrda kelgan buyurtmalar yetkazilgani
+            sari FAKT 2 ga qoʻshiladi.
           </p>
         )}
       </section>
@@ -482,11 +364,11 @@ export function PayrollPage() {
             columns={columns}
             rows={[]}
             rowKey={(line) => line.row.employeeId}
-            status={viewStatus}
+            status={heroStatus}
             errorMessage={errorMessage}
             onRetry={retry}
             emptyTitle="Maʼlumot yoʻq"
-            emptyBody="Bu davrda yetkazib berilgan buyurtma topilmadi."
+            emptyBody="Bu davrda kelgan buyurtmalardan hali yetkazilgani yoʻq."
             minWidth={1210}
             maxHeight="none"
           />
@@ -513,7 +395,7 @@ export function PayrollPage() {
             minWidth={600}
             maxHeight="none"
           />
-          <RungStrip rules={rules} counts={onRung} loading={viewStatus !== 'ready'} />
+          <RungStrip rules={rules} counts={onRung} loading={heroStatus !== 'ready'} />
           <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
             {words.ruleNote}
           </p>
@@ -528,14 +410,11 @@ export function PayrollPage() {
 // The two sections' words
 // ---------------------------------------------------------------------------
 
-/** The three tabs ARE the three schemes. */
-type PayrollView = PayrollDto['scheme']
+/** Which of the client's three tables the window's length picked. */
 type Scheme = PayrollDto['scheme']
-type HalfOfMonth = 'first' | 'second'
 
 interface SchemeWords {
   readonly section: string
-  readonly fund: string
   /** The rate, as the hero's figure names it. */
   readonly rate: string
   /** What the fixed part is called in the client's document. */
@@ -549,7 +428,6 @@ interface SchemeWords {
 const WORDS: Record<Scheme, SchemeWords> = {
   week: {
     section: 'Haftalik daromad',
-    fund: 'Hafta uchun jami toʻlov',
     rate: '5–12%',
     fixed: 'Haftalik oklad',
     tableHint:
@@ -561,7 +439,6 @@ const WORDS: Record<Scheme, SchemeWords> = {
   },
   month: {
     section: 'Oylik maosh',
-    fund: 'Oy uchun jami toʻlov',
     rate: '8%',
     fixed: 'Fiksa',
     tableHint:
@@ -573,7 +450,6 @@ const WORDS: Record<Scheme, SchemeWords> = {
   },
   half: {
     section: '15 kunlik maosh',
-    fund: '15 kun uchun jami toʻlov',
     rate: '8%',
     fixed: 'Fiksa',
     tableHint:
@@ -1173,7 +1049,7 @@ function RopPayTable({
       <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
         {scheme === 'month'
           ? 'ROP: jamoasidagi sotuvchilar FAKT 2 yigʻindisining 2% i + 2 000 000 soʻm oylik oklad.'
-          : 'ROP: jamoasidagi sotuvchilar FAKT 2 yigʻindisining 2% i. 2 000 000 soʻm oklad faqat «Oylik» tabida qoʻshiladi.'}
+          : 'ROP: jamoasidagi sotuvchilar FAKT 2 yigʻindisining 2% i. 2 000 000 soʻm oklad faqat oylik jadvalda (16 kundan uzun davr) qoʻshiladi.'}
       </p>
     </>
   )
@@ -1403,132 +1279,22 @@ function RungStrip({
 }
 
 // ---------------------------------------------------------------------------
-// Months
+// The window in words
 // ---------------------------------------------------------------------------
 
-const MONTH_NAMES = [
-  'Yanvar',
-  'Fevral',
-  'Mart',
-  'Aprel',
-  'May',
-  'Iyun',
-  'Iyul',
-  'Avgust',
-  'Sentabr',
-  'Oktabr',
-  'Noyabr',
-  'Dekabr',
-]
+/**
+ * The longest window the server answers — `PAYROLL_MAX_DAYS` in queryParams,
+ * restated: the client may not import server code.
+ */
+const PAYROLL_MAX_DAYS = 31
 
 /**
- * The current month, as the SERVER's timezone would name it.
- *
- * Asia/Tashkent rather than the browser's zone: a laptop left on UTC would
- * open the payroll on the previous month for five hours every night, and the
- * window this string selects is built in Tashkent at the other end.
+ * The window in words — «01.10 – 17.10», one day once. The end is exclusive,
+ * so the last day named is the one before it.
  */
-function currentMonth(): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tashkent',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date())
-  const year = parts.find((part) => part.type === 'year')?.value ?? '1970'
-  const month = parts.find((part) => part.type === 'month')?.value ?? '01'
-  return `${year}-${month}`
-}
-
-function shiftMonth(yearMonth: string, by: number): string {
-  const [year, month] = yearMonth.split('-').map(Number)
-  const index = (year ?? 1970) * 12 + (month ?? 1) - 1 + by
-  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`
-}
-
-function monthLabel(yearMonth: string): string {
-  const [year, month] = yearMonth.split('-').map(Number)
-  return `${MONTH_NAMES[(month ?? 1) - 1]} ${year}`
-}
-
-function halfLabel(half: HalfOfMonth): string {
-  return half === 'first' ? '1–15-kunlar' : '16-kundan oy oxirigacha'
-}
-
-/**
- * The comparison window in words: «1-sen – 15-sen», or, while the period runs
- * and the window is cut to the same elapsed time, «1-sen – 5-sen, 11:30 gacha».
- * The end is exclusive, so a closed window names its last day, not the next.
- */
-function comparisonText(window: PeriodDto, open: boolean): string {
+function windowText(window: PeriodDto): string {
   const lastDay = new Date(new Date(window.end).getTime() - 1).toISOString()
-  return open
-    ? `${formatDateShort(window.start)} – ${formatDateTime(window.end)} gacha`
-    : `${formatDateShort(window.start)} – ${formatDateShort(lastDay)}`
-}
-
-// ---------------------------------------------------------------------------
-// Weeks
-// ---------------------------------------------------------------------------
-
-/**
- * This week's Monday, `YYYY-MM-DD`, as Tashkent names today — for the reason
- * `currentMonth` gives. Weekday arithmetic runs on a UTC date built from
- * Tashkent's calendar day, so the browser's own zone never enters it.
- */
-function currentMonday(): string {
-  // Parts, not `.format()`: the en-CA pattern has changed between ICU versions.
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tashkent',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(new Date())
-  const part = (type: string, fallback: string) =>
-    parts.find((p) => p.type === type)?.value ?? fallback
-  const date = isoToUtc(`${part('year', '1970')}-${part('month', '01')}-${part('day', '01')}`)
-  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7))
-  return utcToIso(date)
-}
-
-function shiftWeek(monday: string, by: number): string {
-  const date = isoToUtc(monday)
-  date.setUTCDate(date.getUTCDate() + by * 7)
-  return utcToIso(date)
-}
-
-/**
- * The longest «Sana» window the server answers — `PAYROLL_RANGE_MAX_DAYS` in
- * queryParams, restated: the client may not import server code.
- */
-const PAYROLL_RANGE_MAX_DAYS = 93
-
-/** «1-oktabr – 17-oktabr 2026» — `weekLabel`'s shape for picked days. */
-function rangeLabel(from: string, to: string): string {
-  const start = isoToUtc(from)
-  const end = isoToUtc(to)
-  const name = (date: Date) => MONTH_NAMES[date.getUTCMonth()]!.toLowerCase()
-  const first =
-    start.getUTCFullYear() === end.getUTCFullYear()
-      ? `${start.getUTCDate()}-${name(start)}`
-      : `${start.getUTCDate()}-${name(start)} ${start.getUTCFullYear()}`
-  if (from === to) return `${end.getUTCDate()}-${name(end)} ${end.getUTCFullYear()}`
-  return `${first} – ${end.getUTCDate()}-${name(end)} ${end.getUTCFullYear()}`
-}
-
-/** «28-sentabr – 4-oktabr 2026», the year once, at the end. */
-function weekLabel(monday: string): string {
-  const start = isoToUtc(monday)
-  const end = isoToUtc(monday)
-  end.setUTCDate(end.getUTCDate() + 6)
-  const name = (date: Date) => MONTH_NAMES[date.getUTCMonth()]!.toLowerCase()
-  return `${start.getUTCDate()}-${name(start)} – ${end.getUTCDate()}-${name(end)} ${end.getUTCFullYear()}`
-}
-
-function isoToUtc(iso: string): Date {
-  const [year, month, day] = iso.split('-').map(Number)
-  return new Date(Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1))
-}
-
-function utcToIso(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  const first = formatDateShort(window.start)
+  const last = formatDateShort(lastDay)
+  return first === last ? first : `${first} – ${last}`
 }

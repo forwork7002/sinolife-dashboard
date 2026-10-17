@@ -1,16 +1,18 @@
 /**
- * «Oyliklar» — what each seller is owed for a payroll period: a month, half a
- * month, or (since 2026-10-03) a week. The three are one computation over a
- * different window and a different table; see `domain/payroll/sellerPayroll`.
+ * «Oyliklar» — what each seller is owed over the dashboard's window (since
+ * 2026-10-17: «Bugun · Kecha · Shu oy · Sana», as on Savdo dinamikasi — the
+ * Haftalik / 15 kunlik / Oylik tabs went). The window's length picks the
+ * client's table (`payrollSchemeOf`); see `domain/payroll/sellerPayroll`.
  *
  * ONE MEASUREMENT AND ONE RULE, kept apart. The measurement is FAKT 2 per
- * seller BY THE DAY IT WAS DELIVERED (`deliveredSellerRows`) — the client,
- * 2026-10-05: pay is the money delivered in the period. Until then it was the
- * board's query (`confirmationSellerRating`), which dates FAKT 2 by the queue
- * arrival: the running week read low, a closed month kept growing, and a
- * parcel delivered this week was paid into last. So this figure and the same
- * person's Успешно on «Sotuvchilar reytingi» now differ BY THE DATE ONLY —
- * same orders, same seller (the team label follows the newest delivery). The rule is
+ * seller from the SAME query Savdo dinamikasi and the sellers board read
+ * (`confirmationSellerRating`, the queue cohort: orders that ARRIVED in the
+ * window and are delivered now), so a seller's figure here and their FAKT 2
+ * there are one number. The client, 2026-10-17: «savdo dinamikasidagi to'g'ri
+ * malumot ekan». From 2026-10-05 to then it was dated by the delivery day
+ * (`deliveredSellerRows`, deleted with this change) and the two screens
+ * disagreed for the same seller and month. What that costs, stated: a closed
+ * month keeps growing while its late parcels land. The rule is
  * `domain/payroll/sellerPayroll`, which is the client's own table transcribed
  * and knows nothing about databases.
  *
@@ -32,9 +34,9 @@ import { type DeltaDto, growth, toDeltaDto } from '@/server/domain/analytics/met
 import { mergeSellerTeamSlices } from '@/server/domain/analytics/sellerTeams'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
 import type { Period } from '@/server/domain/period/period'
-import type { PayrollHalfValue } from '@/server/domain/period/period'
 import {
   type PayrollSchemeValue,
+  payrollSchemeOf,
   ropPayroll,
   sellerPayroll,
 } from '@/server/domain/payroll/sellerPayroll'
@@ -111,8 +113,8 @@ export interface PayrollTeamDto {
   readonly fakt2Delta: DeltaDto
   readonly totalDelta: DeltaDto
   /**
-   * The ROP's own pay off this team's FAKT 2 (`ropPayroll`): 2% on every tab,
-   * + 2 000 000 oklad on the month. Null for «ROP yoʻq» and for a team with
+   * The ROP's own pay off this team's FAKT 2 (`ropPayroll`): 2% on every
+   * table, + 2 000 000 oklad on the month's. Null for «ROP yoʻq» and for a team with
    * nobody paid now. `head` is the unit's head in Bitrix24, null if unnamed.
    */
   readonly ropPay: {
@@ -136,8 +138,8 @@ export interface PayrollDto {
   /**
    * Whether the period is still running.
    *
-   * The window is never clipped to now (see `payrollPeriod`), so a half that
-   * has not finished reports what has been delivered so far. The screen has to
+   * «Shu oy» runs to the end of today, so a window that has not finished
+   * reports what has been delivered so far. The screen has to
    * be able to say that out loud, or a mid-period total reads as a final one.
    */
   readonly open: boolean
@@ -202,17 +204,16 @@ export interface PayrollDto {
 const payrollCache = ttlCache<PayrollDto>(120_000)
 
 /**
- * ONE WINDOW'S DELIVERED ROWS, memoised on the window alone — 2026-10-06.
+ * ONE WINDOW'S FAKT 2 ROWS, memoised on the window alone — 2026-10-06.
  *
  * The memo above is keyed on the comparison window too, and while a period
- * runs that window's end moves with the clock (`comparablePayrollPeriod`), so
- * a poll of the running week or month regularly meets a key it has never seen
- * and rebuilds. Until this memo, that rebuild ran BOTH `deliveredSellerRows`
- * scans in front of the reader — the current period's included, although its
+ * ran, that window's end moved with the clock, so a poll of the running week
+ * or month regularly met a key it had never seen and rebuilt. Until this
+ * memo, that rebuild ran BOTH rows scans in front of the reader — the current period's included, although its
  * window had not moved. Memoised here on start|end with stale-while-revalidate,
  * the current period's rows are served on every poll and refreshed behind
  * the reader; only the comparison's scan is ever waited for. The window is the
- * whole question: the rows are the same delivered FAKT 2 whichever table pays
+ * whole question: the rows are the same FAKT 2 whichever table pays
  * them and in whatever currency, so neither is in the key. This is the ONE
  * stale-while-revalidate layer on the screen — see `payrollCache` for why the
  * DTO over it is not another.
@@ -236,39 +237,12 @@ export class PayrollService {
   constructor(private readonly insights: InsightsRepository) {}
 
   /**
-   * The monthly payroll: the whole month, or one half of it.
-   *
-   * `previous` is the comparison window, built by the route with
-   * `comparablePayrollPeriod` — the like period before, cut to the same
-   * elapsed time while this one runs.
+   * The payroll over the dashboard's window, paid by the table its length
+   * names. `previous` is the comparison window — the dashboard's own
+   * `previousEquivalent`, built by the route.
    */
-  async sellers(
-    period: Period,
-    previous: Period,
-    half: PayrollHalfValue,
-    currency: string,
-    now: Date,
-  ): Promise<PayrollDto> {
-    return this.cached(half === 'full' ? 'month' : 'half', period, previous, currency, now)
-  }
-
-  /** The weekly income, Monday to Sunday — «HAFTALIK DAROMAD». */
-  async weekly(period: Period, previous: Period, currency: string, now: Date): Promise<PayrollDto> {
-    return this.cached('week', period, previous, currency, now)
-  }
-
-  /**
-   * A window the reader picked day by day («Sana»), paid by the table of the
-   * tab beside the picker. Same rows, same build — only the window differs.
-   */
-  async range(
-    scheme: PayrollSchemeValue,
-    period: Period,
-    previous: Period,
-    currency: string,
-    now: Date,
-  ): Promise<PayrollDto> {
-    return this.cached(scheme, period, previous, currency, now)
+  async payroll(period: Period, previous: Period, currency: string, now: Date): Promise<PayrollDto> {
+    return this.cached(payrollSchemeOf(period), period, previous, currency, now)
   }
 
   private cached(
@@ -279,11 +253,9 @@ export class PayrollService {
     now: Date,
   ): Promise<PayrollDto> {
     /*
-      The window's start alone does not name the period — a month, its first
-      half and the week that opens on the 1st can share it — so the scheme and
-      the end are in the key as well. The comparison window moves with the
-      clock while the period runs (in ten-minute steps), so its end is in it
-      too.
+      The window's start alone does not name the period — «Bugun» and «Shu
+      oy» share it on the 1st — so the scheme and the end are in the key as
+      well, and the comparison window with them.
     */
     const key = [
       scheme,
@@ -297,9 +269,10 @@ export class PayrollService {
   }
 
   /*
-    COMPANY-WIDE, EXPLICITLY. `deliveredSellerRows` takes no scope at all —
-    the one screen in this product that states salaries reads everybody's
-    rows, and the route refuses a narrowed account (see the header).
+    COMPANY-WIDE, EXPLICITLY. `restrictToEmployeeIds: null` is the value the
+    repository reads as "everybody", written here rather than left to a
+    default so the one screen that states salaries says whose rows it asks
+    for; and no filters, so no brand — the board's «Hammasi».
 
     FOLDED TO ONE ROW PER PERSON. The rating hands back a slice per seller
     and team since the team became the deal's own snapshot (2026-09-26),
@@ -308,7 +281,7 @@ export class PayrollService {
   */
   private slices(period: Period): Promise<ConfirmationSellerRatingRow[]> {
     return rowsCache.get(`${period.start.toISOString()}|${period.end.toISOString()}`, () =>
-      this.insights.deliveredSellerRows(period),
+      this.insights.confirmationSellerRating({ ...period, restrictToEmployeeIds: null }),
     )
   }
 
@@ -342,7 +315,11 @@ export class PayrollService {
         : Promise.resolve([] as ConfirmationSellerRatingRow[]),
       this.heads(),
     ])
-    const rows = mergeSellerTeamSlices(slices)
+    /*
+      PAID PEOPLE ONLY. The queue cohort also carries everyone whose orders
+      are still queued or were refused — on the board, not on a payroll.
+    */
+    const rows = mergeSellerTeamSlices(slices).filter((row) => row.deliveredMinor > 0n)
     /* The ROPs' basis: what was sold under each label, slice by slice. */
     const ropBasis = new Map<string, bigint>()
     for (const slice of slices) {
@@ -354,16 +331,17 @@ export class PayrollService {
       a week against a week — so «oʻtgan davr JAMI» is what the same person
       would have been paid then, not a figure from a different rule.
     */
-    const previousPay = previousRows.map((row) => ({
+    // Paid people only, as now: the cohort also carries the queued and refused.
+    const previousPay = previousRows.filter((row) => row.deliveredMinor > 0n).map((row) => ({
       employeeId: row.employeeId,
       rop: row.rop,
       fakt2: row.deliveredMinor,
       pay: sellerPayroll({ basisMinor: row.deliveredMinor, scheme }),
     }))
     /*
-      «HAD A PREVIOUS» MEANS DELIVERED MONEY THEN. Every row carries a
-      delivery since the basis became the delivery day, but an order booked at
-      0 soʻm still makes a FAKT 2 of 0; counting that as a baseline would
+      «HAD A PREVIOUS» MEANS DELIVERED MONEY THEN. The cohort carries sellers
+      with nothing delivered (queued, refused), and an order booked at 0 soʻm
+      makes a FAKT 2 of 0 too; counting that as a baseline would
       print «baza yoʻq · oldin 0» where the screen means «yangi», and rank
       them top of the risers with their whole FAKT 2.
     */
@@ -372,11 +350,9 @@ export class PayrollService {
     )
 
     /*
-      FAKT 2 FIRST, THEN THE ID. Delivered money is what the pay is computed
-      from; the id is the last resort so two people level on it do not swap
-      places between refreshes. (FAKT 1 was the middle leg while the rows came
-      off the queue's rating; the delivery rows carry none, so it reads 0 on
-      every row and two equal FAKT 2s now share a rank.)
+      FAKT 2, THEN FAKT 1, THEN THE ID — the board's own order, so a seller's
+      place here is their place on Savdo dinamikasi. The id is the last resort
+      so two people level on both do not swap places between refreshes.
     */
     const ordered = [...rows].sort(
       (a, b) =>
