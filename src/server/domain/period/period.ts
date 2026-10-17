@@ -549,6 +549,70 @@ export function previousPayrollMonday(mondayIso: string): string {
 }
 
 /**
+ * «SANA» — a payroll window the reader picks day by day (2026-10-17, the client:
+ * «15 kunlik emas 1 oylik emas, sana orqali kiritsak»): the first day 00:00 to
+ * the day after the last 00:00, Tashkent. The browser names two CALENDAR days
+ * and the server builds the instants, for the reason `payrollPeriod` gives.
+ * Not clipped to `now`, like the other two.
+ *
+ * @param fromIso `YYYY-MM-DD`, the first day, read in `timeZone`.
+ * @param toIso `YYYY-MM-DD`, the last day INCLUSIVE.
+ */
+export function payrollRangePeriod(fromIso: string, toIso: string, timeZone: string): Period {
+  const start = payrollDayStart(fromIso, timeZone)
+  const last = payrollDayStart(toIso, timeZone)
+  if (last.getTime() < start.getTime()) {
+    throw new InvalidPeriodError(`${toIso} is before ${fromIso}`)
+  }
+
+  return Object.freeze({
+    start: toInstant(start),
+    end: toInstant(addDays(last, 1)),
+    timeZone,
+    preset: 'custom' as const,
+  })
+}
+
+/**
+ * The window a picked range is set against: as many days, ending the day
+ * before it starts — 10–16.10 against 03–09.10. A picked range has no
+ * calendar «like period» the way a month or a week does, so the like period
+ * is the same LENGTH, and `comparablePayrollPeriod` cuts it while it runs.
+ * Pure date arithmetic, no zone.
+ */
+export function previousPayrollRange(fromIso: string, toIso: string): { from: string; to: string } {
+  const from = payrollIsoDay(fromIso)
+  const to = payrollIsoDay(toIso)
+  const days = Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1
+  const shift = (date: Date, by: number) => {
+    const moved = new Date(0)
+    // setUTCFullYear, not Date.UTC: the latter reads years 0–99 as 1900–1999.
+    moved.setUTCFullYear(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + by)
+    return moved.toISOString().slice(0, 10)
+  }
+  return { from: shift(from, -days), to: shift(from, -1) }
+}
+
+/** A `YYYY-MM-DD` calendar day as a UTC midnight, refused when it is not a real day. */
+function payrollIsoDay(iso: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso)
+  if (!match) throw new InvalidPeriodError(`${iso} is not a YYYY-MM-DD date`)
+  const date = new Date(0)
+  date.setUTCFullYear(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  if (date.toISOString().slice(0, 10) !== iso) throw new InvalidPeriodError(`${iso} is not a date`)
+  return date
+}
+
+/** The zone's own midnight of a `YYYY-MM-DD` day — `payrollWeekPeriod`'s construction. */
+function payrollDayStart(iso: string, timeZone: string): TZDate {
+  const day = payrollIsoDay(iso)
+  const start = startOfDay(new TZDate(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), timeZone))
+  // TZDate's constructor reads years 0–99 as 1900–1999, as Date's does: refuse rather than shift.
+  if (start.getFullYear() !== day.getUTCFullYear()) throw new InvalidPeriodError(`${iso} is not a usable date`)
+  return start
+}
+
+/**
  * The previous payroll period, cut to be COMPARABLE with `current` at `now`.
  *
  * A closed period is compared whole with whole. A RUNNING one is compared

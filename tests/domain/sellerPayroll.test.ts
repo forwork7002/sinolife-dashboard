@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -11,11 +14,18 @@ import {
 import {
   comparablePayrollPeriod,
   payrollPeriod,
+  payrollRangePeriod,
   payrollWeekPeriod,
   previousPayrollMonday,
   previousPayrollMonth,
+  previousPayrollRange,
 } from '@/server/domain/period/period'
-import { payrollQuerySchema, payrollWeekQuerySchema } from '@/server/http/queryParams'
+import {
+  PAYROLL_RANGE_MAX_DAYS,
+  payrollQuerySchema,
+  payrollRangeQuerySchema,
+  payrollWeekQuerySchema,
+} from '@/server/http/queryParams'
 
 const som = (major: number) => BigInt(major) * 100n
 const mln = (major: number) => som(major * 1_000_000)
@@ -299,6 +309,81 @@ describe('the weekly window', () => {
     expect(payrollWeekQuerySchema.safeParse({ week: '0000-01-03' }).success).toBe(false)
     expect(payrollQuerySchema.safeParse({ month: '0000-01' }).success).toBe(false)
     expect(payrollQuerySchema.safeParse({ month: '0001-01' }).success).toBe(true)
+  })
+})
+
+/**
+ * «SANA» — days the reader picked (2026-10-17): the first day 00:00 to the
+ * day after the last 00:00, Tashkent, set against as many days just before.
+ */
+describe('the picked-days window', () => {
+  const iso = (date: Date) => date.toISOString()
+
+  it('runs from the first day 00:00 to the day after the last, Tashkent', () => {
+    const range = payrollRangePeriod('2026-10-01', '2026-10-17', TZ)
+    expect(iso(range.start)).toBe('2026-09-30T19:00:00.000Z')
+    expect(iso(range.end)).toBe('2026-10-17T19:00:00.000Z')
+  })
+
+  it('is one whole day when both ends are the same day', () => {
+    const day = payrollRangePeriod('2026-10-17', '2026-10-17', TZ)
+    expect(iso(day.start)).toBe('2026-10-16T19:00:00.000Z')
+    expect(iso(day.end)).toBe('2026-10-17T19:00:00.000Z')
+  })
+
+  it('equals the calendar month when picked as one', () => {
+    const range = payrollRangePeriod('2026-09-01', '2026-09-30', TZ)
+    const month = payrollPeriod('2026-09', 'full', TZ)
+    expect(iso(range.start)).toBe(iso(month.start))
+    expect(iso(range.end)).toBe(iso(month.end))
+  })
+
+  it('refuses an inverted range or a day that does not exist', () => {
+    expect(() => payrollRangePeriod('2026-10-17', '2026-10-01', TZ)).toThrow()
+    expect(() => payrollRangePeriod('2026-02-30', '2026-03-01', TZ)).toThrow()
+    expect(() => payrollRangePeriod('01.10.2026', '2026-10-17', TZ)).toThrow()
+  })
+
+  it('is set against as many days ending the day before it', () => {
+    expect(previousPayrollRange('2026-10-10', '2026-10-16')).toEqual({ from: '2026-10-03', to: '2026-10-09' })
+    expect(previousPayrollRange('2026-10-17', '2026-10-17')).toEqual({ from: '2026-10-16', to: '2026-10-16' })
+    // Across a month and a year.
+    expect(previousPayrollRange('2026-03-01', '2026-03-31')).toEqual({ from: '2026-01-29', to: '2026-02-28' })
+    expect(previousPayrollRange('2026-01-01', '2026-01-10')).toEqual({ from: '2025-12-22', to: '2025-12-31' })
+  })
+
+  it('is cut to the elapsed time while it runs', () => {
+    const current = payrollRangePeriod('2026-10-10', '2026-10-16', TZ)
+    const before = previousPayrollRange('2026-10-10', '2026-10-16')
+    const previous = payrollRangePeriod(before.from, before.to, TZ)
+    // Two days and two hours into the range.
+    const now = new Date(current.start.getTime() + 50 * 3_600_000)
+    const cut = comparablePayrollPeriod(current, previous, now)
+    expect(iso(cut.start)).toBe(iso(previous.start))
+    expect(cut.end.getTime() - cut.start.getTime()).toBe(50 * 3_600_000)
+  })
+
+  it('is refused at the query string as a 400, not a 500', () => {
+    const ok = { from: '2026-10-01', to: '2026-10-17', scheme: 'month' }
+    expect(payrollRangeQuerySchema.safeParse(ok).success).toBe(true)
+    expect(payrollRangeQuerySchema.safeParse({ ...ok, scheme: 'week' }).success).toBe(true)
+    expect(payrollRangeQuerySchema.safeParse({ ...ok, scheme: 'year' }).success).toBe(false)
+    expect(payrollRangeQuerySchema.safeParse({ ...ok, from: '2026-10-18' }).success).toBe(false)
+    expect(payrollRangeQuerySchema.safeParse({ ...ok, to: '2026-02-30' }).success).toBe(false)
+    expect(payrollRangeQuerySchema.safeParse({ ...ok, from: '0000-01-01', to: '0000-01-02' }).success).toBe(false)
+    // 93 days pass, 94 do not.
+    expect(payrollRangeQuerySchema.safeParse({ ...ok, from: '2026-07-17', to: '2026-10-17' }).success).toBe(true)
+    expect(payrollRangeQuerySchema.safeParse({ ...ok, from: '2026-07-16', to: '2026-10-17' }).success).toBe(false)
+    expect(payrollRangeQuerySchema.safeParse({ from: '2026-10-01', to: '2026-10-17' }).success).toBe(false)
+    // TZDate reads a year under 100 as 19xx — a 400, never a 200 for 1950.
+    expect(payrollRangeQuerySchema.safeParse({ ...ok, from: '0050-03-01', to: '0050-03-02' }).success).toBe(false)
+    expect(() => payrollRangePeriod('0050-03-01', '0050-03-02', TZ)).toThrow()
+  })
+
+  it('the page offers exactly the days the server answers', () => {
+    // Hand-mirrored: the client may not import server code, so nothing else checks it.
+    const page = readFileSync(join(process.cwd(), 'src/features/payroll/PayrollPage.tsx'), 'utf8')
+    expect(page).toContain(`const PAYROLL_RANGE_MAX_DAYS = ${PAYROLL_RANGE_MAX_DAYS}\n`)
   })
 })
 

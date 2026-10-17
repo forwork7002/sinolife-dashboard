@@ -13,6 +13,7 @@
 
 import { z } from 'zod'
 
+import { PAYROLL_SCHEMES } from '@/server/domain/payroll/sellerPayroll'
 import { PAYROLL_HALVES, PERIOD_PRESETS } from '@/server/domain/period/period'
 import { ROISTAT_DIMS } from '@/server/domain/roistat/roistatCuts'
 import {
@@ -220,6 +221,44 @@ export const payrollWeekQuerySchema = z.object({
     // The comparison week is seven days earlier; year 0000 cannot name it.
     .refine((value) => !value.startsWith('0000'), 'Expected a year from 0001'),
 })
+
+/**
+ * The payroll's «Sana» — two calendar days the reader picked, and the table the
+ * pay is worked out by (`scheme`: the tab lit beside the picker).
+ *
+ * Days, never instants: the server builds the window in Tashkent
+ * (`payrollRangePeriod`), for the reason `payrollQuerySchema` gives. At most
+ * `PAYROLL_RANGE_MAX_DAYS` — the same 93 the ROP otchet takes — because each
+ * load reads the window and the one before it.
+ */
+export const PAYROLL_RANGE_MAX_DAYS = 93
+
+const payrollDay = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date in YYYY-MM-DD format')
+  .refine((value) => {
+    const [year, month, day] = value.split('-').map(Number)
+    // setUTCFullYear, not Date.UTC: the latter reads years 0–99 as 1900–1999.
+    const date = new Date(0)
+    date.setUTCFullYear(year!, month! - 1, day!)
+    return date.toISOString().slice(0, 10) === value
+  }, 'Expected a real date')
+  /*
+    No payroll before 2000. The comparison window runs before `from`, and a
+    year under 100 is read as 19xx by the zone's date constructor — a 200 for
+    the wrong window, where this is a 400 naming the field.
+  */
+  .refine((value) => value >= '2000-01-01', 'Expected a date from 2000-01-01')
+
+export const payrollRangeQuerySchema = z
+  .object({ from: payrollDay, to: payrollDay, scheme: z.enum(PAYROLL_SCHEMES) })
+  .refine((query) => query.from <= query.to, { message: 'from must not be after to', path: ['to'] })
+  .refine(
+    (query) =>
+      (Date.parse(`${query.to}T00:00:00Z`) - Date.parse(`${query.from}T00:00:00Z`)) / 86_400_000 + 1 <=
+      PAYROLL_RANGE_MAX_DAYS,
+    { message: `At most ${PAYROLL_RANGE_MAX_DAYS} days`, path: ['to'] },
+  )
 
 /**
  * One department's roster, for the panel the org chart opens.

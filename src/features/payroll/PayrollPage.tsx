@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
+import { RangePickerButton } from '@/components/layout/PeriodFilter'
 import { ErrorState, statusOf } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
@@ -87,15 +88,31 @@ export function PayrollPage() {
   const [month, setMonth] = useState(() => currentMonth())
   /* Which half on the «15 kunlik» tab — from the 1st by default, as asked. */
   const [half, setHalf] = useState<HalfOfMonth>('first')
+  /*
+    «SANA» — days the reader picked (2026-10-17, the client: «15 kunlik emas
+    1 oylik emas, sana orqali kiritsak»). While it is on, it is the window and
+    the lit tab only names the table the pay is worked out by; pressing a tab
+    goes back to that tab's own period. The last pick is kept, so the picker
+    reopens on it.
+  */
+  const [range, setRange] = useState<{ from: string; to: string } | null>(null)
+  const [rangeOn, setRangeOn] = useState(false)
+  const picked = rangeOn ? range : null
   const [search, setSearch] = useState('')
 
   const monthHalf = view === 'half' ? half : 'full'
   const query = useQuery({
-    queryKey: view === 'week' ? ['payroll', 'week', week] : ['payroll', 'month', month, monthHalf],
+    queryKey: picked
+      ? ['payroll', 'range', view, picked.from, picked.to]
+      : view === 'week'
+        ? ['payroll', 'week', week]
+        : ['payroll', 'month', month, monthHalf],
     queryFn: ({ signal }) =>
-      view === 'week'
-        ? apiGet<PayrollDto>('/payroll/weekly', { week }, signal)
-        : apiGet<PayrollDto>('/payroll/sellers', { month, half: monthHalf }, signal),
+      picked
+        ? apiGet<PayrollDto>('/payroll/range', { from: picked.from, to: picked.to, scheme: view }, signal)
+        : view === 'week'
+          ? apiGet<PayrollDto>('/payroll/weekly', { week }, signal)
+          : apiGet<PayrollDto>('/payroll/sellers', { month, half: monthHalf }, signal),
   })
 
   const viewStatus = statusOf(query)
@@ -104,8 +121,9 @@ export function PayrollPage() {
 
   const scheme: Scheme = view
   const words = WORDS[scheme]
-  const periodText =
-    view === 'week'
+  const periodText = picked
+    ? rangeLabel(picked.from, picked.to)
+    : view === 'week'
       ? weekLabel(week)
       : view === 'half'
         ? `${monthLabel(month)} · ${halfLabel(half)}`
@@ -115,7 +133,13 @@ export function PayrollPage() {
     A week's rows never sit under the month's headings, not even for a frame:
     the payload is used only when it answers the scheme on screen.
   */
-  const data = query.data?.data.scheme === scheme ? query.data.data : undefined
+  /*
+    Nor a previous window's: `placeholderData` keeps the last answer while a
+    new key loads, and the month's payload has the very scheme a «Sana» range
+    on the Oylik tab asks for — so it would sit under the new dates' heading.
+  */
+  const data =
+    !query.isPlaceholderData && query.data?.data.scheme === scheme ? query.data.data : undefined
   /*
     The hero's own reading of the request: a previous tab's payload held over
     a new one is still loading here, not a period with nothing in it.
@@ -161,7 +185,10 @@ export function PayrollPage() {
         <>
           <SegmentedControl<PayrollView>
             value={view}
-            onChange={setView}
+            onChange={(next) => {
+              setView(next)
+              setRangeOn(false)
+            }}
             ariaLabel="Boʻlim"
             options={[
               { value: 'week', label: 'Haftalik' },
@@ -169,7 +196,7 @@ export function PayrollPage() {
               { value: 'month', label: 'Oylik' },
             ]}
           />
-          {view === 'week' ? (
+          {picked ? null : view === 'week' ? (
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
@@ -233,6 +260,16 @@ export function PayrollPage() {
               )}
             </>
           )}
+          <RangePickerButton
+            from={range?.from}
+            to={range?.to}
+            active={rangeOn}
+            maxDays={PAYROLL_RANGE_MAX_DAYS}
+            onPick={(next) => {
+              setRange(next)
+              setRangeOn(true)
+            }}
+          />
           <SearchInput value={search} onChange={setSearch} placeholder="Ism yoki ROP…" />
           <CopyButton
             rows={sellers}
@@ -287,7 +324,7 @@ export function PayrollPage() {
                 </p>
               )}
               <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
-                {words.fund}
+                {picked ? 'Tanlangan kunlar uchun jami toʻlov' : words.fund}
                 {data && compared && (
                   <>
                     <TrendIndicator delta={data.deltas.total} />
@@ -1457,6 +1494,25 @@ function shiftWeek(monday: string, by: number): string {
   const date = isoToUtc(monday)
   date.setUTCDate(date.getUTCDate() + by * 7)
   return utcToIso(date)
+}
+
+/**
+ * The longest «Sana» window the server answers — `PAYROLL_RANGE_MAX_DAYS` in
+ * queryParams, restated: the client may not import server code.
+ */
+const PAYROLL_RANGE_MAX_DAYS = 93
+
+/** «1-oktabr – 17-oktabr 2026» — `weekLabel`'s shape for picked days. */
+function rangeLabel(from: string, to: string): string {
+  const start = isoToUtc(from)
+  const end = isoToUtc(to)
+  const name = (date: Date) => MONTH_NAMES[date.getUTCMonth()]!.toLowerCase()
+  const first =
+    start.getUTCFullYear() === end.getUTCFullYear()
+      ? `${start.getUTCDate()}-${name(start)}`
+      : `${start.getUTCDate()}-${name(start)} ${start.getUTCFullYear()}`
+  if (from === to) return `${end.getUTCDate()}-${name(end)} ${end.getUTCFullYear()}`
+  return `${first} – ${end.getUTCDate()}-${name(end)} ${end.getUTCFullYear()}`
 }
 
 /** «28-sentabr – 4-oktabr 2026», the year once, at the end. */

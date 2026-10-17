@@ -257,6 +257,20 @@ export class PayrollService {
     return this.cached('week', period, previous, currency, now)
   }
 
+  /**
+   * A window the reader picked day by day («Sana»), paid by the table of the
+   * tab beside the picker. Same rows, same build — only the window differs.
+   */
+  async range(
+    scheme: PayrollSchemeValue,
+    period: Period,
+    previous: Period,
+    currency: string,
+    now: Date,
+  ): Promise<PayrollDto> {
+    return this.cached(scheme, period, previous, currency, now)
+  }
+
   private cached(
     scheme: PayrollSchemeValue,
     period: Period,
