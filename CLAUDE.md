@@ -156,6 +156,11 @@ everything under those**. Membership does not descend; headship does.
   descend would hand an ordinary registrar filed in «Тошкент онлайн» the nine
   teams beneath it. Then everyone whose **primary** `departmentId` is in that
   set. Granting TEAM to whoever heads the ROOT is the same as granting ALL.
+  **Since 2026-10-19 the descent stops at a «(ROP)» team when it STARTED at
+  one** (`"fromTeam"`): «Malika(ROP)» is the portal parent of Afruzaxon /
+  Sadriddin / Asliddin(ROP), and Malika read 47 people instead of her 7. A
+  non-team anchor (a branch, «Зехтра отдел продаж») still descends fully;
+  the other twelve TEAM accounts measured unchanged.
 - **PRIMARY membership, never `department_member`.** That table lists a person
   in every unit Bitrix24 names, and it exists for the org chart. This is a
   money question — one unit credits a person — and reading memberships would

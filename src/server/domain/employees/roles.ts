@@ -30,7 +30,7 @@
  * "Charos(ROP) " with a trailing space is a data-entry slip, not a different
  * kind of department.
  */
-const SALES_TEAM_SUFFIX = '(ROP)'
+export const SALES_TEAM_SUFFIX = '(ROP)'
 
 /** Is this department one of the sales teams? */
 export function isSalesTeamName(departmentName: string | null | undefined): boolean {

@@ -30,6 +30,17 @@
  *     unit he runs. Reading membership alone would hand that man his own team
  *     and not the branch he leads.
  *
+ *     EXCEPT FROM ONE SALES TEAM INTO ANOTHER (2026-10-19). A head whose own
+ *     unit is a «(ROP)» team reads that team and the non-team units under it,
+ *     never the «(ROP)» teams the portal filed beneath it: «Malika(ROP)» is
+ *     the parent of «Afruzaxon(ROP)», «Sadriddin(ROP)» and «Asliddin(ROP)»,
+ *     and descending put four teams — 47 people against her own 7 — on the
+ *     board of an account the form promises «ROP uchun — faqat oʻz
+ *     jamoasi». The client: «Malika faqat oʻz natijasini koʻrishi kerak». A
+ *     head of a unit that is NOT a team (a branch, «Зехтра отдел продаж»)
+ *     still reads everything below it. Measured on production that day: the
+ *     other twelve TEAM accounts resolve to exactly the people they did.
+ *
  *   MEMBERS — everyone whose PRIMARY `departmentId` falls in that set.
  *
  * PRIMARY MEMBERSHIP, NOT `department_member`, AND THAT IS THE LOAD-BEARING
@@ -50,6 +61,11 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
+import { SALES_TEAM_SUFFIX } from '@/server/domain/employees/roles'
+
+/** `isSalesTeamName` in SQL: the name, trimmed and case-folded, ends in «(ROP)». */
+const SALES_TEAM_SQL = (alias: string) =>
+  `lower(btrim(${alias}."name")) LIKE '%${SALES_TEAM_SUFFIX.toLowerCase()}'`
 
 export class ScopeRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -72,13 +88,17 @@ export class ScopeRepository {
       WITH RECURSIVE headed AS (
         -- The units this person RUNS, and then everything under them. Only
         -- this arm descends: see the header for why a membership must not.
-        SELECT d."id" AS id
+        -- "fromTeam" carries whether the walk started at a sales team: from
+        -- one, another sales team below is somebody else's team, not theirs.
+        SELECT d."id" AS id,
+               ${SALES_TEAM_SQL('d')} AS "fromTeam"
           FROM "department" d
          WHERE d."headId" = $1
         UNION
-        SELECT child."id"
+        SELECT child."id", h."fromTeam"
           FROM "department" child
           JOIN headed h ON child."parentId" = h.id
+         WHERE NOT (h."fromTeam" AND ${SALES_TEAM_SQL('child')})
       ),
       scope AS (
         SELECT id FROM headed

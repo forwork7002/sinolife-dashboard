@@ -89,6 +89,22 @@ describe('the team query', () => {
     })
   })
 
+  it('does not descend from one sales team into another', async () => {
+    /*
+      «Malika(ROP)» is the parent of three other «(ROP)» teams on the portal,
+      and descending put 47 people on an account meant to read its own 7
+      (2026-10-19). The walk remembers whether it started at a team and stops
+      at the next team; a branch head's walk carries false and goes on.
+    */
+    const { service, calls } = serviceFor({ 'emp-rop': [] })
+    await service.resolve(principal())
+    const sql = calls[0]!.sql
+
+    expect(sql).toContain(`lower(btrim(d."name")) LIKE '%(rop)' AS "fromTeam"`)
+    expect(sql).toContain('SELECT child."id", h."fromTeam"')
+    expect(sql).toContain(`WHERE NOT (h."fromTeam" AND lower(btrim(child."name")) LIKE '%(rop)')`)
+  })
+
   it('terminates on a cycle rather than recursing forever', async () => {
     // Nothing in the schema forbids a department being its own ancestor.
     // UNION de-duplicates and stops; UNION ALL would not.
