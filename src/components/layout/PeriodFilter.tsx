@@ -64,11 +64,18 @@ export function PeriodFilter({
   to,
   onChange,
   maxDays,
+  showYear = false,
 }: {
   value: PeriodPreset
   from?: string
   to?: string
   onChange: (selection: PeriodSelection) => void
+  /**
+   * A fourth «Shu yil» button after «Shu oy». Only «Savdo dinamikasi» asks for
+   * it (2026-10-19): the owner wants the yearly report there and nowhere else,
+   * so the shared row and the ⌘K palette keep their three.
+   */
+  showYear?: boolean
   /**
    * The longest window the screen's API answers, when it has one («ROP
    * otchet»: 93 days, 2026-10-14). The picker then offers no «Yil» and keeps
@@ -78,6 +85,9 @@ export function PeriodFilter({
 }) {
   const [open, setOpen] = useState(false)
   const container = useRef<HTMLDivElement>(null)
+  const presets: readonly PeriodPreset[] = showYear
+    ? [...VISIBLE_PRESETS, 'this_year']
+    : VISIBLE_PRESETS
 
   /*
     What the one remaining control says it is showing.
@@ -95,7 +105,7 @@ export function PeriodFilter({
       : // A window with no button of its own — arrived by link, or chosen in
         // the picker's Oy/Yil mode — is named here, or nothing on the row
         // would say what is on screen.
-        (VISIBLE_PRESETS as readonly string[]).includes(value)
+        presets.includes(value)
         ? t.period.pick
         : t.period[value]
 
@@ -148,7 +158,7 @@ export function PeriodFilter({
           role="group"
           aria-label={t.period.label}
         >
-          {VISIBLE_PRESETS.map((preset) => {
+          {presets.map((preset) => {
             const active = preset === value
             return (
               <button
@@ -162,7 +172,9 @@ export function PeriodFilter({
                 // shadow is a (layered) class, never inline: an inline
                 // box-shadow, `none` included, beats `.focusable:focus-visible`
                 // and the keyboard ring went with it.
-                className={`focusable h-9 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:h-7 sm:text-xs ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
+                // Four chips are 4px slimmer each on a phone so the row still
+                // fits a 360px screen beside «Sana».
+                className={`focusable h-9 rounded-[calc(var(--radius-panel-sm)-2px)] ${showYear ? 'px-2 sm:px-2.5' : 'px-2.5'} text-[13px] font-medium whitespace-nowrap transition-colors sm:h-7 sm:text-xs ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
                 style={{
                   background: active ? 'var(--glass-raised)' : 'transparent',
                   color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',

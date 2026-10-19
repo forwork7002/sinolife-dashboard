@@ -104,6 +104,7 @@ export function PageShell({
   children,
   period = true,
   periodMaxDays,
+  periodShowYear = false,
   fill = false,
   controlsAlign = 'start',
   devMark = true,
@@ -209,6 +210,8 @@ export function PageShell({
    * «Yil». Omitted: no limit.
    */
   periodMaxDays?: number
+  /** A «Shu yil» button beside the presets — «Savdo dinamikasi» only. */
+  periodShowYear?: boolean
   /**
    * Stretch the page body to the screen instead of to its own content.
    *
@@ -289,6 +292,7 @@ export function PageShell({
       to={filters.to}
       onChange={setPeriod}
       maxDays={periodMaxDays}
+      showYear={periodShowYear}
     />
   ) : null
 

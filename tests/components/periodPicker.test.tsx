@@ -148,3 +148,21 @@ describe('the period picker on a fixed day', () => {
     expect(screen.getByText('01.10 – 10.10')).toBeTruthy()
   })
 })
+
+describe('the «Shu yil» button', () => {
+  it('is shown only where the page asks for it, and selects this year', () => {
+    const onChange = vi.fn()
+    render(<PeriodFilter value="today" onChange={onChange} showYear />)
+
+    fireEvent.click(screen.getByRole('button', { name: t.period.this_year }))
+
+    expect(onChange).toHaveBeenCalledWith({ preset: 'this_year' })
+  })
+
+  it('is left off every other page', () => {
+    render(<PeriodFilter value="today" onChange={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: t.period.this_year })).toBeNull()
+    expect(screen.getByRole('button', { name: t.period.this_month })).toBeTruthy()
+  })
+})

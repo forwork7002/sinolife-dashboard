@@ -167,6 +167,8 @@ export function SalesPage() {
   return (
     <PageShell
       title={t.nav.sales}
+      // The yearly report lives here and on no other page.
+      periodShowYear
       meta={faktTrend.data?.meta ?? faktBoard.query.data?.meta}
       stale={[faktBoard.query, faktTrend].some((q) => q.isPlaceholderData)}
       /*
