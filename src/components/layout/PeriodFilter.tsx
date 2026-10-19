@@ -39,17 +39,16 @@ export type PeriodPreset = (typeof PERIOD_PRESETS)[number] | 'custom'
  * them, and `?preset=this_year` typed by hand still works. What changed is
  * how many of them earn a permanent place on every page.
  *
- * The three first are the ones asked for many times a day. «Shu yil» came
- * back on 2026-10-17 at the user's request — the yearly report, one press
- * away. The two still dropped — shu hafta, oʻtgan oy — are each one selection
- * away in the picker (Kun · Oy · Yil · Oraliq); all six cost a row that ran
- * about 470px and scrolled sideways on a phone.
+ * The three here are the ones asked for many times a day. The three dropped
+ * — shu hafta, oʻtgan oy, shu yil — are each one selection away in the picker
+ * (Kun · Oy · Yil · Oraliq), and keeping them cost a row that ran about 470px
+ * and scrolled sideways on a phone.
  *
  * ONE LIST, read by both surfaces that offer presets: this control and the
  * command palette. Two lists drift, and the drift is invisible until somebody
  * reaches for a window on one surface that the other has stopped offering.
  */
-export const VISIBLE_PRESETS = ['today', 'yesterday', 'this_month', 'this_year'] as const
+export const VISIBLE_PRESETS = ['today', 'yesterday', 'this_month'] as const
 
 export interface PeriodSelection {
   readonly preset: PeriodPreset
@@ -128,9 +127,8 @@ export function PeriodFilter({
     /*
       FULL WIDTH ON A PHONE, ITS OWN WIDTH ON A DESK.
 
-      Four presets and the picker fit a phone's 328px content column (a 360px
-      phone less the gutters) flat — 316px with the chips' phone padding, so
-      the row does not scroll. It did while it carried six presets: about
+      Three presets and the picker fit a phone's ~360px content column flat,
+      so the row no longer scrolls. It did while it carried six presets: about
       470px, which ran past the edge of every page (see VISIBLE_PRESETS).
 
       The picker popover hangs off THIS wrapper, so it spans the row on a
@@ -150,8 +148,7 @@ export function PeriodFilter({
           role="group"
           aria-label={t.period.label}
         >
-          {/* A screen with a window limit answers no year: «Shu yil» would be a 400. */}
-          {VISIBLE_PRESETS.filter((preset) => preset !== 'this_year' || maxDays === undefined).map((preset) => {
+          {VISIBLE_PRESETS.map((preset) => {
             const active = preset === value
             return (
               <button
@@ -165,7 +162,7 @@ export function PeriodFilter({
                 // shadow is a (layered) class, never inline: an inline
                 // box-shadow, `none` included, beats `.focusable:focus-visible`
                 // and the keyboard ring went with it.
-                className={`focusable h-9 rounded-[calc(var(--radius-panel-sm)-2px)] px-2 text-[13px] font-medium whitespace-nowrap transition-colors sm:h-7 sm:px-2.5 sm:text-xs ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
+                className={`focusable h-9 rounded-[calc(var(--radius-panel-sm)-2px)] px-2.5 text-[13px] font-medium whitespace-nowrap transition-colors sm:h-7 sm:text-xs ${active ? 'shadow-[var(--glass-highlight),var(--shadow-card)]' : ''}`}
                 style={{
                   background: active ? 'var(--glass-raised)' : 'transparent',
                   color: active ? 'var(--ink-primary)' : 'var(--ink-secondary)',
@@ -178,12 +175,13 @@ export function PeriodFilter({
         </div>
 
         {/*
-          The picker, and the name of any window the buttons cannot show.
+          The picker, and the name of any window the three buttons cannot show.
 
           It used to read a flat "Sana" whenever the preset was not custom,
           which was safe while all six presets had a button lit beside it. With
-          four, a window like "Oʻtgan oy" — reachable by link — would otherwise
-          leave nothing on this row saying what is on screen.
+          three, a window like "Shu yil" — reachable by link, or through the
+          picker's own Yil mode — would otherwise leave nothing on this row
+          saying what is on screen.
         */}
         <button
           type="button"
