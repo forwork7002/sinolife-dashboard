@@ -41,7 +41,12 @@
  *     still reads everything below it. Measured on production that day: the
  *     other twelve TEAM accounts resolve to exactly the people they did.
  *
- *   MEMBERS — everyone whose PRIMARY `departmentId` falls in that set.
+ *   MEMBERS — everyone whose PRIMARY `departmentId` falls in that set,
+ *     EXCEPT a person who heads a unit OUTSIDE it (2026-10-19). «192 Charos»
+ *     is filed first in «Malika(ROP)» and heads «Зехтра отдел продаж» above
+ *     it; the client: Malika's team is 264–269 and nobody else. The reader
+ *     themself is never dropped. Measured on production: Charos off Malika's
+ *     scope, nobody off any other account's.
  *
  * PRIMARY MEMBERSHIP, NOT `department_member`, AND THAT IS THE LOAD-BEARING
  * CHOICE. Bitrix24's `UF_DEPARTMENT` is an array and nine of this portal's
@@ -112,6 +117,14 @@ export class ScopeRepository {
       SELECT e."id" AS id
         FROM "employee" e
        WHERE e."departmentId" IN (SELECT id FROM scope)
+         -- Somebody who RUNS a unit outside this scope is that unit's boss,
+         -- not a member here, whatever unit their record is filed in first.
+         AND (e."id" = $1 OR NOT EXISTS (
+               SELECT 1
+                 FROM "department" other
+                WHERE other."headId" = e."id"
+                  AND other."id" NOT IN (SELECT id FROM scope)
+             ))
       `,
       employeeId,
     )

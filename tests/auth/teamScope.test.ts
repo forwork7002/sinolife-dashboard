@@ -105,6 +105,21 @@ describe('the team query', () => {
     expect(sql).toContain(`WHERE NOT (h."fromTeam" AND lower(btrim(child."name")) LIKE '%(rop)')`)
   })
 
+  it('leaves out a member who heads a unit outside the team', async () => {
+    /*
+      «192 Charos» is filed first in «Malika(ROP)» and runs «Зехтра отдел
+      продаж» above it — the boss, not one of Malika's 264–269 (2026-10-19).
+      The reader is never left out of their own scope.
+    */
+    const { service, calls } = serviceFor({ 'emp-rop': [] })
+    await service.resolve(principal())
+    const sql = calls[0]!.sql
+
+    expect(sql).toContain('AND (e."id" = $1 OR NOT EXISTS (')
+    expect(sql).toContain('WHERE other."headId" = e."id"')
+    expect(sql).toContain('AND other."id" NOT IN (SELECT id FROM scope)')
+  })
+
   it('terminates on a cycle rather than recursing forever', async () => {
     // Nothing in the schema forbids a department being its own ancestor.
     // UNION de-duplicates and stops; UNION ALL would not.

@@ -160,7 +160,9 @@ everything under those**. Membership does not descend; headship does.
   one** (`"fromTeam"`): «Malika(ROP)» is the portal parent of Afruzaxon /
   Sadriddin / Asliddin(ROP), and Malika read 47 people instead of her 7. A
   non-team anchor (a branch, «Зехтра отдел продаж») still descends fully;
-  the other twelve TEAM accounts measured unchanged.
+  the other twelve TEAM accounts measured unchanged. A member who HEADS a
+  unit outside the scope is left out too («192 Charos», filed in
+  «Malika(ROP)», heads «Зехтра отдел продаж»): Malika reads 264–269 only.
 - **PRIMARY membership, never `department_member`.** That table lists a person
   in every unit Bitrix24 names, and it exists for the org chart. This is a
   money question — one unit credits a person — and reading memberships would
