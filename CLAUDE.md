@@ -2679,6 +2679,15 @@ mixed `100vh` against a shell sized in `100dvh`.
   to trigger the rewind above. Deal 1050732 (C4:NEW at 06:15:07 UTC, the run
   started 06:15:07.054) was missing from Тасдиқлаш and FAKT 1 that way — one
   arrival in 3 339 since 1 September. `SETTLE_LOOKBACK_MS` in `SyncEngine.ts`.
+- **A SELLER SNAPSHOT COPIED FROM AN OLDER DEAL IS DROPPED — 2026-10-19.**
+  A repeat deal Bitrix24 opens off an older one carries that deal's
+  «Фамилия имя ответсвенный» / «Организация сотрудника», and the portal never
+  rewrites them: deal 1150184 (Ziyoda Ashirova 170, Baza) stood under
+  «Davlatbek Sirojov 115 / Sevinch(ROP)». When the deal's creator is its owner
+  and sits on a «(ROP)» team, a snapshot naming someone else is written as
+  NULL — name, team and `operatorEmployeeId` together — so every reader falls
+  back to the owner (`isCopiedOperatorSnapshot`). 1 of 12 870 deals
+  01.05–19.10 matched; back office, registrar-opened and hand-over deals don't.
 - **The upsert may not rewrite a row's primary key.** `rowId()` mints a fresh
   id per batch and the conflict target is the EXTERNAL key, so `id` has to be
   `insertOnly` — without it the update set carried `"id" = EXCLUDED."id"` and

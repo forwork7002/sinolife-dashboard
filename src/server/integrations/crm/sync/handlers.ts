@@ -28,6 +28,7 @@
 import type { PrismaClient } from '@/generated/prisma/client'
 import type { ExternalSourceValue } from '@/server/domain/types'
 import { floorNumberOf, indexByFloorNumber } from '@/server/domain/employees/floorNumber'
+import { isCopiedOperatorSnapshot, isSalesTeamName } from '@/server/domain/employees/operatorSnapshot'
 import type {
   CrmProvider,
   FetchOptions,
@@ -338,12 +339,22 @@ export function createSyncHandlers(
    * written with `operatorEmployeeId` NULL until the next deploy, and the
    * readers' COALESCE credited those orders to whoever owned the deal: the
    * sellers board, the queue, payroll and the ROP's TEAM rows.
+   *
+   * `onSalesTeam` rides the same read: who sits on a «(ROP)» unit, for
+   * `isCopiedOperatorSnapshot`.
    */
-  let operatorIndex: Map<number, string> | null = null
-  const floorNumberIndex = async (): Promise<Map<number, string>> => {
+  let operatorIndex: { byBadge: Map<number, string>; onSalesTeam: Set<string> } | null = null
+  const floorNumberIndex = async () => {
     if (operatorIndex) return operatorIndex
-    const roster = await prisma.employee.findMany({ select: { id: true, fullName: true } })
-    operatorIndex = indexByFloorNumber(roster, (person) => person)
+    const roster = await prisma.employee.findMany({
+      select: { id: true, fullName: true, department: { select: { name: true } } },
+    })
+    operatorIndex = {
+      byBadge: indexByFloorNumber(roster, (person) => person),
+      onSalesTeam: new Set(
+        roster.filter((person) => isSalesTeamName(person.department?.name)).map((person) => person.id),
+      ),
+    }
     return operatorIndex
   }
 
@@ -1032,8 +1043,8 @@ export function createSyncHandlers(
         const operatorBadge = record.operatorNameSource
           ? floorNumberOf(record.operatorNameSource)
           : null
-        const operatorEmployeeId =
-          operatorBadge === null ? null : (operatorMap.get(operatorBadge) ?? null)
+        const snapshotEmployeeId =
+          operatorBadge === null ? null : (operatorMap.byBadge.get(operatorBadge) ?? null)
 
         /**
          * Both are required foreign keys, so a deal missing either is dropped
@@ -1046,6 +1057,23 @@ export function createSyncHandlers(
           skipped++
           continue
         }
+
+        /*
+          A snapshot copied from an older deal is no snapshot: the order goes
+          to the person who opened and holds it, and the team with them —
+          name, team and resolved seller are dropped TOGETHER, so the queue,
+          Logistika and RNP all fall back to the owner. See operatorSnapshot.ts.
+        */
+        const createdByEmployeeId = record.createdByExternalId
+          ? (employeeMap.get(record.createdByExternalId) ?? null)
+          : null
+        const copied = isCopiedOperatorSnapshot({
+          snapshotEmployeeId,
+          ownerEmployeeId: employeeId,
+          creatorEmployeeId: createdByEmployeeId,
+          ownerOnSalesTeam: operatorMap.onSalesTeam.has(employeeId),
+        })
+        const operatorEmployeeId = copied ? null : snapshotEmployeeId
 
         written.push(record)
         rows.push([
@@ -1071,8 +1099,8 @@ export function createSyncHandlers(
           record.paymentMethodRaw ?? null,
           record.productLine ?? null,
           record.customerGrade ?? null,
-          record.operatorNameSource ?? null,
-          record.operatorTeamSource ?? null,
+          copied ? null : (record.operatorNameSource ?? null),
+          copied ? null : (record.operatorTeamSource ?? null),
           operatorEmployeeId,
           record.targetolog ?? null,
           record.registrar ?? null,
@@ -1085,7 +1113,7 @@ export function createSyncHandlers(
           // the lead still counts, under «ROP koʻrsatilmagan».
           record.leadRopExternalId ? (employeeMap.get(record.leadRopExternalId) ?? null) : null,
           record.ropKvalLidExternalId ? (employeeMap.get(record.ropKvalLidExternalId) ?? null) : null,
-          record.createdByExternalId ? (employeeMap.get(record.createdByExternalId) ?? null) : null,
+          createdByEmployeeId,
           record.repeatLead ?? null,
           record.isReturnCustomer ?? false,
           ts(record.createdAtSource),
