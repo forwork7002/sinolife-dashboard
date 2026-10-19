@@ -344,6 +344,9 @@ function bitrixSideOf(d: SverkaDealRow, items: readonly SverkaItem[]): BitrixSid
   }
 }
 
+/** `SverkaOverviewDto` without its deal and product rows — what «KPI rejalari» prints. */
+export type SverkaSummaryDto = Omit<SverkaOverviewDto, 'lines' | 'products'>
+
 const cache = ttlCache<SverkaOverviewDto>(120_000, LIVE_CACHE)
 const nutritionistCache = ttlCache<NutritionistPay>(120_000, LIVE_CACHE)
 
@@ -356,6 +359,17 @@ export class SverkaService {
   async overview(period: Period): Promise<SverkaOverviewDto> {
     const key = [period.preset, period.start.toISOString(), period.end.toISOString()].join('|')
     return cache.get(key, () => this.build(period))
+  }
+
+  /**
+   * «Bitrix24 ↔ MoySklad» on «KPI rejalari»: «Sverka»'s whole comparison for
+   * the window — the pairs, the cash desk, every difference with its count and
+   * money, the teams — without the deal and product rows, which only «Sverka»
+   * itself lists. The same cached overview, so the two screens cannot disagree.
+   */
+  async summary(period: Period): Promise<SverkaSummaryDto> {
+    const { lines: _lines, products: _products, ...summary } = await this.overview(period)
+    return summary
   }
 
   /**

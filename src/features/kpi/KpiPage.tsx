@@ -8,6 +8,7 @@ import { Card, ChartCard } from '@/components/ui/Card'
 import { StatusBadge } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { NutritionistCard } from '@/features/kpi/NutritionistCard'
+import { SverkaSummaryCard } from '@/features/kpi/SverkaSummaryCard'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { ApiClientError, apiGet, type MoneyDto, type PeriodDto } from '@/lib/api'
@@ -311,6 +312,8 @@ export function KpiPage() {
       </section>
 
       <NutritionistCard />
+
+      <SverkaSummaryCard />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <CountCard

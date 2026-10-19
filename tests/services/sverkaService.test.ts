@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { resolvePeriod } from '@/server/domain/period/period'
 import type { SverkaItem } from '@/server/domain/sverka/sverka'
@@ -186,5 +186,20 @@ describe('SverkaService.nutritionist', () => {
     expect(out.usdPerOrder).toBe(2)
     expect(out.fakt1).toEqual({ bitrix: 3, moysklad: 2, bitrixUsd: 6, moyskladUsd: 4 })
     expect(out.fakt2).toEqual({ bitrix: 1, moysklad: 1, bitrixUsd: 2, moyskladUsd: 2 })
+  })
+})
+
+describe('SverkaService.summary', () => {
+  it('is the overview less its deal and product rows', async () => {
+    const service = new SverkaService({} as unknown as InsightsRepository, {} as unknown as SverkaRepository)
+    const overview = { totals: { clean: 3 }, issueCounts: {}, lines: [{}], products: [{}], teams: [{ team: 'Lola' }] }
+    vi.spyOn(service, 'overview').mockResolvedValue(overview as never)
+    const period = resolvePeriod('today', { timeZone: 'Asia/Tashkent', now: new Date('2026-10-19T09:00:00+05:00') })
+
+    const out = await service.summary(period)
+
+    expect(out).toEqual({ totals: { clean: 3 }, issueCounts: {}, teams: [{ team: 'Lola' }] })
+    expect(out).not.toHaveProperty('lines')
+    expect(out).not.toHaveProperty('products')
   })
 })
