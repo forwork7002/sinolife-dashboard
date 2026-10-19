@@ -75,6 +75,16 @@ export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
         opened, which is the bug the handed-down copy exists to end.
       */
       viewer: viewerOf(ctx.principal),
+      /*
+        WHOSE ROWS A NARROWED ACCOUNT READS, named — for the header's «Sizga
+        nima koʻrinadi» panel (2026-10-19, the client: Malika has to be told
+        which sellers she sees). `ctx.scope` here is the stored scope, never
+        widened (`section: null`), so it is exactly the «Oʻz boʻlimi» team.
+        `null` for a company-wide account, which has no list to show.
+      */
+      scopeMembers: ctx.scope.restrictToEmployeeIds
+        ? employees.filter((e) => ctx.scope.restrictToEmployeeIds!.includes(e.id))
+        : null,
     },
   }
 })

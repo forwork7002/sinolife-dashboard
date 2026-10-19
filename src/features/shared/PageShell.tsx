@@ -40,6 +40,11 @@ export interface FilterOptions {
    * declaration here is how the two would come to differ by a field.
    */
   readonly viewer?: Viewer
+  /**
+   * The people a narrowed account's «Oʻz boʻlimi» screens read; `null` for a
+   * company-wide account. Drives the header's `ScopeBadge`.
+   */
+  readonly scopeMembers?: readonly { id: string; fullName: string }[] | null
 }
 
 /**

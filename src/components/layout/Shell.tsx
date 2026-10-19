@@ -32,6 +32,7 @@ import { useNewBuildAvailable } from '@/lib/buildVersion'
 import { formatCompactUzs, formatDateTime, formatTime, syncFailureScope } from '@/lib/format'
 import { ROLE_LABELS, canSeeHref, type RoleValue } from '@/lib/roles'
 import { pickViewer, useServerViewer } from '@/lib/viewer'
+import { ScopeBadge } from './ScopeBadge'
 import {
   isCompanyWideSection,
   readsCompanyWide,
@@ -452,7 +453,8 @@ export function Shell({
     disagreement and the pair converges on the live session.
   */
   const serverViewer = useServerViewer()
-  const fetchedViewer = useFilterOptions().data?.data.viewer
+  const filterData = useFilterOptions().data?.data
+  const fetchedViewer = filterData?.viewer
   const viewer = pickViewer(fetchedViewer, serverViewer)
   const viewerMismatch =
     fetchedViewer && serverViewer && fetchedViewer.userId !== serverViewer.userId
@@ -778,6 +780,15 @@ export function Shell({
             )}
 
             <div className="ml-auto flex items-center gap-2">
+              {/*
+                «Sizga nima koʻrinadi» for a narrowed account — which screens
+                and whose rows (ScopeBadge). Draws nothing for a company-wide
+                one. The people come with the filters payload: `undefined`
+                until it lands, so the chip never claims a count it has not
+                been told.
+              */}
+              {viewer && <ScopeBadge viewer={viewer} members={filterData?.scopeMembers} />}
+
               {/*
                 The ⌘K chip, and now the only control up here.
 
