@@ -168,7 +168,8 @@ describe('sellerFaktDaysSql', () => {
     expect(sql).toContain(`= 'DELIVERED'`)
     const fakt1 = (s: string) => s.slice(s.indexOf('count(*) FILTER (WHERE'), s.indexOf('::bigint AS fakt1_orders'))
     expect(fakt1(sql)).toBe(fakt1(rnp))
-    expect(sql).toContain(`COALESCE(CASE`)
-    expect(rnp).toContain(`COALESCE(CASE`)
+    // Both read the queue's own team, c.rop (teamSql in classified).
+    expect(sql).toContain('c.rop AS rop')
+    expect(rnp).toContain(`COALESCE(c.rop, '(ROP yoʻq)') AS rop`)
   })
 })

@@ -163,6 +163,16 @@ everything under those**. Membership does not descend; headship does.
   the other twelve TEAM accounts measured unchanged. A member who HEADS a
   unit outside the scope is left out too («192 Charos», filed in
   «Malika(ROP)», heads «Зехтра отдел продаж»): Malika reads 264–269 only.
+  **AND «Malika» IS HER PEOPLE ON EVERY SCREEN (2026-10-19, `ROSTER_TEAMS`
+  in `domain/employees/roles.ts`, `InsightsRepository.teamSql`)**: a deal
+  sold by someone filed in unit 94 (less a head of another unit) is «Malika»
+  whatever «Организация сотрудника» says; a deal labelled «Charos(ROP)» /
+  «Malika(ROP)» sold by anyone else goes to that seller's own unit. Every
+  team reader goes through `teamSql` (the queue's `classified.rop`, which
+  Logistika, /rnp, the sellers' teams and payroll read; `dealTeamSql`;
+  Roistat; the cohort `?rop=`; /rnp calls). Portal, deals created 01–19.10:
+  162 (305.5 mln) were split «Charos» / «Malika» and are one «Malika» now; 3
+  (4.7 mln, Charos 192 ×2, Javohir 150) leave her.
 - **PRIMARY membership, never `department_member`.** That table lists a person
   in every unit Bitrix24 names, and it exists for the org chart. This is a
   money question — one unit credits a person — and reading memberships would

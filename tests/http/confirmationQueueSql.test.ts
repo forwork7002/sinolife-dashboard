@@ -852,7 +852,8 @@ describe('what each column filter is allowed to narrow', () => {
  * teams, the record wall, Logistika — names a team the way the deal does.
  */
 describe('the queue names the team the deal was sold under', () => {
-  const rop = WINDOW_SQL.slice(WINDOW_SQL.indexOf('classified AS'), WINDOW_SQL.indexOf(') AS rop,') + 9)
+  const start = WINDOW_SQL.indexOf('classified AS')
+  const rop = WINDOW_SQL.slice(start, WINDOW_SQL.indexOf(' AS rop,', start) + 8)
 
   it('reads the deal snapshot before the department, in both modes', () => {
     for (const sql of [WINDOW_SQL, BACKLOG_SQL]) {
@@ -869,7 +870,16 @@ describe('the queue names the team the deal was sold under', () => {
   })
 
   it('is one COALESCE, so an empty field falls back instead of leaving the team', () => {
-    expect(rop).toMatch(/COALESCE\(\s*CASE\s+WHEN d\."operatorTeamSource"/)
+    expect(rop).toMatch(/COALESCE\(\s*CASE WHEN CASE\s+WHEN d\."operatorTeamSource"/)
+  })
+
+  it('names a roster team by its people before reading the deal (2026-10-19)', () => {
+    // «Malika» is the people filed in her unit, whatever the deal says.
+    const roster = rop.indexOf(`WHEN e."id" IN (`)
+    expect(roster).toBeGreaterThan(-1)
+    expect(roster).toBeLessThan(rop.indexOf(`WHEN d."operatorTeamSource" ILIKE '%(ROP)%'`))
+    expect(rop).toContain(`WHERE rt_d."externalId" = '94'`)
+    expect(rop).toContain(`) THEN 'Malika'`)
   })
 })
 

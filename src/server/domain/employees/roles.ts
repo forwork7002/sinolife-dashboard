@@ -37,3 +37,26 @@ export function isSalesTeamName(departmentName: string | null | undefined): bool
   if (!departmentName) return false
   return departmentName.trim().toLowerCase().endsWith(SALES_TEAM_SUFFIX.toLowerCase())
 }
+
+/**
+ * Teams counted by WHO SITS IN THEM, never by the label on the deal.
+ *
+ * Every other team is the deal's «Организация сотрудника» snapshot, then the
+ * seller's unit (`InsightsRepository.teamSql`). On 2026-10-19 the client
+ * asked that «Malika» be exactly her people everywhere — the RNP sheet, the
+ * queue's РОП column, Logistika, the sellers' team table — «shu xodimlar
+ * bilan», whatever the deal says. Her unit was «Charos(ROP)» until the
+ * portal renamed it, so her people's orders carried «Charos(ROP)»,
+ * «Malika(ROP)» and, sold through other teams, «Asliddin(ROP)» and others.
+ *
+ * `unitExternalId` is the portal unit; its members are the people filed there
+ * first, less anyone who heads a unit elsewhere (the Zextra department's head
+ * is filed there) — the rule `ScopeRepository.teamEmployeeIds` uses for her
+ * account. `labels` are every name this team has worn: a deal carrying one
+ * of them sold by somebody else goes to that seller's own team, not here.
+ */
+export const ROSTER_TEAMS: readonly {
+  readonly unitExternalId: string
+  readonly label: string
+  readonly labels: readonly string[]
+}[] = [{ unitExternalId: '94', label: 'Malika', labels: ['Malika', 'Charos'] }]

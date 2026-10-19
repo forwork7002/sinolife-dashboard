@@ -28,7 +28,9 @@ describe('rnpTeamDaysSql', () => {
   const sql = bare(InsightsRepository.rnpTeamDaysSql())
 
   it('names the team off the deal first, as Logistika does, with the department as the fallback', () => {
-    expect(sql).toMatch(/COALESCE\([\s\S]*"operatorTeamSource"[\s\S]*c\.rop,\s*'\(ROP yoʻq\)'\)/)
+    // c.rop is the queue's team — the snapshot, then the department, a
+    // roster team by its people (teamSql) — so /rnp and Logistika agree.
+    expect(sql).toContain(`COALESCE(c.rop, '(ROP yoʻq)') AS rop`)
   })
 
   it('counts FAKT 1 and FAKT 2 with the board\'s own predicates', () => {

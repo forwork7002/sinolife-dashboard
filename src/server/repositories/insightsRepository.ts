@@ -50,6 +50,7 @@ import {
   NO_EMPLOYEE_IN_SCOPE,
   type ScopedWindow,
 } from '@/server/domain/employees/branches'
+import { ROSTER_TEAMS } from '@/server/domain/employees/roles'
 import type { Period } from '@/server/domain/period/period'
 import { type DealProductBrand, PRODUCT_BRAND_PATTERNS } from '@/server/domain/products/productBrand'
 import {
@@ -1437,8 +1438,7 @@ export class InsightsRepository {
         SELECT
           o.customer_id,
           COALESCE(
-            ${InsightsRepository.ropNameSql('o.team_source')},
-            ${InsightsRepository.ropNameSql('dep."name"')},
+            ${InsightsRepository.teamSql('o.team_source', 'o.employee_id', 'dep."name"')},
             '${InsightsRepository.NO_ROP}'
           ) AS rop
         FROM first_owner o
@@ -2903,7 +2903,7 @@ export class InsightsRepository {
           string it documents — a syntax error 120 lines below itself. The ROP
           strip in ropNameSql records the same trap for the backslash.
         */
-        COALESCE(${InsightsRepository.ropNameSql('d."operatorTeamSource"')}, c.rop, '${InsightsRepository.NO_ROP}') AS rop,
+        COALESCE(c.rop, '${InsightsRepository.NO_ROP}') AS rop,
         d."stageId"              AS stage_id,
         ds."logisticsRole"::text AS role,
         (${InsightsRepository.FAKT1_OUTCOMES}) AS fakt1,
@@ -3707,13 +3707,53 @@ export class InsightsRepository {
    * readers outside the confirmation cohort, so a team filter means the same
    * team on every board.
    */
+  /**
+   * A deal's team: the «Организация сотрудника» snapshot, then the seller's
+   * unit — except a ROSTER team (`ROSTER_TEAMS`), which is its people.
+   *
+   * A seller filed in a roster team's unit is that team whatever the deal
+   * says; a deal labelled with a roster team's name and sold by anybody else
+   * falls through to that seller's own unit (NULL when that is the roster
+   * unit too — its boss, who is not one of its people). Every reader that
+   * names a team goes through here, so «Malika» is one set of people on the
+   * queue, Logistika, the sellers' teams, RNP and Roistat alike.
+   *
+   * The roster is an uncorrelated IN-subquery: Postgres hashes it once per
+   * statement, not per row.
+   */
+  static teamSql(snapshot: string, operatorId: string, departmentName: string): string {
+    const snap = InsightsRepository.ropNameSql(snapshot)
+    const dept = InsightsRepository.ropNameSql(departmentName)
+    const pinned = ROSTER_TEAMS.flatMap((team) => team.labels)
+      .map((label) => `'${label}'`)
+      .join(', ')
+    const rosters = ROSTER_TEAMS.map(
+      (team) => `
+          WHEN ${operatorId} IN (
+            SELECT rt_e."id"
+              FROM "employee" rt_e
+              JOIN "department" rt_d ON rt_d."id" = rt_e."departmentId"
+             WHERE rt_d."externalId" = '${team.unitExternalId}'
+               AND NOT EXISTS (SELECT 1 FROM "department" rt_o
+                                WHERE rt_o."headId" = rt_e."id" AND rt_o."id" <> rt_d."id")
+          ) THEN '${team.label}'`,
+    ).join('')
+    return `CASE${rosters}
+          ELSE COALESCE(
+            CASE WHEN ${snap} IN (${pinned}) THEN NULL ELSE ${snap} END,
+            CASE WHEN ${dept} IN (${pinned}) THEN NULL ELSE ${dept} END
+          )
+        END`
+  }
+
   static dealTeamSql(alias: string): string {
-    return `COALESCE(
-          ${InsightsRepository.ropNameSql(`${alias}."operatorTeamSource"`)},
-          (SELECT ${InsightsRepository.ropNameSql('tdep."name"')}
+    return InsightsRepository.teamSql(
+      `${alias}."operatorTeamSource"`,
+      `COALESCE(${alias}."operatorEmployeeId", ${alias}."employeeId")`,
+      `(SELECT tdep."name"
              FROM "employee" te JOIN "department" tdep ON tdep."id" = te."departmentId"
-            WHERE te."id" = COALESCE(${alias}."operatorEmployeeId", ${alias}."employeeId"))
-        )`
+            WHERE te."id" = COALESCE(${alias}."operatorEmployeeId", ${alias}."employeeId"))`,
+    )
   }
 
   /**
@@ -4244,10 +4284,7 @@ export class InsightsRepository {
 
           The expression is ropNameSql, the one home of the (ROP) strip.
         */
-        COALESCE(
-          ${InsightsRepository.ropNameSql('d."operatorTeamSource"')},
-          ${InsightsRepository.ropNameSql('dep."name"')}
-        ) AS rop,
+        ${InsightsRepository.teamSql('d."operatorTeamSource"', 'e."id"', 'dep."name"')} AS rop,
         /*
           Shipped without anyone reaching the customer.
 
@@ -5700,7 +5737,7 @@ export class InsightsRepository {
        SELECT
          (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS day,
          c.operator_id AS employee_id,
-         COALESCE(${InsightsRepository.ropNameSql('d."operatorTeamSource"')}, c.rop) AS rop,
+         c.rop AS rop,
          count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS fakt1_orders,
          COALESCE(sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}), 0)::text AS fakt1,
          count(*) FILTER (WHERE ${fakt2})::bigint AS fakt2_orders,
@@ -5823,7 +5860,7 @@ export class InsightsRepository {
     return `
        SELECT
          (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS day,
-         COALESCE(${InsightsRepository.ropNameSql('d."operatorTeamSource"')}, c.rop, '${InsightsRepository.NO_ROP}') AS rop,
+         COALESCE(c.rop, '${InsightsRepository.NO_ROP}') AS rop,
          count(*) FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES})::bigint AS fakt1_orders,
          COALESCE(sum(d."amountMinor") FILTER (WHERE ${InsightsRepository.FAKT1_OUTCOMES}), 0)::text AS fakt1,
          count(*) FILTER (WHERE ${fakt2})::bigint AS fakt2_orders,

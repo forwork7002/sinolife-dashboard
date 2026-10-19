@@ -388,8 +388,7 @@ export class RoistatRepository {
         LEFT JOIN "employee" e ON e."id" = sb."operatorEmployeeId"
         LEFT JOIN "department" dep ON dep."id" = e."departmentId"
         LEFT JOIN LATERAL (SELECT COALESCE(
-            ${InsightsRepository.ropNameSql('sb."operatorTeamSource"')},
-            ${InsightsRepository.ropNameSql('dep."name"')},
+            ${InsightsRepository.teamSql('sb."operatorTeamSource"', 'e."id"', 'dep."name"')},
             '${InsightsRepository.NO_ROP}'
           ) AS team) tm ON true
         /*

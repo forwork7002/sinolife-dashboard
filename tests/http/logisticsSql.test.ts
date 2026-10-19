@@ -318,11 +318,13 @@ describe('logisticsCohortSql', () => {
     countable but unreachable.
   */
   it('groups the ROP arm by the deal-s own team snapshot, then the department', () => {
-    expect(BARE).toContain(`COALESCE(CASE
-          WHEN d."operatorTeamSource" ILIKE '%(ROP)%'`)
-    expect(BARE).toContain(`END, c.rop, '(ROP yoʻq)') AS rop`)
-    // The department-only basis this block used until 2026-09-14.
-    expect(BARE).not.toContain(`COALESCE(c.rop, '(ROP yoʻq)') AS rop`)
+    /*
+      c.rop IS the snapshot-first team since 2026-10-19: the queue's own
+      \`classified\` names it (\`teamSql\`), so re-reading the snapshot here
+      would undo the roster team on this one screen.
+    */
+    expect(BARE).toContain(`COALESCE(c.rop, '(ROP yoʻq)') AS rop`)
+    expect(BARE.indexOf(`WHEN d."operatorTeamSource" ILIKE '%(ROP)%'`)).toBeGreaterThan(-1)
     /*
       THE SAME ESCAPED PARENTHESES THE QUEUE'S OWN STRIP NEEDS, and now the
       same expression: both bases call `ropNameSql`. A bare '(ROP)' is a

@@ -377,7 +377,7 @@ export class RnpRepository {
       FROM "call_record" c
       JOIN "employee" e ON e."id" = c."employeeId"
       JOIN "department" dep ON dep."id" = e."departmentId"
-      CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"')} AS rop) t
+      CROSS JOIN LATERAL (SELECT ${InsightsRepository.teamSql('NULL::text', 'e."id"', 'dep."name"')} AS rop) t
       WHERE c."connected"
         AND c."direction" IN ('INBOUND', 'OUTBOUND')
         AND c."startedAt" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
