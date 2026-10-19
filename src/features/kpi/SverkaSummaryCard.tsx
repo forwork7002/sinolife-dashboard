@@ -30,7 +30,8 @@ const gapColor = (value: number) => (value === 0 ? 'var(--ink-muted)' : 'var(--s
  * rows stay on «Sverka», which the card links to.
  *
  * Company-wide and on the dashboard window, like «Нутрицолог · Collagen»
- * above it; an account the endpoint refuses gets no card.
+ * above it. The endpoint is gated on «Sverka»'s section, so an account without
+ * «Sverka» (or a narrowed one) is refused and gets no card.
  */
 export function SverkaSummaryCard() {
   const { apiParams } = useDashboardFilters()
