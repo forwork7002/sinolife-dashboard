@@ -652,11 +652,40 @@ than a healthy tick sends, and `CALM_TICKS` still keeps the recovery light;
 *the chip* — a lost connection (`isNetworkFailure` in `refusal.ts`, moved
 there from the worker so `/meta/alerts` shares it) is `kind: 'TRANSIENT'` and
 reads «aloqa yoʻq» with «oʻzi tiklanadi», not «sinx xatosi — texnik yordam
-kerak»; *this note*. What would make the drops themselves stop is outside the
-code: a dedicated egress IP (App Platform → Networking → Dedicated Egress IPs,
-two static IPs, paid; it must then stay in every spec applied — `egress: type:
-DEDICATED_IP` — or the IPs are released for good), and those IPs sent to
-Bitrix24 support to allow.
+kerak»; *this note*.
+
+**THE ROOT CAUSE, MEASURED FROM INSIDE THE WORKER THE SAME MORNING.** The portal
+is in Moscow (Corp Soft, AS39337; four fronts). From the deployed `sync`
+container (`doctl apps console`, egress 164.90.174.139): TCP opened to all four
+in ~45 ms; TLS completed on **46.235.53.58** (100 ms) and **195.208.185.4**
+(118 ms) and **never completed on 46.235.53.67 and 46.235.53.69**. ya.ru,
+1c-bitrix.ru and google answered from the same container; check-host.net
+completed TLS to all four fronts from 38 datacentres. So it is not Bitrix24
+being down, not a blanket Russian filter on DigitalOcean, and not our key: two
+fronts drop OUR address. fetch dials one address per connection and never tries
+another, so one connection in two hung ten seconds, three in a row shut the
+gate, and the sync stopped while half the portal answered. **`portalAddresses.ts`
+is the fix**: the provider's default fetch is undici's own with a connector that
+walks the addresses (5 s handshake budget each), tries a front that dropped us
+LAST for 15 minutes, and prints «portal manzili … javob bermadi» / «… yana javob
+beryapti» (or «notoʻgʻri sertifikat berdi» — a refused certificate is never a
+network drop) to the worker log once per change. **It is pinned to HTTP/1.1
+twice** (`allowH2: false` on the Agent and the connector): undici 8 offers h2 by
+default and the portal picks it, which would put every call on one multiplexed
+session that a dropping front hangs all at once. Every front failing (2026-09-16)
+still fails with the last front's network error — `UND_ERR_CONNECT_TIMEOUT`, or
+`ECONNREFUSED`/`ECONNRESET`, all read by `isNetworkFailure` — for that one only a
+different egress helps: a dedicated egress IP (App Platform → Networking →
+Dedicated Egress IPs, two static IPs, paid; it must then stay in every spec
+applied — `egress: type: DEDICATED_IP` — or the IPs are released for good), and
+those IPs sent to Bitrix24 support. Checked BY HAND on 2026-10-20 (a scratch
+script, not in the suite — the suite fakes the dial): real undici and the real
+certificate, a dead address first → switched after 5 s and the portal answered;
+no address alive → `fetch failed [UND_ERR_CONNECT_TIMEOUT]`; ALPN `h2` by default,
+`http/1.1` with the pin. **The same morning the new container (same egress
+164.90.174.139) got NO front at all** — two dark at 07:20, four at 07:25 — so
+the connector shortens partial outages and cannot end that one; that is the
+dedicated-IP and support-ticket case (`~/projects/Work/bitrix24-ticket-2026-10-20.txt`).
 
 How to diagnose the chip, in order — no database needed for the first two:
 1. **Read the chip's word.** «Bitrix24 band» = the portal's throttle, wait.
@@ -666,15 +695,20 @@ How to diagnose the chip, in order — no database needed for the first two:
    those — read the log.
 2. **Read the worker log:** `doctl apps logs 292f634e-beef-46da-bf57-750f346f58e0
    sync --type run --tail 80`. The `sabab:` line under «portal hali ham band»
-   names the cause: `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` = network
+   names the cause (and «! portal manzili X javob bermadi» lines name a front
+   that dropped us — harmless while another answers): `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` = network
    (`[TIMEOUT]` = no answer in time: a dead line or a very slow portal); `OVERLOAD_LIMIT` = throttle; `INVALID_CREDENTIALS` / `NO_AUTH_FOUND`
    = key; `LOCAL_BUDGET_EXCEEDED` = our own ceiling. «✓ portal javob berdi» =
    it is over. A deploy starts a new container and the old one's log is gone.
-3. **Check the portal from outside:** `curl -s -o /dev/null -w
+3. **Check each front from INSIDE the worker** when the log says network:
+   `doctl apps console <app-id> sync`, then a TLS handshake per address
+   (`node -e` with `tls.connect({host: ip, servername: 'obey.bitrix24.kz', port: 443})`).
+   Some fronts answering = handled by the connector; none = egress problem.
+4. **Check the portal from outside:** `curl -s -o /dev/null -w
    '%{time_appconnect} %{http_code}\n' https://obey.bitrix24.kz/rest/` — a fast
    404 from here while the worker times out is a server-to-portal network
    problem, not Bitrix24 being down.
-4. **History, if needed:** failed rows in `sync_log` for 30 days
+5. **History, if needed:** failed rows in `sync_log` for 30 days
    (`status = 'FAILED'`, `errorMessage`), and gaps over 6 minutes between
    successful `DEALS` passes — that is what the reader saw as a frozen chip.
 

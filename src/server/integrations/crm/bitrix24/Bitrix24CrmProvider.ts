@@ -74,6 +74,7 @@ import {
   toMinorUnits,
 } from './mapping'
 import { RateLimiter, backoffDelayMs, sleep } from './rateLimiter'
+import { createPortalFetch } from './portalAddresses'
 import { PortalGate } from './portalGate'
 import { PortalMeter, type PortalTime } from './portalMeter'
 import { PortalBudget } from './portalBudget'
@@ -502,7 +503,12 @@ export class Bitrix24CrmProvider implements CrmProvider {
     this.budget = new PortalBudget(options.hourlyInvocations)
     this.timeoutMs = options.requestTimeoutMs ?? 30_000
     this.maxRetries = options.maxRetries ?? 3
-    this.fetchImpl = options.fetchImpl ?? fetch
+    /*
+      NOT the global fetch since 2026-10-20: `createPortalFetch` tries the
+      portal's other addresses when one drops the TLS handshake — two of its
+      four fronts dropped ours that day and stopped the sync. See portalAddresses.ts.
+    */
+    this.fetchImpl = options.fetchImpl ?? createPortalFetch((message) => this.warn(message))
     this.pipelines = options.pipelines ?? ALL_PIPELINES
     this.historyPipelines = options.historyPipelines ?? [6, 14, 10, 4]
     this.historyStages = options.historyStages ?? [...CONFIRMATION_REFUSAL_STAGES]
