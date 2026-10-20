@@ -170,6 +170,14 @@ Per-screen traps worth knowing before you touch one:
   values × 100; rows with no Bitrix24 / Meta source (followers, HR, bloggers)
   were left off the screen (reversed 2026-09-30: such a row keeps its place,
   empty and hatched); a team is its department name plus its head.
+  **DRAWN A SCREENFUL FIRST (2026-10-20, «page dan page o'tishim … silliq …
+  qotmasdan»).** ~370 lines × ~36 cells opened in one go froze the sidebar
+  click for 3.1 s at CPU ×4 on a local build (6.7 s from click to address on
+  a return with the data cached). `RnpSheetTable` mounts 48 lines and adds 96
+  per idle turn (`useLinesDrawn`); `usePinnedSummary` reads every header
+  before it writes, and writes last visit's offsets before the first read
+  (`lastPin`) — a `--rnp-left-*` written on the box restyles every cell. After:
+  0.5 s click → address, the rest lands below the fold in short pieces.
   **The sheet's formulas ARE copied (the client, 2026-10-01: «har bir
   formula … huddi shunday»), a broken one by what it meant:** the forecast
   is the sheet's `=D/$C$2*$C$1` — the fact so far ÷ today's day of the month

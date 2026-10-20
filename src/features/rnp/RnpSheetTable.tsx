@@ -1,6 +1,6 @@
 'use client'
 
-import { type ReactNode, type UIEvent, memo, useLayoutEffect, useMemo, useRef } from 'react'
+import { type ReactNode, type UIEvent, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { InfoTip, Tooltip } from '@/components/ui/Tooltip'
 
@@ -118,6 +118,7 @@ export function RnpSheetTable({
   const dragScroll = useDragScroll<HTMLDivElement>()
   const box = useRef<HTMLDivElement>(null)
   usePinnedSummary(box)
+  const drawn = useLinesDrawn(lines.length)
 
   return (
     <div
@@ -146,7 +147,7 @@ export function RnpSheetTable({
         </colgroup>
         <Head days={days} today={today} />
         <tbody>
-          {lines.map((line, i) => {
+          {lines.slice(0, drawn).map((line, i) => {
             const row = line.kind === 'value' && line.key !== null ? (rows.get(line.key) ?? null) : null
             return (
               <Line
@@ -174,6 +175,46 @@ export function RnpSheetTable({
       </table>
     </div>
   )
+}
+
+/**
+ * THE FIRST SCREENFUL FIRST, THE REST ONCE THE PAGE IS UP (2026-10-20).
+ *
+ * The client: «page dan page o'tishim … silliq … qotmasdan». Thirteen
+ * thousand cells drawn in one go are styled and laid out in one go, and the
+ * sidebar click that opened the sheet stood frozen on the previous screen for
+ * all of it — about 1.1 s at CPU ×4 on a local build, after the restyles
+ * `usePinnedSummary` used to add were gone. So the grid mounts with the lines
+ * a tall screen can show, the screen changes at once, and the remaining lines
+ * are added a hundred or so at a time whenever the browser is idle (after the
+ * page's crossfade): below the fold, where nobody is looking yet, and in
+ * pieces short enough that a scroll or a click in between is answered (one
+ * piece in one go was another ~1.1 s freeze at ×4). Column widths do not move
+ * when they land — every figure column is already as wide as the widest
+ * figure in the whole payload (`--rnp-min-*`), and labels wrap.
+ *
+ * Only ever grows: a refetch, a brand or a ROP switch draws every line it
+ * already reached at once, and a cut that brings MORE lines than that adds
+ * the rest the same way. Not a transition, on purpose — an update inside one
+ * would run the page's view transition again.
+ */
+const FIRST_LINES = 48
+const MORE_LINES = 96
+
+function useLinesDrawn(total: number): number {
+  const [drawn, setDrawn] = useState(FIRST_LINES)
+  const pending = drawn < total
+  useEffect(() => {
+    if (!pending) return
+    const more = () => setDrawn((n) => n + MORE_LINES)
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(more, { timeout: 600 })
+      return () => window.cancelIdleCallback(id)
+    }
+    const id = window.setTimeout(more, 120)
+    return () => window.clearTimeout(id)
+  }, [pending, drawn])
+  return drawn
 }
 
 /**
@@ -221,23 +262,53 @@ const ROOM_FOR_DAYS = 280
  * The frozen parts are the box's scroll padding too (2026-10-02): a field Tab
  * reaches is scrolled clear of the pinned block (the label alone when narrow)
  * and of the header row, not merely into the box, under them.
+ *
+ * EVERY READ FIRST, THEN EVERY WRITE, AND LAST TIME'S ANSWER BEFORE EITHER
+ * (2026-10-20). A `--rnp-left-*` written on the box is inherited by all
+ * ~13 000 cells, so any size read after it made the browser restyle the
+ * whole grid before it could answer. Written between reads, that was four
+ * full restyles in one go — 2.4 s of a 3.1 s frozen screen on opening the
+ * sheet (CPU ×4, measured on a local build). Read together it is still one
+ * restyle more than the grid needs, because the first read has to style
+ * thirteen thousand fresh cells anyway; so the offsets measured on the last
+ * visit (`lastPin`) are written BEFORE that read and get styled with them.
+ * The figures rarely move between visits, so the measurement then finds
+ * nothing to change and writes nothing. When it does find a change, it
+ * writes it, as before.
  */
 function usePinnedSummary(ref: { readonly current: HTMLDivElement | null }) {
   useLayoutEffect(() => {
     const box = ref.current
     if (!box || typeof ResizeObserver === 'undefined') return
     const heads = Array.from(box.querySelectorAll<HTMLElement>('thead th')).slice(0, 1 + PINNED.length)
+    if (lastPin) {
+      for (const key of PINNED) setVar(box, `--rnp-left-${key}`, lastPin.lefts[key])
+      box.toggleAttribute('data-pin-wide', lastPin.wide)
+    }
     const measure = () => {
-      let left = 0
-      heads.forEach((th, i) => {
-        if (i > 0) box.style.setProperty(`--rnp-left-${PINNED[i - 1]}`, `${left}px`)
-        left += th.getBoundingClientRect().width
-      })
-      const wide = left + ROOM_FOR_DAYS <= box.clientWidth
-      if (wide !== box.hasAttribute('data-pin-wide')) box.toggleAttribute('data-pin-wide', wide)
       const corner = heads[0]?.getBoundingClientRect()
+      const widths = heads.map((th, i) => (i === 0 ? (corner?.width ?? 0) : th.getBoundingClientRect().width))
+      const boxWidth = box.clientWidth
+      let left = 0
+      const lefts = widths.map((w) => {
+        const at = left
+        left += w
+        return at
+      })
+      const wide = left + ROOM_FOR_DAYS <= boxWidth
+      PINNED.forEach((key, i) => {
+        const at = lefts[i + 1]
+        if (at !== undefined) setVar(box, `--rnp-left-${key}`, `${at}px`)
+      })
+      if (wide !== box.hasAttribute('data-pin-wide')) box.toggleAttribute('data-pin-wide', wide)
       box.style.scrollPaddingLeft = `${wide ? left : (corner?.width ?? 0)}px`
       box.style.scrollPaddingTop = `${corner?.height ?? 0}px`
+      if (heads.length === 1 + PINNED.length) {
+        lastPin = {
+          lefts: Object.fromEntries(PINNED.map((key, i) => [key, `${lefts[i + 1]}px`])) as Record<PinnedKey, string>,
+          wide,
+        }
+      }
     }
     measure()
     const observer = new ResizeObserver(measure)
@@ -245,6 +316,14 @@ function usePinnedSummary(ref: { readonly current: HTMLDivElement | null }) {
     for (const th of heads) observer.observe(th)
     return () => observer.disconnect()
   }, [ref])
+}
+
+/** The pinned offsets the last grid measured, written onto the next one before it is first styled. */
+let lastPin: { readonly lefts: Readonly<Record<PinnedKey, string>>; readonly wide: boolean } | null = null
+
+/** Writes a custom property only when it changes: an unchanged write still restyles every cell under the box. */
+function setVar(box: HTMLElement, name: string, value: string): void {
+  if (box.style.getPropertyValue(name) !== value) box.style.setProperty(name, value)
 }
 
 /**

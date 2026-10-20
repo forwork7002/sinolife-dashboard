@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { RnpColumnScope } from '@/features/rnp/RnpColumnResizer'
@@ -904,5 +904,98 @@ describe('RnpSheetTable — a line keeps its key through the brand and ROP cuts'
     expect(labels(container).filter((label) => label === 'Лола РОП — ROP bloki')).toHaveLength(2)
     expect(labels(container)).toHaveLength(7)
     expect(error.mock.calls.filter(([message]) => String(message).includes('same key'))).toEqual([])
+  })
+})
+
+describe('RnpSheetTable — the first screenful first (2026-10-20)', () => {
+  // A sheet of the real size's order: well past the first screenful.
+  const MANY: RnpLine[] = Array.from({ length: 200 }, (_, i) => ({
+    kind: 'value',
+    row: i + 1,
+    team: null,
+    label: `Qator ${i + 1}`,
+    sub: null,
+    tone: 'plain',
+    fact: 'plain',
+    bold: false,
+    key: 'kompaniya',
+  }))
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('mounts with the lines a tall screen shows and adds the rest once the browser is idle', () => {
+    vi.useFakeTimers()
+    const { container } = draw(MANY)
+    const first = bodyRows(container)
+    expect(first.length).toBeGreaterThanOrEqual(40)
+    expect(first.length).toBeLessThan(MANY.length)
+    expect(first[0]!.querySelector('th')!.textContent).toContain('Qator 1')
+
+    // A piece at a time: each idle turn adds the next one.
+    act(() => {
+      vi.runOnlyPendingTimers()
+    })
+    const second = bodyRows(container).length
+    expect(second).toBeGreaterThan(first.length)
+    expect(second).toBeLessThan(MANY.length)
+    for (let turn = 0; turn < 5; turn++) {
+      act(() => {
+        vi.runOnlyPendingTimers()
+      })
+    }
+    expect(bodyRows(container)).toHaveLength(MANY.length)
+    expect(bodyRows(container).at(-1)!.querySelector('th')!.textContent).toContain('Qator 200')
+  })
+
+  it('draws a short sheet whole on the first frame', () => {
+    const { container } = draw()
+    expect(bodyRows(container)).toHaveLength(LINES.length)
+  })
+
+  it('keeps what it reached when the lines change, and adds a longer cut’s rest the same way', () => {
+    vi.useFakeTimers()
+    const sheet = (lines: RnpLine[]) => (
+      <RnpColumnScope>
+        <RnpSheetTable lines={lines} blocks={BLOCKS} days={DAYS} today="2026-09-03" />
+      </RnpColumnScope>
+    )
+    const { container, rerender } = render(sheet(MANY))
+    for (let turn = 0; turn < 5; turn++) act(() => void vi.runOnlyPendingTimers())
+    expect(bodyRows(container)).toHaveLength(MANY.length)
+
+    // A shorter cut (a ROP) is drawn whole at once.
+    rerender(sheet(MANY.slice(0, 10)))
+    expect(bodyRows(container)).toHaveLength(10)
+
+    // A longer one keeps every line already reached and adds the rest in pieces.
+    const MORE = [...MANY, ...MANY.map((line, i) => ({ ...line, label: `Yana ${i + 1}` }))]
+    rerender(sheet(MORE))
+    expect(bodyRows(container).length).toBeGreaterThanOrEqual(MANY.length)
+    for (let turn = 0; turn < 5; turn++) act(() => void vi.runOnlyPendingTimers())
+    expect(bodyRows(container)).toHaveLength(MORE.length)
+  })
+
+  it('writes a pinned offset it already has nowhere: the next grid is styled with last visit’s', () => {
+    // jsdom has no ResizeObserver, and the hook stands down without one.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    )
+    const writes = () => spy.mock.calls.filter(([name]) => String(name).startsWith('--rnp-left-')).length
+    const spy = vi.spyOn(CSSStyleDeclaration.prototype, 'setProperty')
+    const first = draw()
+    // The first grid measures and writes (what it finds depends on the grid before it).
+    const once = writes()
+    first.unmount()
+    draw()
+    // Written once more, before the first read, and the measurement finds nothing to change.
+    expect(writes() - once).toBe(3)
+    spy.mockRestore()
+    vi.unstubAllGlobals()
   })
 })
