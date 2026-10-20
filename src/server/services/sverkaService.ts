@@ -21,6 +21,7 @@ import {
   type BitrixSide,
   type MoyskladSide,
   type OrphanKind,
+  type ProductRow,
   type SverkaIssue,
   type SverkaItem,
   type SverkaLine,
@@ -38,7 +39,12 @@ import {
   sverkaTotals,
   teamRows,
 } from '@/server/domain/sverka/sverka'
-import { type NutritionistBrand, type NutritionistPay, nutritionistPay } from '@/server/domain/sverka/nutritionist'
+import {
+  type NutritionistBrand,
+  type NutritionistPay,
+  NUTRITIONIST_BRANDS,
+  nutritionistPay,
+} from '@/server/domain/sverka/nutritionist'
 import type { Period } from '@/server/domain/period/period'
 import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { InsightsRepository, type SverkaDealRow } from '@/server/repositories/insightsRepository'
@@ -161,6 +167,18 @@ export interface SverkaProductDto {
   readonly moyskladAmount: number
 }
 
+/** One brand's products on «KPI rejalari»'s «Tovarlar» card, over each FAKT figure. */
+export interface BrandProductsDto {
+  readonly brand: NutritionistBrand
+  readonly fakt1: readonly SverkaProductDto[]
+  readonly fakt2: readonly SverkaProductDto[]
+}
+
+/** «Tovarlar · Bitrix24 ↔ MoySklad» — one entry per `NUTRITIONIST_BRANDS`, in that order. */
+export interface KpiProductsDto {
+  readonly brands: readonly BrandProductsDto[]
+}
+
 export interface SverkaTeamDto {
   readonly team: string
   readonly bitrix: SverkaSideDto
@@ -223,6 +241,16 @@ export interface SverkaOverviewDto {
 }
 
 const som = (minor: bigint): number => Number(minor) / 100
+
+const productDto = (p: ProductRow): SverkaProductDto => ({
+  key: p.key,
+  code: p.code,
+  name: p.name,
+  bitrixQuantity: p.bitrixQuantity,
+  bitrixAmount: som(p.bitrixMinor),
+  moyskladQuantity: p.moyskladQuantity,
+  moyskladAmount: som(p.moyskladMinor),
+})
 
 const itemDto = (i: SverkaItem): SverkaItemDto => ({
   code: i.code,
@@ -351,7 +379,7 @@ function bitrixSideOf(d: SverkaDealRow, items: readonly SverkaItem[]): BitrixSid
 export type SverkaSummaryDto = Omit<SverkaOverviewDto, 'lines' | 'products'>
 
 const cache = ttlCache<SverkaOverviewDto>(120_000, LIVE_CACHE)
-const nutritionistCache = ttlCache<NutritionistPay>(120_000, LIVE_CACHE)
+const brandLinesCache = ttlCache<Readonly<Record<NutritionistBrand, readonly SverkaLine[]>>>(120_000, LIVE_CACHE)
 
 export class SverkaService {
   constructor(
@@ -378,26 +406,62 @@ export class SverkaService {
   /**
    * «Нутрицолог» on «KPI rejalari»: FAKT 1 / FAKT 2 order counts over each
    * brand's cohort, Bitrix24 against MoySklad, priced per order
-   * (`nutritionistPay`). ONE cohort scan labels every deal with its brand
-   * (`sverkaCohort`'s `brands`), so Zextra costs no second read; «Brendsiz»
-   * deals are dropped before MoySklad is asked. Only the counts are read, so
-   * no product rows are fetched: without them `compareDeal` skips the product
-   * test, which no count depends on.
+   * (`nutritionistPay`). The lines carry product rows for «Tovarlar»; they
+   * only add `compareDeal`'s PRODUCTS test, which no count depends on.
    */
   async nutritionist(period: Period): Promise<NutritionistPay> {
+    const lines = await this.brandLines(period)
+    return nutritionistPay({ Collagen: sverkaTotals(lines.Collagen), Zextra: sverkaTotals(lines.Zextra) })
+  }
+
+  /**
+   * «Tovarlar · Bitrix24 ↔ MoySklad» on «KPI rejalari» (the client,
+   * 2026-10-20: «Bitrix24da shuncha tovar … Collagendan shuncha tovar
+   * MoySkladda ham, ikkisini solishtirilgan holatda»): each brand's pieces per
+   * product, FAKT 1 and FAKT 2 (`productRows`), over the same lines the
+   * «Нутрицолог» card counts — so a brand's orders there and its pieces here
+   * are one set of deals, less any queued before MoySklad held orders
+   * (`beforeFloor`), which the counts keep and the pieces cannot compare.
+   */
+  async products(period: Period): Promise<KpiProductsDto> {
+    const lines = await this.brandLines(period)
+    return {
+      brands: NUTRITIONIST_BRANDS.map((brand) => ({
+        brand,
+        fakt1: productRows(lines[brand], 'FAKT1').map(productDto),
+        fakt2: productRows(lines[brand], 'FAKT2').map(productDto),
+      })),
+    }
+  }
+
+  /**
+   * Each brand's cohort as `compareDeal` lines, product rows included — what
+   * both «KPI rejalari» cards above read, built once per window and shared.
+   * ONE cohort scan labels every deal with its brand (`sverkaCohort`'s
+   * `brands`), so Zextra costs no second read; «Brendsiz» deals are dropped
+   * before MoySklad or the product rows are asked.
+   */
+  private brandLines(period: Period): Promise<Readonly<Record<NutritionistBrand, readonly SverkaLine[]>>> {
     const key = [period.preset, period.start.toISOString(), period.end.toISOString()].join('|')
-    return nutritionistCache.get(key, async () => {
+    return brandLinesCache.get(key, async () => {
       const teams = { collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') }
       const cohort = (await this.insights.sverkaCohort({ ...period, restrictToEmployeeIds: null }, teams)).filter((d) => d.brand)
       const externalIds = cohort.flatMap((d) => (d.externalId ? [d.externalId] : []))
-      const ordersByDeal = byDeal(await this.repository.ordersForDeals(externalIds))
-      const totalsOf = (brand: NutritionistBrand) =>
-        sverkaTotals(
-          cohort
-            .filter((d) => d.brand === brand)
-            .map((d) => compareDeal(bitrixSideOf(d, []), d.externalId ? (ordersByDeal.get(d.externalId) ?? []) : [])),
-        )
-      return nutritionistPay({ Collagen: totalsOf('Collagen'), Zextra: totalsOf('Zextra') })
+      const [orders, items] = await Promise.all([
+        this.repository.ordersForDeals(externalIds),
+        this.repository.dealItems(cohort.map((d) => d.dealId)),
+      ])
+      const ordersByDeal = byDeal(orders)
+      const linesOf = (brand: NutritionistBrand) =>
+        cohort
+          .filter((d) => d.brand === brand)
+          .map((d) =>
+            compareDeal(
+              bitrixSideOf(d, items.get(d.dealId) ?? []),
+              d.externalId ? (ordersByDeal.get(d.externalId) ?? []) : [],
+            ),
+          )
+      return { Collagen: linesOf('Collagen'), Zextra: linesOf('Zextra') }
     })
   }
 
@@ -482,15 +546,7 @@ export class SverkaService {
       lines: flagged.slice(0, SVERKA_LINE_LIMIT).map(lineDto),
       flaggedCount: flagged.length,
       linesTruncated: flagged.length > SVERKA_LINE_LIMIT,
-      products: productRows(lines).map((p) => ({
-        key: p.key,
-        code: p.code,
-        name: p.name,
-        bitrixQuantity: p.bitrixQuantity,
-        bitrixAmount: som(p.bitrixMinor),
-        moyskladQuantity: p.moyskladQuantity,
-        moyskladAmount: som(p.moyskladMinor),
-      })),
+      products: productRows(lines).map(productDto),
       teams: teamRows(lines, InsightsRepository.NO_ROP).map((t) => ({
         team: t.team,
         bitrix: { orders: t.bitrix.orders, amount: som(t.bitrix.amountMinor) },

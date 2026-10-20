@@ -616,4 +616,33 @@ describe('productRows / teamRows', () => {
     expect(productRows(lines).find((r) => r.code === COLLAGEN)).toMatchObject({ bitrixQuantity: 2, moyskladQuantity: 2 })
     expect(teamRows(lines, '(ROP yoʻq)').map((r) => [r.team, r.bitrix.orders, r.moysklad.orders])).toEqual([['Shohjaxon', 1, 1]])
   })
+
+  it('over FAKT 2 reads Bitrix24\'s delivered deals and the orders MoySklad calls Успешно / Касса, each on its own side', () => {
+    const won = { delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' } as const
+    const collagen = (quantity: number) => [{ code: COLLAGEN, name: 'Collagen Marine Sinolife', quantity, totalMinor: BigInt(quantity) * 80_000_000n }]
+    const lines = [
+      // Delivered on both systems.
+      compareDeal(bitrix({ ...won, items: collagen(2) }), [moysklad({ stateName: 'Касса', items: collagen(2) })]),
+      // Delivered in Bitrix24, still on the way in MoySklad: Bitrix24's pieces only.
+      compareDeal(bitrix({ ...won, externalId: '9', items: collagen(3) }), [moysklad({ orderName: 'bx9', items: collagen(3) })]),
+      // MoySklad has it delivered, Bitrix24 does not yet: MoySklad's pieces only.
+      compareDeal(bitrix({ externalId: '10', items: collagen(5) }), [moysklad({ orderName: 'bx10', stateName: 'Успешно', items: collagen(5) })]),
+    ]
+    const of = (rows: ReturnType<typeof productRows>) => rows.find((r) => r.code === COLLAGEN)
+    expect(of(productRows(lines, 'FAKT2'))).toMatchObject({ bitrixQuantity: 5, bitrixMinor: 400_000_000n, moyskladQuantity: 7, moyskladMinor: 560_000_000n })
+    // FAKT 1, the default, is every one of them on both sides.
+    expect(of(productRows(lines))).toMatchObject({ bitrixQuantity: 10, moyskladQuantity: 10 })
+
+    // Delivered with a queue outcome outside FAKT 1: FAKT 2 only — FAKT 2 is every delivered cohort deal, as `sverkaTotals` counts it.
+    const unconfirmed = compareDeal(bitrix({ ...won, fakt1: false, externalId: '11', items: collagen(4) }), [
+      moysklad({ orderName: 'bx11', stateName: 'Успешно', items: collagen(4) }),
+    ])
+    expect(of(productRows([unconfirmed], 'FAKT2'))).toMatchObject({ bitrixQuantity: 4, moyskladQuantity: 4 })
+    expect(productRows([unconfirmed])).toEqual([])
+
+    // Queued before MoySklad held orders: on neither side.
+    const old = compareDeal(bitrix({ ...won, externalId: 'old', queuedAt: new Date('2026-05-10T07:00:00Z'), items: collagen(6) }), [])
+    expect(old.beforeFloor).toBe(true)
+    expect(productRows([old], 'FAKT2')).toEqual([])
+  })
 })

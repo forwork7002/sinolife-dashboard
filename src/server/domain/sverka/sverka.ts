@@ -667,14 +667,22 @@ export interface ProductRow {
   readonly moyskladMinor: bigint
 }
 
+/** Which deals `productRows` reads — the two FAKT figures, as `sverkaTotals` counts their orders. */
+export type ProductBasis = 'FAKT1' | 'FAKT2'
+
 /**
  * Pieces and money per product over the FAKT 1 deals: Bitrix24's product rows
  * against the lines of those deals' MoySklad orders. Named by MoySklad where
  * it has the product — the warehouse's catalogue is the one with one name per
  * code — else by Bitrix24. A `beforeFloor` deal is left out: it has no side to
  * set against, and would put a false gap on every product it sold.
+ *
+ * Over FAKT 2 (`basis`, «KPI rejalari»'s «Tovarlar» card, 2026-10-20) each
+ * side is FAKT 2 as `sverkaTotals` counts it: Bitrix24's delivered deals, and
+ * the orders MoySklad itself calls Успешно / Касса — so the pieces belong to
+ * the same orders the «Нутрицолог» card counts.
  */
-export function productRows(lines: readonly SverkaLine[]): ProductRow[] {
+export function productRows(lines: readonly SverkaLine[], basis: ProductBasis = 'FAKT1'): ProductRow[] {
   const rows = new Map<
     string,
     { code: string | null; name: string; named: boolean; bq: number; bm: bigint; mq: number; mm: bigint }
@@ -689,13 +697,20 @@ export function productRows(lines: readonly SverkaLine[]): ProductRow[] {
     return r
   }
   for (const line of lines) {
-    if (!line.bitrix?.fakt1 || line.beforeFloor) continue
-    for (const item of line.bitrix.items) {
-      const r = row(item)
-      r.bq += item.quantity
-      r.bm += item.totalMinor
+    const bx = line.bitrix
+    if (!bx || line.beforeFloor) continue
+    const ms = line.moysklad
+    const bitrixIn = basis === 'FAKT1' ? bx.fakt1 : bx.delivered
+    const moyskladIn = basis === 'FAKT1' ? bx.fakt1 : ms !== null && moyskladPhase(ms.stateName) === 'DELIVERED'
+    if (bitrixIn) {
+      for (const item of bx.items) {
+        const r = row(item)
+        r.bq += item.quantity
+        r.bm += item.totalMinor
+      }
     }
-    for (const item of line.moysklad?.items ?? []) {
+    if (!moyskladIn) continue
+    for (const item of ms?.items ?? []) {
       const r = row(item)
       r.mq += item.quantity
       r.mm += item.totalMinor
