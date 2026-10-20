@@ -262,7 +262,26 @@ describe('reading line items', () => {
       await provider.fetchDeals()
       await provider.fetchDealItems()
     }
-    expect(asked).toEqual([ids.slice(0, 10), ids.slice(10), ['4001']])
+    // The first batch is eight deals until a deal's rows have been weighed
+    // (RESPONSE_BUDGET_BYTES); these lines are light, so the rest go together.
+    expect(asked).toEqual([ids.slice(0, 8), ids.slice(8, 10), ids.slice(10), ['4001']])
+  })
+
+  /**
+   * 2026-10-20: the route to the portal freezes a connection after ~20 KB, and a
+   * catch-up after an outage fills this read by the thousand. Fifty deals' rows
+   * to a batch would be past that; the batch is sized by what a deal weighed.
+   */
+  it('sizes its batches by what a deal\'s rows weighed', async () => {
+    const heavy = { ...LINE, PRODUCT_NAME: 'x'.repeat(10_000) }
+    const many = Array.from({ length: 20 }, (_, i) => ({ ...PAID[0]!, ID: String(2001 + i) }))
+    const { provider, asked } = portal(() => [heavy], () => many)
+
+    await provider.fetchDeals()
+    await provider.fetchDealItems()
+
+    // Eight until measured, then 48 000 bytes ÷ ~10 KB a deal = four.
+    expect(asked.map((ids) => ids.length)).toEqual([8, 4, 4, 4])
   })
 
   it('keeps an asked-for deal owed when the read is refused', async () => {

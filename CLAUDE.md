@@ -389,7 +389,7 @@ Read that file before touching sync handlers, Bitrix24 calls, the sweep or the p
 - **Operating time**
 - **`OVERLOAD_LIMIT` is undocumented**
 - **How to check it stayed fixed, without container logs**
-- **Server cannot reach the portal** — «aloqa yoʻq» on the chip, `UND_ERR_CONNECT_TIMEOUT` in the log; fronts that drop us are skipped (`portalAddresses.ts`), probed every tick; the 5-step diagnosis is there
+- **Server cannot reach the portal** — «aloqa yoʻq» on the chip, `UND_ERR_CONNECT_TIMEOUT` in the log; fronts that drop us are skipped, one request per connection and every batch sized to `RESPONSE_BUDGET_BYTES` (the route freezes a connection after ~20 KB), probed every tick; the 5-step diagnosis is there
 
 ## Deploy
 

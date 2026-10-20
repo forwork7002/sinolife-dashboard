@@ -352,7 +352,10 @@ describe('stage history walk', () => {
    * narrow — otherwise 464 000 deals would arrive 100 at a time, which is
    * 4 644 round trips instead of 186 and a far worse thing to do to the portal
    * than the waste it replaced. A chain that comes back FULL is the walk
-   * proving there is more, and the next round trip asks for four times as much.
+   * proving there is more, and the next round trip asks for four times as much
+   * — up to what fits RESPONSE_BUDGET_BYTES (2026-10-20: the route to the
+   * portal freezes a connection after ~20 KB). These rows weigh ~96 bytes, so
+   * the budget stops the growth at 10 commands instead of 32.
    */
   it('widens the chain when the chain came back full, and resets when it runs dry', async () => {
     const widths: number[] = []
@@ -361,9 +364,9 @@ describe('stage history walk', () => {
       const body = JSON.parse(String(init?.body ?? '{}')) as { cmd?: Record<string, string> }
       const width = Object.keys(body.cmd ?? {}).length
       widths.push(width)
-      // Full while the chain is under 32, dry once it widens past that — so
-      // the walk grows, ends, and the next walk has to open narrow again.
-      const result = width < 32 ? FULL_BATCH : NO_ROWS
+      // Full while the chain is under 10, dry once it reaches the budget's
+      // cap — so the walk grows, ends, and the next walk has to open narrow again.
+      const result = width < 10 ? FULL_BATCH : NO_ROWS
       return new Response(JSON.stringify({ result: { result } }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -383,12 +386,90 @@ describe('stage history walk', () => {
       cursor = page.nextCursor
     }
 
-    expect(widths.slice(0, 3)).toEqual([2, 8, 32])
-    // The walk ended on the 32-wide round trip, so the next one opens narrow
+    expect(widths.slice(0, 3)).toEqual([2, 8, 10])
+    // The walk ended on the 10-wide round trip, so the next one opens narrow
     // again. Without the reset, a six-hourly sweep would leave every
     // incremental tick after it paying the full fifty.
     await provider.fetchStageHistory({ cursor: '0' })
     expect(widths[widths.length - 1]).toBe(2)
+  })
+
+  /**
+   * The sweep (`ID, CONTACT_ID`) and the deal pass are both `crm.deal.list`.
+   * A sweep that dies mid-walk — a timeout is exactly how it dies — must not
+   * leave the deal pass opening at the sweep's width.
+   */
+  it('keeps the sweep\'s width out of the deal pass', async () => {
+    const widths: { sweep: boolean; width: number }[] = []
+    const fullIds = Object.fromEntries(
+      Array.from({ length: 50 }, (_, cmd) => [
+        `c${cmd}`,
+        Array.from({ length: 50 }, (_, row) => ({ ID: String(cmd * 50 + row + 1), CONTACT_ID: '7' })),
+      ]),
+    )
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { cmd?: Record<string, string> }
+      if (!body.cmd) return new Response(JSON.stringify({ result: {} }), { status: 200 })
+      const first = decodeURIComponent(Object.values(body.cmd)[0]!)
+      const sweep = first.includes('CONTACT_ID') && !first.includes('TITLE')
+      widths.push({ sweep, width: Object.keys(body.cmd).length })
+      if (sweep && widths.filter((w) => w.sweep).length >= 3) throw new TypeError('fetch failed')
+      return new Response(JSON.stringify({ result: { result: sweep ? fullIds : {} } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+    const provider = new Bitrix24CrmProvider({ webhookUrl: 'https://portal/rest/1/tok/', fetchImpl, maxRetries: 0 })
+
+    await expect(provider.listDealContacts()).rejects.toThrow()
+    await provider.fetchDeals()
+
+    expect(widths.filter((w) => w.sweep).map((w) => w.width)).toEqual([2, 8, 32])
+    expect(widths.find((w) => !w.sweep)?.width).toBe(2)
+  })
+
+  /**
+   * 2026-10-20: a 400-deal answer is 31 KB on the wire and froze at ~16 KB on
+   * the route from the worker to the portal, every time, until the gate shut.
+   * Rows that heavy (a deal is ~1.15 KB) are walked one command at a time.
+   */
+  it('keeps a walk of heavy rows to the commands that fit the route', async () => {
+    const widths: number[] = []
+    const heavy = Object.fromEntries(
+      Array.from({ length: 50 }, (_, cmd) => [
+        `c${cmd}`,
+        {
+          items: Array.from({ length: 50 }, (_, row) => ({
+            ID: cmd * 50 + row + 1,
+            OWNER_ID: 900,
+            STAGE_ID: 'C4:NEW',
+            CREATED_TIME: '2026-08-31T09:09:00+05:00',
+            NOTE: 'x'.repeat(1_100),
+          })),
+        },
+      ]),
+    )
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}')) as { cmd?: Record<string, string> }
+      widths.push(Object.keys(body.cmd ?? {}).length)
+      return new Response(JSON.stringify({ result: { result: heavy } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+    const provider = new Bitrix24CrmProvider({
+      webhookUrl: 'https://portal/rest/1/tok/',
+      fetchImpl,
+      historyPipelines: [6],
+      historyStages: [],
+    })
+
+    let cursor: string | undefined = '0'
+    for (let guard = 0; guard < 4 && cursor !== undefined; guard++) {
+      cursor = (await provider.fetchStageHistory({ cursor })).nextCursor
+    }
+
+    expect(widths).toEqual([2, 1, 1, 1])
   })
 
   it('reads a cursor written before the second pass existed as pass 0', async () => {

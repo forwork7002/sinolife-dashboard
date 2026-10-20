@@ -75,7 +75,18 @@ describe('fetchDealsByIds', () => {
     const { provider, batches } = portal((id) => deal(id, '20', 'C20:WON', 'S'))
     const ids = Array.from({ length: 120 }, (_, i) => String(5000 + i))
     expect(await provider.fetchDealsByIds(ids)).toHaveLength(120)
-    expect(batches.map((b) => Object.keys(b).length)).toEqual([3])
+    expect(batches.map((b) => Object.keys(b).length)).toEqual([2, 1])
+  })
+
+  /**
+   * A deal is ~1.15 KB with the full select, so a command of 50 is ~57 KB —
+   * past what the route to the portal carries in one answer (RESPONSE_BUDGET_BYTES).
+   */
+  it('asks one command at a time once a row has proved that heavy', async () => {
+    const { provider, batches } = portal((id) => ({ ...deal(id, '20', 'C20:WON', 'S'), COMMENTS: 'x'.repeat(1_100) }))
+    const ids = Array.from({ length: 200 }, (_, i) => String(5000 + i))
+    expect(await provider.fetchDealsByIds(ids)).toHaveLength(200)
+    expect(batches.map((b) => Object.keys(b).length)).toEqual([2, 1, 1])
   })
 })
 

@@ -687,6 +687,31 @@ no address alive → `fetch failed [UND_ERR_CONNECT_TIMEOUT]`; ALPN `h2` by defa
 the connector shortens partial outages and cannot end that one; that is the
 dedicated-IP and support-ticket case (`~/projects/Work/bitrix24-ticket-2026-10-20.txt`).
 
+**AND THE TRIGGER: THE ROUTE FREEZES A CONNECTION AFTER ~20 KB (measured the
+same morning, inside the worker).** A 384 KB static file from two fronts stopped
+at 15 757 and 15 746 bytes of body; ten-kilobyte `Range` requests each on a
+FRESH connection all arrived, while the third on one kept-alive connection froze.
+mirror.yandex.ru sent 1 MB down the same container in 0.56 s, so it is this
+path. Our answers on the wire (gzip, measured): deal walk 2 commands 7.5 KB,
+**8 commands 31 KB**, 32 → 131 KB, 50 → 227 KB; contacts 2 → 6 KB; calls 2 → 8 KB;
+the sweep's `ID, CONTACT_ID` walk at 50 → 17 KB; every single-page reference
+call ≤ 7.6 KB. `sync_log`: after every recovery CUSTOMERS succeeded, then DEALS
+read exactly 100 rows and hung (11:30, 11:45, 12:12, 12:32 Tashkent) — the
+8-command answer — and within minutes the handshakes stopped too. The fix is
+two lines of policy: **one request per connection** (`pipelining: 0` in
+`portalAddresses.ts`) and **every batch sized to `RESPONSE_BUDGET_BYTES`** (48 000
+uncompressed ≈ 10 KB on the wire at the worst ratio measured, 4.7×), learned
+from what a ROW weighed (`rowBytes`, keyed by method + select; width `chains` too,
+so a sweep that dies mid-walk cannot widen the deal pass): deals walk one
+command (one command is the floor — a deal page is ~57 KB uncompressed but
+~3.8 KB on the wire), contacts three, the sweep ~27, `dealsById` two until
+measured, product rows by what a DEAL's rows weighed (eight until measured).
+`SyncEngine`'s page backstop went 10 000 → 50 000 and `CALLS_MAX_PAGES` 200 →
+1 000, since a page can now be 50 rows. More round trips (a 3 500-deal catch-up is ~70 at 2 rps,
+~40 s), the same invocations. Last night's sweep (17 KB answers on one
+connection) ran clean, so the freeze is intermittent — it started ~11:30 that
+day — which is exactly why it must not be load-bearing.
+
 How to diagnose the chip, in order — no database needed for the first two:
 1. **Read the chip's word.** «Bitrix24 band» = the portal's throttle, wait.
    «aloqa yoʻq» = the server cannot reach the portal, wait (fixed IP if it keeps

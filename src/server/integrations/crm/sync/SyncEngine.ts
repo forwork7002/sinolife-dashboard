@@ -406,7 +406,9 @@ export class SyncEngine {
         cursor = page.nextCursor
 
         // Backstop against a provider that returns a non-advancing cursor.
-        if (++pages > 10_000) {
+        // 50 000, not 10 000, since deal pages carry 50 rows (RESPONSE_BUDGET_BYTES
+        // in the Bitrix24 provider): a full run over ~464 000 deals is ~9 300 pages.
+        if (++pages > 50_000) {
           throw new Error(`Pagination did not terminate after ${pages} pages`)
         }
       } while (cursor)

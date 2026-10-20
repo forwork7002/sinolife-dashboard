@@ -54,8 +54,9 @@ describe('existingDealIds', () => {
     expect(live.size).toBe(128)
     expect(live.has('1003')).toBe(false)
     expect(live.has('1120')).toBe(false)
-    expect(batches).toHaveLength(1)
-    expect(Object.keys(batches[0]!)).toHaveLength(3)
+    // Two commands until an answer says what a row weighs; ID-only rows are
+    // light, so the rest goes as wide as RESPONSE_BUDGET_BYTES allows.
+    expect(batches.map((b) => Object.keys(b).length)).toEqual([2, 1])
     // Only the ID column, and the same pipeline filter as the full sweep.
     expect(batches[0]!.c0).toContain('select')
     expect(batches[0]!.c0).toContain('CATEGORY_ID')
@@ -65,7 +66,7 @@ describe('existingDealIds', () => {
     const { provider, batches } = portal((ids) => ({ rows: ids.map((ID) => ({ ID })) }))
     const live = await provider.existingDealIds(range(1, 2_600))
     expect(live.size).toBe(2_600)
-    expect(batches.map((b) => Object.keys(b).length)).toEqual([50, 2])
+    expect(batches.map((b) => Object.keys(b).length)).toEqual([2, 50])
   })
 
   it('throws on a refused command instead of reading it as «none exist»', async () => {

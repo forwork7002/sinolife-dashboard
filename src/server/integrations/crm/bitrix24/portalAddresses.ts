@@ -212,11 +212,21 @@ export function failoverConnector(deps: {
  * copy did not), and the portal picks it — which would have moved every call
  * onto one multiplexed session, where a front that drops us hangs every request
  * in flight at once and fails with GOAWAY / stream resets the gate has never
- * seen. The transport stays what it was; only the address choice is new.
+ * seen.
+ *
+ * AND ONE REQUEST PER CONNECTION (`pipelining: 0` — undici then sends
+ * `connection: close`). Measured from the worker on 2026-10-20: the route to
+ * the portal freezes a connection after roughly 20 KB has come down it, counted
+ * across every answer on it — ten-kilobyte answers each on a fresh connection
+ * all arrived, the third on a kept-alive one froze. A fresh connection costs a
+ * handshake (~0.1 s, and undici resumes the TLS session, so no certificate
+ * after the first) and buys every answer the whole allowance; the answers
+ * themselves are kept small by `RESPONSE_BUDGET_BYTES` in the provider.
  */
 export function createPortalFetch(report: (message: string) => void): typeof fetch {
   const agent = new Agent({
     allowH2: false,
+    pipelining: 0,
     connect: failoverConnector({
       base: buildConnector({ timeout: ADDRESS_TIMEOUT_MS, allowH2: false }),
       resolve: async (hostname) => (await lookup(hostname, { all: true })).map((a) => a.address),

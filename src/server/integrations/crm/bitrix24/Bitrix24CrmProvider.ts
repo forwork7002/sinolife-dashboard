@@ -266,6 +266,60 @@ const CHAIN_MIN = 2
 const CHAIN_GROWTH = 4
 
 /**
+ * THE MOST ONE ANSWER MAY CARRY, AND IT IS SET BY THE ROUTE, NOT BY THE PORTAL.
+ *
+ * Measured from inside the deployed worker on 2026-10-20: a connection from it
+ * to the portal's fronts (Corp Soft, Moscow) FREEZES after roughly 20 KB has
+ * come down it — a static 384 KB file stopped at 15.7 KB of body every time,
+ * ten-kilobyte ranges each on a FRESH connection all arrived, and the third
+ * one on a kept-alive connection froze. A 1 MB file from mirror.yandex.ru came
+ * down the same container in half a second, so it is this path, not the
+ * server. Our own answers, gzip on the wire: a 2-command deal walk 7.5 KB, the
+ * 8-command one that followed it 31 KB — and that 8-command request is the one
+ * that hung at 11:30, 11:45, 12:12 and 12:32 Tashkent, every time after
+ * exactly 100 deals, until three timeouts shut the gate.
+ *
+ * So every answer is kept under this many UNCOMPRESSED bytes, and the portal
+ * fetch opens a fresh connection per request (`portalAddresses.ts`). The worst
+ * compression measured was 4.7× (contacts), which puts 48 000 bytes at ~10 KB
+ * on the wire — inside the budget with the TLS handshake on top. It is learned
+ * from the answers themselves, per ROW (a command returns up to 50 of them, and
+ * a quiet tick's five-row answer must not read as a cheap command): deals
+ * (≈1.15 KB a row) walk one command at a time, contacts three, the sweep's
+ * two-column rows ~27.
+ */
+const RESPONSE_BUDGET_BYTES = 48_000
+
+/**
+ * Bytes per row as the portal sent them. It answers in raw UTF-8 (checked: no
+ * `\u` escapes), so re-serialising the parsed rows gives the same bytes — and,
+ * unlike the answer's own length, counts only the rows that were read.
+ */
+function rowWeight(rows: readonly unknown[]): number {
+  return Buffer.byteLength(JSON.stringify(rows)) / rows.length
+}
+
+/** Commands that fit the budget when each answers `bytesPerCommand`; unknown → `fallback`. */
+function commandsThatFit(bytesPerCommand: number | undefined, fallback: number): number {
+  if (bytesPerCommand === undefined || bytesPerCommand <= 0) return fallback
+  return Math.max(1, Math.min(BATCH_SIZE, Math.floor(RESPONSE_BUDGET_BYTES / bytesPerCommand)))
+}
+
+/**
+ * The same for a list method, whose commands answer up to 50 rows each, given
+ * what one row weighed last time. A single command is the floor: a deal page
+ * (≈57 KB uncompressed) is over the budget on its own, and still ~3.8 KB on the
+ * wire — it is the 8-command answer (31 KB) that froze.
+ */
+function affordableCommands(bytesPerRow: number | undefined, fallback: number): number {
+  return commandsThatFit(bytesPerRow === undefined ? undefined : bytesPerRow * LIST_PAGE, fallback)
+}
+
+/** Product rows per deal vary, so their batches are sized per DEAL; eight until measured. */
+const ITEM_COST_KEY = 'crm.deal.productrows.get|deal'
+const ITEM_BATCH_FALLBACK = 8
+
+/**
  * The longest a single REST request may run on a cloud portal before Bitrix24
  * interrupts it — «не дольше чем за 60 секунд», apidocs.bitrix24.ru/limits.html.
  * Waiting past it only waits on an answer that has already been abandoned.
@@ -385,11 +439,19 @@ export class Bitrix24CrmProvider implements CrmProvider {
   readonly meter = new PortalMeter()
 
   /**
-   * How wide each method's walk is currently asking. Keyed by METHOD, so the
-   * six-hourly sweep's widening resets the moment its walk ends and the next
-   * incremental tick opens narrow again.
+   * How wide each walk is currently asking. Keyed by method + select (see
+   * `batchWalk`), and reset the moment a walk ends, so the next incremental
+   * tick opens narrow again.
    */
   private readonly chains = new Map<string, number>()
+
+  /**
+   * What one row of each walk weighed in bytes last time, keyed by method AND
+   * select — the sweep's `ID, CONTACT_ID` rows and the deal pass's 42 columns
+   * are both `crm.deal.list`. Kept across walks, so a walk opens at a width that
+   * already fits `RESPONSE_BUDGET_BYTES`.
+   */
+  private readonly rowBytes = new Map<string, number>()
 
   /**
    * The last line: what this process may ask for in any rolling hour.
@@ -900,7 +962,17 @@ export class Bitrix24CrmProvider implements CrmProvider {
     // Narrow until proven otherwise — see CHAIN_MIN. `refPath` still reaches
     // the 50th row of the previous command, because that is the page size the
     // portal returns, not the number of commands we sent.
-    const chain = Math.min(BATCH_SIZE, Math.max(CHAIN_MIN, this.chains.get(method) ?? CHAIN_MIN))
+    /*
+      Width AND weight are kept per method + select: the sweep's two-column walk
+      and the deal pass are both `crm.deal.list`, and a sweep that died mid-walk
+      must not leave the deal pass opening 26 commands wide.
+    */
+    const costKey = `${method}|${JSON.stringify(params.select ?? null)}`
+    const chain = Math.min(
+      BATCH_SIZE,
+      Math.max(CHAIN_MIN, this.chains.get(costKey) ?? CHAIN_MIN),
+      affordableCommands(this.rowBytes.get(costKey), CHAIN_MIN),
+    )
 
     const cmd: Record<string, string> = {
       // `>ID` needs no encoding: it contains no `=`, which is the character
@@ -918,7 +990,6 @@ export class Bitrix24CrmProvider implements CrmProvider {
       // the one HTTP request our own limiter counts.
       { meterAs: method, invocations: chain },
     )
-
     const errors = (payload.result?.result_error ?? {}) as Record<
       string,
       { error?: string } | undefined
@@ -928,9 +999,15 @@ export class Bitrix24CrmProvider implements CrmProvider {
     const rows: T[] = []
     const seen = new Set<string>()
 
+    /** What a row weighed in this answer — see RESPONSE_BUDGET_BYTES. */
+    const learn = () => {
+      if (rows.length > 0) this.rowBytes.set(costKey, rowWeight(rows))
+    }
+
     /** A walk that ended: reset the width so the next one opens narrow. */
     const ended = (): { rows: T[]; done: true } => {
-      this.chains.delete(method)
+      learn()
+      this.chains.delete(costKey)
       return { rows, done: true }
     }
 
@@ -994,7 +1071,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
     // The chain filled, so there is more. Ask for four times as much next
     // round trip — the widening is what keeps a full import the same price it
     // was while leaving a quiet tick at two commands.
-    this.chains.set(method, Math.min(BATCH_SIZE, chain * CHAIN_GROWTH))
+    learn()
+    this.chains.set(
+      costKey,
+      Math.min(chain * CHAIN_GROWTH, affordableCommands(this.rowBytes.get(costKey), BATCH_SIZE)),
+    )
     return { rows, done: false }
   }
 
@@ -1782,8 +1863,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
     const chunks: string[][] = []
     for (let i = 0; i < wanted.length; i += LIST_PAGE) chunks.push(wanted.slice(i, i + LIST_PAGE))
 
-    for (let first = 0; first < chunks.length; first += BATCH_SIZE) {
-      const part = chunks.slice(first, first + BATCH_SIZE)
+    // As wide as RESPONSE_BUDGET_BYTES allows for this select; two commands
+    // until an answer has said what one costs.
+    const costKey = `${method}|${JSON.stringify(select)}`
+    for (let first = 0; first < chunks.length; ) {
+      const width = affordableCommands(this.rowBytes.get(costKey), CHAIN_MIN)
+      const part = chunks.slice(first, first + width)
+      first += part.length
       const cmd: Record<string, string> = {}
       part.forEach((chunk, k) => {
         const query = encodeParams({
@@ -1800,6 +1886,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
         { halt: 0, cmd },
         { meterAs: method, invocations: part.length },
       )
+      const before = found.length
 
       const errors = (payload.result?.result_error ?? {}) as Record<string, { error?: string } | undefined>
       const results = (payload.result?.result ?? {}) as Record<string, unknown>
@@ -1838,6 +1925,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
           found.push(row)
         }
       })
+      if (found.length > before) this.rowBytes.set(costKey, rowWeight(found.slice(before)))
     }
 
     return found
@@ -2209,8 +2297,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }
 
     try {
-      for (let i = 0; i < dealIds.length && failure === null; i += BATCH_SIZE) {
-        const chunk = dealIds.slice(i, i + BATCH_SIZE)
+      for (let i = 0; i < dealIds.length && failure === null; ) {
+        // As many deals as RESPONSE_BUDGET_BYTES allows — a catch-up after an
+        // outage fills this list by the thousand, and fifty deals' rows is past
+        // what the route to the portal carries in one answer.
+        const width = commandsThatFit(this.rowBytes.get(ITEM_COST_KEY), ITEM_BATCH_FALLBACK)
+        const chunk = dealIds.slice(i, i + width)
+        i += chunk.length
         const cmd = Object.fromEntries(chunk.map((id) => [`d${id}`, `${PRODUCT_ROWS}?id=${id}`]))
         const payload = await this.call<{ result?: Record<string, unknown>; result_error?: unknown }>(
           'batch',
@@ -2220,6 +2313,8 @@ export class Bitrix24CrmProvider implements CrmProvider {
 
         const errors = (payload.result?.result_error ?? {}) as Record<string, { error?: string } | undefined>
         const results = (payload.result?.result ?? {}) as Record<string, unknown>
+        const deals = chunk.map((id) => results[`d${id}`]).filter(Array.isArray)
+        if (deals.length > 0) this.rowBytes.set(ITEM_COST_KEY, rowWeight(deals))
 
         for (const id of chunk) {
           const error = errors[`d${id}`]

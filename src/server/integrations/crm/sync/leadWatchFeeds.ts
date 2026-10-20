@@ -174,10 +174,12 @@ export const CALLS_SETTLE_REACH_MS = 70 * 60_000
 
 /**
  * Pages one calls pass may take. The widest read is the settle reach —
- * seventy minutes, ~600 calls, a dozen pages; two hundred is a walk that is
- * not ending.
+ * seventy minutes, ~600 calls, a dozen pages. A thousand since 2026-10-20: a
+ * page can be one command (50 calls) under RESPONSE_BUDGET_BYTES, and a pass
+ * after a day-long outage must still finish; anything past it is a walk that
+ * is not ending.
  */
-const CALLS_MAX_PAGES = 200
+const CALLS_MAX_PAGES = 1_000
 
 /** The calls feed's bookmark: when its last pass started, and its last settle read. */
 export interface CallsState {
