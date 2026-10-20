@@ -1,7 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 
-import { Agent, buildConnector, fetch as undiciFetch } from 'undici'
+import { Agent, buildConnector, ProxyAgent, fetch as undiciFetch } from 'undici'
 
 /**
  * WHICH OF THE PORTAL'S ADDRESSES ANSWERS US — and why fetch alone could not ask.
@@ -47,6 +47,23 @@ const ADDRESS_TIMEOUT_MS = 5_000
  * seconds a connection for nothing; it is still tried when nothing else answers.
  */
 const DOWN_FOR_MS = 15 * 60_000
+
+/**
+ * Connecting to the relay, then the handshake to the portal through it. The
+ * relay is one address, so it gets the whole budget fetch gave a connection.
+ */
+const RELAY_TIMEOUT_MS = 10_000
+
+/** Where the calls leave from, for a log line: the relay's host, never its credentials. */
+export function relayHost(proxyUrl: string | undefined = process.env.BITRIX24_PROXY_URL): string | null {
+  const relay = proxyUrl?.trim()
+  if (!relay) return null
+  try {
+    return new URL(relay).host
+  } catch {
+    return 'notoʻgʻri manzil'
+  }
+}
 
 type Connector = buildConnector.connector
 type ConnectOptions = buildConnector.Options
@@ -222,18 +239,40 @@ export function failoverConnector(deps: {
  * handshake (~0.1 s, and undici resumes the TLS session, so no certificate
  * after the first) and buys every answer the whole allowance; the answers
  * themselves are kept small by `RESPONSE_BUDGET_BYTES` in the provider.
+ *
+ * OR THROUGH A RELAY, when `BITRIX24_PROXY_URL` is set. Measured 2026-10-20
+ * 09:10–09:30 UTC, after all of the above was live: the fronts still froze a
+ * connection from the worker at 15 761 bytes and dropped its handshakes for
+ * minutes at a time, while from the same container 1 MB came down in under a
+ * second from mirror.yandex.ru, storage.yandexcloud.net, mirror.selectel.ru,
+ * mirror.ps.kz and mirror.hoster.kz. check-host.net: the portal's 384 KB file
+ * came down whole to 49 of 55 nodes (Moscow, Almaty-side Karaganda, Istanbul,
+ * small European hosts) and stalled on Hetzner, Scaleway and Contabo nodes —
+ * the big foreign hosting networks, DigitalOcean among them. No request shape
+ * gets past a filter on the network itself, so the calls leave from somewhere
+ * it does not apply: an HTTP CONNECT relay outside those networks. TLS still
+ * runs end to end to the portal inside the tunnel — the relay sees the
+ * portal's name and byte counts, never the webhook path or a CRM row — and
+ * `proxyTunnel` is forced so that holds even for a plain-http origin. The
+ * relay's own route is clean, so connections through it are kept alive again.
  */
-export function createPortalFetch(report: (message: string) => void): typeof fetch {
-  const agent = new Agent({
-    allowH2: false,
-    pipelining: 0,
-    connect: failoverConnector({
-      base: buildConnector({ timeout: ADDRESS_TIMEOUT_MS, allowH2: false }),
-      resolve: async (hostname) => (await lookup(hostname, { all: true })).map((a) => a.address),
-      book: new AddressBook(),
-      report,
-    }),
-  })
+export function createPortalFetch(
+  report: (message: string) => void,
+  proxyUrl: string | undefined = process.env.BITRIX24_PROXY_URL,
+): typeof fetch {
+  const relay = proxyUrl?.trim()
+  const agent = relay
+    ? new ProxyAgent({ uri: relay, proxyTunnel: true, allowH2: false, connectTimeout: RELAY_TIMEOUT_MS })
+    : new Agent({
+        allowH2: false,
+        pipelining: 0,
+        connect: failoverConnector({
+          base: buildConnector({ timeout: ADDRESS_TIMEOUT_MS, allowH2: false }),
+          resolve: async (hostname) => (await lookup(hostname, { all: true })).map((a) => a.address),
+          book: new AddressBook(),
+          report,
+        }),
+      })
   const portalFetch = (input: string | URL | Request, init?: RequestInit) =>
     undiciFetch(input as string, { ...(init as object), dispatcher: agent })
   return portalFetch as unknown as typeof fetch

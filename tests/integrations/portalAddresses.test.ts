@@ -1,4 +1,5 @@
 import { createServer } from 'node:http'
+import { connect as dial } from 'node:net'
 import type { AddressInfo } from 'node:net'
 
 import { describe, expect, it } from 'vitest'
@@ -7,6 +8,7 @@ import {
   AddressBook,
   createPortalFetch,
   failoverConnector,
+  relayHost,
 } from '@/server/integrations/crm/bitrix24/portalAddresses'
 
 /**
@@ -204,7 +206,7 @@ describe('createPortalFetch', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     const { port } = server.address() as AddressInfo
     try {
-      const portalFetch = createPortalFetch(() => {})
+      const portalFetch = createPortalFetch(() => {}, '')
       const response = await portalFetch(`http://127.0.0.1:${port}/rest/profile.json`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -217,5 +219,71 @@ describe('createPortalFetch', () => {
     } finally {
       server.close()
     }
+  })
+})
+
+/**
+ * 2026-10-20: the fronts filter the big foreign hosting networks themselves,
+ * so the calls can be sent through a relay outside them. It must TUNNEL —
+ * the relay may see where a call goes, never what it says.
+ */
+describe('createPortalFetch through a relay', () => {
+  it('tunnels every call with CONNECT and sends the relay its credentials', async () => {
+    const target = createServer((req, res) => {
+      let body = ''
+      req.on('data', (chunk) => (body += chunk))
+      req.on('end', () => {
+        res.writeHead(200, { 'content-type': 'application/json' })
+        res.end(JSON.stringify({ result: JSON.parse(body) }))
+      })
+    })
+    const seen: { method: string; url: string; auth: string | undefined }[] = []
+    const relay = createServer((req, res) => {
+      // A request forwarded in the clear would land here, not in 'connect'.
+      seen.push({ method: req.method ?? '', url: req.url ?? '', auth: req.headers['proxy-authorization'] })
+      res.writeHead(502).end()
+    })
+    relay.on('connect', (req, client, head) => {
+      seen.push({ method: req.method ?? '', url: req.url ?? '', auth: req.headers['proxy-authorization'] })
+      const [host, port] = (req.url ?? '').split(':')
+      const upstream = dial(Number(port), host, () => {
+        client.write('HTTP/1.1 200 Connection Established\r\n\r\n')
+        upstream.write(head)
+        upstream.pipe(client)
+        client.pipe(upstream)
+      })
+      upstream.on('error', () => client.destroy())
+      client.on('error', () => upstream.destroy())
+    })
+    await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve))
+    await new Promise<void>((resolve) => relay.listen(0, '127.0.0.1', resolve))
+    const targetPort = (target.address() as AddressInfo).port
+    const relayPort = (relay.address() as AddressInfo).port
+    try {
+      const portalFetch = createPortalFetch(() => {}, `http://ish:s3cret@127.0.0.1:${relayPort}`)
+      const response = await portalFetch(`http://127.0.0.1:${targetPort}/rest/profile.json`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: 7 }),
+      })
+
+      expect(await response.json()).toEqual({ result: { id: 7 } })
+      expect(seen).toEqual([
+        {
+          method: 'CONNECT',
+          url: `127.0.0.1:${targetPort}`,
+          auth: `Basic ${Buffer.from('ish:s3cret').toString('base64')}`,
+        },
+      ])
+    } finally {
+      relay.close()
+      target.close()
+    }
+  })
+
+  it('names the relay by host only, so a log line never carries its password', () => {
+    expect(relayHost('http://ish:s3cret@relay.example:3128')).toBe('relay.example:3128')
+    expect(relayHost('  ')).toBeNull()
+    expect(relayHost('')).toBeNull()
   })
 })

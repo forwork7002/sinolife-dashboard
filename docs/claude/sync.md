@@ -712,10 +712,35 @@ measured, product rows by what a DEAL's rows weighed (eight until measured).
 connection) ran clean, so the freeze is intermittent — it started ~11:30 that
 day — which is exactly why it must not be load-bearing.
 
+**AND IT WAS NOT ENOUGH: THE FILTER IS ON THE NETWORK, NOT ON OUR REQUESTS
+(measured 09:10–09:30 UTC the same day, with all of the above live).** The log
+showed each front answering a probe, then dropping us 5–40 s into the
+recovery, round the four, until the gate shut again. From the container: the
+384 KB file still stopped at exactly **15 761 bytes** on the two fronts that
+answered; twenty handshakes at 2.5/s to one front all completed (so it is not
+a handshake rate); 1 MB came down in 0.4–5 s from mirror.yandex.ru,
+storage.yandexcloud.net, mirror.selectel.ru, mirror.ps.kz and mirror.hoster.kz
+(Russia and Kazakhstan are reachable — only the portal's fronts are not); and
+Tashkent (Uztelecom) fetched the same file whole from every front in 0.8 s.
+check-host.net, same file: whole on 49 of 55 nodes — Moscow, St Petersburg,
+Karaganda, Istanbul, small European hosters — and stalled on **Hetzner,
+Scaleway, Contabo** and two other big-hosting nodes. So the portal's fronts
+(or the route into Corp Soft) throttle the big foreign hosting networks,
+DigitalOcean among them, and no request shape gets past that. The other
+integrations on DigitalOcean («AI hr», «Otsenka ROP app») are cut off the same
+way. The way round is to send the calls from a network the filter does not
+cover: **`BITRIX24_PROXY_URL`** (`http://user:pass@host:port`) routes every
+portal call through an HTTP CONNECT relay — TLS stays end to end, the relay
+sees the portal's name, never the webhook — e.g. tinyproxy on a small VPS in
+Uzbekistan (the «ai_registrator» server is one, in Tashkent) limited to
+`obey.bitrix24.kz:443` with BasicAuth. Unset, the calls go direct as before.
+The worker's start-up line says which. A message with these measurements went
+to Bitrix24 support («Поддержка24» chat on the portal) on 2026-10-20.
+
 How to diagnose the chip, in order — no database needed for the first two:
 1. **Read the chip's word.** «Bitrix24 band» = the portal's throttle, wait.
-   «aloqa yoʻq» = the server cannot reach the portal, wait (fixed IP if it keeps
-   happening). Red dot / webhook text = the credential is dead: a new webhook in
+   «aloqa yoʻq» = the server cannot reach the portal, wait; if it lasts, the
+   portal is filtering our hosting network — `BITRIX24_PROXY_URL` (above). Red dot / webhook text = the credential is dead: a new webhook in
    Bitrix24, set as `BITRIX24_WEBHOOK_URL` on the app. «sinx xatosi» = none of
    those — read the log.
 2. **Read the worker log:** `doctl apps logs 292f634e-beef-46da-bf57-750f346f58e0

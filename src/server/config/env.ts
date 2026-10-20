@@ -164,6 +164,18 @@ const schema = z
       .string()
       .optional()
       .transform((v) => (v === '' ? undefined : v)),
+    /*
+      An HTTP CONNECT relay every portal call goes through — see
+      `createPortalFetch` in `bitrix24/portalAddresses.ts` for why. Optional:
+      without it the calls leave from this server directly.
+    */
+    BITRIX24_PROXY_URL: blankAsUndefined(
+      z
+        .string()
+        .trim()
+        .regex(/^https?:\/\/[^/\s]+\/?$/i, 'BITRIX24_PROXY_URL must look like http://user:pass@host:port')
+        .optional(),
+    ),
   })
   .superRefine((value, ctx) => {
     if (value.DATA_SOURCE !== DataSource.Bitrix24) return

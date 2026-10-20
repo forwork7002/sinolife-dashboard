@@ -54,6 +54,7 @@ import { PrismaClient } from '../src/generated/prisma/client'
 import type { SyncEntityValue } from '../src/server/domain/types'
 import type { RawCall } from '../src/server/integrations/crm/CrmProvider'
 import { Bitrix24CrmProvider } from '../src/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
+import { relayHost } from '../src/server/integrations/crm/bitrix24/portalAddresses'
 import { createSyncHandlers, SweepRefusedError } from '../src/server/integrations/crm/sync/handlers'
 import { PrismaSyncStore } from '../src/server/integrations/crm/sync/PrismaSyncStore'
 import { SyncEngine } from '../src/server/integrations/crm/sync/SyncEngine'
@@ -1192,6 +1193,7 @@ async function main() {
         ? ` Portal hodisalari har ${EVENTS_DRAIN_MS / 1000}s.`
         : ' Portal hodisalari oʻchirilgan.') +
       ` Lid nazorati (qoʻngʻiroqlar, ochiq chatlar) har ${LEAD_WATCH_MS / 1000}s.` +
+      (relayHost() ? ` Bitrix24 soʻrovlari oraliq server orqali: ${relayHost()}.` : ' Bitrix24 soʻrovlari toʻgʻridan-toʻgʻri.') +
       '\n',
   )
 
