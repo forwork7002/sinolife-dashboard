@@ -173,6 +173,92 @@ describe('compareDeal', () => {
 })
 
 /*
+  The three checks the 2026-10-17 audit found nothing reading, each from an
+  order MoySklad held on 01–19.10.
+*/
+describe('compareDeal — MoySklad against itself, and a deal taken back', () => {
+  const delivered = { delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' } as const
+
+  it('flags a deal back in Первичный отдел whose order MoySklad still has on its way (deal 1135804)', () => {
+    const back = bitrix({ fakt1: false, logisticsRole: 'CANCELLED_EARLY', stageExternalId: 'C12:UC_1OM8B2', stageName: 'Тасдикланмаган' })
+    expect(compareDeal(back, [moysklad({ stateName: 'В пути', shippedMinor: 0n })]).issues).toEqual(['NOT_FAKT1', 'PULLED_BACK'])
+    expect(compareDeal(back, [moysklad({ stateName: 'Новый', shippedMinor: 0n })]).issues).toContain('PULLED_BACK')
+    // Back in Тасдиклаш is the same: not confirmed on the portal, moving in the warehouse.
+    expect(compareDeal(bitrix({ stageExternalId: 'C4:NEW', logisticsRole: null }), [moysklad()]).issues).toContain('PULLED_BACK')
+  })
+
+  it('does not flag a taken-back deal whose order came back — that is its ordinary end', () => {
+    const back = bitrix({ fakt1: false, logisticsRole: 'CANCELLED_EARLY', stageExternalId: 'C12:UC_2HKFV9' })
+    expect(compareDeal(back, [moysklad({ stateName: 'Возврат получен', shippedMinor: 0n })]).issues).not.toContain('PULLED_BACK')
+  })
+
+  it('flags «Касса» short of its sum and «Успешно» paid in full (bx10075, bx09926)', () => {
+    const kassaUnpaid = compareDeal(bitrix(delivered), [moysklad({ stateName: 'Касса', payedMinor: 0n })])
+    const kassaShort = compareDeal(bitrix(delivered), [moysklad({ stateName: 'Касса', payedMinor: 155_000_000n })])
+    const successPaid = compareDeal(bitrix(delivered), [moysklad({ stateName: 'Успешно', payedMinor: 160_000_000n })])
+    expect(kassaUnpaid.issues).toEqual(['PAYMENT'])
+    expect(kassaShort.issues).toEqual(['PAYMENT'])
+    expect(successPaid.issues).toEqual(['PAYMENT'])
+  })
+
+  it('leaves the usual pair alone: «Касса» paid, «Успешно» waiting or paid in part', () => {
+    expect(compareDeal(bitrix(delivered), [moysklad({ stateName: 'Касса', payedMinor: 160_000_000n })]).issues).toEqual([])
+    // A kopeck short is paid.
+    expect(compareDeal(bitrix(delivered), [moysklad({ stateName: 'Касса', payedMinor: 159_999_999n })]).issues).toEqual([])
+    expect(compareDeal(bitrix(delivered), [moysklad({ stateName: 'Успешно' })]).issues).toEqual([])
+    expect(compareDeal(bitrix(delivered), [moysklad({ stateName: 'Успешно', payedMinor: 60_000_000n })]).issues).toEqual([])
+  })
+
+  it('reads MoySklad\'s own sum, so a SUM gap is not also a payment one', () => {
+    const line = compareDeal(bitrix({ ...delivered, amountMinor: 180_000_000n }), [
+      moysklad({ stateName: 'Касса', payedMinor: 160_000_000n }),
+    ])
+    expect(line.issues).toEqual(['SUM'])
+  })
+
+  it('flags a delivered order its shipments do not cover (bx10020: «Касса», shipped 0)', () => {
+    const line = compareDeal(bitrix(delivered), [moysklad({ stateName: 'Касса', payedMinor: 160_000_000n, shippedMinor: 0n })])
+    expect(line.issues).toEqual(['NOT_SHIPPED'])
+    expect(
+      compareDeal(bitrix(delivered), [moysklad({ stateName: 'Успешно', shippedMinor: 100_000_000n })]).issues,
+    ).toEqual(['NOT_SHIPPED'])
+  })
+
+  it('does not ask an order on its way for a shipment it has not made yet', () => {
+    expect(compareDeal(bitrix(), [moysklad({ stateName: 'В пути', shippedMinor: 0n })]).issues).toEqual([])
+  })
+
+  it('draws each line at the whole soʻm, as SUM does', () => {
+    // «Касса» one soʻm short is short; 99 tiyin short is paid.
+    expect(compareDeal(bitrix(delivered), [moysklad({ stateName: 'Касса', payedMinor: 159_999_900n })]).issues).toEqual(['PAYMENT'])
+    expect(compareDeal(bitrix(delivered), [moysklad({ stateName: 'Касса', payedMinor: 159_999_901n })]).issues).toEqual([])
+    // Shipped 99 tiyin short is shipped; one soʻm short is not.
+    expect(compareDeal(bitrix(delivered), [moysklad({ stateName: 'Успешно', shippedMinor: 159_999_901n })]).issues).toEqual([])
+    expect(compareDeal(bitrix(delivered), [moysklad({ stateName: 'Успешно', shippedMinor: 159_999_900n })]).issues).toEqual([
+      'NOT_SHIPPED',
+    ])
+  })
+
+  it('does not call a zero-sum «Успешно» paid in full', () => {
+    const free = compareDeal(bitrix({ ...delivered, amountMinor: 0n }), [moysklad({ stateName: 'Успешно', sumMinor: 0n, shippedMinor: 0n })])
+    expect(free.issues).toEqual([])
+  })
+
+  it('sums the payment over the deal\'s orders, as the cash desk does — a re-made order is paid on the older one', () => {
+    const line = compareDeal(bitrix(delivered), [
+      moysklad({ stateName: 'Касса', payedMinor: 0n }),
+      moysklad({ orderId: 'older', stateName: 'Отказ', payedMinor: 160_000_000n }),
+    ])
+    expect(line.issues).toEqual(['DUPLICATE'])
+  })
+
+  it('reads «Ожидание / нд» as on its way for a taken-back deal', () => {
+    const back = bitrix({ fakt1: false, logisticsRole: 'CANCELLED_EARLY', stageExternalId: 'C12:UC_1OM8B2' })
+    expect(compareDeal(back, [moysklad({ stateName: 'Ожидание / нд', shippedMinor: 0n })]).issues).toContain('PULLED_BACK')
+  })
+})
+
+/*
   MoySklad holds no order dated before 2026-06-15: a «Yil» window used to turn
   every January–June FAKT 1 order into «MoySkladʼda yoʻq».
 */
@@ -400,7 +486,7 @@ describe('sverkaTotals', () => {
     const lines = [
       compareDeal(bitrix(), [moysklad()]),
       compareDeal(bitrix({ externalId: '2', delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' }), [
-        moysklad({ stateName: 'Касса' }),
+        moysklad({ stateName: 'Касса', payedMinor: 160_000_000n }),
       ]),
       compareDeal(bitrix({ externalId: '3', logisticsRole: 'PREPARING', stageExternalId: 'C6:NEW' }), []),
       compareDeal(bitrix({ externalId: '4', fakt1: false, logisticsRole: 'CANCELLED_EARLY', stageExternalId: 'C12:UC_1OM8B2' }), [

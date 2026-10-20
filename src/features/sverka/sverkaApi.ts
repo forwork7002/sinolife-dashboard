@@ -16,6 +16,9 @@ export type SverkaIssue =
   | 'NO_DEAL'
   | 'SUM'
   | 'STATUS'
+  | 'PULLED_BACK'
+  | 'PAYMENT'
+  | 'NOT_SHIPPED'
   | 'PRODUCTS'
   | 'SELLER'
   | 'REGION'
@@ -163,7 +166,10 @@ export const SVERKA_ISSUES: readonly SverkaIssue[] = [
   'NOT_QUEUED',
   'NO_DEAL',
   'SUM',
+  'PULLED_BACK',
   'STATUS',
+  'PAYMENT',
+  'NOT_SHIPPED',
   'PRODUCTS',
   'SELLER',
   'REGION',
@@ -197,6 +203,21 @@ export const ISSUE_TEXT: Readonly<Record<SverkaIssue, { label: string; hint: str
   STATUS: {
     label: 'Holat farqi',
     hint: 'Bitrix24 bosqichi va MoySklad holati boshqa-boshqa joyni koʻrsatadi (masalan: «Доставлено» — «В пути»).',
+    tone: 'warning',
+  },
+  PULLED_BACK: {
+    label: 'Bitrix24 da qaytarilgan',
+    hint: 'Bitim Bitrix24 da Тасдиклаш yoki Первичный отдел ga qaytarilgan (tasdiqlanmagan), lekin MoySkladʼda buyurtma hali ochiq yoki yoʻlda («Новый» / «В пути» / «Ожидание / нд») — ombor uni joʻnatib yuborishi mumkin.',
+    tone: 'critical',
+  },
+  PAYMENT: {
+    label: 'Toʻlov holati farqi',
+    hint: 'MoySklad holati oʻz toʻloviga zid: «Касса», lekin pul toʻliq tushmagan, yoki «Успешно», lekin pul toʻliq tushgan (holati «Касса» ga oʻtkazilmagan).',
+    tone: 'warning',
+  },
+  NOT_SHIPPED: {
+    label: 'Otgruzkasiz yetkazilgan',
+    hint: 'MoySklad buyurtmani yetkazilgan deydi («Успешно» / «Касса»), lekin joʻnatilgani (otgruzka, отгрузка hujjatlari) buyurtma summasidan kam — mahsulot ombordan hujjatsiz chiqqan.',
     tone: 'warning',
   },
   PRODUCTS: {

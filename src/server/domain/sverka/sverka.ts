@@ -69,8 +69,9 @@ export type SverkaPhase = 'PRE_WAREHOUSE' | 'TRANSIT' | 'DELIVERED' | 'RETURNED'
 /**
  * MoySklad's seven statuses, measured 2026-10-06: Новый 1, В пути 362,
  * Ожидание / нд 2, Успешно 6 092, Касса 1 366, Отказ 2, Возврат получен 1 952.
- * «Касса» and «Успешно» are both delivered. Which comes first in the client's
- * process is unconfirmed, so no money is read off either name — see `SverkaKassa`.
+ * «Касса» and «Успешно» are both delivered. Measured 2026-10-17 (01–16.10):
+ * «Успешно» waits for its money and «Касса» has it — `PAYMENT` reads that,
+ * but no money is ever read off either name (`SverkaKassa`).
  */
 export function moyskladPhase(state: string | null): SverkaPhase {
   switch (state?.trim()) {
@@ -147,6 +148,12 @@ export type SverkaIssue =
   | 'NO_DEAL'
   | 'SUM'
   | 'STATUS'
+  /** Bitrix24 took the deal back to Тасдиклаш / Первичный отдел, and MoySklad's order is still open or on its way. */
+  | 'PULLED_BACK'
+  /** MoySklad's own status and its own payment disagree. */
+  | 'PAYMENT'
+  /** MoySklad calls the order delivered, and its shipments do not cover it. */
+  | 'NOT_SHIPPED'
   | 'PRODUCTS'
   | 'SELLER'
   /** Both name a region, and not the same one. */
@@ -455,9 +462,35 @@ export function compareDeal(bitrix: BitrixSide, orders: readonly MoyskladSide[])
     moved on to «База» after delivery (the queue keeps it in FAKT 1) is
     OUTSIDE, and «Успешно» against it is no disagreement.
   */
-  if (bitrix.fakt1 && phase !== 'OUTSIDE' && !phasesAgree(phase, moyskladPhase(ms.stateName))) {
+  const msPhase = moyskladPhase(ms.stateName)
+  if (bitrix.fakt1 && phase !== 'OUTSIDE' && !phasesAgree(phase, msPhase)) {
     issues.push('STATUS')
   }
+  /*
+    Back in Тасдиклаш (C4) or Первичный отдел (C12) — unconfirmed on the
+    portal — while the warehouse's order is still being made or on its way:
+    MoySklad may ship what the floor took back. 01–19.10: three «В пути»
+    orders on deals in «Тасдикланмаган». A returned order is that deal's
+    ordinary end and no difference.
+  */
+  if (/^C(4|12):/.test(bitrix.stageExternalId ?? '') && (msPhase === 'PRE_WAREHOUSE' || msPhase === 'TRANSIT')) {
+    issues.push('PULLED_BACK')
+  }
+  /*
+    MoySklad against itself, so a SUM gap cannot set either off. «Касса» is
+    paid and «Успешно» delivered and waiting (01–16.10: 625 of 629 «Касса»
+    paid in full, 397 of 402 «Успешно» unpaid): «Касса» short of its sum, or
+    «Успешно» paid in full, is a status nobody moved. The payment is summed
+    over the deal's orders, as the cash desk sums it — a re-made order may
+    carry its money on the older one. Delivered with shipments short of the
+    order is stock that left on no document (01–19.10: 4 orders, each
+    shipped 0).
+  */
+  const state = ms.stateName?.trim()
+  const payed = orders.reduce((sum, o) => sum + o.payedMinor, 0n)
+  const unpaid = ms.sumMinor - payed >= SUM_TOLERANCE_MINOR
+  if ((state === 'Касса' && unpaid) || (state === 'Успешно' && ms.sumMinor > 0n && !unpaid)) issues.push('PAYMENT')
+  if (msPhase === 'DELIVERED' && ms.sumMinor - ms.shippedMinor >= SUM_TOLERANCE_MINOR) issues.push('NOT_SHIPPED')
   if (bitrix.items.length > 0 && !sameProducts(bitrix.items, ms.items)) issues.push('PRODUCTS')
   if (bitrix.seller && ms.seller && normaliseName(bitrix.seller) !== normaliseName(ms.seller)) issues.push('SELLER')
   // Only two recognised regions can disagree; a spelling neither list knows is not a difference.
@@ -512,10 +545,9 @@ export interface KassaState {
  *
  * Due is the deal's Bitrix24 sum (FAKT 2 itself); received is the payments
  * MoySklad booked against the deal's order (`payedSum`), capped at what is
- * due. NOT the «Касса» status: which of «Касса» / «Успешно» comes first in
- * the client's process was never confirmed (1–14.10: 385 «Касса», 384
- * «Успешно», 383 orders with a payment), so the status is only reported beside
- * the money (`byState`). An order MoySklad itself calls paid in full
+ * due. NOT the «Касса» status (1–14.10: 385 «Касса», 384 «Успешно», 383
+ * orders with a payment): the status is only reported beside the money
+ * (`byState`), and one that contradicts the payment is the `PAYMENT` difference. An order MoySklad itself calls paid in full
  * (`payedSum` ≥ its sum) is received in full when that sum is within
  * `SUM_TOLERANCE_MINOR` of the deal's — a kopeck gap is not money missing; a
  * real SUM gap stays in `left`. Payments on the deal's other orders count too

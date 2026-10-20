@@ -824,7 +824,7 @@ const LINE_COLUMNS: readonly Column<SverkaLineDto>[] = [
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
           className="underline-offset-2 hover:underline"
-          style={{ color: ink(l.issues.includes('STATUS')) }}
+          style={{ color: ink(l.issues.some((i) => i === 'STATUS' || i === 'PULLED_BACK' || i === 'PAYMENT')) }}
         >
           {l.moysklad.state ?? NO_VALUE} · {l.moysklad.orderName}
         </a>
@@ -998,7 +998,8 @@ function LineDetail({ line, onClose }: { line: SverkaLineDto; onClose: () => voi
       label: 'Holat',
       bitrix: bx ? `${bx.stage} · ${PHASE_LABEL[bx.phase]}` : null,
       moysklad: ms ? `${ms.state ?? NO_VALUE} · ${PHASE_LABEL[ms.phase]}` : null,
-      verdict: bx && ms ? (has('STATUS') || has('NOT_FAKT1') ? 'diff' : bx.phase === 'OUTSIDE' ? 'none' : 'same') : 'none',
+      verdict:
+        bx && ms ? (has('STATUS') || has('NOT_FAKT1') || has('PULLED_BACK') ? 'diff' : bx.phase === 'OUTSIDE' ? 'none' : 'same') : 'none',
     },
     {
       label: 'FAKT 1 / FAKT 2',
@@ -1041,7 +1042,10 @@ function LineDetail({ line, onClose }: { line: SverkaLineDto; onClose: () => voi
       label: 'Pul (MoySklad)',
       bitrix: bx ? NO_VALUE : null,
       moysklad: ms ? `toʻlangan ${formatFullUzs(ms.payed)} · joʻnatilgan ${formatFullUzs(ms.shipped)}` : null,
-      verdict: 'none',
+      // MoySklad against itself: only its own two differences mark this row.
+      verdict: has('PAYMENT') || has('NOT_SHIPPED') ? 'diff' : 'none',
+      note:
+        [has('PAYMENT') && 'holatiga zid', has('NOT_SHIPPED') && 'joʻnatilgani kam'].filter(Boolean).join(' · ') || undefined,
     },
     {
       label: 'Logistika',
