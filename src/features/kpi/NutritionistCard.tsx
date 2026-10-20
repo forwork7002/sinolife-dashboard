@@ -17,19 +17,25 @@ interface NutritionistCountDto {
   readonly moyskladUsd: number
 }
 
+/** Mirrors `NutritionistBrandPay`. */
+interface NutritionistBrandPayDto {
+  readonly brand: 'Collagen' | 'Zextra'
+  readonly fakt1: NutritionistCountDto
+  readonly fakt2: NutritionistCountDto
+}
+
 /** Mirrors `NutritionistPay`. */
 interface NutritionistPayDto {
   readonly usdPerOrder: number
-  readonly fakt1: NutritionistCountDto
-  readonly fakt2: NutritionistCountDto
+  readonly brands: readonly NutritionistBrandPayDto[]
 }
 
 const usd = (value: number) => `${formatNumber(value)} $`
 
 /**
- * «Нутрицолог · Collagen» (the client, 2026-10-17): Collagen's FAKT 1 and
- * FAKT 2 order counts, Bitrix24 against MoySklad, each priced at the
- * nutritionist's dollars per order.
+ * «Нутрицолог» (the client, 2026-10-17; Zextra beside Collagen since
+ * 2026-10-20): each brand's FAKT 1 and FAKT 2 order counts, Bitrix24 against
+ * MoySklad, each priced at the nutritionist's dollars per order.
  *
  * ON THE DASHBOARD WINDOW, unlike the plans below it, and company-wide: the
  * employee / department filters do not narrow it — MoySklad names no employee
@@ -59,12 +65,12 @@ export function NutritionistCard() {
 
   return (
     <ChartCard
-      title="Нутрицолог · Collagen"
-      hint={`Collagen buyurtmalari soni, Bitrix24 va MoySklad · 1 ta buyurtma = ${rate} $ · FAKT 1 / FAKT 2 «Sverka» va Savdo dinamikasi qoidasida · tanlangan davr, butun kompaniya`}
+      title="Нутрицолог · Collagen va Zextra"
+      hint={`Har bir brend buyurtmalari soni, Bitrix24 va MoySklad · 1 ta buyurtma = ${rate} $ · brend boshqa ekranlardagi Collagen / Zextra tugmasi qoidasida, brendsiz buyurtmalar kirmaydi · FAKT 1 / FAKT 2 «Sverka» va Savdo dinamikasi qoidasida · tanlangan davr, butun kompaniya`}
     >
       <div className="px-5 pb-4">
         {status === 'loading' ? (
-          <LoadingSkeleton rows={3} />
+          <LoadingSkeleton rows={6} />
         ) : status === 'error' || !data ? (
           <ErrorState
             message={query.error instanceof ApiClientError ? query.error.message : undefined}
@@ -83,41 +89,53 @@ export function NutritionistCard() {
                   <th className="py-1 text-right font-medium">MoySklad × {rate} $</th>
                 </tr>
               </thead>
-              <tbody>
-                {(
-                  [
-                    ['FAKT 1', data.fakt1],
-                    ['FAKT 2', data.fakt2],
-                  ] as const
-                ).map(([label, row]) => {
-                  const gap = row.moysklad - row.bitrix
-                  return (
-                    <tr key={label} className="border-t" style={{ borderColor: 'var(--grid)' }}>
-                      <th scope="row" className="py-1.5 pr-3 text-left font-medium" style={{ color: 'var(--ink-primary)' }}>
-                        {label}
-                      </th>
-                      <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--ink-primary)' }}>
-                        {formatNumber(row.bitrix)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--ink-primary)' }}>
-                        {formatNumber(row.moysklad)}
-                      </td>
-                      <td
-                        className="py-1.5 pr-3 text-right"
-                        style={{ color: gap === 0 ? 'var(--ink-muted)' : 'var(--status-critical)' }}
-                      >
-                        {gap > 0 ? `+${formatNumber(gap)}` : formatNumber(gap)}
-                      </td>
-                      <td className="py-1.5 pr-3 text-right font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                        {usd(row.bitrixUsd)}
-                      </td>
-                      <td className="py-1.5 text-right font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                        {usd(row.moyskladUsd)}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
+              {data.brands.map((brand) => (
+                <tbody key={brand.brand}>
+                  <tr className="border-t" style={{ borderColor: 'var(--grid)' }}>
+                    <th
+                      scope="rowgroup"
+                      colSpan={6}
+                      className="pt-2.5 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide"
+                      style={{ color: 'var(--ink-secondary)' }}
+                    >
+                      {brand.brand}
+                    </th>
+                  </tr>
+                  {(
+                    [
+                      ['FAKT 1', brand.fakt1],
+                      ['FAKT 2', brand.fakt2],
+                    ] as const
+                  ).map(([label, row]) => {
+                    const gap = row.moysklad - row.bitrix
+                    return (
+                      <tr key={label} className="border-t" style={{ borderColor: 'var(--grid)' }}>
+                        <th scope="row" className="py-1.5 pr-3 text-left font-medium" style={{ color: 'var(--ink-primary)' }}>
+                          {label}
+                        </th>
+                        <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--ink-primary)' }}>
+                          {formatNumber(row.bitrix)}
+                        </td>
+                        <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--ink-primary)' }}>
+                          {formatNumber(row.moysklad)}
+                        </td>
+                        <td
+                          className="py-1.5 pr-3 text-right"
+                          style={{ color: gap === 0 ? 'var(--ink-muted)' : 'var(--status-critical)' }}
+                        >
+                          {gap > 0 ? `+${formatNumber(gap)}` : formatNumber(gap)}
+                        </td>
+                        <td className="py-1.5 pr-3 text-right font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                          {usd(row.bitrixUsd)}
+                        </td>
+                        <td className="py-1.5 text-right font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                          {usd(row.moyskladUsd)}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              ))}
             </table>
           </div>
         )}

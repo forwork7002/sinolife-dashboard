@@ -158,19 +158,37 @@ describe('SverkaService.overview', () => {
 })
 
 describe('SverkaService.nutritionist', () => {
-  it('counts Collagen FAKT 1 / FAKT 2 on both systems and prices each at 2 $ an order', async () => {
-    const delivered = deal({ dealId: 'd2', externalId: '1070001', delivered: true, logisticsRole: 'DELIVERED', stageExternalId: 'C6:WON' })
+  it('counts Collagen and Zextra FAKT 1 / FAKT 2 on both systems off one scan and prices each at 2 $ an order', async () => {
+    const delivered = deal({
+      dealId: 'd2',
+      externalId: '1070001',
+      delivered: true,
+      logisticsRole: 'DELIVERED',
+      stageExternalId: 'C6:WON',
+      brand: 'Collagen',
+    })
     // FAKT 1 with no MoySklad order yet, past the warehouse.
-    const missing = deal({ dealId: 'd3', externalId: '1070002' })
-    const brands: unknown[] = []
+    const missing = deal({ dealId: 'd3', externalId: '1070002', brand: 'Collagen' })
+    const zextra = deal({ dealId: 'd4', externalId: '1070003', brand: 'Zextra' })
+    // «Brendsiz»: on neither line, and MoySklad is not asked about it.
+    const brandless = deal({ dealId: 'd5', externalId: '1070004', brand: null })
+    const asked: unknown[] = []
+    const askedIds: string[][] = []
     const insights = {
-      sverkaCohort: async (_window: unknown, brand: unknown) => {
-        brands.push(brand)
-        return [deal({}), delivered, missing]
+      sverkaCohort: async (_window: unknown, brands: unknown) => {
+        asked.push(brands)
+        return [deal({ brand: 'Collagen' }), delivered, missing, zextra, brandless]
       },
     } as unknown as InsightsRepository
     const repository = {
-      ordersForDeals: async () => [order({}), order({ orderId: 'ms-2', bitrixDealId: '1070001', stateName: 'Касса' })],
+      ordersForDeals: async (ids: string[]) => {
+        askedIds.push(ids)
+        return [
+          order({}),
+          order({ orderId: 'ms-2', bitrixDealId: '1070001', stateName: 'Касса' }),
+          order({ orderId: 'ms-3', bitrixDealId: '1070003' }),
+        ]
+      },
     } as unknown as SverkaRepository
     const period = resolvePeriod('custom', {
       timeZone: 'Asia/Tashkent',
@@ -181,11 +199,16 @@ describe('SverkaService.nutritionist', () => {
 
     const out = await new SverkaService(insights, repository).nutritionist(period)
 
-    expect(brands).toHaveLength(1)
-    expect(brands[0]).toMatchObject({ slice: 'Collagen' })
+    expect(asked).toHaveLength(1)
+    expect(asked[0]).not.toHaveProperty('slice')
+    expect(askedIds).toEqual([['1071484', '1070001', '1070002', '1070003']])
     expect(out.usdPerOrder).toBe(2)
-    expect(out.fakt1).toEqual({ bitrix: 3, moysklad: 2, bitrixUsd: 6, moyskladUsd: 4 })
-    expect(out.fakt2).toEqual({ bitrix: 1, moysklad: 1, bitrixUsd: 2, moyskladUsd: 2 })
+    expect(out.brands.map((b) => b.brand)).toEqual(['Collagen', 'Zextra'])
+    const [collagen, zextraPay] = out.brands
+    expect(collagen.fakt1).toEqual({ bitrix: 3, moysklad: 2, bitrixUsd: 6, moyskladUsd: 4 })
+    expect(collagen.fakt2).toEqual({ bitrix: 1, moysklad: 1, bitrixUsd: 2, moyskladUsd: 2 })
+    expect(zextraPay.fakt1).toEqual({ bitrix: 1, moysklad: 1, bitrixUsd: 2, moyskladUsd: 2 })
+    expect(zextraPay.fakt2).toEqual({ bitrix: 0, moysklad: 0, bitrixUsd: 0, moyskladUsd: 0 })
   })
 })
 

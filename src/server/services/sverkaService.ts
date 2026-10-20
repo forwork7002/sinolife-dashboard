@@ -38,7 +38,7 @@ import {
   sverkaTotals,
   teamRows,
 } from '@/server/domain/sverka/sverka'
-import { type NutritionistPay, nutritionistPay } from '@/server/domain/sverka/nutritionist'
+import { type NutritionistBrand, type NutritionistPay, nutritionistPay } from '@/server/domain/sverka/nutritionist'
 import type { Period } from '@/server/domain/period/period'
 import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { InsightsRepository, type SverkaDealRow } from '@/server/repositories/insightsRepository'
@@ -376,23 +376,28 @@ export class SverkaService {
   }
 
   /**
-   * «Нутрицолог · Collagen» on «KPI rejalari»: FAKT 1 / FAKT 2 order counts
-   * over Collagen's cohort, Bitrix24 against MoySklad, priced per order
-   * (`nutritionistPay`). Only the counts are read, so no product rows are
-   * fetched: without them `compareDeal` skips the product test, which no
-   * count depends on.
+   * «Нутрицолог» on «KPI rejalari»: FAKT 1 / FAKT 2 order counts over each
+   * brand's cohort, Bitrix24 against MoySklad, priced per order
+   * (`nutritionistPay`). ONE cohort scan labels every deal with its brand
+   * (`sverkaCohort`'s `brands`), so Zextra costs no second read; «Brendsiz»
+   * deals are dropped before MoySklad is asked. Only the counts are read, so
+   * no product rows are fetched: without them `compareDeal` skips the product
+   * test, which no count depends on.
    */
   async nutritionist(period: Period): Promise<NutritionistPay> {
     const key = [period.preset, period.start.toISOString(), period.end.toISOString()].join('|')
     return nutritionistCache.get(key, async () => {
-      const brand = { slice: 'Collagen', collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') } as const
-      const cohort = await this.insights.sverkaCohort({ ...period, restrictToEmployeeIds: null }, brand)
+      const teams = { collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') }
+      const cohort = (await this.insights.sverkaCohort({ ...period, restrictToEmployeeIds: null }, teams)).filter((d) => d.brand)
       const externalIds = cohort.flatMap((d) => (d.externalId ? [d.externalId] : []))
       const ordersByDeal = byDeal(await this.repository.ordersForDeals(externalIds))
-      const lines = cohort.map((d) =>
-        compareDeal(bitrixSideOf(d, []), d.externalId ? (ordersByDeal.get(d.externalId) ?? []) : []),
-      )
-      return nutritionistPay(sverkaTotals(lines))
+      const totalsOf = (brand: NutritionistBrand) =>
+        sverkaTotals(
+          cohort
+            .filter((d) => d.brand === brand)
+            .map((d) => compareDeal(bitrixSideOf(d, []), d.externalId ? (ordersByDeal.get(d.externalId) ?? []) : [])),
+        )
+      return nutritionistPay({ Collagen: totalsOf('Collagen'), Zextra: totalsOf('Zextra') })
     })
   }
 

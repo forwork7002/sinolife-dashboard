@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
 const ACCESS = { permission: 'analytics:read:all', section: 'kpi' } as const
 
 /**
- * «Нутрицолог · Collagen» — the window's Collagen FAKT 1 / FAKT 2 order
+ * «Нутрицолог» — the window's Collagen and Zextra FAKT 1 / FAKT 2 order
  * counts in Bitrix24 and in MoySklad, each priced at the nutritionist's rate.
  */
 export const GET = getHandler(ACCESS, periodQuerySchema, async (ctx) => {

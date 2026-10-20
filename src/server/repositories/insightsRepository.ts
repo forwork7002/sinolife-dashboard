@@ -1138,6 +1138,8 @@ export interface SverkaDealRow {
   readonly ropSource: string | null
   /** «Регион» on the deal. */
   readonly region: string | null
+  /** The brand switch's verdict (null = «Brendsiz») — only when `sverkaCohort` was asked for brands. */
+  readonly brand?: 'Collagen' | 'Zextra' | null
 }
 
 /** One Регистрация lead whose phone reached FAKT 1, as `leadFakt1Clients` reads it. */
@@ -3347,12 +3349,16 @@ export class InsightsRepository {
    * FAKT 2 flagged by the very constants `ratingSql` groups by, so the totals
    * «Sverka» prints are Savdo dinamikasi's to the soʻm.
    *
-   * `brand` narrows the cohort by the brand switch's rule (`brandSliceSql`),
-   * so a brand's count here is the one every brand-switched screen prints.
+   * `brands` labels each deal with its brand by the brand switch's rule
+   * (`brandOfSql`), in the same scan, so a brand's count here is the one
+   * every brand-switched screen prints. Without it no brand is probed.
    */
-  async sverkaCohort(window: ScopedWindow, brand?: BrandSlice): Promise<readonly SverkaDealRow[]> {
+  async sverkaCohort(
+    window: ScopedWindow,
+    brands?: Pick<BrandSlice, 'collagenTeams' | 'zextraTeams'>,
+  ): Promise<readonly SverkaDealRow[]> {
     const params: unknown[] = [window.start, window.end, InsightsRepository.scopeValue(window)]
-    const brandWhere = brand ? `\n     WHERE ${InsightsRepository.brandSliceSql('d', 'c.rop', brand, params)}` : ''
+    const brandColumn = brands ? `,\n           ${InsightsRepository.brandOfSql('d', 'c.rop', brands, params)} AS brand` : ''
     const rows = await this.prisma.$queryRawUnsafe<
       {
         deal_id: string
@@ -3369,9 +3375,10 @@ export class InsightsRepository {
         rop: string | null
         rop_source: string | null
         region: string | null
+        brand?: 'Collagen' | 'Zextra' | null
       }[]
     >(
-      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.sverkaCohortSql()}${brandWhere}`,
+      `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.sverkaCohortSql(brandColumn)}`,
       ...params,
     )
     return rows.map((r) => ({
@@ -3389,11 +3396,12 @@ export class InsightsRepository {
       rop: r.rop,
       ropSource: r.rop_source,
       region: r.region,
+      ...(brands ? { brand: r.brand ?? null } : {}),
     }))
   }
 
-  /** The tail `sverkaCohort` puts after the queue prelude. */
-  private static sverkaCohortSql(): string {
+  /** The tail `sverkaCohort` puts after the queue prelude; `extra` is appended to its select list. */
+  private static sverkaCohortSql(extra = ''): string {
     return `
     SELECT c.deal_id,
            d."externalId" AS external_id,
@@ -3408,7 +3416,7 @@ export class InsightsRepository {
            d."operatorNameSource" AS seller_source,
            c.rop,
            ${InsightsRepository.ropNameSql('d."operatorTeamSource"')} AS rop_source,
-           d."region" AS region
+           d."region" AS region${extra}
       FROM scoped c
       JOIN "deal" d ON d."id" = c.deal_id
       JOIN "deal_stage" ds ON ds."id" = d."stageId"`
@@ -3687,18 +3695,32 @@ export class InsightsRepository {
    * only when no form names a brand).
    */
   static brandSliceSql(alias: string, teamExpression: string, brand: BrandSlice, params: unknown[]): string {
-    params.push([...brand.collagenTeams])
+    const expression = InsightsRepository.brandOfSql(alias, teamExpression, brand, params)
+    if (brand.slice === 'none') return `(${expression}) IS NULL`
+    params.push(brand.slice)
+    return `(${expression}) = $${params.length}`
+  }
+
+  /**
+   * The brand switch's verdict on one order — 'Collagen', 'Zextra', or NULL
+   * for «Brendsiz» — `brandSliceSql` without the comparison, for a reader
+   * that needs every brand from one scan.
+   */
+  static brandOfSql(
+    alias: string,
+    teamExpression: string,
+    teams: Pick<BrandSlice, 'collagenTeams' | 'zextraTeams'>,
+    params: unknown[],
+  ): string {
+    params.push([...teams.collagenTeams])
     const collagen = params.length
-    params.push([...brand.zextraTeams])
+    params.push([...teams.zextraTeams])
     const zextra = params.length
-    const expression = `CASE COALESCE(${originFormBrandSql(alias)}, ${InsightsRepository.dealProductBrandSql(alias)})
+    return `CASE COALESCE(${originFormBrandSql(alias)}, ${InsightsRepository.dealProductBrandSql(alias)})
           WHEN 'Collagen' THEN 'Collagen' WHEN 'Zextra' THEN 'Zextra' WHEN '-' THEN NULL
           ELSE CASE WHEN (${teamExpression}) = ANY($${collagen}::text[]) THEN 'Collagen'
                     WHEN (${teamExpression}) = ANY($${zextra}::text[]) THEN 'Zextra' END
         END`
-    if (brand.slice === 'none') return `(${expression}) IS NULL`
-    params.push(brand.slice)
-    return `(${expression}) = $${params.length}`
   }
 
   /**

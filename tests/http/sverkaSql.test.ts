@@ -73,16 +73,44 @@ describe('sverkaCohort under a brand', () => {
     const { calls, repo } = capture()
     await repo.sverkaCohort(window)
     expect(calls[0].params).toHaveLength(3)
-    expect(bare(calls[0].sql)).not.toMatch(/WHERE\s+\(CASE COALESCE/)
+    expect(bare(calls[0].sql)).not.toMatch(/CASE COALESCE/)
+    expect(bare(calls[0].sql)).not.toMatch(/AS brand/)
   })
 
-  it('narrows to one brand by the brand switch\'s rule, its teams bound after the scope', async () => {
-    const { calls, repo } = capture()
-    await repo.sverkaCohort(window, { slice: 'Collagen', collagenTeams: ['Lola'], zextraTeams: ['Charos'] })
+  it('carries no brand key on a row read without brands', async () => {
+    const prisma = { $queryRawUnsafe: async () => [{ deal_id: 'a', amount: '100' }] }
+    const [row] = await new InsightsRepository(prisma as never).sverkaCohort(window)
+    expect(row).not.toHaveProperty('brand')
+  })
+
+  it('labels every deal with its brand in the same scan, by the brand switch\'s rule, filtering none', async () => {
+    const calls: { sql: string; params: unknown[] }[] = []
+    const prisma = {
+      $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
+        calls.push({ sql, params })
+        return [
+          { deal_id: 'a', amount: '100', brand: 'Zextra' },
+          { deal_id: 'b', amount: '100', brand: null },
+        ]
+      },
+    }
+    const rows = await new InsightsRepository(prisma as never).sverkaCohort(window, { collagenTeams: ['Lola'], zextraTeams: ['Charos'] })
     const sql = bare(calls[0].sql)
-    expect(sql).toMatch(/WHERE \(CASE COALESCE/)
-    expect(sql).toContain('= $6')
-    expect(calls[0].params.slice(3)).toEqual([['Lola'], ['Charos'], 'Collagen'])
+    expect(sql).toMatch(/d\."region" AS region,\s+CASE COALESCE[\s\S]*END AS brand\s+FROM scoped c/)
+    expect(sql).not.toMatch(/WHERE\s+\(CASE COALESCE/)
+    // The switch's expression — form, then product, then the team (`c.rop`) — its teams bound after the scope.
+    expect(sql).toContain('(c.rop) = ANY($4::text[]) THEN \'Collagen\'')
+    expect(sql).toContain('(c.rop) = ANY($5::text[]) THEN \'Zextra\'')
+    expect(calls[0].params.slice(3)).toEqual([['Lola'], ['Charos']])
+    expect(rows.map((r) => r.brand)).toEqual(['Zextra', null])
+  })
+
+  it('keeps the switch\'s own predicate unchanged — the expression, then the slice', () => {
+    const params: unknown[] = []
+    const sql = InsightsRepository.brandSliceSql('d', 'c.rop', { slice: 'Zextra', collagenTeams: ['Lola'], zextraTeams: ['Charos'] }, params)
+    expect(sql).toBe(`(${InsightsRepository.brandOfSql('d', 'c.rop', { collagenTeams: [], zextraTeams: [] }, [])}) = $3`)
+    expect(params).toEqual([['Lola'], ['Charos'], 'Zextra'])
+    expect(InsightsRepository.brandSliceSql('d', 'c.rop', { slice: 'none', collagenTeams: [], zextraTeams: [] }, [])).toMatch(/\) IS NULL$/)
   })
 })
 
