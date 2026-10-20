@@ -52,6 +52,15 @@ function payrollWeekPeriod(monday: string, timeZone = DAY_TZ): Period {
 beforeEach(resetPayrollCache)
 
 const mln = (n: number) => BigInt(Math.round(n * 1_000_000)) * 100n
+
+/**
+ * The org lookups payroll reads beside the rows (2026-10-20): no tree, and the
+ * flat-rate seller resolved to somebody who is in none of these cases' rows.
+ */
+const ORG = {
+  ropAncestorNames: async () => new Map<string, string[]>(),
+  employeesByExternalId: async () => new Map([['7044', { id: 'flat-7044', fullName: 'Flat 7044' }]]),
+}
 const EMPTY = { CONFIRM_NEW: 0, NO_ANSWER: 0, CONFIRMED: 0, REJECTED: 0, UNCONFIRMED_SHIPPED: 0 }
 const EMPTY_MINOR = { CONFIRM_NEW: 0n, NO_ANSWER: 0n, CONFIRMED: 0n, REJECTED: 0n, UNCONFIRMED_SHIPPED: 0n }
 
@@ -79,6 +88,7 @@ function slice(employeeId: string, rop: string, fakt2Mln: number, day: number): 
 describe('payroll over per-team slices', () => {
   it('pays only the sellers who delivered — the cohort also carries the queued and refused', async () => {
     const insights = {
+      ...ORG,
       ropHeadNames: async () => new Map<string, string>(),
       confirmationSellerRating: async () => [
         slice('paid', 'Lola', 10, 10),
@@ -95,6 +105,7 @@ describe('payroll over per-team slices', () => {
   it('asks the board query, company-wide', async () => {
     const asked: unknown[] = []
     const insights = {
+      ...ORG,
       ropHeadNames: async () => new Map<string, string>(),
       confirmationSellerRating: async (...args: unknown[]) => {
         asked.push(args)
@@ -110,6 +121,7 @@ describe('payroll over per-team slices', () => {
 
   it('pays a seller who moved team once, on their whole FAKT 2', async () => {
     const insights = {
+      ...ORG,
       ropHeadNames: async () => new Map<string, string>(),
       confirmationSellerRating: async () => [
         slice('moved', 'Sevinchxon', 30, 10),
@@ -136,6 +148,7 @@ describe('payroll over per-team slices', () => {
 
   it('pays a week off the weekly table, with the rate on every row', async () => {
     const insights = {
+      ...ORG,
       ropHeadNames: async () => new Map<string, string>(),
       confirmationSellerRating: async () => [
         slice('a', 'Lola', 34.9, 29),
@@ -162,6 +175,7 @@ describe('payroll over per-team slices', () => {
 describe('ROP pay (2026-10-07)', () => {
   it('pays each ROP 2% of the team FAKT 2, the oklad on the month only, and names the head', async () => {
     const insights = {
+      ...ORG,
       ropHeadNames: async () => new Map([['Lola', 'Lola Karimova']]),
       confirmationSellerRating: async () => [
         slice('a', 'Lola', 60, 10),
@@ -210,6 +224,7 @@ describe('ROP pay follows the sale, not the seller', () => {
 
   it('leaves a moved seller\'s old share with the old ROP, and sums every ROP into ropTotals', async () => {
     const insights = {
+      ...ORG,
       ropHeadNames: async () => new Map([['Sadriddin', 'Sadriddin B']]),
       confirmationSellerRating: async () => [
         slice('moved', 'Sevinchxon', 30, 10),
@@ -235,6 +250,7 @@ describe('ROP pay follows the sale, not the seller', () => {
 
   it('still answers when the head lookup fails', async () => {
     const insights = {
+      ...ORG,
       ropHeadNames: async () => {
         throw new Error('db down')
       },
@@ -265,6 +281,7 @@ describe('payroll growth and ROP cards', () => {
     const previous = comparablePayrollPeriod(period, payrollPeriod(monthBefore, 'first', TZ), now)
     const service = (current: ConfirmationSellerRatingRow[], then: ConfirmationSellerRatingRow[]) =>
       new PayrollService({
+        ...ORG,
         ropHeadNames: async () => new Map<string, string>(),
         confirmationSellerRating: async (window: { start: Date }) =>
           window.start.getTime() === period.start.getTime() ? current : then,
@@ -373,6 +390,7 @@ describe('payroll growth and ROP cards', () => {
     const whole = comparablePayrollPeriod(period, payrollPeriod('2025-07', 'first', TZ_), now)
     const cut = comparablePayrollPeriod(period, payrollPeriod('2025-07', 'first', TZ_), new Date('2025-08-05T06:00:00Z'))
     const service = new PayrollService({
+      ...ORG,
       ropHeadNames: async () => new Map<string, string>(),
       confirmationSellerRating: async (window: { start: Date; end: Date }) =>
         window.start.getTime() === period.start.getTime()
@@ -388,6 +406,7 @@ describe('payroll growth and ROP cards', () => {
   it('does not ask for a comparison window that is empty', async () => {
     let calls = 0
     const insights = {
+      ...ORG,
       ropHeadNames: async () => new Map<string, string>(),
       confirmationSellerRating: async () => {
         calls += 1
@@ -415,6 +434,7 @@ describe('the payroll memo across polls', () => {
     const TZ = 'Asia/Tashkent'
     const asked: string[] = []
     const insights = {
+      ...ORG,
       ropHeadNames: async () => new Map<string, string>(),
       confirmationSellerRating: async (window: { start: Date; end: Date }) => {
         asked.push(`${window.start.toISOString()}|${window.end.toISOString()}`)
@@ -467,6 +487,7 @@ describe('the payroll a poll is served', () => {
     const TZ = 'Asia/Tashkent'
     let reads = 0
     const insights = {
+      ...ORG,
       ropHeadNames: async () => new Map<string, string>(),
       confirmationSellerRating: async () => {
         // Every read finds one more million delivered than the read before it.

@@ -5316,6 +5316,57 @@ export class InsightsRepository {
   }
 
   /**
+   * Each ROP team label's unit ancestors, nearest first — payroll's blocks
+   * («Тошкент», «Навоий», «Зехтра …», `payrollBranchOf`). A label several
+   * units share lists the active units' ancestors first; an inactive unit is
+   * walked too, so an old label still finds its branch.
+   */
+  async ropAncestorNames(): Promise<Map<string, string[]>> {
+    const rows = await this.prisma.$queryRawUnsafe<{ rop: string; name: string }[]>(
+      InsightsRepository.ropAncestorsSql(),
+    )
+    const out = new Map<string, string[]>()
+    for (const row of rows) out.set(row.rop, [...(out.get(row.rop) ?? []), row.name])
+    return out
+  }
+
+  /**
+   * Bounded by depth, not by `UNION`'s de-duplication: a `parentId` cycle
+   * stops at 12. Ordered by the starting unit too, so two active units under
+   * one label list their chains the same way on every read.
+   */
+  static ropAncestorsSql(): string {
+    const rop = InsightsRepository.ropNameSql('d."name"')
+    return `
+      WITH RECURSIVE up AS (
+        SELECT ${rop} AS rop, d."isActive" AS active, d."id" AS start_id, d."parentId" AS node_id, 1 AS depth
+          FROM "department" d
+         WHERE ${rop} IS NOT NULL
+        UNION ALL
+        SELECT up.rop, up.active, up.start_id, p."parentId", up.depth + 1
+          FROM up
+          JOIN "department" p ON p."id" = up.node_id
+         WHERE up.depth < 12
+      )
+      SELECT up.rop, p."name"
+        FROM up
+        JOIN "department" p ON p."id" = up.node_id
+       ORDER BY up.rop, up.active DESC, up.start_id, up.depth`
+  }
+
+  /** Our employee (id and name) per portal user id, for the portal users the payroll names by id. */
+  async employeesByExternalId(
+    externalIds: readonly string[],
+  ): Promise<Map<string, { readonly id: string; readonly fullName: string }>> {
+    if (externalIds.length === 0) return new Map()
+    const rows = await this.prisma.employee.findMany({
+      where: { externalSource: 'BITRIX24', externalId: { in: [...externalIds] } },
+      select: { id: true, externalId: true, fullName: true },
+    })
+    return new Map(rows.flatMap((r) => (r.externalId ? [[r.externalId, { id: r.id, fullName: r.fullName }] as const] : [])))
+  }
+
+  /**
    * The FAKT 1 / FAKT 2 series behind the hero chart on Savdo dinamikasi.
    *
    * Isolated from the query for the same reason `ratingSql` is: it has to be

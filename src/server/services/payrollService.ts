@@ -33,17 +33,28 @@
 import { type DeltaDto, growth, toDeltaDto } from '@/server/domain/analytics/metrics'
 import { mergeSellerTeamSlices } from '@/server/domain/analytics/sellerTeams'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
-import type { Period } from '@/server/domain/period/period'
+import { type Period, zonedDateKey } from '@/server/domain/period/period'
 import {
+  PAYROLL_BRANCHES,
+  PAYROLL_BRANCH_LABEL,
+  type PayrollBranch,
+  payrollBranchOf,
+} from '@/server/domain/payroll/payrollBranches'
+import {
+  FLAT_RATE_SELLERS,
+  type PayrollInput,
   type PayrollSchemeValue,
+  type PayrollTableValue,
   payrollSchemeOf,
   ropPayroll,
   sellerPayroll,
 } from '@/server/domain/payroll/sellerPayroll'
+import { isBaseTeam } from '@/server/domain/rnp/rnpSheet'
 import type {
   ConfirmationSellerRatingRow,
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
+import type { RegistrationRepository } from '@/server/repositories/registrationRepository'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -57,12 +68,28 @@ export interface PayrollSellerDto {
   readonly fullName: string
   /** The ROP team, or null for a seller in no (ROP) department. */
   readonly rop: string | null
+  /** The block the team is printed in (`payrollBranchOf`). */
+  readonly branch: PayrollBranch
+  /** Which pay the row is on: the standard tables, БАЗА's, or a flat rate of their own. */
+  readonly table: PayrollTableValue
+  /**
+   * «Лид сони» — the leads handed to this person in the window's days, as
+   * «ROP otchet» counts them (`RegistrationRepository.sellerLeads`). Null when
+   * they could not be read: a column of zeros would read as nobody got a lead.
+   */
+  readonly leads: number | null
+  /** «Транз-1» — FAKT 1 orders, the board's count. */
+  readonly fakt1Orders: number
+  /** «Конверсия» — Транз-1 ÷ Лид сони × 100, «ROP otchet»'s formula; null with no lead. */
+  readonly conversion: number | null
   /** FAKT 2 — delivered money, and the only basis this screen pays on. */
   readonly fakt2: MoneyDto
+  /** «Транз-2» — FAKT 2 orders, the screen's «Buyurtma soni». */
   readonly fakt2Orders: number
   /**
-   * The rate this row was paid at, in per cent: always 8 for a month or a
-   * half, 0 / 5 / 8 / 10 / 12 for a week, where the rate is the tier.
+   * The rate this row was paid at, in per cent: 8 for a standard month or
+   * half, 0 / 5 / 8 / 10 / 12 for a standard week, 8 / 10 / 12 / 15 on БАЗА's
+   * tables, the person's own on a flat rate.
    */
   readonly percentRate: number
   /** `percentRate` of FAKT 2. */
@@ -99,7 +126,14 @@ export interface PayrollSellerDto {
 export interface PayrollTeamDto {
   /** The ROP's team name, or null for sellers in no (ROP) department. */
   readonly rop: string | null
+  readonly branch: PayrollBranch
   readonly sellers: number
+  /** Σ the printed sellers' leads; null when the leads could not be read. */
+  readonly leads: number | null
+  readonly fakt1Orders: number
+  readonly fakt2Orders: number
+  /** Транз-1 ÷ Лид сони × 100 of the team's sums, over the rows handed a lead (`countsOf`) — never a mean of the rows. */
+  readonly conversion: number | null
   readonly fakt2: MoneyDto
   readonly percent: MoneyDto
   readonly fixed: MoneyDto
@@ -132,6 +166,32 @@ export interface PayrollTeamDto {
   } | null
 }
 
+/**
+ * One block of the table — Toshkent, Navoiy, Baza, Zextra, Boshqa (the client,
+ * 2026-10-20). Summed from its teams, which are summed from the printed rows,
+ * so the blocks add up to the fund to the soʻm.
+ */
+export interface PayrollBranchDto {
+  readonly branch: PayrollBranch
+  readonly label: string
+  /** Its teams' labels, in `teams`' order. */
+  readonly teams: readonly (string | null)[]
+  readonly sellers: number
+  readonly leads: number | null
+  readonly fakt1Orders: number
+  readonly fakt2Orders: number
+  readonly conversion: number | null
+  readonly fakt2: MoneyDto
+  readonly percent: MoneyDto
+  readonly fixed: MoneyDto
+  /** The sellers' pay. */
+  readonly total: MoneyDto
+  /** How many of its teams' ROPs are paid. */
+  readonly rops: number
+  /** Σ its teams' `ropPay`, apart from the sellers' pay. */
+  readonly ropTotal: MoneyDto
+}
+
 export interface PayrollDto {
   /** Which of the client's tables was applied. */
   readonly scheme: PayrollSchemeValue
@@ -147,6 +207,10 @@ export interface PayrollDto {
   readonly sellers: readonly PayrollSellerDto[]
   readonly totals: {
     readonly sellers: number
+    readonly leads: number | null
+    readonly fakt1Orders: number
+    readonly fakt2Orders: number
+    readonly conversion: number | null
     readonly fakt2: MoneyDto
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
@@ -160,8 +224,14 @@ export interface PayrollDto {
     readonly fixed: MoneyDto
     readonly total: MoneyDto
   }
+  /** `totals.total` + `ropTotals.total`, summed here in minor units — everything the period pays out. */
+  readonly fund: MoneyDto
+  /** The people paid a flat rate of their own (`FLAT_RATE_SELLERS`), named, for the rule card. */
+  readonly flatRates: readonly { readonly fullName: string; readonly percentRate: number }[]
   /** Per ROP, the biggest fund first and «ROP yoʻq» last. Σ = `totals`. */
   readonly teams: readonly PayrollTeamDto[]
+  /** The blocks that have a team, in `PAYROLL_BRANCHES`' order. Σ = `totals`. */
+  readonly branches: readonly PayrollBranchDto[]
   /** The comparison window's totals, by the same table. */
   readonly previous: {
     readonly sellers: number
@@ -223,18 +293,47 @@ const rowsCache = ttlCache<ConfirmationSellerRatingRow[]>(120_000, LIVE_CACHE)
 /** Who heads each ROP team. Changes with the three-hourly reference pass. */
 const headsCache = ttlCache<Map<string, string>>(600_000)
 
+/** Each team label's unit ancestors, for the blocks. The same clock as the heads. */
+const ancestorsCache = ttlCache<Map<string, string[]>>(600_000)
+
+/** `FLAT_RATE_SELLERS` resolved to our employees. */
+const flatCache = ttlCache<Map<string, FlatRate>>(600_000)
+
+interface FlatRate {
+  readonly bp: bigint
+  readonly fullName: string
+}
+
+/** One window's leads per person, on the rows' own clock. */
+const leadsCache = ttlCache<Map<string, number>>(120_000, LIVE_CACHE)
+
 /**
- * Test seam: both memos are module state, shared by every case in a worker —
+ * Test seam: every memo is module state, shared by every case in a worker —
  * the hazard `resetSellerBoardCache` describes.
  */
 export function resetPayrollCache(): void {
   payrollCache.clear()
   rowsCache.clear()
   headsCache.clear()
+  ancestorsCache.clear()
+  flatCache.clear()
+  leadsCache.clear()
 }
 
+/** The leads reader — «ROP otchet»'s, so «Лид сони» is one number on both screens. */
+export type PayrollLeadsSource = Pick<RegistrationRepository, 'sellerLeads'>
+
 export class PayrollService {
-  constructor(private readonly insights: InsightsRepository) {}
+  constructor(
+    private readonly insights: InsightsRepository,
+    /** Null leaves «Лид сони» and «Конверсия» unread («—»), never zero. */
+    private readonly leadsSource: PayrollLeadsSource | null = null,
+    /**
+     * Where a read the payroll survives without is reported (the container
+     * hands the logger). Injected rather than imported: the logger reads `env`.
+     */
+    private readonly warn: (context: Record<string, unknown>, message: string) => void = () => {},
+  ) {}
 
   /**
    * The payroll over the dashboard's window, paid by the table its length
@@ -297,6 +396,61 @@ export class PayrollService {
     return headsCache.get('heads', () => this.insights.ropHeadNames()).catch(() => new Map())
   }
 
+  /*
+    A PLACE ON THE PAGE, NEVER A REASON TO FAIL. A refused tree prints every
+    team under «Boshqa» — visible, and nobody's pay moves with it.
+  */
+  private ancestors(): Promise<Map<string, string[]>> {
+    return ancestorsCache.get('ancestors', () => this.insights.ropAncestorNames()).catch((err: unknown) => {
+      this.warn({ err }, 'payroll: unit tree unread; every team prints under «Boshqa»')
+      return new Map()
+    })
+  }
+
+  /*
+    MONEY, SO A FAILURE IS THE PAYROLL'S. Swallowed, a refused lookup would
+    pay the flat-rate seller by the standard table without a word — and so
+    would a lookup that answers and finds NOBODY (the row re-created, not yet
+    synced), which is why an unresolved id throws too.
+  */
+  private flatRates(): Promise<Map<string, FlatRate>> {
+    return flatCache.get('flat', async () => {
+      const found = await this.insights.employeesByExternalId(Object.keys(FLAT_RATE_SELLERS))
+      const out = new Map<string, FlatRate>()
+      for (const [externalId, bp] of Object.entries(FLAT_RATE_SELLERS)) {
+        const employee = found.get(externalId)
+        if (employee === undefined) throw new Error(`payroll: flat-rate seller ${externalId} has no employee row`)
+        out.set(employee.id, { bp, fullName: employee.fullName })
+      }
+      return out
+    })
+  }
+
+  /*
+    THE WINDOW'S CALENDAR DAYS, as «ROP otchet» takes them: «Лид сони» is
+    counted by «Лид таркатилган сана», a DATE, from the first day to the last
+    (the end is exclusive, so the last day is the one before it). Informational
+    — a refused read is «—» in the column, not the payroll down.
+  */
+  private leads(period: Period): Promise<Map<string, number> | null> {
+    const source = this.leadsSource
+    if (source === null) return Promise.resolve(null)
+    const from = zonedDateKey(period.start, period.timeZone)
+    const to = zonedDateKey(new Date(period.end.getTime() - 1), period.timeZone)
+    return leadsCache
+      .get(`${from}|${to}`, async () => {
+        const out = new Map<string, number>()
+        for (const row of await source.sellerLeads(from, to)) {
+          if (row.employeeId !== null) out.set(row.employeeId, (out.get(row.employeeId) ?? 0) + row.leads)
+        }
+        return out
+      })
+      .catch((err: unknown) => {
+        this.warn({ err, from, to }, 'payroll: leads unread; «Lid soni» prints «—»')
+        return null
+      })
+  }
+
   private async build(
     scheme: PayrollSchemeValue,
     period: Period,
@@ -308,13 +462,30 @@ export class PayrollService {
       Both windows at once, through the same query. An empty comparison
       window (a period that has not started) is not asked for at all.
     */
-    const [slices, previousRows, heads] = await Promise.all([
+    const [slices, previousRows, heads, ancestors, flat, leads] = await Promise.all([
       this.slices(period),
       previousPeriod.end.getTime() > previousPeriod.start.getTime()
         ? this.rows(previousPeriod)
         : Promise.resolve([] as ConfirmationSellerRatingRow[]),
       this.heads(),
+      this.ancestors(),
+      this.flatRates(),
+      this.leads(period),
     ])
+    /*
+      WHICH TABLE PAYS A ROW: a flat rate of the person's own first, then
+      БАЗА's for the two БАЗА teams, else the standard one. By the row's team
+      label — the team of their newest order once folded, so a seller is paid
+      by the table of the block they are printed in.
+    */
+    const tableOf = (row: {
+      readonly employeeId: string
+      readonly rop: string | null
+    }): { readonly table: PayrollTableValue } & Pick<PayrollInput, 'flatBp'> => {
+      const own = flat.get(row.employeeId)
+      if (own !== undefined) return { table: 'flat', flatBp: own.bp }
+      return { table: isBaseTeam(row.rop) ? 'baza' : 'standard' }
+    }
     /*
       PAID PEOPLE ONLY. The queue cohort also carries everyone whose orders
       are still queued or were refused — on the board, not on a payroll.
@@ -336,7 +507,7 @@ export class PayrollService {
       employeeId: row.employeeId,
       rop: row.rop,
       fakt2: row.deliveredMinor,
-      pay: sellerPayroll({ basisMinor: row.deliveredMinor, scheme }),
+      pay: sellerPayroll({ basisMinor: row.deliveredMinor, scheme, ...tableOf(row) }),
     }))
     /*
       «HAD A PREVIOUS» MEANS DELIVERED MONEY THEN. The cohort carries sellers
@@ -385,14 +556,21 @@ export class PayrollService {
 
     const sellers = ordered.map<PayrollSellerDto>((row, index) => {
       const rank = rankOf[index]!
-      const pay = sellerPayroll({ basisMinor: row.deliveredMinor, scheme })
+      const table = tableOf(row)
+      const pay = sellerPayroll({ basisMinor: row.deliveredMinor, scheme, ...table })
       const before = previousById.get(row.employeeId)
+      const leadCount = leads === null ? null : (leads.get(row.employeeId) ?? 0)
 
       return {
         rank,
         employeeId: row.employeeId,
         fullName: row.fullName,
         rop: row.rop,
+        branch: payrollBranchOf(row.rop, ancestors),
+        table: table.table,
+        leads: leadCount,
+        fakt1Orders: row.confirmedOrders,
+        conversion: conversionOf(row.confirmedOrders, leadCount),
         fakt2: cash(row.deliveredMinor),
         fakt2Orders: row.deliveredOrders,
         percentRate: Number(pay.percentBp) / 100,
@@ -433,9 +611,10 @@ export class PayrollService {
       fixed: sum((row) => row.fixed),
       total: sum((row) => row.total),
     }
+    const counts = countsOf(sellers, leads !== null)
 
     const printed = new Set(rows.map((row) => row.employeeId))
-    const teams = teamsOf(sellers, previousPay, cash, delta, scheme, heads, ropBasis)
+    const teams = teamsOf(sellers, previousPay, cash, delta, scheme, heads, ropBasis, ancestors, leads !== null)
     const paidRops = teams.flatMap((team) => (team.ropPay ? [team.ropPay] : []))
 
     return {
@@ -444,18 +623,22 @@ export class PayrollService {
       sellers,
       totals: {
         sellers: sellers.length,
+        ...counts,
         fakt2: cash(current.fakt2),
         percent: cash(current.percent),
         fixed: cash(current.fixed),
         total: cash(current.total),
       },
       teams,
+      branches: branchesOf(teams, sellers, cash, leads !== null),
       ropTotals: {
         rops: paidRops.length,
         percent: cash(paidRops.reduce((acc, pay) => acc + minor(pay.percent), 0n)),
         fixed: cash(paidRops.reduce((acc, pay) => acc + minor(pay.fixed), 0n)),
         total: cash(paidRops.reduce((acc, pay) => acc + minor(pay.total), 0n)),
       },
+      fund: cash(current.total + paidRops.reduce((acc, pay) => acc + minor(pay.total), 0n)),
+      flatRates: [...flat.values()].map((rate) => ({ fullName: rate.fullName, percentRate: Number(rate.bp) / 100 })),
       previous: {
         sellers: previousPay.length,
         gone: [...previousById.keys()].filter((id) => !printed.has(id)).length,
@@ -490,14 +673,17 @@ function teamsOf(
   scheme: PayrollSchemeValue,
   heads: ReadonlyMap<string, string>,
   ropBasis: ReadonlyMap<string, bigint>,
+  ancestors: ReadonlyMap<string, readonly string[]>,
+  leadsRead: boolean,
 ): PayrollTeamDto[] {
   const minor = (value: MoneyDto) => BigInt(value.amountMinor)
 
-  const now = new Map<string | null, { sellers: number; fakt2: bigint; percent: bigint; fixed: bigint; total: bigint }>()
+  const now = new Map<string | null, { sellers: PayrollSellerDto[]; fakt2: bigint; percent: bigint; fixed: bigint; total: bigint }>()
+  const empty = () => ({ sellers: [] as PayrollSellerDto[], fakt2: 0n, percent: 0n, fixed: 0n, total: 0n })
   for (const row of sellers) {
-    const held = now.get(row.rop) ?? { sellers: 0, fakt2: 0n, percent: 0n, fixed: 0n, total: 0n }
+    const held = now.get(row.rop) ?? empty()
     now.set(row.rop, {
-      sellers: held.sellers + 1,
+      sellers: [...held.sellers, row],
       fakt2: held.fakt2 + minor(row.fakt2),
       percent: held.percent + minor(row.percent),
       fixed: held.fixed + minor(row.fixed),
@@ -523,11 +709,11 @@ function teamsOf(
     would stop being the previous fund. It has no sellers, so no card draws.
   */
   for (const rop of then.keys()) {
-    if (!now.has(rop)) now.set(rop, { sellers: 0, fakt2: 0n, percent: 0n, fixed: 0n, total: 0n })
+    if (!now.has(rop)) now.set(rop, empty())
   }
   /* A label only a moved seller sold under still pays its ROP — no card draws. */
   for (const [rop, basis] of ropBasis) {
-    if (basis > 0n && !now.has(rop)) now.set(rop, { sellers: 0, fakt2: 0n, percent: 0n, fixed: 0n, total: 0n })
+    if (basis > 0n && !now.has(rop)) now.set(rop, empty())
   }
 
   return [...now.entries()]
@@ -537,7 +723,9 @@ function teamsOf(
       const pay = basis > 0n ? ropPayroll({ basisMinor: basis, scheme }) : null
       return {
         rop,
-        sellers: team.sellers,
+        branch: payrollBranchOf(rop, ancestors),
+        sellers: team.sellers.length,
+        ...countsOf(team.sellers, leadsRead),
         fakt2: cash(team.fakt2),
         percent: cash(team.percent),
         fixed: cash(team.fixed),
@@ -562,4 +750,64 @@ function teamsOf(
         (minor(b.total) > minor(a.total) ? 1 : minor(b.total) < minor(a.total) ? -1 : 0) ||
         (a.rop ?? '').localeCompare(b.rop ?? '', 'ru'),
     )
+}
+
+/** «ROP otchet»'s «Конверсия»: Транз-1 ÷ Лид сони × 100, null with no lead to divide by. */
+function conversionOf(fakt1Orders: number, leads: number | null): number | null {
+  return leads !== null && leads > 0 ? (fakt1Orders / leads) * 100 : null
+}
+
+/**
+ * The order and lead counts of a set of printed rows, and their conversion OF
+ * THE SUMS — over the rows that were handed a lead. БАЗА is handed none (it
+ * works the old customers by phone), and its orders over everybody's leads
+ * would lift a block's or the company's «Konversiya» by orders no lead made.
+ */
+function countsOf(
+  rows: readonly PayrollSellerDto[],
+  leadsRead: boolean,
+): Pick<PayrollTeamDto, 'leads' | 'fakt1Orders' | 'fakt2Orders' | 'conversion'> {
+  const leads = leadsRead ? rows.reduce((acc, row) => acc + (row.leads ?? 0), 0) : null
+  const ledOrders = rows.reduce((acc, row) => acc + ((row.leads ?? 0) > 0 ? row.fakt1Orders : 0), 0)
+  return {
+    leads,
+    fakt1Orders: rows.reduce((acc, row) => acc + row.fakt1Orders, 0),
+    fakt2Orders: rows.reduce((acc, row) => acc + row.fakt2Orders, 0),
+    conversion: conversionOf(ledOrders, leads),
+  }
+}
+
+/**
+ * The blocks, summed from the teams — which are summed from the printed rows —
+ * in `PAYROLL_BRANCHES`' order; a block with no team is not drawn.
+ */
+function branchesOf(
+  teams: readonly PayrollTeamDto[],
+  sellers: readonly PayrollSellerDto[],
+  cash: (minor: bigint) => MoneyDto,
+  leadsRead: boolean,
+): PayrollBranchDto[] {
+  const minor = (value: MoneyDto) => BigInt(value.amountMinor)
+  return PAYROLL_BRANCHES.flatMap((branch) => {
+    const own = teams.filter((team) => team.branch === branch)
+    if (own.length === 0) return []
+    const sum = (pick: (team: PayrollTeamDto) => MoneyDto) => cash(own.reduce((acc, team) => acc + minor(pick(team)), 0n))
+    const paid = own.flatMap((team) => (team.ropPay ? [team.ropPay] : []))
+    return [
+      {
+        branch,
+        label: PAYROLL_BRANCH_LABEL[branch],
+        teams: own.map((team) => team.rop),
+        sellers: own.reduce((acc, team) => acc + team.sellers, 0),
+        // A seller's block is their team's (`payrollBranchOf` on the same label), so these are its teams' rows.
+        ...countsOf(sellers.filter((row) => row.branch === branch), leadsRead),
+        fakt2: sum((team) => team.fakt2),
+        percent: sum((team) => team.percent),
+        fixed: sum((team) => team.fixed),
+        total: sum((team) => team.total),
+        rops: paid.length,
+        ropTotal: cash(paid.reduce((acc, pay) => acc + minor(pay.total), 0n)),
+      },
+    ]
+  })
 }

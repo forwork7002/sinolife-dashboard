@@ -32,6 +32,11 @@
  * 50$, 50 mln → 100$, first place +25$); the 2026-10-03 documents do not, and
  * the client said to drop it.
  *
+ * БАЗА HAS TABLES OF ITS OWN, AND ONE PERSON HAS A RATE (2026-10-20). The two
+ * БАЗА teams are paid by `BAZA_*_TIERS` (10 / 12 / 15%, 8% below the first
+ * rung, an oklad on every rung); Marjona Shahtiyarovna by a flat 18%
+ * (`FLAT_RATE_SELLERS`). Which table a row is on is the service's call.
+ *
  * THE TABLES ARE QUOTED, NOT DERIVED, exactly as `analytics/sellerBonus` is —
  * and that module is a different scheme for a different question (the
  * client's published DASHBOARD ladder); this is the PAYROLL the office runs.
@@ -138,7 +143,63 @@ export const WEEK_TIERS: readonly PayrollTier[] = Object.freeze([
   { floorMinor: 0n, percentBp: 0n, fixedMinor: 0n },
 ])
 
-function tiersFor(scheme: PayrollSchemeValue): readonly PayrollTier[] {
+/**
+ * БАЗА — the client, 2026-10-20: «baza foizlari 20 mln ga 10% 500 oklad, 25
+ * mln ga 12% 500 oklad, 35 mln ga 15% 500 oklad», and under 20 mln «8% foiz
+ * va oklad oladi tamom». The rate rises with the tier and applies to the
+ * WHOLE figure, as every table here; the 500 000 oklad is paid on EVERY
+ * rung, the floor-0 one included — unlike the standard tables, where the
+ * fixed part is the tier's reward.
+ *
+ * Paid to the two БАЗА teams (`isBaseTeam`: «Baza», Farrux's, and «Malika»,
+ * the Zextra base — the user chose «Ha, Bazaga kiradi»).
+ */
+export const BAZA_MONTH_TIERS: readonly PayrollTier[] = Object.freeze([
+  { floorMinor: 3_500_000_000n, percentBp: 1_500n, fixedMinor: 50_000_000n },
+  { floorMinor: 2_500_000_000n, percentBp: 1_200n, fixedMinor: 50_000_000n },
+  { floorMinor: 2_000_000_000n, percentBp: 1_000n, fixedMinor: 50_000_000n },
+  { floorMinor: 0n, percentBp: 800n, fixedMinor: 50_000_000n },
+])
+
+/**
+ * БАЗА over 15 days and over a week — the month's table divided, floors AND
+ * oklad alike (the user chose «Bo'linadi, oklad ham», 2026-10-20): a half is
+ * 10 / 12,5 / 17,5 mln with 250 000, a week 5 / 6,25 / 8,75 mln with 125 000.
+ * Written out rather than derived, as `HALF_TIERS` is.
+ */
+export const BAZA_HALF_TIERS: readonly PayrollTier[] = Object.freeze([
+  { floorMinor: 1_750_000_000n, percentBp: 1_500n, fixedMinor: 25_000_000n },
+  { floorMinor: 1_250_000_000n, percentBp: 1_200n, fixedMinor: 25_000_000n },
+  { floorMinor: 1_000_000_000n, percentBp: 1_000n, fixedMinor: 25_000_000n },
+  { floorMinor: 0n, percentBp: 800n, fixedMinor: 25_000_000n },
+])
+
+export const BAZA_WEEK_TIERS: readonly PayrollTier[] = Object.freeze([
+  { floorMinor: 875_000_000n, percentBp: 1_500n, fixedMinor: 12_500_000n },
+  { floorMinor: 625_000_000n, percentBp: 1_200n, fixedMinor: 12_500_000n },
+  { floorMinor: 500_000_000n, percentBp: 1_000n, fixedMinor: 12_500_000n },
+  { floorMinor: 0n, percentBp: 800n, fixedMinor: 12_500_000n },
+])
+
+/**
+ * A seller paid a FLAT rate of their own FAKT 2 instead of any table — the
+ * client, 2026-10-20: «Marjona Shahtiyarovna 18% dan oladi», the user's
+ * answer «o'zi sotgan FAKT 2 dan, jadvalsiz». No tier, no fixed part.
+ *
+ * Keyed by the portal's user id, which survives a rename: 7044 is «Marjona
+ * Shahtiyarovna 197», head of «Marjona(ROP)» in Тошкент — her own ROP 2% is
+ * paid as well, by `ropPayroll`, on her team's FAKT 2.
+ */
+export const FLAT_RATE_SELLERS: Readonly<Record<string, bigint>> = Object.freeze({
+  '7044': 1_800n,
+})
+
+/** Which pay a seller is on. `flat` carries its rate in `PayrollInput.flatBp`. */
+export const PAYROLL_TABLES = ['standard', 'baza', 'flat'] as const
+export type PayrollTableValue = (typeof PAYROLL_TABLES)[number]
+
+function tiersFor(scheme: PayrollSchemeValue, table: 'standard' | 'baza'): readonly PayrollTier[] {
+  if (table === 'baza') return scheme === 'week' ? BAZA_WEEK_TIERS : scheme === 'half' ? BAZA_HALF_TIERS : BAZA_MONTH_TIERS
   return scheme === 'week' ? WEEK_TIERS : scheme === 'half' ? HALF_TIERS : MONTH_TIERS
 }
 
@@ -146,6 +207,10 @@ export interface PayrollInput {
   /** FAKT 2 for the period, in minor units. Never negative. */
   readonly basisMinor: bigint
   readonly scheme: PayrollSchemeValue
+  /** The seller's table; the standard one when omitted. ROPs ignore it. */
+  readonly table?: PayrollTableValue
+  /** The rate of a `flat` seller, in basis points. Required with `flat`. */
+  readonly flatBp?: bigint
 }
 
 export interface PayrollBreakdown {
@@ -200,8 +265,21 @@ export function ropPayroll({ basisMinor, scheme }: PayrollInput): RopPayBreakdow
 }
 
 /** One seller's pay for one period. Pure. */
-export function sellerPayroll({ basisMinor, scheme }: PayrollInput): PayrollBreakdown {
-  const tiers = tiersFor(scheme)
+export function sellerPayroll({ basisMinor, scheme, table = 'standard', flatBp }: PayrollInput): PayrollBreakdown {
+  if (table === 'flat') {
+    if (flatBp === undefined) throw new Error('sellerPayroll: a flat seller needs flatBp')
+    const percentMinor = percentOf(basisMinor, flatBp)
+    return {
+      percentBp: flatBp,
+      percentMinor,
+      fixedMinor: 0n,
+      totalMinor: percentMinor,
+      tierFloorMinor: null,
+      nextFloorMinor: null,
+      toNextMinor: null,
+    }
+  }
+  const tiers = tiersFor(scheme, table)
 
   // The floor-0 row always matches, so `cleared` is never undefined.
   const cleared = tiers.find((tier) => basisMinor >= tier.floorMinor) ?? tiers[tiers.length - 1]!

@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 
-import { ErrorState, statusOf } from '@/components/states/States'
+import { EmptyState, ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SearchInput } from '@/components/ui/Controls'
@@ -13,6 +13,7 @@ import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
   type DeltaDto,
+  type PayrollBranchDto,
   type PayrollDto,
   type PayrollSellerDto,
   type PayrollTeamDto,
@@ -21,13 +22,13 @@ import {
 } from '@/lib/api'
 import {
   NO_VALUE,
-  formatCompactUzs,
   formatDateShort,
   formatFullUzs,
   formatNumber,
 } from '@/lib/format'
 
-import { NO_ROP, NewChip, PayrollMovers, RopCards, RopCompareChart } from './PayrollTeams'
+import { PayrollSheet, ropFormula, sellerFormula } from './PayrollSheet'
+import { NO_ROP, PayrollMovers, RopCompareChart } from './PayrollTeams'
 
 /**
  * «Sotuvchilar oyligi» — what the office owes each seller over the dashboard's
@@ -62,10 +63,17 @@ import { NO_ROP, NewChip, PayrollMovers, RopCards, RopCompareChart } from './Pay
  *
  * BY ROP, WITH GROWTH (2026-10-05, «ROP larga ajratilsin … kim qanchaga
  * oʻsganligi … grafiklar bilan»). The money is handed out through the team
- * leaders, so the sellers sit in one card per ROP; every figure is set against
- * the like period before (`meta.comparisonPeriod`, the dashboard's
- * `previousEquivalent`); a bar per ROP and the five biggest movers each
- * way sit above the cards. See `PayrollTeams`.
+ * leaders; every figure is set against the like period before
+ * (`meta.comparisonPeriod`, the dashboard's `previousEquivalent`); a bar per
+ * ROP and the five biggest movers each way sit under the sheet. See
+ * `PayrollTeams`.
+ *
+ * ONE SHEET, «HUDDI RNP JADVALI KABI» (2026-10-20). The ROP cards became one
+ * table in blocks — Toshkent · Navoiy · Baza · Zextra — each team with its
+ * sellers, its ROP's row and its total, with «ROP otchet»'s Lid soni ·
+ * Tranzaksiya · Konversiya · Buyurtma soni beside the pay (`PayrollSheet`).
+ * БАЗА is paid by its own table and one person by a flat rate; the rule card
+ * prints both.
  *
  * THE PERIOD IS THE DASHBOARD'S: PageShell's Bugun · Kecha · Shu oy · Sana,
  * in the URL, resolved on the server by `periodFrom` like every screen's.
@@ -128,21 +136,24 @@ export function PayrollPage() {
 
   const teams = data?.teams ?? EMPTY_TEAMS
   /*
-    THE SEARCH NARROWS THE CARDS AND NOTHING ELSE. The hero keeps stating the
+    THE SEARCH NARROWS THE SHEET AND NOTHING ELSE. The hero keeps stating the
     whole period. Matching runs over the name AND the team, because «Sevinch»
     is how a floor manager asks for eleven people at once.
   */
-  const searching = search.trim() !== ''
-  const toLines = (rows: readonly PayrollSellerDto[], team: PayrollTeamDto): PayrollLine[] => [
-    ...rows.map((row): PayrollLine => ({ kind: 'seller', row })),
-    // The footer states the TEAM's period, so it is dropped while a search is
-    // on rather than left standing over a subset it does not describe.
-    ...(searching ? [] : [{ kind: 'total' as const, row: teamLine(team) }]),
-  ]
 
-  const columns = useMemo(() => payrollColumns(scheme, compared), [scheme, compared])
   const rules = RULES[scheme]
-  const onRung = useMemo(() => rungCounts(rules, sellers), [rules, sellers])
+  const bazaRules = BAZA_RULES[scheme]
+  /* Each table counts its own people: a БАЗА seller is not on the standard ladder. */
+  const onRung = useMemo(() => rungCounts(rules, sellers.filter((row) => row.table === 'standard')), [rules, sellers])
+  const onBazaRung = useMemo(() => rungCounts(bazaRules, sellers.filter((row) => row.table === 'baza')), [bazaRules, sellers])
+  /*
+    ONE RATE IN THE HERO ONLY WHEN THERE IS ONE. БАЗА pays 8–15% with an oklad
+    and a flat-rate seller their own, so «Foiz · 8%» over the company's sum
+    would name a rate a fifth of the fund was not paid at.
+  */
+  const oneTable = sellers.every((row) => row.table === 'standard')
+  const rateTerm = oneTable ? `Foiz · ${words.rate}` : 'Foiz'
+  const fixedTerm = oneTable ? words.fixed : `${words.fixed} / oklad`
   const paid = sellers.filter((row) => row.percent.amount > 0).length
 
   return (
@@ -157,6 +168,7 @@ export function PayrollPage() {
           <CopyButton
             rows={sellers}
             teams={teams}
+            branches={data?.branches ?? EMPTY_BRANCHES}
             title={`${words.section} · ${periodText}`}
             words={words}
           />
@@ -222,7 +234,7 @@ export function PayrollPage() {
                 <p className="tabular mt-1 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
                   + ROP lar {formatFullUzs(data.ropTotals.total.amount)} ={' '}
                   <span className="font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                    {formatFullUzs(data.totals.total.amount + data.ropTotals.total.amount)} soʻm
+                    {formatFullUzs(data.fund.amount)} soʻm
                   </span>{' '}
                   hammasi boʻlib
                 </p>
@@ -234,7 +246,7 @@ export function PayrollPage() {
                     className="flex h-[7px] w-full overflow-hidden rounded-full"
                     style={{ background: 'var(--grid)' }}
                     role="img"
-                    aria-label={`Foiz ${sharePercent(totals.percent.amount, totals.total.amount)}%, ${words.fixed.toLowerCase()} ${sharePercent(totals.fixed.amount, totals.total.amount)}%`}
+                    aria-label={`Foiz ${sharePercent(totals.percent.amount, totals.total.amount)}%, ${fixedTerm.toLowerCase()} ${sharePercent(totals.fixed.amount, totals.total.amount)}%`}
                   >
                     <div
                       style={{
@@ -253,7 +265,7 @@ export function PayrollPage() {
                     Toʻlovning {sharePercent(totals.percent.amount, totals.total.amount)}% i — foiz,
                     {' '}
                     {sharePercent(totals.fixed.amount, totals.total.amount)}% i —{' '}
-                    {words.fixed.toLowerCase()}.
+                    {fixedTerm.toLowerCase()}.
                   </p>
                 </div>
               )}
@@ -268,7 +280,7 @@ export function PayrollPage() {
                 delta={compared ? data?.deltas.fakt2 : undefined}
               />
               <Figure
-                term={`Foiz · ${words.rate}`}
+                term={rateTerm}
                 loading={heroStatus === 'loading'}
                 value={totals ? formatFullUzs(totals.percent.amount) : NO_VALUE}
                 note={totals ? `${formatNumber(paid)} kishiga` : undefined}
@@ -276,7 +288,7 @@ export function PayrollPage() {
                 delta={compared ? data?.deltas.percent : undefined}
               />
               <Figure
-                term={words.fixed}
+                term={fixedTerm}
                 loading={heroStatus === 'loading'}
                 value={totals ? formatFullUzs(totals.fixed.amount) : NO_VALUE}
                 note={totals ? `${formatNumber(sellers.filter((s) => s.fixed.amount > 0).length)} kishiga` : undefined}
@@ -306,17 +318,26 @@ export function PayrollPage() {
         )}
       </section>
 
-      {data && data.ropTotals.rops > 0 && (
-        <ChartCard
-          title="ROP lar maoshi"
-          hint={`Har bir ROP: jamoa FAKT 2 × 2%${scheme === 'month' ? ' + 2 000 000 oklad' : ''}.`}
-        >
-          <RopPayTable teams={teams} totals={data.ropTotals} scheme={scheme} />
-        </ChartCard>
-      )}
+      {/*
+        THE SHEET — the whole payroll as one table, «huddi RNP jadvali kabi»
+        (2026-10-20): Toshkent · Navoiy · Baza · Zextra, each ROP team with its
+        sellers, its ROP's row and its total. Loading, error and an empty
+        period keep their own states in the same card.
+      */}
+      <ChartCard title="Hisob-kitob · boʻlimlar boʻyicha" hint={words.tableHint}>
+        {heroStatus === 'loading' ? (
+          <LoadingSkeleton rows={8} />
+        ) : heroStatus === 'error' ? (
+          <ErrorState message={errorMessage} onRetry={retry} />
+        ) : data && sellers.length > 0 ? (
+          <PayrollSheet data={data} search={search} compared={compared} />
+        ) : (
+          <EmptyState title="Maʼlumot yoʻq" body="Bu davrda kelgan buyurtmalardan hali yetkazilgani yoʻq." />
+        )}
+      </ChartCard>
 
       {/*
-        THE TWO PICTURES OF «WHO GREW», above the cards they summarise: per ROP,
+        THE TWO PICTURES OF «WHO GREW», under the sheet they summarise: per ROP,
         then per person. Drawn only once there is a payload — a bar chart of
         nothing is not a loading state.
       */}
@@ -347,34 +368,6 @@ export function PayrollPage() {
         </div>
       )}
 
-      <ChartCard title="Hisob-kitob · ROP lar boʻyicha" hint={words.tableHint}>
-        {viewStatus === 'ready' && data && sellers.length > 0 ? (
-          <RopCards<PayrollLine>
-            teams={teams}
-            sellers={sellers}
-            search={search}
-            columns={columns}
-            toLines={toLines}
-            rowKey={(line) => (line.kind === 'total' ? TOTAL_ROW_KEY : line.row.employeeId)}
-            comparisonLabel={compared ? comparisonLabel : null}
-          />
-        ) : (
-          /* Loading, error and the empty period keep the table's own states. */
-          <DataTable<PayrollLine>
-            columns={columns}
-            rows={[]}
-            rowKey={(line) => line.row.employeeId}
-            status={heroStatus}
-            errorMessage={errorMessage}
-            onRetry={retry}
-            emptyTitle="Maʼlumot yoʻq"
-            emptyBody="Bu davrda kelgan buyurtmalardan hali yetkazilgani yoʻq."
-            minWidth={1210}
-            maxHeight="none"
-          />
-        )}
-      </ChartCard>
-
       {/*
         THE RULE THE PAY COMES FROM, printed rather than trusted, with how many
         people stand on each rung this period — counted from the rows above, so
@@ -384,20 +377,58 @@ export function PayrollPage() {
         worse than no example.
       */}
       <ChartCard title={`Qoida · ${words.ruleTitle}`} hint={words.ruleHint}>
-        <div className="max-w-[760px]">
-          <DataTable<RuleRow>
-            columns={RULE_COLUMNS}
-            rows={rules}
-            rowKey={(row) => row.label}
-            status="ready"
-            emptyTitle=""
-            emptyBody=""
-            minWidth={600}
-            maxHeight="none"
-          />
-          <RungStrip rules={rules} counts={onRung} loading={heroStatus !== 'ready'} />
-          <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-            {words.ruleNote}
+        <div className="flex max-w-[760px] flex-col gap-6">
+          <section aria-label="Oddiy sotuvchilar">
+            <h3 className="mb-2 text-[12px] font-semibold" style={{ color: 'var(--ink-secondary)' }}>
+              Oddiy jadval — Toshkent, Navoiy, Zextra va ROP siz sotuvchilar
+            </h3>
+            <DataTable<RuleRow>
+              columns={RULE_COLUMNS}
+              rows={rules}
+              rowKey={(row) => row.label}
+              status="ready"
+              emptyTitle=""
+              emptyBody=""
+              minWidth={600}
+              maxHeight="none"
+            />
+            <RungStrip rules={rules} counts={onRung} loading={heroStatus !== 'ready'} />
+            <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              {words.ruleNote}
+            </p>
+          </section>
+          <section aria-label="Baza">
+            <h3 className="mb-2 text-[12px] font-semibold" style={{ color: 'var(--ink-secondary)' }}>
+              Baza — Farrux va Malika jamoalari
+            </h3>
+            <DataTable<RuleRow>
+              columns={RULE_COLUMNS}
+              rows={bazaRules}
+              rowKey={(row) => row.label}
+              status="ready"
+              emptyTitle=""
+              emptyBody=""
+              minWidth={600}
+              maxHeight="none"
+            />
+            <RungStrip rules={bazaRules} counts={onBazaRung} loading={heroStatus !== 'ready'} />
+            <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+              Foiz butun FAKT 2 dan olinadi; oklad har bosqichda, eng pastkisida ham beriladi. 15 kunlik va haftalikda
+              chegaralar ham, oklad ham oylikdan boʻlib olingan.
+            </p>
+          </section>
+          <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            {data && data.flatRates.length > 0 && (
+              <>
+                <span className="font-semibold" style={{ color: 'var(--ink-secondary)' }}>
+                  Shaxsiy foiz:
+                </span>{' '}
+                {data.flatRates.map((rate) => `${rate.fullName} — ${formatNumber(rate.percentRate)}%`).join(', ')} — oʻzi
+                sotgan FAKT 2 dan, jadvalsiz, fiksa ham oklad ham yoʻq.{' '}
+              </>
+            )}
+            ROP lar: jamoa FAKT 2 dan 2%
+            {scheme === 'month' ? ' + 2 000 000 oklad.' : ' (2 000 000 oklad faqat oylik jadvalda).'}
           </p>
         </div>
       </ChartCard>
@@ -431,7 +462,7 @@ const WORDS: Record<Scheme, SchemeWords> = {
     rate: '5–12%',
     fixed: 'Haftalik oklad',
     tableHint:
-      'Foiz bosqichga qarab butun FAKT 2 dan olinadi: 15 mln dan 5%, 25 mln dan 8% + 300 000, 35 mln dan 10% + 600 000, 50 mln dan 12% + 1 200 000. 15 mln gacha toʻlanmaydi.',
+      'Foiz bosqichga qarab butun FAKT 2 dan olinadi: 15 mln dan 5%, 25 mln dan 8% + 300 000, 35 mln dan 10% + 600 000, 50 mln dan 12% + 1 200 000. 15 mln gacha toʻlanmaydi. Baza: 8 / 10 / 12 / 15% + 125 000 oklad (5 / 6,25 / 8,75 mln dan).',
     ruleTitle: '1 hafta',
     ruleHint: 'Mijozning «Haftalik daromad formulasi». Hafta — dushanbadan yakshanbagacha.',
     ruleNote:
@@ -442,7 +473,7 @@ const WORDS: Record<Scheme, SchemeWords> = {
     rate: '8%',
     fixed: 'Fiksa',
     tableHint:
-      '8% har doim butun FAKT 2 dan olinadi. Fiksa — sotuvchi bosib oʻtgan bosqichga qarab.',
+      '8% har doim butun FAKT 2 dan olinadi. Fiksa — sotuvchi bosib oʻtgan bosqichga qarab. Baza: 8 / 10 / 12 / 15% + 500 000 oklad (20 / 25 / 35 mln dan).',
     ruleTitle: '1 oylik',
     ruleHint: 'Mijozning «Oylik maosh tartibi», 1 oylik jadval.',
     ruleNote:
@@ -453,7 +484,7 @@ const WORDS: Record<Scheme, SchemeWords> = {
     rate: '8%',
     fixed: 'Fiksa',
     tableHint:
-      '8% har doim butun FAKT 2 dan olinadi. Fiksa — sotuvchi bosib oʻtgan bosqichga qarab.',
+      '8% har doim butun FAKT 2 dan olinadi. Fiksa — sotuvchi bosib oʻtgan bosqichga qarab. Baza: 8 / 10 / 12 / 15% + 250 000 oklad (10 / 12,5 / 17,5 mln dan).',
     ruleTitle: '15 kunlik',
     ruleHint: 'Mijozning «Oylik maosh tartibi», 15 kunlik jadval.',
     ruleNote:
@@ -541,11 +572,13 @@ function sharePercent(part: number, whole: number): number {
 function CopyButton({
   rows,
   teams,
+  branches,
   title,
   words,
 }: {
   rows: readonly PayrollSellerDto[]
   teams: readonly PayrollTeamDto[]
+  branches: readonly PayrollBranchDto[]
   title: string
   words: SchemeWords
 }) {
@@ -553,9 +586,14 @@ function CopyButton({
 
   const copy = async () => {
     const header = [
+      'Boʻlim',
+      'ROP',
       'Oʻrin',
       'Sotuvchi',
-      'ROP',
+      'Lid soni',
+      'Tranzaksiya',
+      'Konversiya %',
+      'Buyurtma soni',
       'FAKT 2',
       'Foiz %',
       'Foiz',
@@ -566,18 +604,25 @@ function CopyButton({
       'Oʻtgan davr JAMI',
     ].join('\t')
     /*
-      IN THE CARDS' ORDER — ROP by ROP, the company rank inside each — because
-      the money is handed out team by team and the sheet is read that way.
+      IN THE SHEET'S ORDER — block by block, ROP by ROP, the company rank
+      inside each — because the money is handed out team by team and the
+      sheet is read that way.
     */
-    const order = new Map(teams.map((team, index) => [team.rop, index]))
+    const labelOf = new Map(branches.map((branch) => [branch.branch, branch.label]))
+    const order = new Map(branches.flatMap((branch) => branch.teams).map((rop, index) => [rop, index]))
     const grouped = [...rows].sort(
       (a, b) => (order.get(a.rop) ?? teams.length) - (order.get(b.rop) ?? teams.length) || a.rank - b.rank,
     )
     const body = grouped.map((row) =>
       [
+        tsvCell(labelOf.get(row.branch) ?? ''),
+        tsvCell(row.rop ?? NO_ROP),
         row.rank,
         tsvCell(row.fullName),
-        tsvCell(row.rop ?? NO_ROP),
+        row.leads ?? '',
+        row.fakt1Orders,
+        row.conversion === null ? '' : row.conversion.toFixed(1),
+        row.fakt2Orders,
         row.fakt2.amount,
         row.percentRate,
         row.percent.amount,
@@ -588,13 +633,16 @@ function CopyButton({
         row.previous?.total.amount ?? '',
       ].join('\t'),
     )
-    const rops = teams.filter((team) => team.ropPay)
+    const rops = teams
+      .filter((team) => team.ropPay)
+      .sort((a, b) => (order.get(a.rop) ?? teams.length) - (order.get(b.rop) ?? teams.length))
     const ropBlock = rops.length
       ? [
           '',
-          ['ROP', 'Jamoa', 'Jamoa FAKT 2', '2%', 'Oklad', 'Hisob', 'JAMI'].join('\t'),
+          ['Boʻlim', 'ROP', 'Jamoa', 'Jamoa FAKT 2', '2%', 'Oklad', 'Hisob', 'JAMI'].join('\t'),
           ...rops.map((team) =>
             [
+              tsvCell(labelOf.get(team.branch) ?? ''),
               tsvCell(team.ropPay!.head ?? team.rop ?? NO_ROP),
               tsvCell(team.rop ?? NO_ROP),
               team.ropPay!.basis.amount,
@@ -643,433 +691,7 @@ function tsvCell(value: string): string {
 /** One identity for "no rows yet", so a pending render is not a new array. */
 const EMPTY_SELLERS: readonly PayrollSellerDto[] = []
 const EMPTY_TEAMS: readonly PayrollTeamDto[] = []
-
-type PayrollLine = { readonly kind: 'seller' | 'total'; readonly row: PayrollSellerDto }
-
-/** Nothing in the employee id can collide with it. */
-const TOTAL_ROW_KEY = '__jami__'
-
-/**
- * A ROP card's footer, built from the SERVER's own team sums rather than
- * summed here.
- *
- * The same rule every table in this product keeps: a footer computed in the
- * browser is a second definition of the payroll fund, and the two would agree
- * until a row was filtered or rounded differently.
- */
-function teamLine(team: PayrollTeamDto): PayrollSellerDto {
-  return {
-    rank: 0,
-    employeeId: TOTAL_ROW_KEY,
-    fullName: 'ЖАМИ',
-    rop: team.rop,
-    fakt2: team.fakt2,
-    fakt2Orders: 0,
-    percentRate: 0,
-    percent: team.percent,
-    fixed: team.fixed,
-    total: team.total,
-    tierFloor: null,
-    nextFloor: null,
-    toNext: null,
-    previous: team.previous ? { fakt2: team.previous.fakt2, total: team.previous.total } : null,
-    fakt2Delta: team.fakt2Delta,
-    totalDelta: team.totalDelta,
-  }
-}
-
-/**
- * The table's columns for one scheme. Only the headers move — a week's rate
- * is the tier and is printed per row, a month's is always 8%.
- */
-function payrollColumns(scheme: Scheme, compared: boolean): Column<PayrollLine>[] {
-  const words = WORDS[scheme]
-  return [
-    {
-      key: 'seller',
-      header: 'Sotuvchi',
-      rowHeader: true,
-      width: '210px',
-      render: (line) =>
-        line.kind === 'total' ? (
-          <span className="inline-flex items-baseline gap-1.5">
-            <span className="eyebrow" style={{ color: 'var(--ink-primary)' }}>
-              ЖАМИ
-            </span>
-            <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>
-              jamoa
-            </span>
-          </span>
-        ) : (
-          <span className="flex items-center gap-2">
-            {/*
-              THE RANK IS A MARK, NOT A SENTENCE. «1. Ism» run into the name
-              reads as part of the name. The leader is marked the way RankBadge
-              marks a place — weight and a ring, never hue: it was filled with
-              --series-4, which on this screen is «fiksa», under white text
-              that read 3.04:1. Everybody else gets the same quiet chip, so the
-              column still scans as a ranking rather than a podium.
-            */}
-            <span
-              aria-hidden
-              className="tabular inline-flex size-[22px] shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
-              style={
-                line.row.rank === 1
-                  ? {
-                      background: 'var(--grid)',
-                      color: 'var(--ink-primary)',
-                      fontWeight: 700,
-                      boxShadow: 'inset 0 0 0 1px var(--border-strong)',
-                    }
-                  : { background: 'var(--grid)', color: 'var(--ink-muted)' }
-              }
-            >
-              {line.row.rank}
-            </span>
-            <span className="block min-w-0">
-              <span className="block truncate font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                {line.row.fullName}
-              </span>
-              <span className="block text-[10px] leading-tight" style={{ color: 'var(--ink-muted)' }}>
-                kompaniyada {line.row.rank}-oʻrin
-              </span>
-            </span>
-          </span>
-        ),
-    },
-    {
-      key: 'fakt2',
-      header: 'FAKT 2 · Успешно',
-      align: 'right',
-      numeric: true,
-      width: '165px',
-      render: (line) => (
-        <span className="tabular inline-flex items-baseline justify-end gap-1.5 whitespace-nowrap">
-          <span className="text-[12.5px]" style={{ color: 'var(--ink-primary)' }}>
-            {formatFullUzs(line.row.fakt2.amount)}
-          </span>
-          {line.kind === 'seller' && (
-            <span className="text-[10px]" style={{ color: 'var(--ink-muted)' }}>
-              {formatNumber(line.row.fakt2Orders)} ta
-            </span>
-          )}
-        </span>
-      ),
-    },
-    {
-      key: 'percent',
-      header: scheme === 'week' ? 'Foiz' : '8% — foiz',
-      align: 'right',
-      numeric: true,
-      width: '145px',
-      /*
-        THE RATE SITS BESIDE THE MONEY in a week, because there it IS the tier:
-        «8%» next to 2 792 000 is the whole working of that cell.
-      */
-      render: (line) => (
-        <span className="tabular inline-flex items-baseline justify-end gap-1.5 whitespace-nowrap">
-          {line.kind === 'seller' && scheme === 'week' && (
-            <span
-              className="rounded-full px-1.5 py-px text-[10px] font-semibold"
-              style={
-                line.row.percentRate > 0
-                  ? { background: 'var(--grid)', color: 'var(--ink-primary)' }
-                  : { color: 'var(--ink-muted)' }
-              }
-            >
-              {formatNumber(line.row.percentRate)}%
-            </span>
-          )}
-          <span className="text-[12.5px]" style={{ color: 'var(--ink-secondary)' }}>
-            {line.kind === 'seller' && line.row.percent.amount === 0
-              ? NO_VALUE
-              : formatFullUzs(line.row.percent.amount)}
-          </span>
-        </span>
-      ),
-    },
-    {
-      key: 'fixed',
-      header: `${words.fixed} · bosqich`,
-      align: 'right',
-      numeric: true,
-      width: '180px',
-      /*
-        THE TIER IS DRAWN, NOT DESCRIBED.
-
-        This column used to print «45 mln gacha 4 450 000» under every zero — a
-        true sentence, ninety times, that nobody could read down the column. The
-        bar answers the question the sentence was for («kim yaqin qoldi») at a
-        glance, and the figure it is short by stays beside it in compact soʻm.
-        A cleared top tier gets no bar, because there is nothing left to reach.
-      */
-      render: (line) =>
-        line.kind === 'total' ? (
-          <span className="tabular text-[12.5px]" style={{ color: 'var(--ink-secondary)' }}>
-            {formatFullUzs(line.row.fixed.amount)}
-          </span>
-        ) : (
-          <span className="block">
-            <span className="tabular block text-[12.5px]" style={{ color: 'var(--ink-secondary)' }}>
-              {line.row.fixed.amount > 0 ? formatFullUzs(line.row.fixed.amount) : NO_VALUE}
-            </span>
-            {line.row.nextFloor && line.row.toNext ? (
-              /*
-                A RAIL WITH NO READOUT, which is why it is not `Meter`.
-
-                Meter prints its own percentage beside the bar, and «36.0%» is
-                not a fact anybody acts on here — it competed with the money in
-                the same cell and made the column the busiest thing on the page.
-                What the reader wants is the GAP, in soʻm, and the bar is there
-                to be scanned rather than read. The screen-reader label carries
-                the same sentence the caption does.
-              */
-              <span className="mt-1 flex items-center justify-end gap-2">
-                <span
-                  className="h-1.5 w-[56px] shrink-0 overflow-hidden rounded-full"
-                  style={{ background: 'var(--track)' }}
-                  role="img"
-                  aria-label={`${formatCompactUzs(line.row.nextFloor.amount)} gacha ${formatCompactUzs(line.row.toNext.amount)}`}
-                >
-                  <span
-                    className="block h-full rounded-full"
-                    style={{
-                      width: `${tierProgress(line.row)}%`,
-                      background: 'var(--seq-450)',
-                      transition: 'width var(--duration-enter) var(--ease-out)',
-                    }}
-                  />
-                </span>
-                <span className="text-[10px] whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>
-                  {formatCompactUzs(line.row.nextFloor.amount)} gacha{' '}
-                  {formatCompactUzs(line.row.toNext.amount)}
-                </span>
-              </span>
-            ) : (
-              <span className="block text-[10px] leading-tight" style={{ color: 'var(--ink-muted)' }}>
-                eng yuqori bosqich
-              </span>
-            )}
-          </span>
-        ),
-    },
-    {
-      key: 'formula',
-      header: 'Hisob',
-      align: 'right',
-      numeric: true,
-      width: '270px',
-      /*
-        THE WORKING IN ONE LINE (2026-10-07, «aniq va tushunarli hisob-kitob»):
-        the seller's own sum, written the way the client's documents write it,
-        so anybody can redo it on a calculator and land on JAMI beside it.
-      */
-      render: (line) => (
-        <span className="tabular text-[11.5px] whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>
-          {line.kind === 'total'
-            ? `${formatFullUzs(line.row.percent.amount)} + ${formatFullUzs(line.row.fixed.amount)} =`
-            : sellerFormula(line.row)}
-        </span>
-      ),
-    },
-    {
-      key: 'total',
-      header: 'JAMI',
-      align: 'right',
-      numeric: true,
-      width: '125px',
-      render: (line) => (
-        <span className="tabular text-[13px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
-          {formatFullUzs(line.row.total.amount)}
-        </span>
-      ),
-    },
-    {
-      key: 'growth',
-      header: 'Oʻsish · FAKT 2',
-      align: 'right',
-      numeric: true,
-      width: '115px',
-      /*
-        THE CHANGE AND WHAT IT IS OFF. A pill alone hides whether +40% was 2 mln
-        becoming 3 or 20 becoming 28; the previous FAKT 2 beside it says which.
-        Nobody in the comparison window reads «yangi», never «+∞%».
-      */
-      render: (line) =>
-        // An empty comparison window (a period's first ten minutes) compares nothing.
-        !compared ? (
-          <span style={{ color: 'var(--ink-muted)' }}>{NO_VALUE}</span>
-        ) : line.row.previous ? (
-          <span className="flex flex-col items-end gap-0.5">
-            <TrendIndicator delta={line.row.fakt2Delta} />
-            <span className="tabular text-[10px] whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>
-              oldin {formatCompactUzs(line.row.previous.fakt2.amount)}
-            </span>
-          </span>
-        ) : (
-          <NewChip team={line.kind === 'total'} />
-        ),
-    },
-  ]
-}
-
-/**
- * «52 340 000 × 8% + 500 000 =» — one seller's pay as the documents write it.
- * Read off the server's own rate and fixed part, never re-decided here.
- */
-function sellerFormula(row: PayrollSellerDto): string {
-  if (row.percentRate === 0) return `${formatFullUzs(row.fakt2.amount)} — 15 mln gacha, toʻlanmaydi =`
-  const base = `${formatFullUzs(row.fakt2.amount)} × ${formatNumber(row.percentRate)}%`
-  return row.fixed.amount > 0 ? `${base} + ${formatFullUzs(row.fixed.amount)} =` : `${base} =`
-}
-
-/** «120 000 000 × 2% + 2 000 000 =» — a ROP's pay, the same way. */
-function ropFormula(team: PayrollTeamDto): string {
-  const pay = team.ropPay
-  if (!pay) return ''
-  const base = `${formatFullUzs(pay.basis.amount)} × 2%`
-  return pay.fixed.amount > 0 ? `${base} + ${formatFullUzs(pay.fixed.amount)} =` : `${base} =`
-}
-
-// ---------------------------------------------------------------------------
-// The ROPs' own pay
-// ---------------------------------------------------------------------------
-
-type RopLine = { readonly kind: 'rop'; readonly team: PayrollTeamDto } | { readonly kind: 'total' }
-
-/**
- * ROP lar maoshi — the client, 2026-10-07: «ROPlar guruhi FAKT 2 dan 2% + 2 mln
- * oklad». One row per team that was paid this period, its head named, the sum
- * written out; the footer is the server's `ropTotals`, never summed here.
- */
-function RopPayTable({
-  teams,
-  totals,
-  scheme,
-}: {
-  teams: readonly PayrollTeamDto[]
-  totals: PayrollDto['ropTotals']
-  scheme: Scheme
-}) {
-  const rows: RopLine[] = [
-    ...teams.filter((team) => team.ropPay).map((team): RopLine => ({ kind: 'rop', team })),
-    { kind: 'total' },
-  ]
-  const columns: Column<RopLine>[] = [
-    {
-      key: 'rop',
-      header: 'ROP',
-      rowHeader: true,
-      width: '230px',
-      render: (line) =>
-        line.kind === 'total' ? (
-          <span className="eyebrow" style={{ color: 'var(--ink-primary)' }}>
-            ЖАМИ · {formatNumber(totals.rops)} ta ROP
-          </span>
-        ) : (
-          <span className="block min-w-0">
-            <span className="block truncate font-semibold" style={{ color: 'var(--ink-primary)' }}>
-              {line.team.ropPay?.head ?? line.team.rop}
-            </span>
-            <span className="block text-[10px] leading-tight" style={{ color: 'var(--ink-muted)' }}>
-              {line.team.rop} jamoasi · {formatNumber(line.team.sellers)} ta sotuvchi
-            </span>
-          </span>
-        ),
-    },
-    {
-      key: 'fakt2',
-      header: 'Jamoa FAKT 2',
-      align: 'right',
-      numeric: true,
-      width: '140px',
-      render: (line) =>
-        line.kind === 'total' ? NO_VALUE : formatFullUzs(line.team.ropPay!.basis.amount),
-    },
-    {
-      key: 'percent',
-      header: '2% — foiz',
-      align: 'right',
-      numeric: true,
-      width: '120px',
-      render: (line) =>
-        formatFullUzs(line.kind === 'total' ? totals.percent.amount : line.team.ropPay!.percent.amount),
-    },
-    {
-      key: 'fixed',
-      header: 'Oklad',
-      align: 'right',
-      numeric: true,
-      width: '110px',
-      render: (line) => {
-        const amount = line.kind === 'total' ? totals.fixed.amount : line.team.ropPay!.fixed.amount
-        return amount > 0 ? formatFullUzs(amount) : NO_VALUE
-      },
-    },
-    {
-      key: 'formula',
-      header: 'Hisob',
-      align: 'right',
-      numeric: true,
-      width: '260px',
-      render: (line) => (
-        <span className="tabular text-[11.5px] whitespace-nowrap" style={{ color: 'var(--ink-muted)' }}>
-          {line.kind === 'total'
-            ? `${formatFullUzs(totals.percent.amount)} + ${formatFullUzs(totals.fixed.amount)} =`
-            : ropFormula(line.team)}
-        </span>
-      ),
-    },
-    {
-      key: 'total',
-      header: 'JAMI',
-      align: 'right',
-      numeric: true,
-      width: '125px',
-      render: (line) => (
-        <span className="tabular text-[13px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
-          {formatFullUzs(line.kind === 'total' ? totals.total.amount : line.team.ropPay!.total.amount)}
-        </span>
-      ),
-    },
-  ]
-  return (
-    <>
-      <DataTable<RopLine>
-        columns={columns}
-        rows={rows}
-        rowKey={(line) => (line.kind === 'total' ? TOTAL_ROW_KEY : (line.team.rop ?? NO_ROP))}
-        status="ready"
-        emptyTitle=""
-        emptyBody=""
-        minWidth={985}
-        maxHeight="none"
-        stickyColumns={1}
-      />
-      <p className="mt-3 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-        {scheme === 'month'
-          ? 'ROP: jamoasidagi sotuvchilar FAKT 2 yigʻindisining 2% i + 2 000 000 soʻm oylik oklad.'
-          : 'ROP: jamoasidagi sotuvchilar FAKT 2 yigʻindisining 2% i. 2 000 000 soʻm oklad faqat oylik jadvalda (16 kundan uzun davr) qoʻshiladi.'}
-      </p>
-    </>
-  )
-}
-
-/**
- * How far along the current rung a seller stands, 0–100.
- *
- * Measured from the tier they have already cleared, not from zero: from zero
- * every bar in the column would be nine-tenths full and they would all look
- * alike, which is the opposite of what the column is for. Null before the
- * first rung is not possible here — the caller only draws this when there IS
- * a next floor.
- */
-function tierProgress(row: PayrollSellerDto): number {
-  const floor = row.tierFloor?.amount ?? 0
-  const next = row.nextFloor?.amount ?? 0
-  if (next <= floor) return 0
-  return Math.max(0, Math.min(100, ((row.fakt2.amount - floor) / (next - floor)) * 100))
-}
+const EMPTY_BRANCHES: readonly PayrollBranchDto[] = []
 
 // ---------------------------------------------------------------------------
 // The rule, printed
@@ -1170,6 +792,32 @@ const RULES: Record<Scheme, readonly RuleRow[]> = {
       fixed: '1 000 000',
       example: '35 mln → 2 800 000 + 1 000 000 = 3 800 000',
     },
+  ],
+}
+
+/**
+ * БАЗА's tables, the same picture of `BAZA_*_TIERS` (2026-10-20): 10 / 12 /
+ * 15% from 20 / 25 / 35 mln, 8% below, an oklad on every rung; 15 days and a
+ * week divide the month, oklad included.
+ */
+const BAZA_RULES: Record<Scheme, readonly RuleRow[]> = {
+  month: [
+    { label: '20 mln gacha', floor: 0, rate: '8%', fixed: '500 000', example: '15 mln × 8% + 500 000 = 1 700 000' },
+    { label: '20 mln dan', floor: 20_000_000, rate: '10%', fixed: '500 000', example: '20 mln × 10% + 500 000 = 2 500 000' },
+    { label: '25 mln dan', floor: 25_000_000, rate: '12%', fixed: '500 000', example: '28 mln × 12% + 500 000 = 3 860 000' },
+    { label: '35 mln dan', floor: 35_000_000, rate: '15%', fixed: '500 000', example: '35 mln × 15% + 500 000 = 5 750 000' },
+  ],
+  half: [
+    { label: '10 mln gacha', floor: 0, rate: '8%', fixed: '250 000', example: '8 mln × 8% + 250 000 = 890 000' },
+    { label: '10 mln dan', floor: 10_000_000, rate: '10%', fixed: '250 000', example: '10 mln × 10% + 250 000 = 1 250 000' },
+    { label: '12,5 mln dan', floor: 12_500_000, rate: '12%', fixed: '250 000', example: '12,5 mln × 12% + 250 000 = 1 750 000' },
+    { label: '17,5 mln dan', floor: 17_500_000, rate: '15%', fixed: '250 000', example: '17,5 mln × 15% + 250 000 = 2 875 000' },
+  ],
+  week: [
+    { label: '5 mln gacha', floor: 0, rate: '8%', fixed: '125 000', example: '4 mln × 8% + 125 000 = 445 000' },
+    { label: '5 mln dan', floor: 5_000_000, rate: '10%', fixed: '125 000', example: '5 mln × 10% + 125 000 = 625 000' },
+    { label: '6,25 mln dan', floor: 6_250_000, rate: '12%', fixed: '125 000', example: '6,25 mln × 12% + 125 000 = 875 000' },
+    { label: '8,75 mln dan', floor: 8_750_000, rate: '15%', fixed: '125 000', example: '8,75 mln × 15% + 125 000 = 1 437 500' },
   ],
 }
 

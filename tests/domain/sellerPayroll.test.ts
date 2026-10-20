@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  BAZA_HALF_TIERS,
+  BAZA_MONTH_TIERS,
+  BAZA_WEEK_TIERS,
+  FLAT_RATE_SELLERS,
   HALF_TIERS,
   MONTH_TIERS,
   PERCENT_BP,
@@ -276,5 +280,97 @@ describe('ropPayroll — «ROPlar guruhi FAKT 2 dan 2% + 2 mln oklad» (2026-10-
 
   it('still pays the monthly oklad when the team delivered nothing', () => {
     expect(ropPayroll({ basisMinor: 0n, scheme: 'month' }).totalMinor).toBe(mln(2))
+  })
+})
+
+/**
+ * БАЗА — the client, 2026-10-20: «20 mln ga 10% 500 oklad, 25 mln ga 12% 500
+ * oklad, 35 mln ga 15% 500 oklad», under 20 mln «8% foiz va oklad oladi
+ * tamom»; 15 days and a week divide the month, oklad included (the user's
+ * choice). The rate applies to the whole figure.
+ */
+describe('БАЗА tables (2026-10-20)', () => {
+  const baza = (major: number, scheme: 'month' | 'half' | 'week' = 'month') =>
+    sellerPayroll({ basisMinor: mln(major), scheme, table: 'baza' })
+
+  it('pays 8% + 500 000 under 20 mln — the oklad comes on every rung', () => {
+    const pay = baza(15)
+    expect(pay.percentBp).toBe(800n)
+    expect(pay.percentMinor).toBe(som(1_200_000))
+    expect(pay.fixedMinor).toBe(som(500_000))
+    expect(pay.totalMinor).toBe(som(1_700_000))
+    expect(pay.tierFloorMinor).toBeNull()
+    expect(pay.nextFloorMinor).toBe(mln(20))
+  })
+
+  it('pays 10% / 12% / 15% from 20 / 25 / 35 mln, each + 500 000', () => {
+    expect(baza(20).totalMinor).toBe(som(2_000_000 + 500_000))
+    expect(baza(25).totalMinor).toBe(som(3_000_000 + 500_000))
+    expect(baza(35).totalMinor).toBe(som(5_250_000 + 500_000))
+  })
+
+  it('28 mln × 12% + 500 000 = 3 860 000 — the example the user was shown', () => {
+    const pay = baza(28)
+    expect(pay.percentBp).toBe(1_200n)
+    expect(pay.totalMinor).toBe(som(3_860_000))
+  })
+
+  it('applies the rate to the whole figure, never only above the floor', () => {
+    expect(baza(40).percentMinor).toBe(som(6_000_000))
+  })
+
+  it('changes rung exactly on each floor', () => {
+    const tiyin = 1n
+    expect(sellerPayroll({ basisMinor: mln(20) - tiyin, scheme: 'month', table: 'baza' }).percentBp).toBe(800n)
+    expect(sellerPayroll({ basisMinor: mln(25) - tiyin, scheme: 'month', table: 'baza' }).percentBp).toBe(1_000n)
+    expect(sellerPayroll({ basisMinor: mln(35) - tiyin, scheme: 'month', table: 'baza' }).percentBp).toBe(1_200n)
+  })
+
+  it('halves floors and oklad over 15 days: 10 / 12,5 / 17,5 mln, 250 000', () => {
+    expect(baza(9, 'half').totalMinor).toBe(som(720_000 + 250_000))
+    expect(baza(10, 'half').totalMinor).toBe(som(1_000_000 + 250_000))
+    expect(baza(12.5, 'half').totalMinor).toBe(som(1_500_000 + 250_000))
+    expect(baza(17.5, 'half').totalMinor).toBe(som(2_625_000 + 250_000))
+  })
+
+  it('quarters them over a week: 5 / 6,25 / 8,75 mln, 125 000', () => {
+    expect(baza(4, 'week').totalMinor).toBe(som(320_000 + 125_000))
+    expect(baza(5, 'week').totalMinor).toBe(som(500_000 + 125_000))
+    expect(baza(6.25, 'week').totalMinor).toBe(som(750_000 + 125_000))
+    expect(baza(8.75, 'week').totalMinor).toBe(som(1_312_500 + 125_000))
+  })
+
+  it('keeps every БАЗА table strictly descending, floor 0 last, oklad on each rung', () => {
+    for (const tiers of [BAZA_MONTH_TIERS, BAZA_HALF_TIERS, BAZA_WEEK_TIERS]) {
+      expect(tiers.at(-1)!.floorMinor).toBe(0n)
+      for (let i = 1; i < tiers.length; i++) expect(tiers[i]!.floorMinor < tiers[i - 1]!.floorMinor).toBe(true)
+      expect(new Set(tiers.map((tier) => tier.fixedMinor)).size).toBe(1)
+    }
+  })
+
+  it('leaves the standard tables alone', () => {
+    expect(sellerPayroll({ basisMinor: mln(30), scheme: 'month' }).totalMinor).toBe(som(2_400_000))
+    expect(sellerPayroll({ basisMinor: mln(30), scheme: 'month', table: 'standard' }).totalMinor).toBe(som(2_400_000))
+  })
+})
+
+describe('a flat rate of the person\'s own — «Marjona Shahtiyarovna 18%» (2026-10-20)', () => {
+  it('is portal user 7044 at 18%', () => {
+    expect(FLAT_RATE_SELLERS['7044']).toBe(1_800n)
+  })
+
+  it('pays 18% of FAKT 2 and nothing else, on every scheme', () => {
+    for (const scheme of ['month', 'half', 'week'] as const) {
+      const pay = sellerPayroll({ basisMinor: mln(50), scheme, table: 'flat', flatBp: 1_800n })
+      expect(pay.percentMinor).toBe(som(9_000_000))
+      expect(pay.fixedMinor).toBe(0n)
+      expect(pay.totalMinor).toBe(som(9_000_000))
+      expect(pay.tierFloorMinor).toBeNull()
+      expect(pay.nextFloorMinor).toBeNull()
+    }
+  })
+
+  it('refuses a flat seller without a rate rather than paying a guess', () => {
+    expect(() => sellerPayroll({ basisMinor: mln(1), scheme: 'month', table: 'flat' })).toThrow()
   })
 })

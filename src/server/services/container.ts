@@ -10,6 +10,7 @@
 import { sharedCbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { env } from '@/server/config/env'
 import { prisma } from '@/server/db/prisma'
+import { logger } from '@/server/logging/logger'
 import { DealRepository } from '@/server/repositories/dealRepository'
 import { InsightsRepository } from '@/server/repositories/insightsRepository'
 import { PulseRepository } from '@/server/repositories/pulseRepository'
@@ -84,13 +85,6 @@ export const insightsService = new InsightsService(insightsRepository)
 const inboundCallsRepository = new InboundCallsRepository(prisma)
 export const inboundCallsService = new InboundCallsService(inboundCallsRepository, env.APP_TIMEZONE)
 export const pulseService = new PulseService(pulseRepository)
-/*
-  «Oyliklar» reads the confirmation cohort's per-seller rating — the same query
-  the sellers board reads — and applies the client's pay table to it. It takes
-  the repository rather than SellerBoardService on purpose; payrollService's
-  own header says why.
-*/
-export const payrollService = new PayrollService(insightsRepository)
 export const searchService = new SearchService(searchRepository)
 export const alertsService = new AlertsService(insightsRepository, referenceRepository)
 export const concentrationService = new ConcentrationService(concentrationRepository)
@@ -142,6 +136,16 @@ export const roistatService = new RoistatService(new RoistatRepository(prisma), 
 */
 const registrationRepository = new RegistrationRepository(prisma)
 export const registrationService = new RegistrationService(registrationRepository, insightsRepository)
+/*
+  «Oyliklar» reads the confirmation cohort's per-seller rating — the same query
+  the sellers board reads — and applies the client's pay table to it. It takes
+  the repository rather than SellerBoardService on purpose; payrollService's
+  own header says why. «Лид сони» is «ROP otchet»'s, so it is declared after
+  the registration repository it reads.
+*/
+export const payrollService = new PayrollService(insightsRepository, registrationRepository, (context, message) =>
+  logger.warn(context, message),
+)
 /*
   «Лид назорати» (2026-10-09) — what is waiting right now on «Lidlar»: today's
   Регистрация leads and the open chats from its own repository, the day's

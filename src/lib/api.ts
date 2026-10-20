@@ -679,15 +679,30 @@ export interface LogisticsStageDto {
  * DTO here: client code may not import from `@/server/*`, and nothing checks
  * the mirror — edit both sides.
  */
+/** The payroll's blocks, in the order the table prints them. */
+export type PayrollBranch = 'toshkent' | 'navoiy' | 'baza' | 'zextra' | 'other'
+
+/** Which pay a row is on: the standard tables, БАЗА's, or a flat rate of the person's own. */
+export type PayrollTable = 'standard' | 'baza' | 'flat'
+
 export interface PayrollSellerDto {
   readonly rank: number
   readonly employeeId: string
   readonly fullName: string
   readonly rop: string | null
+  readonly branch: PayrollBranch
+  readonly table: PayrollTable
+  /** «Лид сони», as «ROP otchet» counts it. Null = not read, never zero. */
+  readonly leads: number | null
+  /** «Транз-1» — FAKT 1 orders. */
+  readonly fakt1Orders: number
+  /** «Конверсия» — Транз-1 ÷ Лид сони × 100; null with no lead. */
+  readonly conversion: number | null
   /** FAKT 2 — delivered money, the only basis the pay is computed from. */
   readonly fakt2: MoneyDto
+  /** «Транз-2» — FAKT 2 orders, «Buyurtma soni». */
   readonly fakt2Orders: number
-  /** The rate paid, in per cent: 8 for a month, 0/5/8/10/12 for a week. */
+  /** The rate paid, in per cent: 8 for a month, 0/5/8/10/12 for a week, 8/10/12/15 on БАЗА, a flat seller's own. */
   readonly percentRate: number
   /** `percentRate` of FAKT 2. */
   readonly percent: MoneyDto
@@ -707,7 +722,13 @@ export interface PayrollSellerDto {
 export interface PayrollTeamDto {
   /** Null for sellers in no (ROP) department. */
   readonly rop: string | null
+  readonly branch: PayrollBranch
   readonly sellers: number
+  readonly leads: number | null
+  readonly fakt1Orders: number
+  readonly fakt2Orders: number
+  /** Of the team's sums, never a mean of the rows. */
+  readonly conversion: number | null
   readonly fakt2: MoneyDto
   readonly percent: MoneyDto
   readonly fixed: MoneyDto
@@ -734,6 +755,28 @@ export interface PayrollTeamDto {
   } | null
 }
 
+/** One block of the table, summed from its teams. */
+export interface PayrollBranchDto {
+  readonly branch: PayrollBranch
+  readonly label: string
+  /** Its teams' labels, in `teams`' order. */
+  readonly teams: readonly (string | null)[]
+  readonly sellers: number
+  readonly leads: number | null
+  readonly fakt1Orders: number
+  readonly fakt2Orders: number
+  readonly conversion: number | null
+  readonly fakt2: MoneyDto
+  readonly percent: MoneyDto
+  readonly fixed: MoneyDto
+  /** The sellers' pay. */
+  readonly total: MoneyDto
+  /** How many of its teams' ROPs are paid. */
+  readonly rops: number
+  /** Σ its teams' `ropPay`, apart from the sellers' pay. */
+  readonly ropTotal: MoneyDto
+}
+
 export interface PayrollDto {
   readonly scheme: 'month' | 'half' | 'week'
   /** True while the period is still running — the totals are partial. */
@@ -741,6 +784,10 @@ export interface PayrollDto {
   readonly sellers: readonly PayrollSellerDto[]
   readonly totals: {
     readonly sellers: number
+    readonly leads: number | null
+    readonly fakt1Orders: number
+    readonly fakt2Orders: number
+    readonly conversion: number | null
     readonly fakt2: MoneyDto
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
@@ -753,8 +800,14 @@ export interface PayrollDto {
     readonly fixed: MoneyDto
     readonly total: MoneyDto
   }
+  /** `totals.total` + `ropTotals.total`, summed on the server in minor units. */
+  readonly fund: MoneyDto
+  /** The people paid a flat rate of their own, for the rule card. */
+  readonly flatRates: readonly { readonly fullName: string; readonly percentRate: number }[]
   /** Per ROP, biggest fund first, «ROP yoʻq» last. Σ = `totals`. */
   readonly teams: readonly PayrollTeamDto[]
+  /** The blocks that have a team, Toshkent · Navoiy · Baza · Zextra · Boshqa. Σ = `totals`. */
+  readonly branches: readonly PayrollBranchDto[]
   /** The comparison window (`meta.comparisonPeriod`), by the same table. */
   readonly previous: {
     readonly sellers: number

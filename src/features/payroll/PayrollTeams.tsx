@@ -1,11 +1,8 @@
 'use client'
 
-import { type MouseEvent, useId, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
-import { Button } from '@/components/ui/Button'
 import { SegmentedControl } from '@/components/ui/Controls'
-import { ChevronGlyph } from '@/components/ui/Icons'
-import { DataTable, type Column } from '@/components/ui/DataTable'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import type { PayrollSellerDto, PayrollTeamDto } from '@/lib/api'
@@ -15,10 +12,11 @@ import { formatCompactUzs, formatFullUzs, formatNumber } from '@/lib/format'
  * «Sotuvchilar oyligi» by ROP — 2026-10-05 («ROP larga ajratilsin, ichida
  * sotuvchilari boʻlsin … kim qanchaga oʻsganligi … grafiklar bilan»).
  *
- * THREE READINGS OF ONE PAYLOAD, no request of their own: the teams and the
- * comparison window both ride `/payroll/*`, so the bars, the movers and the
- * cards cannot disagree with the hero or with each other — the cards add up to
- * the fund because the server sums them from the rows it prints.
+ * TWO READINGS OF ONE PAYLOAD, no request of their own: the teams and the
+ * comparison window both ride `/payroll/*`, so the bars and the movers cannot
+ * disagree with the hero or with the sheet (`PayrollSheet`, which took the
+ * ROP cards' place on 2026-10-20) — the server sums the teams from the rows
+ * it prints.
  *
  * PLAIN HTML BARS, NOT RECHARTS. Each chart here is one measure per row on one
  * scale; a bar is a width, and the page already draws its rung strip and tier
@@ -324,181 +322,4 @@ function MoverList({
       )}
     </section>
   )
-}
-
-// ---------------------------------------------------------------------------
-// ROP kartalari
-// ---------------------------------------------------------------------------
-
-/**
- * One card per ROP, its sellers inside, in the server's order (biggest fund
- * first, «ROP yoʻq» last). The rows keep their COMPANY-WIDE rank, so «3» in
- * Lola's card means third in the company, as it did in the single table.
- *
- * A SEARCH OPENS AND NARROWS. A card with a matching seller shows only those;
- * a card whose ROP name matches shows everybody; the rest are hidden. The
- * header figures stay the team's whole period while it does — they are the
- * team's pay, not the search's.
- */
-export function RopCards<Line>({
-  teams,
-  sellers,
-  search,
-  columns,
-  toLines,
-  rowKey,
-  comparisonLabel,
-}: {
-  teams: readonly PayrollTeamDto[]
-  sellers: readonly PayrollSellerDto[]
-  search: string
-  columns: Column<Line>[]
-  /** The card's table lines: its (matching) sellers, and the team's own footer. */
-  toLines: (rows: readonly PayrollSellerDto[], team: PayrollTeamDto) => Line[]
-  rowKey: (line: Line) => string
-  comparisonLabel: string | null
-}) {
-  const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set())
-  const idBase = useId()
-  const needle = search.trim().toLowerCase()
-
-  const cards = useMemo(() => {
-    const byRop = new Map<string | null, PayrollSellerDto[]>()
-    for (const row of sellers) {
-      const held = byRop.get(row.rop)
-      if (held) held.push(row)
-      else byRop.set(row.rop, [row])
-    }
-    return teams
-      .map((team) => {
-        const all = byRop.get(team.rop) ?? []
-        const name = team.rop ?? NO_ROP
-        const rows = !needle || name.toLowerCase().includes(needle)
-          ? all
-          : all.filter((row) => row.fullName.toLowerCase().includes(needle))
-        return { team, name, rows }
-      })
-      .filter((card) => card.rows.length > 0)
-  }, [teams, sellers, needle])
-
-  const toggle = (name: string) =>
-    setClosed((held) => {
-      const next = new Set(held)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
-
-  if (cards.length === 0) {
-    return (
-      <p className="py-6 text-center text-[12px]" style={{ color: 'var(--ink-muted)' }}>
-        «{search.trim()}» boʻyicha sotuvchi ham, ROP ham topilmadi.
-      </p>
-    )
-  }
-
-  const allOpen = cards.every((card) => !closed.has(card.name))
-
-  return (
-    <div className="flex flex-col gap-3">
-      {!needle && (
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setClosed(allOpen ? new Set(cards.map((card) => card.name)) : new Set())}
-          >
-            {allOpen ? 'Hammasini yigʻish' : 'Hammasini ochish'}
-          </Button>
-        </div>
-      )}
-      {cards.map(({ team, name, rows }, index) => {
-        const open = !closed.has(name)
-        const bodyId = `${idBase}-rop-${index}`
-        return (
-          <section
-            key={name}
-            // The house panel radius and border, not a 12px corner on --grid.
-            className="overflow-hidden rounded-[var(--radius-panel-sm)] border"
-            style={{ borderColor: 'var(--border)', background: 'var(--surface-raised)' }}
-          >
-            {/* An INSET ring: the panel clips its table to its corners, and
-                `.focusable`'s outer ring would be clipped with it on three sides. */}
-            <button
-              type="button"
-              className="flex w-full flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 text-left outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--accent)]"
-              aria-expanded={open}
-              aria-controls={bodyId}
-              onClick={() => toggle(name)}
-            >
-              <span style={{ color: 'var(--ink-muted)' }}>
-                <ChevronGlyph direction={open ? 'down' : 'right'} />
-              </span>
-              <span className="min-w-0 flex-1 basis-[180px]">
-                <span className="block truncate text-[14px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                  {name}
-                </span>
-                <span className="tabular block text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  {formatNumber(team.sellers)} ta sotuvchi · FAKT 2 {formatCompactUzs(team.fakt2.amount)}
-                  {team.previous && ` · oldin ${formatCompactUzs(team.previous.fakt2.amount)}`}
-                </span>
-                {team.ropPay && (
-                  <span className="tabular block text-[11px]" style={{ color: 'var(--ink-secondary)' }}>
-                    ROP{team.ropPay.head ? ` ${team.ropPay.head}` : ''} maoshi:{' '}
-                    {formatFullUzs(team.ropPay.total.amount)} soʻm
-                  </span>
-                )}
-              </span>
-              {/*
-                A tap on the pill opens its tooltip; it must not also fold the card.
-              */}
-              <span className="ml-auto flex items-center gap-2" onClick={stopToggle}>
-                <span className="text-right">
-                  <span className="tabular block text-[16px] leading-tight font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                    {formatFullUzs(team.total.amount)}
-                  </span>
-                  <span className="tabular block text-[10px]" style={{ color: 'var(--ink-muted)' }}>
-                    {team.previous
-                      ? `oʻtgan davr ${formatFullUzs(team.previous.total.amount)}`
-                      : 'jami toʻlov, soʻm'}
-                  </span>
-                </span>
-                {team.previous ? (
-                  <TrendIndicator delta={team.totalDelta} />
-                ) : comparisonLabel ? (
-                  <NewChip team />
-                ) : null}
-              </span>
-            </button>
-            {/* Mounted while folded, so `aria-controls` always names an element. */}
-            <div
-              id={bodyId}
-              hidden={!open}
-              className="border-t px-2 pb-2 sm:px-3"
-              style={{ borderColor: 'var(--grid)' }}
-            >
-              {open && (
-                <DataTable<Line>
-                  columns={columns}
-                  rows={toLines(rows, team)}
-                  rowKey={rowKey}
-                  status="ready"
-                  emptyTitle=""
-                  emptyBody=""
-                  minWidth={1210}
-                  /* Every seller of the team at once: a payroll hides nobody behind a scrollbar. */
-                  maxHeight="none"
-                  stickyColumns={1}
-                />
-              )}
-            </div>
-          </section>
-        )
-      })}
-    </div>
-  )
-}
-
-function stopToggle(event: MouseEvent) {
-  event.stopPropagation()
 }
