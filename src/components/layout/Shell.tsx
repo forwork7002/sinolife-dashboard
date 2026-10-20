@@ -316,33 +316,24 @@ export function Shell({
    * The ⌘K palette. Closed means UNMOUNTED (the primitive returns null), so
    * its Escape handling cannot linger and fight PeriodFilter's popover — while
    * it IS open, its Escape is preventDefault-ed and PeriodFilter stands down.
-   *
-   * OPEN ON ONE SCREEN, AND ONLY THAT ONE — the drawer below says why: the
-   * state is the path it was opened on, so a back or forward press closes it.
+   * Any change of screen closes it — see `openedOn` below.
    */
-  const [paletteOpenAt, setPaletteOpenAt] = useState<string | null>(null)
-  const paletteOpen = paletteOpenAt === pathname
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   /*
     The phone drawer. Closed on Escape here; closed on the backdrop and on its
-    own links by the handlers that own those events — and on ANY change of
-    screen, because the state is the path it was opened on rather than a
-    flag. Since 2026-10-20 the shell outlives the page (the `(app)` layout),
-    so a flag stayed true through a phone's back gesture and left the modal
-    drawer over the next screen; a remounted shell used to close it by
-    accident. No effect watches the pathname: a state write inside an effect
-    body is the pattern the lint forbids, and a comparison needs none.
+    own links by the handlers that own those events — and on any change of
+    screen by `openedOn` below.
   */
-  const [menuOpenAt, setMenuOpenAt] = useState<string | null>(null)
-  const menuOpen = menuOpenAt === pathname
+  const [menuOpen, setMenuOpen] = useState(false)
   // A plain function: the React Compiler memoizes it, and a hand-written
   // useCallback with `[]` disagreed with the dependency it infers.
-  const closeMenu = () => setMenuOpenAt(null)
+  const closeMenu = () => setMenuOpen(false)
 
   useEffect(() => {
     if (!menuOpen) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpenAt(null)
+      if (event.key === 'Escape') setMenuOpen(false)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -381,6 +372,27 @@ export function Shell({
   */
   const [typed, setTyped] = useState('')
   const [lookup, setLookup] = useState('')
+
+  /*
+    ANY CHANGE OF SCREEN CLOSES THE DRAWER AND THE PALETTE (2026-10-20).
+    Since the shell became the `(app)` layout's it outlives the page, so an
+    open drawer stayed open through a phone's back gesture, modal over the
+    next screen — a remounted shell used to close it by accident. Adjusted
+    while rendering, React's pattern for state that follows a changed value:
+    the stale frame is never committed, and no effect watches the pathname
+    (a state write inside an effect body is what the lint forbids). The
+    terms go with the palette, as on «close». (Holding the path the drawer
+    was opened ON instead was tried: it reopened by itself on a return to
+    that screen.)
+  */
+  const [openedOn, setOpenedOn] = useState(pathname)
+  if (openedOn !== pathname) {
+    setOpenedOn(pathname)
+    setMenuOpen(false)
+    setPaletteOpen(false)
+    setTyped('')
+    setLookup('')
+  }
 
   useEffect(() => {
     const timer = window.setTimeout(() => setLookup(typed.trim()), 220)
@@ -453,15 +465,9 @@ export function Shell({
     },
     [pathname, search, sectionQuery],
   )
-  const openPalette = useCallback(() => {
-    if (paletteOpen) return
-    setPaletteOpenAt(pathname)
-    // A palette a back press closed kept its terms; it opens on an empty box regardless.
-    setTyped('')
-    setLookup('')
-  }, [paletteOpen, pathname])
+  const openPalette = useCallback(() => setPaletteOpen(true), [])
   const closePalette = useCallback(() => {
-    setPaletteOpenAt(null)
+    setPaletteOpen(false)
     // The dialog's own box dies with it; the terms lifted out of it are reset here.
     setTyped('')
     setLookup('')
@@ -810,7 +816,7 @@ export function Shell({
             */}
             <button
               type="button"
-              onClick={() => setMenuOpenAt(pathname)}
+              onClick={() => setMenuOpen(true)}
               aria-label="Menyuni ochish"
               aria-expanded={menuOpen}
               className="rail-item focusable -ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg lg:hidden"

@@ -108,6 +108,10 @@ describe('the drawer and the palette, on a shell that outlives the page', () => 
     nav.path = '/rnp' // not through the drawer's own links
     again()
     expect(screen.queryByRole('dialog', { name: 'Menyu' })).toBeNull()
+    // …and a return to the screen it was opened on does not bring it back.
+    nav.path = '/margin'
+    again()
+    expect(screen.queryByRole('dialog', { name: 'Menyu' })).toBeNull()
   })
 
   it('closes the ⌘K palette the same way', () => {
@@ -115,6 +119,9 @@ describe('the drawer and the palette, on a shell that outlives the page', () => 
     fireEvent.click(screen.getByRole('button', { name: 'Qidiruv' }))
     expect(screen.getAllByRole('dialog').length).toBeGreaterThan(0)
     nav.path = '/rnp'
+    again()
+    expect(screen.queryAllByRole('dialog')).toHaveLength(0)
+    nav.path = '/margin'
     again()
     expect(screen.queryAllByRole('dialog')).toHaveLength(0)
   })
