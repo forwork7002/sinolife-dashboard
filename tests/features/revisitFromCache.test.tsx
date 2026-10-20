@@ -8,8 +8,9 @@ import { Providers } from '@/app/providers'
 /**
  * A SCREEN READ TEN MINUTES AGO OPENS ON ITS LAST FIGURES, NOT ON SKELETONS.
  *
- * There is no dashboard layout, so a page's queries lose their last reader on
- * every navigation. Under the library's five-minute `gcTime` the entry was
+ * A page's queries live in the page (the `(app)` layout keeps only the
+ * shell), so they lose their last reader on every navigation. Under the
+ * library's five-minute `gcTime` the entry was
  * then deleted, and a return after a longer stay elsewhere drew skeletons and
  * waited the whole round trip. Rendered under the REAL `Providers`, because
  * the setting under test is the application's default and a client built here

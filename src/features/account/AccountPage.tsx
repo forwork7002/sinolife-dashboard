@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 
-import { Shell } from '@/components/layout/Shell'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { StatusChip } from '@/components/ui/Stat'
 import { authClient, sessionUser, useSession } from '@/lib/authClient'
 import { ROLE_LABELS } from '@/lib/roles'
+import { useHydrated } from '@/lib/useHydrated'
 import {
   MIN_PASSWORD_LENGTH,
   checkPassword,
@@ -40,7 +40,9 @@ import { TwoFactorSection } from './TwoFactorSection'
  */
 export function AccountPage() {
   const { data: session } = useSession()
-  const user = sessionUser(session?.user)
+  // Not before hydration: the server has no session and printed «—» (`useHydrated`).
+  const hydrated = useHydrated()
+  const user = hydrated ? sessionUser(session?.user) : undefined
 
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -94,143 +96,141 @@ export function AccountPage() {
   }
 
   return (
-    <Shell>
-      <div className="mx-auto flex max-w-[720px] flex-col gap-5">
-        <header>
-          <div className="accent-rule" aria-hidden="true" />
-          <h1
-            className="display mt-2.5 text-2xl font-semibold"
-            style={{ color: 'var(--ink-primary)' }}
-          >
-            Hisob
-          </h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
-            Kirish maʼlumotlaringiz, parol, ikki bosqichli himoya va koʻrinish.
-          </p>
-        </header>
+    <div className="mx-auto flex max-w-[720px] flex-col gap-5">
+      <header>
+        <div className="accent-rule" aria-hidden="true" />
+        <h1
+          className="display mt-2.5 text-2xl font-semibold"
+          style={{ color: 'var(--ink-primary)' }}
+        >
+          Hisob
+        </h1>
+        <p className="mt-1 text-sm" style={{ color: 'var(--ink-secondary)' }}>
+          Kirish maʼlumotlaringiz, parol, ikki bosqichli himoya va koʻrinish.
+        </p>
+      </header>
 
-        <Card className="px-5 py-4">
-          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink-primary)' }}>
-            Kim sifatida kirgansiz
-          </h2>
-          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-6">
-            <dt style={{ color: 'var(--ink-muted)' }}>Ism</dt>
-            <dd style={{ color: 'var(--ink-primary)' }}>{user?.name ?? '—'}</dd>
-            <dt style={{ color: 'var(--ink-muted)' }}>Pochta</dt>
-            <dd className="tabular" style={{ color: 'var(--ink-primary)' }}>
-              {user?.email ?? '—'}
-            </dd>
-            <dt style={{ color: 'var(--ink-muted)' }}>Rol</dt>
-            <dd style={{ color: 'var(--ink-primary)' }}>
-              {user ? ROLE_LABELS[user.role] : '—'}
-            </dd>
-          </dl>
-        </Card>
+      <Card className="px-5 py-4">
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--ink-primary)' }}>
+          Kim sifatida kirgansiz
+        </h2>
+        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-6">
+          <dt style={{ color: 'var(--ink-muted)' }}>Ism</dt>
+          <dd style={{ color: 'var(--ink-primary)' }}>{user?.name ?? '—'}</dd>
+          <dt style={{ color: 'var(--ink-muted)' }}>Pochta</dt>
+          <dd className="tabular" style={{ color: 'var(--ink-primary)' }}>
+            {user?.email ?? '—'}
+          </dd>
+          <dt style={{ color: 'var(--ink-muted)' }}>Rol</dt>
+          <dd style={{ color: 'var(--ink-primary)' }}>
+            {user ? ROLE_LABELS[user.role] : '—'}
+          </dd>
+        </dl>
+      </Card>
 
-        <Card className="px-5 py-4">
-          <h2 className="text-sm font-semibold" style={{ color: 'var(--ink-primary)' }}>
-            Parolni oʻzgartirish
-          </h2>
-          <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
-            Parol oʻzgargach, boshqa barcha qurilmalardagi seanslar yopiladi. Bu qurilma
-            ochiq qoladi.
-          </p>
+      <Card className="px-5 py-4">
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--ink-primary)' }}>
+          Parolni oʻzgartirish
+        </h2>
+        <p className="mt-1 text-xs" style={{ color: 'var(--ink-muted)' }}>
+          Parol oʻzgargach, boshqa barcha qurilmalardagi seanslar yopiladi. Bu qurilma
+          ochiq qoladi.
+        </p>
 
-          <form className="mt-4 flex flex-col gap-3.5" onSubmit={submit}>
+        <form className="mt-4 flex flex-col gap-3.5" onSubmit={submit}>
+          <Field
+            label="Joriy parol"
+            value={current}
+            onChange={setCurrent}
+            autoComplete="current-password"
+          />
+
+          <div>
             <Field
-              label="Joriy parol"
-              value={current}
-              onChange={setCurrent}
-              autoComplete="current-password"
+              label="Yangi parol"
+              value={next}
+              onChange={setNext}
+              autoComplete="new-password"
             />
-
-            <div>
-              <Field
-                label="Yangi parol"
-                value={next}
-                onChange={setNext}
-                autoComplete="new-password"
-              />
-              {next.length > 0 && <StrengthMeter strength={strength} />}
-              {next.length > 0 && !check.ok && (
-                <ul className="mt-1.5 flex flex-col gap-0.5">
-                  {check.problems.map((problem) => (
-                    <li key={problem} className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
-                      {problem}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {next.length === 0 && (
-                <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
-                  Kamida {MIN_PASSWORD_LENGTH} ta belgi; kichik harf, bosh harf, raqam va
-                  belgidan uch xili. Uzun ibora eng kuchlisi.
-                </p>
-              )}
-            </div>
-
-            <div>
-              <Field
-                label="Yangi parolni takrorlang"
-                value={confirm}
-                onChange={setConfirm}
-                autoComplete="new-password"
-              />
-              {mismatch && (
-                <p className="mt-1.5 text-[11px]" style={{ color: 'var(--status-critical)' }}>
-                  Parollar mos kelmadi.
-                </p>
-              )}
-            </div>
-
-            {error && (
-              <p
-                className="rounded-[var(--radius-panel-sm)] px-3 py-2 text-xs"
-                style={{
-                  background: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
-                  /*
-                    --delta-down, not --status-critical: text ON a 12% tint of
-                    the critical hue. globals.css measured the bare token at
-                    4.11:1 there in dark — under the 4.5:1 floor — and minted
-                    this lighter cut of the same hue for exactly this seat.
-                  */
-                  color: 'var(--delta-down)',
-                }}
-                role="alert"
-              >
-                {error}
+            {next.length > 0 && <StrengthMeter strength={strength} />}
+            {next.length > 0 && !check.ok && (
+              <ul className="mt-1.5 flex flex-col gap-0.5">
+                {check.problems.map((problem) => (
+                  <li key={problem} className="text-[11px]" style={{ color: 'var(--status-warning)' }}>
+                    {problem}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {next.length === 0 && (
+              <p className="mt-1.5 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                Kamida {MIN_PASSWORD_LENGTH} ta belgi; kichik harf, bosh harf, raqam va
+                belgidan uch xili. Uzun ibora eng kuchlisi.
               </p>
             )}
+          </div>
 
-            <div className="flex items-center gap-3">
-              <Button type="submit" variant="primary" disabled={!canSubmit}>
-                {state === 'saving' ? 'Saqlanmoqda…' : 'Parolni oʻzgartirish'}
-              </Button>
-              {state === 'done' && (
-                <StatusChip tone="good">Parol oʻzgartirildi</StatusChip>
-              )}
-            </div>
-          </form>
-        </Card>
+          <div>
+            <Field
+              label="Yangi parolni takrorlang"
+              value={confirm}
+              onChange={setConfirm}
+              autoComplete="new-password"
+            />
+            {mismatch && (
+              <p className="mt-1.5 text-[11px]" style={{ color: 'var(--status-critical)' }}>
+                Parollar mos kelmadi.
+              </p>
+            )}
+          </div>
 
-        {/*
-          Armed state is read from the SESSION, not from anything this page
-          remembers. The two-factor plugin rewrites the session cookie the
-          moment `twoFactorEnabled` moves, so a reload always shows the truth
-          and the section cannot get stuck claiming a lock that is not on.
-          (It briefly prefers its own just-confirmed answer while that refetch
-          lands — see the `confirmed` comment in TwoFactorSection.)
-        */}
-        <TwoFactorSection enabled={user?.twoFactorEnabled ?? false} />
+          {error && (
+            <p
+              className="rounded-[var(--radius-panel-sm)] px-3 py-2 text-xs"
+              style={{
+                background: 'color-mix(in oklab, var(--status-critical) 12%, transparent)',
+                /*
+                  --delta-down, not --status-critical: text ON a 12% tint of
+                  the critical hue. globals.css measured the bare token at
+                  4.11:1 there in dark — under the 4.5:1 floor — and minted
+                  this lighter cut of the same hue for exactly this seat.
+                */
+                color: 'var(--delta-down)',
+              }}
+              role="alert"
+            >
+              {error}
+            </p>
+          )}
 
-        {/*
-          Last, and the only block here that changes nothing on the server:
-          the theme is a browser preference, so it neither reads nor writes the
-          account. See AppearanceSection for why «Tizim» has to be reachable.
-        */}
-        <AppearanceSection />
-      </div>
-    </Shell>
+          <div className="flex items-center gap-3">
+            <Button type="submit" variant="primary" disabled={!canSubmit}>
+              {state === 'saving' ? 'Saqlanmoqda…' : 'Parolni oʻzgartirish'}
+            </Button>
+            {state === 'done' && (
+              <StatusChip tone="good">Parol oʻzgartirildi</StatusChip>
+            )}
+          </div>
+        </form>
+      </Card>
+
+      {/*
+        Armed state is read from the SESSION, not from anything this page
+        remembers. The two-factor plugin rewrites the session cookie the
+        moment `twoFactorEnabled` moves, so a reload always shows the truth
+        and the section cannot get stuck claiming a lock that is not on.
+        (It briefly prefers its own just-confirmed answer while that refetch
+        lands — see the `confirmed` comment in TwoFactorSection.)
+      */}
+      <TwoFactorSection enabled={user?.twoFactorEnabled ?? false} />
+
+      {/*
+        Last, and the only block here that changes nothing on the server:
+        the theme is a browser preference, so it neither reads nor writes the
+        account. See AppearanceSection for why «Tizim» has to be reachable.
+      */}
+      <AppearanceSection />
+    </div>
   )
 }
 

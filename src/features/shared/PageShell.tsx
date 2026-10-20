@@ -4,13 +4,14 @@ import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 import { PeriodFilter } from '@/components/layout/PeriodFilter'
-import { Shell } from '@/components/layout/Shell'
+import { useAnnounceShellChrome } from '@/components/layout/shellChrome'
 import { Button } from '@/components/ui/Button'
 import { MultiSelect, SearchInput } from '@/components/ui/Controls'
 import { MultiplyGlyph } from '@/components/ui/Icons'
 import { apiGet, type ResponseMeta } from '@/lib/api'
 import { formatDate } from '@/lib/format'
 import { t } from '@/lib/messages'
+import { useHydrated } from '@/lib/useHydrated'
 import type { Viewer } from '@/lib/viewer'
 import { useDashboardFilters, useRestoreRememberedPeriod } from './useDashboardFilters'
 
@@ -91,7 +92,8 @@ export interface FilterToggles {
 }
 
 /**
- * Standard page frame: nav, period control, title, filter row.
+ * Standard page frame: period control, title, filter row. (The rail and the
+ * header are the `(app)` layout's, since 2026-10-20 — see `shellChrome.ts`.)
  *
  * Every page shares it so the period control sits in the same place, the demo
  * badge is always visible, and the reporting window carries across navigation.
@@ -285,7 +287,14 @@ export function PageShell({
   // useDashboardFilters, which a dozen components call.
   useRestoreRememberedPeriod(period)
   const options = useFilterOptions()
-  const data = options.data?.data
+  /*
+    Not while hydrating: the shell starts `['filters']` before this page
+    hydrates, and a picker that hydrated on options the server never had
+    keeps the server's `disabled` — React does not patch attributes
+    (`useHydrated`). The options follow on the next frame.
+  */
+  const hydrated = useHydrated()
+  const data = hydrated ? options.data?.data : undefined
 
   const anyFilter =
     enabled.employees || enabled.departments || enabled.sources || enabled.search
@@ -431,145 +440,142 @@ export function PageShell({
     </div>
   ) : null
 
+  /*
+    THE SHELL IS NOT DRAWN HERE ANY MORE (2026-10-20). The rail and the header
+    are the `(app)` layout's and stay mounted from one screen to the next;
+    this frame only tells them the two facts that belong to the page — see
+    `shellChrome.ts`. The sync time is not threaded through either: the header
+    fetches it from `/meta/alerts` itself.
+  */
+  useAnnounceShellChrome(period, meta?.dataSource ?? options.data?.meta.dataSource)
+
   return (
-    /*
-      The sync time is no longer threaded through here. It used to be read
-      from the filters payload and handed down for the rail's footer; the
-      header fetches it from `/meta/alerts` itself, beside the two other facts
-      it states, so no page has to carry a fact about the application in a
-      prop any more.
-    */
-    <Shell
-      dataSource={meta?.dataSource ?? options.data?.meta.dataSource}
-      periodAware={period}
+    <div
+      className={`page-container ${fill ? 'flex h-full min-h-0 flex-col gap-4' : 'space-y-4'}`}
+      style={accent ? ({ '--accent': accent } as React.CSSProperties) : undefined}
     >
-      <div
-        className={`page-container ${fill ? 'flex h-full min-h-0 flex-col gap-4' : 'space-y-4'}`}
-        style={accent ? ({ '--accent': accent } as React.CSSProperties) : undefined}
-      >
-        {/*
-          The header zone carries the aurora — title, description and filters
-          sit over it; data never does.
+      {/*
+        The header zone carries the aurora — title, description and filters
+        sit over it; data never does.
 
-          `.page-atmosphere` (globals.css) paints two blurred chrome-tint
-          blobs and masks them away over the bottom of the band, so the
-          atmosphere dies before the first chart. It lives in
-          its own absolutely-positioned, overflow-hidden layer rather than
-          putting overflow-hidden on the content: the date picker's popover in
-          the filter row opens downward past this box and must not be clipped.
-          The layer bleeds up into main's padding so the glow starts at the
-          top of the page, not 20px into it. pointer-events-none because
-          scenery must never intercept a click meant for the controls over it.
-        */}
-        <div className={`relative ${fill ? 'shrink-0' : ''}`}>
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 -top-5 bottom-0 overflow-hidden lg:-top-6"
-          >
-            <div className="page-atmosphere" />
-          </div>
-
-          <div className="relative space-y-4">
-            <header className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                {accent && <div className="accent-rule mb-2.5" aria-hidden="true" />}
-                {/* `.display` (tight tracking for large sizes) at 24px — the page
-                    title's one job is to outrank every section heading below it. */}
-                <h1
-                  className="display text-2xl font-semibold"
-                  style={{ color: 'var(--ink-primary)' }}
-                >
-                  {title}
-                </h1>
-                {/*
-                  `period` reserves the line BEFORE the first response arrives.
-
-                  The dates come from the response's meta, so on a page with no
-                  description the whole line used to pop in a beat after the
-                  header rendered and push the filter row and every card down
-                  one line. A page that WILL print dates claims the height from
-                  the start; the text simply arrives into space already held.
-
-                  `description={null}` opts out of the reservation, and that is
-                  not the same as leaving the prop off: it says this page prints
-                  no lead line and no dates in any state, so the twenty pixels
-                  would be held open for something that can never arrive. On a
-                  page whose one piece of content is a table, twenty pixels is
-                  a row.
-                */}
-                {description !== null && (description || period || meta?.period) && (
-                  <p className="mt-1 max-w-2xl text-xs" style={{ color: 'var(--ink-muted)' }}>
-                    {description}
-                    {description && meta?.period && <span className="mx-1.5">·</span>}
-                    {meta?.period ? (
-                      <>
-                        {formatDate(meta.period.start)} –{' '}
-                        {formatDate(new Date(new Date(meta.period.end).getTime() - 1).toISOString())}
-                      </>
-                    ) : (
-                      // Occupies the line while the dates are in flight.
-                      period && !description && <span aria-hidden="true">&nbsp;</span>
-                    )}
-                    {meta?.comparisonTruncated && (
-                      <span
-                        className="ml-2 rounded px-1.5 py-0.5"
-                        style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
-                      >
-                        {t.period.truncated}
-                      </span>
-                    )}
-                  </p>
-                )}
-              </div>
-              {banner}
-              {(actions || (controlsAlign === 'end' && controls)) && (
-                /*
-                  NO `shrink-0` HERE, and that is the difference between one
-                  control and a row of them. The television board seats four
-                  chips in this slot and never needs to shrink; the
-                  confirmation board seats about 900px of window, search box,
-                  two selects and a button, and below roughly 1300px that is
-                  wider than the line it wraps onto. Held rigid it would run
-                  off the right of the page — allowed to shrink, it wraps
-                  inside itself exactly as it does under the title.
-                */
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {controlsAlign === 'end' && controls}
-                  {actions}
-                </div>
-              )}
-            </header>
-
-            {controlsAlign !== 'end' && controls}
-          </div>
-
-          {/* The author's mark: in the 16px gap under the header, so it sits just
-              above the first card's top-right border and takes no height. */}
-          {devMark && (
-            <span className="dev-mark absolute right-3.5 -bottom-[13px]" aria-hidden="true">
-              developed by Yusuf
-            </span>
-          )}
-        </div>
-
-        {/* The body takes what the header left, and its own children size
-            against it — hence `min-h-0`, without which the flex child refuses
-            to shrink below its content and the canvas grows the page instead
-            of fitting into it. */}
-        {/* `stale` softens THIS block and nothing above it: the filter row is
-            what the reader is using while the next answer loads, and dimmed
-            with the rest it turned a ticked list see-through over the tiles.
-            Blurred as well as dimmed (`.data-stale`, LIVE DATA in globals.css)
-            because these figures are the previous filter's — wrong, not late.
-            A background poll never sets it. */}
+        `.page-atmosphere` (globals.css) paints two blurred chrome-tint
+        blobs and masks them away over the bottom of the band, so the
+        atmosphere dies before the first chart. It lives in
+        its own absolutely-positioned, overflow-hidden layer rather than
+        putting overflow-hidden on the content: the date picker's popover in
+        the filter row opens downward past this box and must not be clipped.
+        The layer bleeds up into main's padding so the glow starts at the
+        top of the page, not 20px into it. pointer-events-none because
+        scenery must never intercept a click meant for the controls over it.
+      */}
+      <div className={`relative ${fill ? 'shrink-0' : ''}`}>
         <div
-          data-page-body=""
-          className={`data-body ${fill ? 'min-h-0 flex-1' : 'space-y-4'} ${stale ? 'data-stale' : ''}`}
-          aria-busy={stale || undefined}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 -top-5 bottom-0 overflow-hidden lg:-top-6"
         >
-          {children}
+          <div className="page-atmosphere" />
         </div>
+
+        <div className="relative space-y-4">
+          <header className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              {accent && <div className="accent-rule mb-2.5" aria-hidden="true" />}
+              {/* `.display` (tight tracking for large sizes) at 24px — the page
+                  title's one job is to outrank every section heading below it. */}
+              <h1
+                className="display text-2xl font-semibold"
+                style={{ color: 'var(--ink-primary)' }}
+              >
+                {title}
+              </h1>
+              {/*
+                `period` reserves the line BEFORE the first response arrives.
+
+                The dates come from the response's meta, so on a page with no
+                description the whole line used to pop in a beat after the
+                header rendered and push the filter row and every card down
+                one line. A page that WILL print dates claims the height from
+                the start; the text simply arrives into space already held.
+
+                `description={null}` opts out of the reservation, and that is
+                not the same as leaving the prop off: it says this page prints
+                no lead line and no dates in any state, so the twenty pixels
+                would be held open for something that can never arrive. On a
+                page whose one piece of content is a table, twenty pixels is
+                a row.
+              */}
+              {description !== null && (description || period || meta?.period) && (
+                <p className="mt-1 max-w-2xl text-xs" style={{ color: 'var(--ink-muted)' }}>
+                  {description}
+                  {description && meta?.period && <span className="mx-1.5">·</span>}
+                  {meta?.period ? (
+                    <>
+                      {formatDate(meta.period.start)} –{' '}
+                      {formatDate(new Date(new Date(meta.period.end).getTime() - 1).toISOString())}
+                    </>
+                  ) : (
+                    // Occupies the line while the dates are in flight.
+                    period && !description && <span aria-hidden="true">&nbsp;</span>
+                  )}
+                  {meta?.comparisonTruncated && (
+                    <span
+                      className="ml-2 rounded px-1.5 py-0.5"
+                      style={{ background: 'var(--grid)', color: 'var(--ink-secondary)' }}
+                    >
+                      {t.period.truncated}
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+            {banner}
+            {(actions || (controlsAlign === 'end' && controls)) && (
+              /*
+                NO `shrink-0` HERE, and that is the difference between one
+                control and a row of them. The television board seats four
+                chips in this slot and never needs to shrink; the
+                confirmation board seats about 900px of window, search box,
+                two selects and a button, and below roughly 1300px that is
+                wider than the line it wraps onto. Held rigid it would run
+                off the right of the page — allowed to shrink, it wraps
+                inside itself exactly as it does under the title.
+              */
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {controlsAlign === 'end' && controls}
+                {actions}
+              </div>
+            )}
+          </header>
+
+          {controlsAlign !== 'end' && controls}
+        </div>
+
+        {/* The author's mark: in the 16px gap under the header, so it sits just
+            above the first card's top-right border and takes no height. */}
+        {devMark && (
+          <span className="dev-mark absolute right-3.5 -bottom-[13px]" aria-hidden="true">
+            developed by Yusuf
+          </span>
+        )}
       </div>
-    </Shell>
+
+      {/* The body takes what the header left, and its own children size
+          against it — hence `min-h-0`, without which the flex child refuses
+          to shrink below its content and the canvas grows the page instead
+          of fitting into it. */}
+      {/* `stale` softens THIS block and nothing above it: the filter row is
+          what the reader is using while the next answer loads, and dimmed
+          with the rest it turned a ticked list see-through over the tiles.
+          Blurred as well as dimmed (`.data-stale`, LIVE DATA in globals.css)
+          because these figures are the previous filter's — wrong, not late.
+          A background poll never sets it. */}
+      <div
+        data-page-body=""
+        className={`data-body ${fill ? 'min-h-0 flex-1' : 'space-y-4'} ${stale ? 'data-stale' : ''}`}
+        aria-busy={stale || undefined}
+      >
+        {children}
+      </div>
+    </div>
   )
 }

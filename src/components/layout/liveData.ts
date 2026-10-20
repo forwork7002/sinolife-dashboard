@@ -36,10 +36,16 @@ export const FRESH_TOAST_MS = 4500
  * whose first success has nothing to differ from — that moment is the body's
  * blur (`stale`), not this. Never on a `manual` write either: a cell the
  * reader just typed and saved is not news to them.
+ *
+ * EACH SCREEN STARTS WITH NOTHING SEEN (`screen`, the path). The shell used to
+ * be rebuilt with every page, and this memory with it, so a return to a screen
+ * whose cached figures refetched was a first answer. Since 2026-10-20 the
+ * shell outlives the page (the `(app)` layout); keyed by the path, a return
+ * still is, and a pill raised on one screen does not ride onto the next.
  */
-export function useFreshDataAt(): number | null {
+export function useFreshDataAt(screen = ''): number | null {
   const queryClient = useQueryClient()
-  const [freshAt, setFreshAt] = useState<number | null>(null)
+  const [fresh, setFresh] = useState<{ readonly at: number; readonly screen: string } | null>(null)
 
   useEffect(() => {
     const seen = new Map<string, unknown>()
@@ -55,15 +61,15 @@ export function useFreshDataAt(): number | null {
       const had = seen.has(hash)
       const previous = seen.get(hash)
       seen.set(hash, next)
-      if (had && !event.action.manual && next !== previous) setFreshAt(Date.now())
+      if (had && !event.action.manual && next !== previous) setFresh({ at: Date.now(), screen })
     })
-  }, [queryClient])
+  }, [queryClient, screen])
 
   useEffect(() => {
-    if (freshAt === null) return
-    const timer = setTimeout(() => setFreshAt(null), FRESH_TOAST_MS)
+    if (fresh === null) return
+    const timer = setTimeout(() => setFresh(null), FRESH_TOAST_MS)
     return () => clearTimeout(timer)
-  }, [freshAt])
+  }, [fresh])
 
-  return freshAt
+  return fresh !== null && fresh.screen === screen ? fresh.at : null
 }

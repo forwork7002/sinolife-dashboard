@@ -61,8 +61,9 @@ export function Providers({
             /**
              * Half an hour in the cache after the last reader leaves.
              *
-             * There is no dashboard layout: every screen's queries live in its
-             * page component, which unmounts on every navigation. At the
+             * Every screen's queries live in its page component, which
+             * unmounts on every navigation (the `(app)` layout keeps only
+             * the rail and the header). At the
              * library's five-minute default, ten minutes on «Tasdiqlash» was
              * enough to throw «Savdo dinamikasi»'s answer away, and going back
              * to it drew skeletons and waited the whole round trip (~1–1.6 s on

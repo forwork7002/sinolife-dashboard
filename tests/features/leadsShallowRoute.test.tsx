@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * «LIDLAR» JOINED `SHALLOW_ROUTES` ON 2026-10-06 (the audit). Its server page,
- * `src/app/leads/page.tsx`, is `requireSection` plus a client component and
+ * `src/app/(app)/leads/page.tsx`, is `requireSection` plus a client component and
  * reads no `searchParams`, yet every period chip and every press of the brand
  * switch on «Lid manbalari» went through `router.replace`: an RSC round trip
  * (a session lookup on the busy database) before the address committed and

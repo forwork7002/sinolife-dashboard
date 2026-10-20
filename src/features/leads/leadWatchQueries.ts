@@ -17,8 +17,10 @@ import { watchTitle } from './leadWatchLogic'
  * this block asks every `refreshEveryMs` because the worker refreshes calls
  * and chats on that same clock (`leadWatchSettings.ts`) — asking sooner
  * re-reads an answer that cannot have changed. `staleTime` equals the
- * interval for the reason `Shell`'s alerts query records: the Shell remounts
- * on every navigation, and anything shorter refetches on every page change.
+ * interval for the reason `Shell`'s alerts query records: the Shell remounted
+ * on every navigation until 2026-10-20, and anything shorter refetched on every
+ * page change. (It stays mounted now; the page's own WATCH_KEY still mounts
+ * fresh with «Lidlar».)
  */
 const WATCH_KEY = ['leads', 'watch'] as const
 const SUMMARY_KEY = ['leads', 'watch', 'summary'] as const

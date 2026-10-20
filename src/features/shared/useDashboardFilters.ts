@@ -326,22 +326,22 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   '/marketing',
   /*
     «Qoʻngʻiroqlar» (URL `/customers`), checked against the same condition:
-    `src/app/customers/page.tsx` reads no searchParams — `requireSection` plus a
+    `src/app/(app)/customers/page.tsx` reads no searchParams — `requireSection` plus a
     client component. It is on the dashboard window, so every preset press
     would otherwise pay the round trip.
   */
   '/customers',
-  // «Target tahlili»: `src/app/target/page.tsx` reads no searchParams either.
+  // «Target tahlili»: `src/app/(app)/target/page.tsx` reads no searchParams either.
   '/target',
-  // «Roistat»: `src/app/roistat/page.tsx` reads no searchParams either.
+  // «Roistat»: `src/app/(app)/roistat/page.tsx` reads no searchParams either.
   '/roistat',
-  // «Sverka»: `src/app/sverka/page.tsx` reads no searchParams either.
+  // «Sverka»: `src/app/(app)/sverka/page.tsx` reads no searchParams either.
   '/sverka',
-  // «RNP jadvali»: `src/app/rnp/page.tsx` reads none either; its `?month=` / `?rop=` are written the same way.
+  // «RNP jadvali»: `src/app/(app)/rnp/page.tsx` reads none either; its `?month=` / `?rop=` are written the same way.
   '/rnp',
-  // «Lidlar»: `src/app/leads/page.tsx` reads none either; its tab and day are local state (2026-10-06 audit).
+  // «Lidlar»: `src/app/(app)/leads/page.tsx` reads none either; its tab and day are local state (2026-10-06 audit).
   '/leads',
-  // «Sotuvchilar oyligi»: `src/app/payroll/page.tsx` reads none either; on the dashboard window since 2026-10-17.
+  // «Sotuvchilar oyligi»: `src/app/(app)/payroll/page.tsx` reads none either; on the dashboard window since 2026-10-17.
   '/payroll',
 ])
 

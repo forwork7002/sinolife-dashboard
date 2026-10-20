@@ -51,9 +51,9 @@ export default async function RootLayout({
     before it collapsed to the four links they hold. The client reported it as a
     bug in the accounts screen, which is where they had just opened the account.
 
-    Resolved HERE rather than per page because there is no dashboard layout: ten
-    pages render the shell through `PageShell`, and threading a prop through all
-    ten features to reach it is ten chances to forget. It shares the page guard's
+    Resolved HERE, in the root, because the shell is drawn by the `(app)` layout
+    under it (since 2026-10-20; every page drew it through `PageShell` before)
+    and this is the one place both the shell and `/login` sit under. It shares the page guard's
     per-request cache, so it costs no extra query — see `pagePrincipal`.
 
     This is the same reasoning as the theme script below: a first paint that is

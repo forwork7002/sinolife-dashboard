@@ -198,8 +198,8 @@ everything under those**. Membership does not descend; headship does.
 ### Client data flow
 
 Every `src/features/*/[A-Z]*Page.tsx` starts with `'use client'`. There is no
-server-component fetching and no hydration boundary — pages are thin shells, all
-data comes from `/api/v1` in the browser.
+server-component fetching and no data handed over at hydration — pages are thin
+shells, all data comes from `/api/v1` in the browser.
 
 **ONE EXCEPTION, AND IT IS ABOUT THE FIRST FRAME: the viewer.** `layout.tsx` is
 an async server component that calls `pageViewer()` and hands the result to the
@@ -221,6 +221,24 @@ It costs no extra query: `pagePrincipal()` in `pageGuard.ts` is wrapped in React
 resolution per request. The one thing it does cost is that the root layout now
 reads cookies, so `/login` and `/_not-found` are server-rendered on demand like
 everything else rather than prerendered — `next build` shows every route as `ƒ`.
+
+**THE RAIL AND HEADER ARE THE `(app)` LAYOUT'S (2026-10-20).** Every screen
+lives under `src/app/(app)/` (the group adds nothing to the URL); its
+`layout.tsx` draws `Shell` once and it stays mounted across navigations.
+There is deliberately NO `loading.tsx`: once its outline is streamed, a page
+guard's `redirect` cannot be a 307 any more (measured: 200 + meta refresh for
+a stale session). The rail's links prefetch whole and mark a pending click
+(`RailPending`); a ⌘K jump runs the header's sync line while it waits.
+`PageShell` draws only the page and tells the shell `periodAware` /
+`dataSource` through `components/layout/shellChrome.ts`. Never render `Shell`
+from a page again — it would nest a second rail and bring back the
+rebuild-on-every-click the client reported as «qotish»
+(`tests/features/persistentShell.test.tsx`). **The shell hydrates BEFORE the
+page** (the page sits in a Suspense boundary, the shell does not) and starts
+`['filters']` and the session as it does: a page that renders shared data on
+its first frame reads it through `useHydrated()` (`src/lib/useHydrated.ts`),
+or it hydrates on data the server never had — React #418 on «Hisob», a
+never-patched `disabled` on the filter pickers.
 
 `src/app/providers.tsx` sets the cadence **globally**: `refetchInterval: 60_000`
 with `staleTime: 55_000`, matched to the sync worker's one-minute tick.

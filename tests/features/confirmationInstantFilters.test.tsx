@@ -108,7 +108,7 @@ describe('a filter change on the confirmation board asks no server', () => {
 
   /*
     LOGISTIKA JOINED THE SET ON 2026-09-10, and it qualifies for the same one
-    reason: `src/app/logistics/page.tsx` takes no props and reads no
+    reason: `src/app/(app)/logistics/page.tsx` takes no props and reads no
     `searchParams` — it is `requireSection` plus a client component. Every
     period change on that screen was paying the 521 ms round trip measured
     above to fetch a payload the browser already had.

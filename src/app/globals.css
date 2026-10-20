@@ -2649,6 +2649,40 @@ p {
   color: var(--ink-on-brand);
 }
 
+/* A clicked entry whose screen is still on the way (`RailPending`): a series-1
+   wash that waits 80 ms — a prefetched screen lands first and nothing shows —
+   then breathes until the screen arrives. Under the label and the icon: the
+   link is `isolate`, so -1 is above its own background, not behind the rail. */
+.rail-pending {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: color-mix(in oklab, var(--series-1) 22%, transparent);
+}
+.rail-pending[data-pending] {
+  animation:
+    rail-pending-in 160ms var(--ease-out) 80ms forwards,
+    rail-pending-breathe 1.2s ease-in-out 240ms infinite;
+}
+@keyframes rail-pending-in {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes rail-pending-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rail-pending[data-pending] {
+    animation: rail-pending-in 1ms linear 80ms forwards;
+  }
+}
+
 /* Folded to icons: the glyph grows from 15px to 18px so a 40px square does
    not read as a mostly-empty box, and the active icon sits on its wash. */
 .rail-item--folded .rail-icon svg {

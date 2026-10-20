@@ -87,6 +87,46 @@ describe('useFreshDataAt', () => {
   })
 })
 
+describe('useFreshDataAt — one screen at a time (the shell outlives the page, 2026-10-20)', () => {
+  function onScreens() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const hook = renderHook(({ screen }: { screen: string }) => useFreshDataAt(screen), {
+      wrapper,
+      initialProps: { screen: '/rnp' },
+    })
+    const answer = async (key: unknown[], data: unknown, at: string) => {
+      await act(async () => {
+        await client.fetchQuery({ queryKey: key, queryFn: async () => envelope(data, at), staleTime: 0 })
+      })
+    }
+    return { hook, answer }
+  }
+
+  it('reads a return to a screen whose cached figures refetch as a first answer', async () => {
+    const { hook, answer } = onScreens()
+    await answer(['rnp'], { plan: 1 }, '10:00')
+    hook.rerender({ screen: '/margin' })
+    hook.rerender({ screen: '/rnp' })
+    await answer(['rnp'], { plan: 2 }, '10:02')
+    expect(hook.result.current).toBeNull()
+    // …and a re-ask on the screen itself still announces.
+    await answer(['rnp'], { plan: 3 }, '10:04')
+    expect(hook.result.current).not.toBeNull()
+  })
+
+  it('does not carry a pill raised on one screen onto the next', async () => {
+    const { hook, answer } = onScreens()
+    await answer(['rnp'], { plan: 1 }, '10:00')
+    await answer(['rnp'], { plan: 2 }, '10:02')
+    expect(hook.result.current).not.toBeNull()
+    hook.rerender({ screen: '/margin' })
+    expect(hook.result.current).toBeNull()
+  })
+})
+
 describe('the stylesheet', () => {
   const css = readFileSync('src/app/globals.css', 'utf8')
 

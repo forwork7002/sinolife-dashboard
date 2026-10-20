@@ -2,16 +2,18 @@
 
 import * as React from 'react'
 
-import Link from 'next/link'
+import Link, { useLinkStatus } from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
+  useTransition,
   type ReactNode,
 } from 'react'
 
@@ -46,6 +48,7 @@ import { t } from '@/lib/messages'
 import { classifySearchTerm, shortTermHint } from '@/lib/searchTerm'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { isPageQuery, useFreshDataAt } from './liveData'
+import { useShellChrome } from './shellChrome'
 import { VISIBLE_PRESETS } from './PeriodFilter'
 
 /**
@@ -164,22 +167,25 @@ const NAV = NAV_GROUPS.flatMap((group) => group.items)
 
 export function Shell({
   children,
-  dataSource,
-  periodAware = false,
+  dataSource: dataSourceProp,
+  periodAware: periodAwareProp,
 }: {
   children: ReactNode
   /**
    * Whether the open page HAS a reporting window.
    *
-   * False by default, true only from PageShell. Marketing and the account
-   * screen render this shell directly — marketing keeps its own period control
-   * and the account screen has no dates at all — so offering presets in the
-   * palette there wrote a window nothing on the page reads and left no control
-   * anywhere to clear it again.
+   * Announced by PageShell through `shellChrome` — the shell is the
+   * `(app)` layout's and outlives every page — and false where no page says
+   * otherwise: the account screen has no dates at all, so offering presets in
+   * the palette there wrote a window nothing on the page reads and left no
+   * control anywhere to clear it again. The prop overrides the announcement
+   * (tests render the shell on its own).
    */
   periodAware?: boolean
   dataSource?: 'DEMO' | 'BITRIX24' | 'MANUAL'
 }) {
+  const chrome = useShellChrome()
+  const periodAware = periodAwareProp ?? chrome.periodAware
   const pathname = usePathname()
   /*
     The reporting window, read here for the palette's "Davr" group.
@@ -212,10 +218,11 @@ export function Shell({
     /*
       EQUAL TO THE INTERVAL, NOT HALF OF IT.
 
-      `Shell` is rendered by `PageShell`, not by a layout — there is no
-      dashboard `layout.tsx` — so it unmounts and remounts on every navigation,
-      and a fresh observer refetches anything older than its staleTime. At 30 s
-      that meant a full `/meta/alerts` on nearly every page change: the all-time
+      Until 2026-10-20 `Shell` was rendered by `PageShell`, not by a layout,
+      so it unmounted and remounted on every navigation, and a fresh observer
+      refetches anything older than its staleTime. (It is the `(app)` layout's
+      now and stays mounted; a sign-in mounts it fresh.) At 30 s that meant a
+      full `/meta/alerts` on nearly every page change: the all-time
       backlog cohort over the whole stage history — ~4 s on production when
       this was written, 7.8 s by 2026-09-14 and 1.7 s since the cohort stopped
       probing `deal` once per move — for a number whose own promise is only
@@ -242,7 +249,14 @@ export function Shell({
     above keeps counting everything: it answers «is anything loading».
   */
   const pageBusy = useIsFetching({ predicate: isPageQuery }) > 0
-  const freshAt = useFreshDataAt()
+  /*
+    A ⌘K JUMP RUNS THE SAME LINE until its screen arrives (2026-10-20). The
+    palette closes on the press and the rail's pending mark only answers for
+    its own links, so a jump to a screen the server still had to render left
+    the old one standing with nothing to say the press was taken.
+  */
+  const [navigating, startNavigation] = useTransition()
+  const freshAt = useFreshDataAt(pathname)
 
   /*
     WHAT THE REFRESH BUTTON SAYS AFTER IT HAS DONE ITS WORK.
@@ -283,28 +297,52 @@ export function Shell({
   */
   const newBuild = useNewBuildAvailable()
 
+  /*
+    A NEW SCREEN OPENS AT ITS TOP. `main` is the one thing that scrolls, and
+    since the shell became the `(app)` layout's (2026-10-20) it is the same
+    element from one screen to the next — so the next screen would open where
+    the last one had been scrolled to, or, after Next's own scroll-into-view,
+    a padding's height below its title. A remounted `main` started at 0; this
+    keeps that. Only on a change of PATH: a filter written to the address is
+    the same screen, read where the reader is.
+  */
+  const mainRef = useRef<HTMLElement>(null)
+  useLayoutEffect(() => {
+    const main = mainRef.current
+    if (main && main.scrollTop !== 0) main.scrollTop = 0
+  }, [pathname])
+
   /**
    * The ⌘K palette. Closed means UNMOUNTED (the primitive returns null), so
    * its Escape handling cannot linger and fight PeriodFilter's popover — while
    * it IS open, its Escape is preventDefault-ed and PeriodFilter stands down.
+   *
+   * OPEN ON ONE SCREEN, AND ONLY THAT ONE — the drawer below says why: the
+   * state is the path it was opened on, so a back or forward press closes it.
    */
-  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [paletteOpenAt, setPaletteOpenAt] = useState<string | null>(null)
+  const paletteOpen = paletteOpenAt === pathname
 
   /*
-    The phone drawer. Closed on Escape here; closed on navigation and on the
-    backdrop by the handlers that own those events — no effect watches the
-    pathname, because a state write inside an effect body is the pattern the
-    lint forbids and the click that navigates already knows it did.
+    The phone drawer. Closed on Escape here; closed on the backdrop and on its
+    own links by the handlers that own those events — and on ANY change of
+    screen, because the state is the path it was opened on rather than a
+    flag. Since 2026-10-20 the shell outlives the page (the `(app)` layout),
+    so a flag stayed true through a phone's back gesture and left the modal
+    drawer over the next screen; a remounted shell used to close it by
+    accident. No effect watches the pathname: a state write inside an effect
+    body is the pattern the lint forbids, and a comparison needs none.
   */
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [menuOpenAt, setMenuOpenAt] = useState<string | null>(null)
+  const menuOpen = menuOpenAt === pathname
   // A plain function: the React Compiler memoizes it, and a hand-written
   // useCallback with `[]` disagreed with the dependency it infers.
-  const closeMenu = () => setMenuOpen(false)
+  const closeMenu = () => setMenuOpenAt(null)
 
   useEffect(() => {
     if (!menuOpen) return
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
+      if (event.key === 'Escape') setMenuOpenAt(null)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -415,9 +453,15 @@ export function Shell({
     },
     [pathname, search, sectionQuery],
   )
-  const openPalette = useCallback(() => setPaletteOpen(true), [])
+  const openPalette = useCallback(() => {
+    if (paletteOpen) return
+    setPaletteOpenAt(pathname)
+    // A palette a back press closed kept its terms; it opens on an empty box regardless.
+    setTyped('')
+    setLookup('')
+  }, [paletteOpen, pathname])
   const closePalette = useCallback(() => {
-    setPaletteOpen(false)
+    setPaletteOpenAt(null)
     // The dialog's own box dies with it; the terms lifted out of it are reset here.
     setTyped('')
     setLookup('')
@@ -453,7 +497,15 @@ export function Shell({
     disagreement and the pair converges on the live session.
   */
   const serverViewer = useServerViewer()
-  const filterData = useFilterOptions().data?.data
+  const filterOptions = useFilterOptions().data
+  const filterData = filterOptions?.data
+  /*
+    The source chip names the page's own `meta.dataSource` when the page has
+    said it, else the application's (every envelope carries the same one) —
+    so it does not blink out between the page that left and the page still
+    on its way, nor on a screen that reads no figures.
+  */
+  const dataSource = dataSourceProp ?? chrome.dataSource ?? filterOptions?.meta?.dataSource
   const fetchedViewer = filterData?.viewer
   const viewer = pickViewer(fetchedViewer, serverViewer)
   const viewerMismatch =
@@ -569,7 +621,7 @@ export function Shell({
           id: item.href,
           label: item.label,
           icon: <Icon />,
-          onSelect: () => router.push(hrefFor(item.href)),
+          onSelect: () => startNavigation(() => router.push(hrefFor(item.href))),
         }
       }),
     },
@@ -594,17 +646,18 @@ export function Shell({
         id: hit.id,
         label: hit.label,
         hint: hit.amount ? `${hit.hint} · ${formatCompactUzs(hit.amount.amount)}` : hit.hint,
-        onSelect: () => router.push(hit.href),
+        onSelect: () => startNavigation(() => router.push(hit.href)),
       })),
     })),
 
     /*
       The same three presets the page's own control shows, from the same list.
 
-      Only where there ARE dates. Marketing keeps its own period control and
-      the account screen has none, so on those two a preset chosen here wrote a
-      window nothing on the page reads, pinned it into the address and the
-      sidebar link, and left no control anywhere to clear it again.
+      Only where there ARE dates (`periodAware`, announced by the page). The
+      account screen has none, and a screen like it once got presets here
+      that wrote a window nothing on the page reads, pinned it into the
+      address and the sidebar link, and left no control anywhere to clear it
+      again.
     */
     ...(periodAware
       ? [
@@ -757,7 +810,7 @@ export function Shell({
             */}
             <button
               type="button"
-              onClick={() => setMenuOpen(true)}
+              onClick={() => setMenuOpenAt(pathname)}
               aria-label="Menyuni ochish"
               aria-expanded={menuOpen}
               className="rail-item focusable -ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg lg:hidden"
@@ -948,7 +1001,7 @@ export function Shell({
             </div>
           </div>
 
-          <div className="sync-line" data-active={pageBusy || undefined} aria-hidden="true" />
+          <div className="sync-line" data-active={pageBusy || navigating || undefined} aria-hidden="true" />
           {freshAt !== null && (
             <div key={freshAt} className="fresh-toast" role="status">
               <span className="fresh-toast-dot" aria-hidden="true" />
@@ -990,6 +1043,7 @@ export function Shell({
         {ViewTransition ? (
           <ViewTransition name="page-body">
             <main
+              ref={mainRef}
               id="main"
               className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:py-6"
               style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
@@ -1017,6 +1071,7 @@ export function Shell({
             the page.
           */
           <main
+            ref={mainRef}
             id="main"
             className="relative min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-4 sm:py-5 lg:py-6"
             style={{ paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
@@ -1280,18 +1335,25 @@ function RailBody({
                       loading state it fetches nothing, and the navigation then
                       blocks on the server render — 320 to 725ms of a page that
                       simply does not respond, measured on production.
+                      (A `loading.tsx` was tried on 2026-10-20 and taken out
+                      the same day: once its outline is sent, a page guard's
+                      `redirect` can no longer be a 307 — a stale session's
+                      hard load got the shell, a skeleton and a 200 with a
+                      meta refresh instead of the login page.)
 
                       `prefetch` on its own asks for the whole RSC payload
                       ahead of the click, while the pointer is still travelling
-                      to the link. It costs one small request per visible
-                      entry, cached for the router's lifetime; the guard each
-                      one runs is a primary-key lookup against a two-row table.
+                      to the link. It costs one small request per entry,
+                      cached for five minutes and asked again on hover; the
+                      guard each one runs is a primary-key lookup against a
+                      two-row table. `RailPending` covers a click that lands
+                      before it.
                     */
                     prefetch
                     onClick={onNavigate}
                     aria-current={item.active ? 'page' : undefined}
                     aria-label={collapsed ? (badgeLabel ? `${item.label}, ${badgeLabel}` : item.label) : undefined}
-                    className={`rail-item focusable relative flex items-center rounded-lg font-medium ${
+                    className={`rail-item focusable relative isolate flex items-center rounded-lg font-medium ${
                       collapsed
                         ? 'rail-item--folded mx-auto h-10 w-10 justify-center'
                         : variant === 'drawer'
@@ -1309,6 +1371,7 @@ function RailBody({
                         style={{ background: 'var(--series-1)' }}
                       />
                     )}
+                    <RailPending />
                     <span className="rail-icon" aria-hidden="true">
                       <Icon />
                     </span>
@@ -1446,6 +1509,18 @@ function RailBody({
       </div>
     </>
   )
+}
+
+/**
+ * THE CLICK WAS TAKEN — said on the entry itself while its screen is on the
+ * way (2026-10-20). A prefetched screen lands before this is ever seen (it
+ * waits 80 ms, `.rail-pending`); one the server still has to render used to
+ * leave the rail looking as if the click had missed. Inside the `<Link>`,
+ * because `useLinkStatus` answers for the link it sits in.
+ */
+function RailPending() {
+  const { pending } = useLinkStatus()
+  return <span aria-hidden="true" className="rail-pending" data-pending={pending || undefined} />
 }
 
 /**
