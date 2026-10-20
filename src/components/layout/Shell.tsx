@@ -925,7 +925,10 @@ export function Shell({
                   style={{ color: syncBlocked ? 'var(--status-warning)' : 'var(--ink-muted)' }}
                 >
                   {syncBlocked
-                    ? 'Bitrix24 band — yangi maʼlumot yoʻq'
+                    ? // The same word the chip uses, so the two never disagree.
+                      alerts?.syncError?.kind === 'TRANSIENT'
+                      ? 'Bitrix24 bilan aloqa yoʻq — yangi maʼlumot yoʻq'
+                      : 'Bitrix24 band — yangi maʼlumot yoʻq'
                     : `Yangilandi ${clockOf(refreshedAt)}`}
                 </span>
               )}
@@ -1666,6 +1669,14 @@ export function DataSourceBadge({
     a number this repository chose.
   */
   const selfLimited = syncError?.kind === 'SELF_LIMIT'
+  /*
+    THE LINE IS DOWN — the server cannot open a connection to the portal
+    (`isNetworkFailure` on the server decides; nothing else is TRANSIENT here).
+    Nothing to fix on our side, and the gate probes it every tick. On
+    2026-10-20 this read «sinx xatosi … texnik yordam kerak» over a network
+    drop between the server and the portal that cleared by itself.
+  */
+  const unreachable = syncError?.kind === 'TRANSIENT'
 
   const badge = (
     <span
@@ -1699,17 +1710,17 @@ export function DataSourceBadge({
 
           Not in the tooltip alone: a tooltip is for the detail, and «why has
           this stopped» is not a detail — it is the difference between waiting
-          and filing a bug. Two states only, because there are only two acts
-          available to the person reading it: a portal throttle clears itself
-          («kutilmoqda»), and everything else needs somebody to look
-          («xatolik»).
+          and filing a bug. Two acts are available to the person reading it:
+          wait — a portal throttle («Bitrix24 band») or a lost connection
+          («aloqa yoʻq», since 2026-10-20) clears itself — or have somebody look
+          («sinx xatosi»).
         */
         <>
           <span aria-hidden="true" style={{ color: 'var(--ink-muted)' }}>
             ·
           </span>
           <span style={{ color: 'var(--status-warning)' }}>
-            {throttled ? 'Bitrix24 band' : 'sinx xatosi'}
+            {throttled ? 'Bitrix24 band' : unreachable ? 'aloqa yoʻq' : 'sinx xatosi'}
           </span>
         </>
       )}
@@ -1756,7 +1767,9 @@ export function DataSourceBadge({
               ? 'Bitrix24 webhook kaliti ishlamayapti — portalda yangi kalit ochilib, dashboardga qoʻyilishi kerak. Oʻzi tiklanmaydi.'
               : selfLimited
                 ? 'Dashboard oʻzini toʻxtatdi: soatlik soʻrov chegarasi toʻldi. Bitrix24 sogʻlom — sabab bizda, logdagi «eng band» metodga qarang.'
-                : 'Bitrix24 dan maʼlumot olinmayapti — texnik yordam kerak.'
+                : unreachable
+                  ? 'Bitrix24 bilan aloqa yoʻq: server portalga ulana olmayapti (tarmoq yoki portal himoyasi). Kod va webhook kaliti joyida — aloqa qaytishi bilan oʻzi tiklanadi, har 2 daqiqada tekshiriladi.'
+                  : 'Bitrix24 dan maʼlumot olinmayapti — texnik yordam kerak.'
         }${outageSince ? ` ${outageSince} dan beri.` : ''} (${syncError?.code}, ${failingScope})`
       : lastSyncHint
 

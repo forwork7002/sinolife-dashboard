@@ -171,3 +171,22 @@ export function classifyRefusal(error: unknown): RefusalClass | null {
 
   return null
 }
+
+/**
+ * A failure that never reached the portal: a socket, a hung request, or the
+ * gate holding calls because of one.
+ *
+ * Read from a MESSAGE, because that is what `sync_log` keeps — and none of
+ * these messages carries a portal code, so `classifyRefusal` reads them as
+ * nothing. Moved here from `scripts/syncWorker.ts` on 2026-10-20 so the header
+ * chip can use the same judgement: the worker seeds its gate with it, and
+ * `/meta/alerts` tells the reader «the line is down, it comes back by itself»
+ * instead of «sinx xatosi — texnik yordam kerak». Our own abort (`[TIMEOUT]`,
+ * 30 s for a single call) is deliberately NOT here: a slow portal that is still
+ * answering produces it too, so it is no proof the line is down.
+ */
+const NETWORK_FAILURE = /fetch failed|UND_ERR_|ECONN|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|gate: UNKNOWN/
+
+export function isNetworkFailure(message: string | null | undefined): boolean {
+  return message ? NETWORK_FAILURE.test(message) : false
+}

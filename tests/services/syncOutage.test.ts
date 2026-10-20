@@ -106,6 +106,50 @@ describe('AlertsDto.syncError', () => {
     expect(dto.syncError?.code).toBe('INVALID_CREDENTIALS')
   })
 
+  /**
+   * 2026-10-20 11:32 Tashkent: the server could not open a connection to the
+   * portal (`UND_ERR_CONNECT_TIMEOUT`) while it answered an office machine in
+   * 0.35 s. Nothing on our side was broken and nothing needed a person — the
+   * header has to say «the line is down, it comes back by itself».
+   */
+  it('marks a lost connection as the kind that clears itself', async () => {
+    const service = serviceWith({
+      entity: 'DEALS',
+      entities: 3,
+      at: new Date('2026-10-20T06:48:29.000Z'),
+      since: new Date('2026-10-20T06:32:37.000Z'),
+      message: 'Bitrix24 gate: UNKNOWN since 2026-10-20T06:32:37.850Z — "crm.deal.list" not sent',
+    })
+
+    const dto = await service.load(ADMIN, NO_SCOPE, new Date('2026-10-20T06:50:00.000Z'), 'UTC')
+
+    expect(dto.syncError?.kind).toBe('TRANSIENT')
+  })
+
+  /**
+   * `classifyRefusal` calls any codeless message TRANSIENT, so without socket
+   * evidence a bug in a handler or a database timeout would have read «aloqa
+   * yoʻq — oʻzi tiklanadi», which tells the reader to wait for something that
+   * will fail every tick until somebody fixes it.
+   */
+  it.each([
+    "Cannot read properties of undefined (reading 'map')",
+    'Timed out fetching a new connection from the connection pool.',
+    'Bitrix24 call "batch" failed after 1 attempt: Bitrix24 responded 500 — INTERNAL_SERVER_ERROR: Internal server error',
+  ])('keeps «needs a look» for a failure that is not a lost connection: %s', async (message) => {
+    const service = serviceWith({
+      entity: 'DEALS',
+      entities: 1,
+      at: new Date('2026-10-20T06:48:29.000Z'),
+      since: new Date('2026-10-20T06:32:37.000Z'),
+      message,
+    })
+
+    const dto = await service.load(ADMIN, NO_SCOPE, new Date('2026-10-20T06:50:00.000Z'), 'UTC')
+
+    expect(dto.syncError?.kind).toBe('UNKNOWN')
+  })
+
   it('says nothing at all while the sync is healthy', async () => {
     const dto = await serviceWith(null).load(
       ADMIN,

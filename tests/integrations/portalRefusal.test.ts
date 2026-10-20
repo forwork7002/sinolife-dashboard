@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { classifyRefusal, refusalCode } from '@/server/integrations/crm/bitrix24/refusal'
+import {
+  classifyRefusal,
+  isNetworkFailure,
+  refusalCode,
+} from '@/server/integrations/crm/bitrix24/refusal'
 import { PortalGate } from '@/server/integrations/crm/bitrix24/portalGate'
 import {
   Bitrix24CrmProvider,
@@ -84,6 +88,28 @@ describe('classifyRefusal', () => {
 
   it('retries a socket failure rather than blocking on it', () => {
     expect(classifyRefusal(new Error('fetch failed'))).toBe('TRANSIENT')
+  })
+
+  /*
+    WHAT `sync_log` KEEPS FOR A LOST CONNECTION carries no portal code at all,
+    so `classifyRefusal` reads it as nothing. The header has to tell it apart
+    from a real fault anyway: on 2026-10-20 the chip read «sinx xatosi» with
+    «texnik yordam kerak» over a network drop that cleared by itself.
+  */
+  it('recognises a lost connection in a logged message, and nothing else', () => {
+    expect(
+      isNetworkFailure('Bitrix24 call "profile" failed after 1 attempt: fetch failed [UND_ERR_CONNECT_TIMEOUT]'),
+    ).toBe(true)
+    expect(
+      isNetworkFailure('Bitrix24 gate: UNKNOWN since 2026-10-20T06:32:37.850Z — "crm.deal.list" not sent'),
+    ).toBe(true)
+    // Our own abort is no proof: a slow portal that still answers produces it too.
+    expect(isNetworkFailure('Bitrix24 call "batch" failed after 2 attempts: aborted [TIMEOUT]')).toBe(false)
+    expect(isNetworkFailure('Bitrix24 responded 401 — OVERLOAD_LIMIT: REST API is blocked')).toBe(false)
+    expect(
+      isNetworkFailure('Bitrix24 gate: INTERNAL_SERVER_ERROR since 2026-10-17T04:33:59.149Z — "batch" not sent'),
+    ).toBe(false)
+    expect(isNetworkFailure(null)).toBe(false)
   })
 
   /*
@@ -346,14 +372,22 @@ describe('a network failure names its socket-level reason', () => {
   })
 })
 
-describe('an unreachable portal is probed on the ladder, not every minute', () => {
-  it('climbs 2 → 5 → 15 → 30 minutes on consecutive network failures', () => {
+describe('an unreachable portal is probed every tick, never left for half an hour', () => {
+  /**
+   * 2026-10-20: the server lost the portal at 11:32 Tashkent for minutes at a
+   * time, three times before noon, while the same portal answered an office
+   * machine in 0.35 s. The old 2 → 5 → 15 → 30 minute ladder turned every one
+   * of those into up to half an hour of a frozen dashboard AFTER the network
+   * was back. One `profile` request per tick is less than a healthy tick sends,
+   * so it cannot be what keeps an address block alive.
+   */
+  it('waits one minute, then one tick (2 min), on consecutive network failures', () => {
     const gate = new PortalGate()
-    const t0 = new Date('2026-09-16T10:50:00Z')
+    const t0 = new Date('2026-10-20T06:32:37Z')
     const socket = new TypeError('fetch failed')
     for (let i = 0; i < 3; i++) gate.trip(socket, t0)
     expect(gate.isOpen()).toBe(true)
-    expect(gate.nextWaitMs(t0)).toBe(120_000)
+    expect(gate.nextWaitMs(t0)).toBe(60_000)
 
     const waits: number[] = []
     let now = t0
@@ -365,7 +399,7 @@ describe('an unreachable portal is probed on the ladder, not every minute', () =
       gate.trip(socket, now)
       waits.push(gate.nextWaitMs(now))
     }
-    expect(waits).toEqual([300_000, 900_000, 1_800_000, 1_800_000])
+    expect(waits).toEqual([120_000, 120_000, 120_000, 120_000])
   })
 
   it('can start already shut on an address block, and never on a method hold', () => {
@@ -373,7 +407,7 @@ describe('an unreachable portal is probed on the ladder, not every minute', () =
     const gate = new PortalGate()
     gate.seed('TRANSIENT', 'UNKNOWN', t0, t0)
     expect(gate.isOpen()).toBe(true)
-    expect(gate.nextWaitMs(t0)).toBe(120_000)
+    expect(gate.nextWaitMs(t0)).toBe(60_000)
 
     const held = new PortalGate()
     held.seed('METHOD', 'OPERATION_TIME_LIMIT', t0, t0)

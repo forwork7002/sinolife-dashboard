@@ -237,7 +237,8 @@ absences produced that.
 and for four hours that afternoon the numbers could not change at all, because
 Bitrix24 was refusing every REST call. So the button now prints
 «Yangilandi 16:12» beside itself for six seconds, or «Bitrix24 band — yangi
-maʼlumot yoʻq» when the sync is blocked (`aria-live`, so it is announced as
+maʼlumot yoʻq» when the sync is blocked («Bitrix24 bilan aloqa yoʻq — …» for a
+lost connection since 2026-10-20, matching the chip) (`aria-live`, so it is announced as
 well as drawn). The state is the timestamp rather than a flag: the message has
 to name the moment or it reads as a status that was always true.
 *And a single-page app does not notice a deploy* — five landed under that same
@@ -388,6 +389,7 @@ Read that file before touching sync handlers, Bitrix24 calls, the sweep or the p
 - **Operating time**
 - **`OVERLOAD_LIMIT` is undocumented**
 - **How to check it stayed fixed, without container logs**
+- **Server cannot reach the portal** — «aloqa yoʻq» on the chip, `UND_ERR_CONNECT_TIMEOUT` in the log; probed every tick; the 4-step diagnosis is there
 
 ## Deploy
 

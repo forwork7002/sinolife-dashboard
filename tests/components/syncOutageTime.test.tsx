@@ -59,4 +59,34 @@ describe('the sync chip during an outage', () => {
     expect(tip).toContain('12:10 dan beri')
     expect(tip).not.toContain('07:10')
   })
+
+  /**
+   * A LOST CONNECTION IS NOT «sinx xatosi». On 2026-10-20 the chip said that,
+   * with «texnik yordam kerak», over a network drop between the server and
+   * Bitrix24 that nobody could fix and that cleared on its own — and the owner
+   * lost the morning to it.
+   */
+  it('names a lost connection and says it comes back by itself', async () => {
+    render(
+      <DataSourceBadge
+        source="BITRIX24"
+        syncedAt={new Date(Date.now() - 20 * 60_000).toISOString()}
+        syncError={{
+          code: 'UNKNOWN',
+          kind: 'TRANSIENT',
+          entity: 'DEALS',
+          entities: 3,
+          at: new Date(Date.now() - 60_000).toISOString(),
+          since: '2026-10-20T06:32:37.000Z',
+        }}
+      />,
+    )
+
+    fireEvent.mouseEnter(screen.getByText('aloqa yoʻq').closest('[tabindex]')!.parentElement!)
+    const tip = (await screen.findByRole('tooltip')).textContent ?? ''
+
+    expect(screen.queryByText('sinx xatosi')).toBeNull()
+    expect(tip).toContain('oʻzi tiklanadi')
+    expect(tip).not.toContain('texnik yordam kerak')
+  })
 })

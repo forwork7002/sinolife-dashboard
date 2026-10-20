@@ -109,6 +109,7 @@ import {
 } from '../src/server/integrations/crm/sync/schedule'
 import {
   classifyRefusal,
+  isNetworkFailure,
   refusalCode,
   SELF_LIMIT_CODE,
 } from '../src/server/integrations/crm/bitrix24/refusal'
@@ -489,9 +490,6 @@ function stamp(): string {
   return new Date().toISOString().slice(11, 19)
 }
 
-/** A failure that never reached the portal: a socket, or the gate holding one. */
-const NETWORK_FAILURE = /fetch failed|UND_ERR_|ECONN|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH|gate: UNKNOWN/
-
 /**
  * Ticks after a recovery that run the hot entities only.
  *
@@ -657,7 +655,7 @@ async function lastRefusal(
   */
   const kind =
     classifyRefusal(failure.errorMessage) ??
-    (NETWORK_FAILURE.test(failure.errorMessage ?? '') ? 'TRANSIENT' : null)
+    (isNetworkFailure(failure.errorMessage) ? 'TRANSIENT' : null)
   if (kind !== 'THROTTLE' && kind !== 'CREDENTIAL' && kind !== 'TRANSIENT') return null
 
   return { kind, code: refusalCode(failure.errorMessage) ?? 'UNKNOWN', since: at }
@@ -973,7 +971,7 @@ async function main() {
   if (!provider.gate.isOpen()) {
     const health = await provider.healthCheck()
     console.log(`\n  ${health.ok ? '✓' : '✗'} ${health.detail}`)
-    if (!health.ok && NETWORK_FAILURE.test(health.detail)) {
+    if (!health.ok && isNetworkFailure(health.detail)) {
       // Unreachable, not refused: shut the gate now rather than following up
       // with a dozen reference-tick connections. The ladder probes from here.
       provider.gate.seed('TRANSIENT', 'UNKNOWN', new Date(), new Date())

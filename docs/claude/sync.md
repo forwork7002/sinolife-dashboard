@@ -619,9 +619,10 @@ same key answered from an office machine in 250 ms. No key was ever read;
 Bitrix24's protection had stopped answering the SERVER'S ADDRESS.
 The probe keeps its reason (`lastProbeError`, printed as «sabab:» under the
 worker's wait line) and every failure message carries Node's socket code,
-because «UNKNOWN» was all the log said. A network failure climbs its OWN, slower
-ladder (`NETWORK_LADDER_MS`: 2, 5, 15, then every 30 minutes) with ONE attempt
-per rung. **The ban lifted for a moment at 11:35 UTC and the worker answered
+because «UNKNOWN» was all the log said. A network failure climbs its OWN
+ladder (`NETWORK_LADDER_MS`) with ONE attempt per rung — 2, 5, 15, then every
+30 minutes until 2026-10-20, **one minute then every tick (120 s) since** (see
+*Server cannot reach the portal* below). **The ban lifted for a moment at 11:35 UTC and the worker answered
 with a full reference tick and was dropped again inside a minute** — so a
 recovery now runs `CALM_TICKS` (3) hot-only ticks before any reference pass or
 sweep, a restart inside the block seeds the gate shut from `sync_log` (and a
@@ -630,6 +631,52 @@ run by the worker: its ~11 simultaneous unfinished handshakes answered the
 question once and afterwards looked like a scan. **Read `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` in that line as
 «our address is blocked or the route is down»: rotating the key changes nothing,
 waiting, Bitrix24 support (with the egress IP) or a new egress IP do.**
+
+**SERVER CANNOT REACH THE PORTAL — 2026-10-20, and how to read the chip.**
+The chip read «Bitrix24 · sinx xatosi · 15 daqiqa oldin» from 11:32 Tashkent.
+The worker log said `Bitrix24 call "profile" failed after 1 attempt: fetch
+failed [UND_ERR_CONNECT_TIMEOUT]`; the same minute an office machine opened
+`obey.bitrix24.kz` in 0.35 s (TLS 0.21 s) on all four addresses, and
+status.digitalocean.com showed no FRA1 incident. It recovered at 11:45:54, was
+lost again at 11:48 and was still down at 11:55. `sync_log`, 30 days to
+2026-10-20: seven such drops (`gate: UNKNOWN`, no portal code) — 09-21 ×2,
+10-03 (night), 10-15, 10-16, 10-20 ×2 — 8–30 minutes of frozen screens each,
+none a throttle, none a credential. The app has NO dedicated egress (no
+`egress:` in the live spec), so its outbound address is DigitalOcean's SHARED,
+changing NAT address in `fra`: whatever Bitrix24's protection does to that
+address — for our traffic or a neighbour's — happens to us, and there is no
+fixed IP to hand Bitrix24 support. Three changes, all in this commit:
+*the ladder* — 2 → 5 → 15 → 30 minutes turned every drop into up to half an
+hour of staleness AFTER the line came back; one `profile` per tick is less
+than a healthy tick sends, and `CALM_TICKS` still keeps the recovery light;
+*the chip* — a lost connection (`isNetworkFailure` in `refusal.ts`, moved
+there from the worker so `/meta/alerts` shares it) is `kind: 'TRANSIENT'` and
+reads «aloqa yoʻq» with «oʻzi tiklanadi», not «sinx xatosi — texnik yordam
+kerak»; *this note*. What would make the drops themselves stop is outside the
+code: a dedicated egress IP (App Platform → Networking → Dedicated Egress IPs,
+two static IPs, paid; it must then stay in every spec applied — `egress: type:
+DEDICATED_IP` — or the IPs are released for good), and those IPs sent to
+Bitrix24 support to allow.
+
+How to diagnose the chip, in order — no database needed for the first two:
+1. **Read the chip's word.** «Bitrix24 band» = the portal's throttle, wait.
+   «aloqa yoʻq» = the server cannot reach the portal, wait (fixed IP if it keeps
+   happening). Red dot / webhook text = the credential is dead: a new webhook in
+   Bitrix24, set as `BITRIX24_WEBHOOK_URL` on the app. «sinx xatosi» = none of
+   those — read the log.
+2. **Read the worker log:** `doctl apps logs 292f634e-beef-46da-bf57-750f346f58e0
+   sync --type run --tail 80`. The `sabab:` line under «portal hali ham band»
+   names the cause: `UND_ERR_CONNECT_TIMEOUT` / `ECONNRESET` = network
+   (`[TIMEOUT]` = no answer in time: a dead line or a very slow portal); `OVERLOAD_LIMIT` = throttle; `INVALID_CREDENTIALS` / `NO_AUTH_FOUND`
+   = key; `LOCAL_BUDGET_EXCEEDED` = our own ceiling. «✓ portal javob berdi» =
+   it is over. A deploy starts a new container and the old one's log is gone.
+3. **Check the portal from outside:** `curl -s -o /dev/null -w
+   '%{time_appconnect} %{http_code}\n' https://obey.bitrix24.kz/rest/` — a fast
+   404 from here while the worker times out is a server-to-portal network
+   problem, not Bitrix24 being down.
+4. **History, if needed:** failed rows in `sync_log` for 30 days
+   (`status = 'FAILED'`, `errorMessage`), and gaps over 6 minutes between
+   successful `DEALS` passes — that is what the reader saw as a frozen chip.
 
 **THE ATTEMPT COUNT IN A FAILURE MESSAGE IS EVIDENCE.** `sync_log` is what
   this integration hands Bitrix24 support when it is asked what load it was

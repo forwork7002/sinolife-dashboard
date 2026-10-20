@@ -66,19 +66,26 @@ export interface GateState {
 const THROTTLE_LADDER_MS = [60_000, 120_000, 240_000, 480_000, 600_000]
 
 /**
- * An unreachable portal is knocked on far less often: 2, 5, 15, then every 30
- * minutes.
+ * An unreachable portal is probed after one minute, then once a tick (120 s).
  *
- * On 2026-09-16 Bitrix24's protection stopped completing TLS handshakes from the
- * server's address (TCP opened in 44 ms, TLS timed out on all four addresses,
- * the same webhook answered from an office machine in 250 ms). The block lifted
- * for a moment at 11:35 UTC, the worker answered with a full reference tick, and
- * it was back within a minute. A firewall that bans an address for knocking is
- * not waited out by knocking every ten minutes — every connection attempt is
- * one more reason to keep the ban. Nothing on the portal's side is lost by
- * asking rarely: a lifted ban costs at most thirty minutes of staleness.
+ * It was 2, 5, 15, then every 30 minutes, set on 2026-09-16 when Bitrix24's
+ * protection stopped completing TLS handshakes from the server's address, on
+ * the theory that every knock is one more reason to keep a ban. That theory was
+ * never measured, and the cost was: on 2026-10-20 the server lost the portal
+ * three times before noon (11:32, 11:48 Tashkent — `UND_ERR_CONNECT_TIMEOUT`
+ * while an office machine got an answer in 0.35 s), and each drop climbed the
+ * ladder, so a dashboard could stay frozen up to half an hour AFTER the line was
+ * back. `sync_log` holds seven such drops in thirty days, 8–30 minutes each.
+ *
+ * One `profile` request per tick is LESS than a healthy tick sends (~5 requests,
+ * plus a read for every portal event that arrives), so it cannot be what keeps
+ * an address block alive.
+ * What protects the portal on a recovery is `CALM_TICKS` in the worker — hot
+ * entities only for three ticks — and that stays. A throttle keeps its own
+ * ladder below; this one is for every TRANSIENT gate — a portal we could not
+ * reach, or one answering with bare 5xx — which a tick-long wait suits either way.
  */
-const NETWORK_LADDER_MS = [120_000, 300_000, 900_000, 1_800_000]
+const NETWORK_LADDER_MS = [60_000, 120_000]
 
 /**
  * A revoked credential probes on a flat five minutes, and the flatness is the
@@ -314,10 +321,9 @@ export class PortalGate {
       blip. After the webhook swap that afternoon the server could not open a
       TCP connection to the portal at all (`UND_ERR_CONNECT_TIMEOUT`, while the
       same key answered from an office machine): Bitrix24 had dropped our
-      ADDRESS. A blip clears on the first rung either way, so the ladder costs
-      a blip nothing, and an address block gets 26 probes over four hours
-      instead of ~240. Since the same evening it climbs its OWN, slower ladder —
-      see `NETWORK_LADDER_MS`.
+      ADDRESS. Since the same evening it climbs its OWN ladder — see
+      `NETWORK_LADDER_MS`, which since 2026-10-20 stops at one tick: one
+      probe per tick, ~120 over four hours, less than the ticks themselves sent.
     */
     const ladder = kind === 'TRANSIENT' ? NETWORK_LADDER_MS : THROTTLE_LADDER_MS
     return ladder[Math.min(probes, ladder.length - 1)]!

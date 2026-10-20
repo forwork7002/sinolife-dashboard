@@ -29,6 +29,7 @@ import { canSeeSection } from '@/server/auth/rbac'
 import { allTime } from '@/server/domain/period/period'
 import {
   classifyRefusal,
+  isNetworkFailure,
   SELF_LIMIT_CODE,
 } from '@/server/integrations/crm/bitrix24/refusal'
 import type { RefusalClass } from '@/server/integrations/crm/bitrix24/refusal'
@@ -267,6 +268,23 @@ function countFor(
  * text. With no code in the message the HTTP status stands in, and with
  * neither the caller gets 'UNKNOWN' rather than an empty chip.
  */
+/*
+  A LOST CONNECTION READS AS ONE (2026-10-20), AND ONLY A LOST CONNECTION.
+  Its message carries no portal code, so `classifyRefusal` answered null and the
+  chip said «sinx xatosi — texnik yordam kerak» over a network drop between the
+  server and the portal that cleared by itself. But `classifyRefusal` also calls
+  ANY codeless message `TRANSIENT` — a TypeError in a handler, a Prisma pool
+  timeout, a missing column after a half-applied migration — and those must keep
+  reading «sinx xatosi», never «oʻzi tiklanadi». So `TRANSIENT` reaches the reader
+  only with the socket evidence `isNetworkFailure` asks for.
+*/
+function readerKind(message: string | null): RefusalClass | 'SELF_LIMIT' | 'UNKNOWN' {
+  if (syncErrorCode(message) === SELF_LIMIT_CODE) return 'SELF_LIMIT'
+  const refusal = classifyRefusal(message)
+  if (refusal !== null && refusal !== 'TRANSIENT') return refusal
+  return isNetworkFailure(message) ? 'TRANSIENT' : 'UNKNOWN'
+}
+
 export function syncErrorCode(message: string | null): string {
   if (!message) return 'UNKNOWN'
   const named = /\b([A-Z][A-Z_]{4,39})\b/.exec(message)
@@ -385,10 +403,7 @@ export class AlertsService {
                 «Bitrix24 dan maʼlumot olinmayapti» sends somebody to diagnose a
                 portal that is answering perfectly.
               */
-              kind:
-                syncErrorCode(failure.message) === SELF_LIMIT_CODE
-                  ? 'SELF_LIMIT'
-                  : (classifyRefusal(failure.message) ?? 'UNKNOWN'),
+              kind: readerKind(failure.message),
               entity: failure.entity,
               entities: failure.entities,
               at: failure.at.toISOString(),
