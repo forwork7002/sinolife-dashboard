@@ -103,7 +103,10 @@ describe('sharedCbuUsdRates', () => {
     expect(copy.sharedCbuUsdRates()).toBe(first)
   })
 
-  it('is what the container hands «RNP jadvali» and «Roistat», whichever bundle builds the container', async () => {
+  // Two cold imports of the whole server container: ~1.5 s alone, past the
+  // default 5 s under the full suite's parallel load (it timed out there on a
+  // clean origin/main, 2026-10-20), so it gets room rather than a flake.
+  it('is what the container hands «RNP jadvali» and «Roistat», whichever bundle builds the container', { timeout: 30_000 }, async () => {
     const routes = await import('@/server/services/container')
     vi.resetModules()
     const warmer = await import('@/server/services/container')
