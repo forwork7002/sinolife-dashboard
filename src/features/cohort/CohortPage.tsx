@@ -190,6 +190,87 @@ function useWarmFlowChart() {
   }, [])
 }
 
+/**
+ * One brand's matrix: the company grid cut to the customers whose FIRST order
+ * was that brand's — the rule every screen's brand switch reads (the CRM form
+ * name, then the product, then the team), applied to the first order only.
+ *
+ * RETURNS ARE NOT RE-ATTRIBUTED, as with the team cut: a later order counts
+ * as that customer's return whatever it sold, so the Collagen and Zextra rows
+ * together are the company's customers minus those whose first order neither
+ * brand claims. Its own reading and window controls, because a reader at this
+ * card should not scroll up to the company card to change what it draws; its
+ * own cache entry, constant per brand, so it never shows another cut's rows.
+ */
+function BrandCohortCard({ brand, ready }: { readonly brand: 'Collagen' | 'Zextra'; readonly ready: boolean }) {
+  const query = useQuery({
+    queryKey: ['cohort-brand', brand],
+    queryFn: ({ signal }) =>
+      apiGet<CohortSummaryDto>('/insights/cohorts', { months: COHORT_HISTORY_MONTHS, brand }, signal),
+    enabled: ready,
+    /* The company matrix's cadence, for its reason: a cell moves once a day. */
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+  })
+  const [view, setView] = useState<CohortView>('cumulative')
+  const [months, setMonths] = useState<MonthWindow>('12')
+
+  const data = query.data?.data
+  const rows = useMemo(() => (data ? data.rows.map(toMatrixRow) : []), [data])
+  /* The footer is the column above it, as on the company card. */
+  const revenueTotal = useMemo(() => rows.reduce((sum, row) => sum + row.revenueTotalAmount, 0), [rows])
+
+  return (
+    <ChartCard
+      title={`Kogorta matritsasi · ${brand}`}
+      hint={`Birinchi xaridi ${brand} boʻlgan mijozlar — brend boshqa boʻlimlardagidek: forma nomi, keyin mahsulot, keyin jamoa. Keyingi har qanday xaridi qaytish hisoblanadi.`}
+      action={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <SegmentedControl
+            value={view}
+            onChange={setView}
+            ariaLabel={`${brand} matritsasi koʻrinishi`}
+            options={[
+              { value: 'cumulative', label: 'Jami qaytgan' },
+              { value: 'monthly', label: 'Oylik' },
+              { value: 'money', label: 'Pul' },
+            ]}
+          />
+          <SegmentedControl
+            value={months}
+            onChange={setMonths}
+            ariaLabel={`${brand} matritsasida nechta oy koʻrsatilsin`}
+            options={[
+              { value: '6', label: '6 oy' },
+              { value: '12', label: '12 oy' },
+              { value: 'all', label: 'Hammasi' },
+            ]}
+          />
+        </div>
+      }
+    >
+      {(!ready || query.isPending) && <ChartSkeleton height={320} />}
+      {statusOf(query) === 'error' && (
+        <ErrorState message={(query.error as Error).message} onRetry={() => void query.refetch()} />
+      )}
+      {data && data.rows.length === 0 && (
+        <EmptyState
+          title={`${brand} boʻyicha kogorta yoʻq`}
+          body="Birinchi xaridi shu brendga tegishli yetkazilgan buyurtma topilmadi."
+        />
+      )}
+      {data && data.rows.length > 0 && (
+        <CohortHeatmap
+          rows={rows}
+          view={view}
+          months={MONTH_WINDOWS[months]}
+          totalRevenue={{ compact: formatCompactUzs(revenueTotal), exact: formatUzs(revenueTotal) }}
+        />
+      )}
+    </ChartCard>
+  )
+}
+
 export function CohortPage() {
   useWarmFlowChart()
 
@@ -623,8 +704,9 @@ export function CohortPage() {
               Qaytib kelgan xaridni keyin kim sotgani muhim emas — u ham shu
               jamoaga yoziladi, chunki bu «kim mijoz olib keladi» savoli,
               «kim ushlab qoladi» emas.{' '}
-              Pastdagi «База» va mijozlar kontsentratsiyasi bloklari
-              kesilmaydi — ular butun kompaniya boʻyicha qoladi.
+              Pastdagi Collagen va Zextra matritsalari, «База» va mijozlar
+              kontsentratsiyasi bloklari kesilmaydi — ular butun kompaniya
+              boʻyicha qoladi.
             </p>
           )}
           {data && data.rows.length > 0 && (
@@ -669,6 +751,13 @@ export function CohortPage() {
             />
           )}
         </ChartCard>
+
+        {/* The two brands' matrices, directly under the company's (the
+            client, 2026-10-16: «kogorta collagenga va zextraga alohida
+            alohida»). Asked once the company matrix has answered, so a cold
+            load does not start three of the slowest statement at once. */}
+        <BrandCohortCard brand="Collagen" ready={!query.isPending} />
+        <BrandCohortCard brand="Zextra" ready={!query.isPending} />
 
         {/*
           «MIJOZLAR OQIMI» — THE BAND THIS SCREEN WAS MISSING, AND THE SECOND
