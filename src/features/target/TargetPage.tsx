@@ -8,6 +8,7 @@ import { type CategoryBarRow, CategoryBarList } from '@/components/charts/Catego
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { Card, ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
+import { ArrowOutGlyph, BanknoteGlyph, CheckCircleGlyph, InboxGlyph, PercentGlyph } from '@/components/ui/Icons'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -21,6 +22,7 @@ import { TargetMeta } from './TargetMeta'
 import { EMPTY_FILTERS, type LeadFilters, TargetLeadTable } from './TargetLeadTable'
 import type {
   TargetCountersDto,
+  TargetGroupDto,
   TargetLeadsDto,
   TargetOverviewDto,
   TargetProductFilter,
@@ -178,7 +180,7 @@ export function TargetPage() {
               hint="Target sahifalaridan Регистрация ga tushgan leadlar va ulardan ochilgan sotuv bitimlari — yaratilgan kuni boʻyicha."
             />
 
-            <MoneyTiles total={data?.total} status={status} />
+            <MoneyTiles total={data?.total} days={data?.days} status={status} />
 
             <div className="grid gap-3 xl:grid-cols-3">
               <ChartCard
@@ -372,7 +374,19 @@ function SourcesLine({ scope, names }: { scope: TargetScope; names: readonly str
   )
 }
 
-function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; status: Status }) {
+function MoneyTiles({
+  total,
+  days,
+  status,
+}: {
+  total: TargetCountersDto | undefined
+  days: readonly TargetGroupDto[] | undefined
+  status: Status
+}) {
+  /* Zero-filled calendar days from the SAME summary as `total` (targetService:
+     group(fillDays(period, summary.days))), so the shape is the tile's own
+     days and not a second question. */
+  const spark = days && days.length > 1 ? days : undefined
   return (
     <div className="stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
       <StatTile
@@ -381,6 +395,12 @@ function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; s
         value={total?.leads ?? null}
         unit="count"
         hint={total ? `${formatNumber(total.leadCustomers)} ta alohida mijoz` : undefined}
+        icon={InboxGlyph}
+        spark={spark?.map((d) => d.leads)}
+        /* TargetDailyChart's LEADS_COLOUR / ORDERS_COLOUR, so each tile and
+           the chart beside it read as one measure. */
+        sparkColor="var(--series-1)"
+        sparkLabel="Kunlik leadlar"
       />
       <StatTile
         status={status}
@@ -388,6 +408,7 @@ function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; s
         value={total?.passPercent ?? null}
         unit="percent"
         hint={total ? `${formatNumber(total.leadWon)} ta «Сделка успешна»` : undefined}
+        icon={ArrowOutGlyph}
       />
       <StatTile
         status={status}
@@ -395,6 +416,10 @@ function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; s
         value={total?.orders ?? null}
         unit="count"
         hint={total ? `leadlarning ${formatPercent(total.orderPercent)} i` : undefined}
+        icon={CheckCircleGlyph}
+        spark={spark?.map((d) => d.orders)}
+        sparkColor="var(--series-3)"
+        sparkLabel="Kunlik buyurtmalar"
       />
       <StatTile
         status={status}
@@ -402,6 +427,9 @@ function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; s
         value={total?.ordered.amount ?? null}
         unit="money"
         hint="Tasdiqlash va Доставка ga yetgan bitimlar"
+        icon={BanknoteGlyph}
+        spark={spark?.map((d) => d.ordered.amount)}
+        sparkLabel="Kunlik buyurtma summasi"
       />
       <StatTile
         status={status}
@@ -414,6 +442,9 @@ function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; s
             ? `${formatNumber(total.delivered)} ta · sotib olish ${formatPercent(total.buyoutPercent)}`
             : undefined
         }
+        icon={BanknoteGlyph}
+        spark={spark?.map((d) => d.deliveredMoney.amount)}
+        sparkLabel="Kunlik tushum"
       />
       <StatTile
         status={status}
@@ -425,6 +456,7 @@ function MoneyTiles({ total, status }: { total: TargetCountersDto | undefined; s
             ? `oʻrtacha chek ${formatCompactUzs(total.averageCheque.amount)} soʻm`
             : 'tushum ÷ leadlar'
         }
+        icon={PercentGlyph}
       />
     </div>
   )

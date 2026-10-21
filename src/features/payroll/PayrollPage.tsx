@@ -162,7 +162,7 @@ export function PayrollPage() {
         is a different business from one that is half fixed pay, and that is
         readable at a glance and in no other form on this page.
       */}
-      <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Davr yigʻmasi">
+      <section className="card-hero card-hero--navy brackets reveal px-5 py-5 sm:px-6" aria-label="Davr yigʻmasi">
         <p className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           {monthLabel(month)} · {halfLabel(half)}
           {data?.open && ' · davr davom etmoqda'}

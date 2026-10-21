@@ -164,7 +164,7 @@ export function LogisticsPage() {
         ring carries the rate with its own fraction beneath it — a rate without
         its denominator is an opinion.
       */}
-      <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Qamrov">
+      <section className="card-hero card-hero--navy brackets reveal px-5 py-5 sm:px-6" aria-label="Qamrov">
         {query.isError ? (
           <ErrorState message={errorMessage ?? 'Olinmadi'} onRetry={retry} />
         ) : (

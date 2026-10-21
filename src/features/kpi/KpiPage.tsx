@@ -243,7 +243,7 @@ export function KpiPage() {
         from "nothing achieved".
       */}
       <section
-        className="card-hero brackets reveal px-5 py-5 sm:px-6"
+        className="card-hero card-hero--navy brackets reveal px-5 py-5 sm:px-6"
         aria-label={t.cards.kpiAchievement}
       >
         {!data && query.isError ? (

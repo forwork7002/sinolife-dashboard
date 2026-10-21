@@ -108,7 +108,7 @@ export function MarketingHero({
   })()
 
   return (
-    <Card className="card-hero brackets reveal" as="section">
+    <Card className="card-hero card-hero--navy brackets reveal" as="section">
       <div className="grid gap-x-8 gap-y-4 px-5 py-4 lg:grid-cols-[minmax(220px,300px)_minmax(0,1fr)]">
         <div className="min-w-0">
           <p className="text-[12.5px] font-medium" style={{ color: 'var(--ink-secondary)' }}>

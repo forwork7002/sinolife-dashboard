@@ -8,6 +8,7 @@ import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { SegmentedControl } from '@/components/ui/Controls'
+import { BanknoteGlyph, PercentGlyph } from '@/components/ui/Icons'
 import { Meter, RingGauge, StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -314,7 +315,7 @@ export function MarginPage() {
         can actually see. The tiles and the table below are detail under this
         one claim.
       */}
-      <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Marja">
+      <section className="card-hero card-hero--navy brackets reveal px-5 py-5 sm:px-6" aria-label="Marja">
         {query.isError ? (
           <ErrorState
             message={(query.error as Error).message}
@@ -439,6 +440,7 @@ export function MarginPage() {
           label="Tushum"
           value={data?.revenue.amount ?? null}
           unit="money"
+          icon={BanknoteGlyph}
           /*
             NAMED, because «Tushum» means something else on every other screen.
 
@@ -459,6 +461,7 @@ export function MarginPage() {
           label="Berilgan chegirma"
           value={discountTotal}
           unit="money"
+          icon={PercentGlyph}
           /*
             NEUTRAL, and the number that would actually grade it in the hint.
 

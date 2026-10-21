@@ -194,7 +194,7 @@ export function SalesPage() {
         unheadlined plot. `.card-hero` + `.brackets` mark it as the flagship;
         nothing else on the page wears either class.
       */}
-      <Card className="card-hero brackets reveal">
+      <Card className="card-hero card-hero--navy brackets reveal">
         <header className="flex items-start justify-between gap-4 px-5 pt-4">
           <div className="min-w-0">
             <h2

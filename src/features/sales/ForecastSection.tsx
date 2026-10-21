@@ -2,6 +2,7 @@
 
 import { ErrorState } from "@/components/states/States";
 import { DataTable, type Column } from "@/components/ui/DataTable";
+import { BanknoteGlyph, TrendGlyph } from "@/components/ui/Icons";
 import { RankBadge, StatTile } from "@/components/ui/Stat";
 import { useFaktBoard } from "@/features/sales/ConfirmationFaktSection";
 import { QUEUE_BASIS } from "@/features/shared/faktVocabulary";
@@ -163,6 +164,8 @@ export function ForecastBand({
           unit="money"
           money="full"
           status={status}
+          icon={TrendGlyph}
+          /* The dot is the DATA colour (FAKT 1's series); the chip is not. */
           accent="var(--series-2)"
           hint={
             projecting && totals
@@ -176,6 +179,7 @@ export function ForecastBand({
           unit="money"
           money="full"
           status={status}
+          icon={TrendGlyph}
           accent="var(--series-3)"
           hint={
             projecting && totals
@@ -202,6 +206,7 @@ export function ForecastBand({
           }
           unit="money"
           status={status}
+          icon={BanknoteGlyph}
           hint={projecting ? "prognoz minus hozirgi" : undefined}
         />
         <StatTile
@@ -213,6 +218,7 @@ export function ForecastBand({
           }
           unit="money"
           status={status}
+          icon={BanknoteGlyph}
           hint={projecting ? "prognoz minus hozirgi" : undefined}
         />
       </div>

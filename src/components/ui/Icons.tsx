@@ -388,3 +388,124 @@ export function MoonGlyph(props: GlyphProps) {
     </Glyph>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Stat-tile chips
+//
+// Nine silhouettes for the KPI bands' icon chips (StatTile `icon`). They
+// render at 14px inside a 26px chip, so the confirmation marks' lesson
+// applies: no outline INSIDE an enclosing circle, one outline per meaning.
+// The `stroke` recipe (1.7, non-scaling), not `mark`: the chip's tint
+// carries the weight, the glyph only has to be recognisable. The five
+// confirmation marks the bands reuse as chips (tick, cross, clock, arrow,
+// bars) are drawn at `mark` weight for the queue, and `.stat-chip` in
+// globals.css brings them to 1.7 there — one weight per band.
+//
+// A chip is CHROME — it names what the tile is about and never what colour
+// its data wears; that job stays with StatTile's `accent` dot.
+// ---------------------------------------------------------------------------
+
+/** Calls. A bare handset — inside a circle it was a smudge. */
+export function PhoneGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path
+        d="M5 3h3.4l1.8 4.4-2.2 1.7a13.5 13.5 0 0 0 6.9 6.9l1.7-2.2 4.4 1.8V19a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2z"
+        {...stroke}
+      />
+    </Glyph>
+  )
+}
+
+/** People — customers, operators, a headcount. */
+export function PeopleGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <circle cx="9" cy="8" r="3.3" {...stroke} />
+      <path d="M3 20v-1.2A4.8 4.8 0 0 1 7.8 14h2.4a4.8 4.8 0 0 1 4.8 4.8V20" {...stroke} />
+      <path d="M16 4.9a3.3 3.3 0 0 1 0 6.2" {...stroke} />
+      <path d="M17.6 14.2a4.8 4.8 0 0 1 3.4 4.6V20" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** Money — a soʻm figure. */
+export function BanknoteGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <rect x="2.5" y="6" width="19" height="12" rx="2" {...stroke} />
+      <circle cx="12" cy="12" r="2.8" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** A rate or a ratio. */
+export function PercentGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M18 6L6 18" {...stroke} />
+      <circle cx="7.5" cy="7.5" r="2.4" {...stroke} />
+      <circle cx="16.5" cy="16.5" r="2.4" {...stroke} />
+    </Glyph>
+  )
+}
+
+/**
+ * Advertising — a lead an ad brought in.
+ *
+ * One ring and a solid centre, not a bullseye's three marks. At 14px the
+ * 24-unit grid scales 0.58×, so a second ring at r 4.3 and a dot at r 1.2
+ * sat under a pixel apart and fused into one grey blob (measured 2026-09-28
+ * at DPR 1: the inner ring's hole and the dot read as a single plateau).
+ * r 2.6 is the smallest dot that is still a dot at that size, with a clear
+ * gap to the ring.
+ */
+export function TargetGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <circle cx="12" cy="12" r="8.5" {...stroke} />
+      <circle cx="12" cy="12" r="2.6" fill="currentColor" />
+    </Glyph>
+  )
+}
+
+/** A projection, a run-rate. */
+export function TrendGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M3.5 17l5.5-5.5 3.5 3.5L20.5 7" {...stroke} />
+      <path d="M15 7h5.5v5.5" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** Returning, repeated. */
+export function RepeatGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5" {...stroke} />
+      <path d="M20 3.5v5h-5" {...stroke} />
+      <path d="M20 12a8 8 0 0 1-13.7 5.6L4 15.5" {...stroke} />
+      <path d="M4 20.5v-5h5" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** A conversation — a DM. */
+export function ChatGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M20 12.3a7.7 7.7 0 0 1-11.3 6.8L4 20.5l1.4-4.6A7.7 7.7 0 1 1 20 12.3z" {...stroke} />
+    </Glyph>
+  )
+}
+
+/** Arrivals — what landed in a queue. */
+export function InboxGlyph(props: GlyphProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M3 13l3-8h12l3 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" {...stroke} />
+      <path d="M3 13h5l1.5 3h5L16 13h5" {...stroke} />
+    </Glyph>
+  )
+}

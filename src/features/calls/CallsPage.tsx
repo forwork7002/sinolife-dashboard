@@ -7,6 +7,7 @@ import { useMemo } from 'react'
 import { type CallTimePoint, dayPoints, hourPoints } from '@/components/charts/callTimePoints'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
+import { BarsGlyph, CheckCircleGlyph, ClockGlyph, PeopleGlyph, PhoneGlyph } from '@/components/ui/Icons'
 import { StatTile } from '@/components/ui/Stat'
 import { CallTable } from '@/features/calls/CallTable'
 import { PageShell } from '@/features/shared/PageShell'
@@ -112,6 +113,10 @@ export function CallActivity({
   const hours = hourPoints(data?.hours ?? [])
   const days = dayPoints(data?.days ?? [])
   const manyDays = days.length > 1
+  /* The day rows come from the same one statement as the tiles (they sum to
+     them), and a shape needs more than one day — the same gate as «Kunlar
+     boʻyicha» below. */
+  const dayRows = manyDays && data ? data.days : undefined
 
   return (
     <div className="flex flex-col gap-4">
@@ -124,6 +129,12 @@ export function CallActivity({
           value={total?.calls ?? null}
           unit="count"
           hint={total ? `${formatNumber(total.customers)} ta mijozga` : undefined}
+          icon={PhoneGlyph}
+          spark={dayRows?.map((d) => d.calls)}
+          /* CallTimeChart's CALLS_COLOUR, so the tile and the chart below read
+             as one measure. */
+          sparkColor="var(--series-1)"
+          sparkLabel="Kunlik qoʻngʻiroqlar"
         />
         <StatTile
           status={status}
@@ -131,6 +142,7 @@ export function CallActivity({
           value={total?.connectPercent ?? null}
           unit="percent"
           hint={total ? `${formatNumber(total.connected)} ta suhbat boʻldi` : undefined}
+          icon={CheckCircleGlyph}
         />
         <StatTile
           status={status}
@@ -138,6 +150,10 @@ export function CallActivity({
           value={total?.talkSec ?? null}
           unit="duration"
           hint="faqat ulangan qoʻngʻiroqlar"
+          icon={ClockGlyph}
+          /* Default hue: no chart on this screen draws talk time per day. */
+          spark={dayRows?.map((d) => d.talkSec)}
+          sparkLabel="Kunlik suhbat vaqti"
         />
         <StatTile
           status={status}
@@ -149,6 +165,7 @@ export function CallActivity({
               ? `yarmi shundan qisqa · oʻrtacha ${formatDuration(meanSec)}`
               : 'yarmi shundan qisqa'
           }
+          icon={BarsGlyph}
         />
         <StatTile
           status={status}
@@ -156,6 +173,7 @@ export function CallActivity({
           value={data ? data.operators.length : null}
           unit="count"
           hint={data ? `${formatNumber(data.teams.length)} ta komandadan` : undefined}
+          icon={PeopleGlyph}
         />
       </div>
 
