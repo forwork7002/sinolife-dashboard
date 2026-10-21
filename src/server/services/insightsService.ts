@@ -40,7 +40,8 @@ import type {
   ViewerDepartment,
 } from '@/server/repositories/insightsRepository'
 import { deliveryRateBp, moneyRateBp, rateBp } from '@/server/domain/analytics/rates'
-import type { ConfirmationOutcomeValue, ConfirmationQueueMode } from '@/server/domain/types'
+import type { ConfirmationOutcomeValue, ConfirmationQueueMode, TargetProduct } from '@/server/domain/types'
+import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { callFloorApplied } from '@/lib/callQuality'
 import { CUSTOMER_STATES } from '@/lib/customerStates'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
@@ -1149,7 +1150,7 @@ export class InsightsService {
   async cohorts(
     currency: string,
     months = 18,
-    options: { rop?: string | null; includeRops?: boolean } = {},
+    options: { rop?: string | null; includeRops?: boolean; brand?: TargetProduct | null } = {},
   ): Promise<CohortSummaryDto> {
     // DELIBERATELY UNSCOPED — see the doc comment above: a cohort is a
     // company-wide fact about a customer, not a per-seller one.
@@ -1173,10 +1174,22 @@ export class InsightsService {
     // array cannot confuse a team named anything with the absence of one.
     // Undefined and null are one question (the repository cuts only on a
     // string), so both are written as null.
-    const matrixKey = JSON.stringify([months, options.rop ?? null, options.includeRops === true])
+    //
+    // THE BRAND IS IN THE KEY TOO, for the same reason `rop` is: a brand's
+    // matrix is a different cohort with a different denominator.
+    const brand = options.brand ?? null
+    const matrixKey = JSON.stringify([months, options.rop ?? null, options.includeRops === true, brand])
     const [matrix, base] = await Promise.all([
       cohortMatrixCache.get(matrixKey, () =>
-        this.repository.cohorts({ months, rop: options.rop, includeRops: options.includeRops }),
+        this.repository.cohorts({
+          months,
+          rop: options.rop,
+          includeRops: options.includeRops,
+          brand:
+            brand === null
+              ? null
+              : { slice: brand, collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') },
+        }),
       ),
       retentionStagesCache.get('stages', () => this.repository.retentionStages()),
     ])

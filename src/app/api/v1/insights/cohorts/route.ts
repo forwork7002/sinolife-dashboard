@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { TARGET_PRODUCTS } from '@/server/domain/types'
 import { getHandler } from '@/server/http/handler'
 import { insightsService } from '@/server/services/container'
 
@@ -46,12 +47,19 @@ const schema = z.object({
    * default view never needs it.
    */
   include: z.literal('rops').optional(),
+  /**
+   * Cut the matrix to the customers ONE brand brought in — the brand of their
+   * first order, by the rule every screen's brand switch reads. Absent =
+   * everyone. A DIMENSION, NOT A SCOPE, like `rop`.
+   */
+  brand: z.enum(TARGET_PRODUCTS).optional(),
 })
 
 export const GET = getHandler(ACCESS, schema, async (ctx) => {
   const data = await insightsService.cohorts(ctx.currency, ctx.query.months, {
     rop: ctx.query.rop ?? null,
     includeRops: ctx.query.include === 'rops',
+    brand: ctx.query.brand ?? null,
   })
   return { data }
 })

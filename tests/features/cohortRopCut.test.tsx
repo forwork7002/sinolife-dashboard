@@ -111,9 +111,14 @@ const META = { dataSource: 'DEMO', generatedAt: '2026-09-15T06:00:00.000Z' }
 
 let requested: string[] = []
 
-/** Every `/insights/cohorts` call that asked for a matrix, not for the list. */
+/** Every `/insights/cohorts` call that asked for the company's (or a team's) matrix — not the list, not a brand card. */
 const matrixReads = () =>
-  requested.filter((url) => url.includes('/insights/cohorts') && !url.includes('include=rops'))
+  requested.filter(
+    (url) => url.includes('/insights/cohorts') && !url.includes('include=rops') && !url.includes('brand='),
+  )
+
+/** …the Collagen and Zextra cards' own reads. */
+const brandReads = () => requested.filter((url) => url.includes('/insights/cohorts') && url.includes('brand='))
 
 /** …and the calls that asked only for the picker's options. */
 const listReads = () => requested.filter((url) => url.includes('include=rops'))
@@ -389,6 +394,26 @@ describe('the cohort matrix, cut by acquiring team', () => {
     /* The sentence a reader would otherwise get backwards: a return is NOT
        re-attributed to whoever sold it. */
     expect(banner.textContent).toContain('kim mijoz olib keladi')
+  })
+
+  /*
+    THE BRAND CARDS ARE THEIR OWN CUTS, AND A TEAM PICK DOES NOT REACH THEM.
+
+    Each asks once, for its own brand and for no team, after the company
+    matrix has answered; picking a team re-reads the company card only — the
+    banner says the brand matrices stay company-wide, and a re-read here would
+    be the screen contradicting its own sentence.
+  */
+  it('asks each brand card once, for its brand and no team, and a team pick re-reads neither', async () => {
+    await draw()
+    await waitFor(() => expect(brandReads()).toHaveLength(2))
+    expect(brandReads().some((url) => url.includes('brand=Collagen'))).toBe(true)
+    expect(brandReads().some((url) => url.includes('brand=Zextra'))).toBe(true)
+    expect(brandReads().every((url) => !url.includes('rop='))).toBe(true)
+
+    await openPicker()
+    await pick('Sevinch')
+    expect(brandReads()).toHaveLength(2)
   })
 
   it('returns to the company view from cache, without a third read', async () => {
