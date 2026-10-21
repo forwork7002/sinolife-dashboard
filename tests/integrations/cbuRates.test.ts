@@ -52,13 +52,33 @@ describe('CbuUsdRates', () => {
     expect(asked.filter((d) => d === '2026-09-01')).toHaveLength(1) // the past never
   })
 
-  it('answers null for a day the bank did not answer, and asks again next time', async () => {
+  it('answers null for a day the bank did not answer, and asks again ten minutes on — not on every load', async () => {
+    let now = 0
     const rates: Record<string, unknown> = { '2026-09-01': new Error('down') }
     const { fetcher, asked } = bank(rates)
-    const usd = new CbuUsdRates(fetcher)
+    const usd = new CbuUsdRates(fetcher, () => now)
     expect(await usd.forDays(['2026-09-01'], '2026-09-01')).toEqual([null])
     rates['2026-09-01'] = answer('11900')
+    now = 9 * 60_000
+    // A hanging bank cost every load its timeout (5 s, 30 s for a cold month): within the window, nobody asks.
+    expect(await usd.forDays(['2026-09-01'], '2026-09-01')).toEqual([null])
+    expect(asked).toHaveLength(1)
+    now = 11 * 60_000
     expect(await usd.forDays(['2026-09-01'], '2026-09-01')).toEqual([11900])
+    expect(asked).toHaveLength(2)
+  })
+
+  it("keeps today's older rate through a failed refresh, and does not ask again within ten minutes", async () => {
+    let now = 0
+    const rates: Record<string, unknown> = { '2026-09-02': answer('11910') }
+    const { fetcher, asked } = bank(rates)
+    const usd = new CbuUsdRates(fetcher, () => now)
+    await usd.forDays(['2026-09-02'], '2026-09-02')
+    rates['2026-09-02'] = { not: 'a rate' }
+    now = 61 * 60_000
+    expect(await usd.forDays(['2026-09-02'], '2026-09-02')).toEqual([11910])
+    now = 65 * 60_000
+    expect(await usd.forDays(['2026-09-02'], '2026-09-02')).toEqual([11910])
     expect(asked).toHaveLength(2)
   })
 })

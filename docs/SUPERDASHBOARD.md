@@ -311,9 +311,11 @@ imported by default (`BITRIX24_CALL_MONTHS`).
   rows and `customerId` on 99.3%, but `dealId` on **1 row of 366 300**: the
   portal answers `CRM_ENTITY_TYPE = 'CONTACT'` for effectively every call. The
   per-order questions in the removed block below cannot be asked of this table.
-- **Direction is the leg, not the intent** — 338 467 inbound against 27 833
-  outbound on a floor whose job is ringing customers. The screen does not split
-  by it.
+- **Direction was stored backwards until 2026-10-02** — the 338 467 «inbound»
+  against 27 833 «outbound» were the import reading Bitrix24's CALL_TYPE the
+  wrong way round (1 is outgoing, 2/3 incoming, 4 callback). `callDirection`
+  follows the docs since; older rows keep the old label until a CALLS pass
+  re-reads them. The screen does not split by it.
 - **Durations before 2026-09-15 are not trustworthy.** Everything imported by
   the per-minute pass (2026-08-28 to 11:00 Tashkent on 2026-09-14) was read
   mid-call: `CALL_DURATION` is whatever had elapsed, and the watermark moved

@@ -19,7 +19,11 @@ export const calendarDay = z
 
 export const costsBodySchema = z
   .object({
-    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM'),
+    // Bounded as `/rnp/overview`, the plans and the headcount are: a cost for 1990 is a script's slip, not a cost.
+    month: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Expected YYYY-MM')
+      .refine((m) => m >= '2025-01' && m <= '2100-12', 'Month out of range'),
     cells: z
       .array(
         z.object({

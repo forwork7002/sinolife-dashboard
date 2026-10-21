@@ -19,6 +19,11 @@ describe('formNameOf', () => {
     expect(formNameOf('Заполнение CRM-формы "Umar Sinolife (UMAR) TEST-1"')).toBe('Umar Sinolife (UMAR) TEST-1')
   })
 
+  it('reads a title that has no closing quote (deal 1038510, a kval of 01.10)', () => {
+    expect(formNameOf('Заполнение CRM-формы "Sinolifecollgen marine')).toBe('Sinolifecollgen marine')
+    expect(formNameOf('Заполнение CRM-формы «Zextra Umar 3 ')).toBe('Zextra Umar 3')
+  })
+
   it('is null for a deal no form opened', () => {
     expect(formNameOf('Collagen')).toBeNull()
     expect(formNameOf('_baxti__01_00 - sinolifeuz instagram')).toBeNull()

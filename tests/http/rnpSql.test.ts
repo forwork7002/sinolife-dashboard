@@ -51,10 +51,23 @@ describe('RnpRepository statements', () => {
     expect(sql).toContain(`d."leadDistributedOn" BETWEEN $1::date AND $2::date`)
   })
 
-  it('splits the handed-out leads by the registrar on the deal, for the «guruh» kval rows', () => {
+  it('groups by day and team only — the «guruh» rows are teams now, not registrars (2026-10-02)', () => {
     const sql = bare(RnpRepository.leadDaysSql())
-    expect(sql).toContain(`d."registrar",`)
-    expect(sql).toMatch(/GROUP BY 1, 2, 3\s*$/)
+    expect(sql).not.toContain('"registrar"')
+    expect(sql).toMatch(/GROUP BY 1, 2\s*$/)
+  })
+
+  it('counts only a fresh hand-out: a deal created at most 30 days before its «Лид таркатилган сана» (2026-10-02)', () => {
+    const sql = bare(RnpRepository.leadDaysSql())
+    // `createdAtSource`, never «Лид тушган сана» (`leadArrivedAt`), which is empty before 14.09.
+    expect(sql).toContain(`AND d."createdAtSource" >= d."leadDistributedOn" - interval '30 days'`)
+    expect(sql).not.toContain('"leadArrivedAt"')
+  })
+
+  it('files a person heading two ROP units under the one they sit in, then by name', () => {
+    const sql = bare(RnpRepository.leadDaysSql())
+    expect(sql).toContain(`ORDER BY (h."id" = e."departmentId") DESC, h."name"`)
+    expect(sql).toContain(`LEFT JOIN "employee" e ON e."id" = d."leadRopEmployeeId"`)
   })
 
   it('reads leads and kval in one UNION of two arms, summed per day × source × form', () => {
@@ -95,6 +108,13 @@ describe('RnpRepository statements', () => {
     const sql = bare(RnpRepository.packingStaysSql())
     expect(sql).toContain(`s."externalId" = ANY($4::text[])`)
     expect(sql).toContain(`h."stageId" = d."stageId" AND h."leftAt" IS NULL`)
+  })
+
+  it('takes an open stay only where the deal still stands — never one whose leaving was not synced (2026-10-02)', () => {
+    const [first, second] = bare(RnpRepository.packingStaysSql()).split('UNION')
+    expect(first).toMatch(/AND h\."leftAt" >= \(\(\$1::date\)/)
+    expect(first).not.toContain('IS NULL')
+    expect(second).toContain(`h."leftAt" IS NULL`)
   })
 })
 
@@ -157,5 +177,60 @@ describe('registrationDays — the history scan gets its own statement timeout',
     const rows = await repo.registrationDays('2026-09-01', '2026-09-29', 60_000)
     expect(calls).toEqual(['tx:65000', 'SET LOCAL statement_timeout = 60000', 'query'])
     expect(rows).toHaveLength(1)
+  })
+})
+
+/*
+  A month's lead values are its own rows, else each team's last value in force
+  (`inheritedLeadValues`). The БАЗА teams carry their own since 2026-10-02
+  (migration 20261002120100): what a later month inherits is pinned here.
+*/
+describe('plans — the lead values a month inherits', () => {
+  type Row = { month: string; team: string; metric: string; fromDay: number; valueCenti: bigint }
+  const september: Row[] = [
+    { month: '2026-09', team: '', metric: 'lead_value', fromDay: 1, valueCenti: 40_000_000n },
+    { month: '2026-09', team: '', metric: 'lead_value', fromDay: 14, valueCenti: 50_000_000n },
+    { month: '2026-09', team: 'Charos', metric: 'lead_value', fromDay: 1, valueCenti: 40_000_000n },
+    { month: '2026-09', team: 'Baza', metric: 'lead_value', fromDay: 1, valueCenti: 40_000_000n },
+    { month: '2026-09', team: 'Baza', metric: 'lead_value', fromDay: 27, valueCenti: 20_000_000n },
+    { month: '2026-09', team: 'Sevinch', metric: 'leads', fromDay: 1, valueCenti: 180_900n },
+  ]
+  const october: Row[] = [
+    { month: '2026-10', team: 'Charos', metric: 'lead_value', fromDay: 1, valueCenti: 40_000_000n },
+    { month: '2026-10', team: 'Baza', metric: 'lead_value', fromDay: 1, valueCenti: 40_000_000n },
+  ]
+  function fake(rows: readonly Row[]) {
+    const iso = (d: Date) => d.toISOString().slice(0, 7)
+    const pick = (r: Row) => ({ team: r.team, metric: r.metric, fromDay: r.fromDay, valueCenti: r.valueCenti })
+    return {
+      rnpPlan: {
+        findMany: async ({ where }: { where: { month: Date | { lt: Date }; metric?: string } }) => {
+          if (where.month instanceof Date) return rows.filter((r) => r.month === iso(where.month as Date)).map(pick)
+          const before = iso(where.month.lt)
+          return rows
+            .filter((r) => r.month < before && r.metric === where.metric)
+            .sort((a, b) => b.month.localeCompare(a.month) || b.fromDay - a.fromDay)
+            .map(pick)
+        },
+      },
+      teamMonthPlan: { findMany: async () => [] },
+    }
+  }
+  const values = async (rows: readonly Row[], month: string) =>
+    (await new RnpRepository(fake(rows) as never).plans(month)).rows
+      .filter((r) => r.metric === 'lead_value')
+      .map((r) => `${r.team || '—'} d${r.fromDay} ${Number(r.valueCenti) / 100}`)
+      .sort()
+
+  it("keeps October's own БАЗА values and inherits the company's last one", async () => {
+    expect(await values([...september, ...october], '2026-10')).toEqual(['Baza d1 400000', 'Charos d1 400000', '— d1 500000'])
+  })
+
+  it('carries every team\'s last value into a month with none of its own', async () => {
+    expect(await values([...september, ...october], '2026-11')).toEqual(['Baza d1 400000', 'Charos d1 400000', '— d1 500000'])
+  })
+
+  it("would hand October Фаррух's 200 000 of 27.09 had October no rows of its own — why the migration writes them", async () => {
+    expect(await values(september, '2026-10')).toContain('Baza d1 200000')
   })
 })

@@ -42,6 +42,9 @@ export function useDragScroll<T extends HTMLElement>() {
   const onPointerMove = (e: PointerEvent<T>) => {
     const p = pan.current
     if (!p || e.pointerId !== p.id) return
+    // The button is up: the press ended where the box never heard it (nothing is captured before the
+    // threshold). Forget it, or the next plain hover would pan.
+    if ((e.buttons & 1) === 0) return end(e)
     const box = e.currentTarget
     const dx = e.clientX - p.x
     if (!p.active) {

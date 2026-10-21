@@ -1,4 +1,4 @@
-import { formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
+import { formatCents, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 import type { RnpBlockDto, RnpUnit } from './rnpApi'
 import type { RnpColumnKind } from './rnpColumnWidths'
@@ -13,7 +13,8 @@ import type { RnpColumnKind } from './rnpColumnWidths'
  * «3,6 mlrd». Only a chart's axis ticks stay compact, for the axis's room;
  * their tooltips are full. Nothing is re-rounded here: the rules below are
  * the ones the grid always used (a count to a whole number, dollars and
- * rates to one decimal).
+ * rates to one decimal) — except a price under $10, which is to the cent
+ * since 2026-10-02 (`formatUsd`).
  */
 
 /**
@@ -41,8 +42,15 @@ export function rnpPercent(value: number | null): string {
   return rnpSeparators(formatPercent(value))
 }
 
-/** Dollars to one decimal, «$1.234,5». */
+/**
+ * Dollars: under $10 to the cent, «$0,77» / «$0,80» — the sheet prints its
+ * lead prices so, and to one decimal a 0,77 fact and its 0,80 plan both read
+ * «$0,8» (2026-10-02); anything larger to one decimal, «$1.234,5». Nothing is
+ * «$0,00»: a zero is «$0».
+ */
 export function formatUsd(value: number): string {
+  const cents = Math.round(value * 100) / 100
+  if (cents !== 0 && Math.abs(cents) < 10) return `$${rnpSeparators(formatCents(cents))}`
   return `$${rnpNumber(Math.round(value * 10) / 10)}`
 }
 
@@ -87,7 +95,8 @@ export function contentMinWidths(
   }
   for (const block of blocks) {
     for (const row of block.rows) {
-      if (row.plan !== null) keep('plan', figureText(row.plan, row.unit))
+      // A plan may be in its own unit — the brand P&L's success share over a soʻm row (`planUnit`).
+      if (row.plan !== null) keep('plan', figureText(row.plan, row.planUnit ?? row.unit))
       if (row.dayPlan !== null) keep('dayPlan', figureText(row.dayPlan, row.unit))
       if (row.fact !== null) keep('fact', figureText(row.fact, row.unit))
       if (row.forecast !== null) keep('forecast', figureText(row.forecast, row.unit))

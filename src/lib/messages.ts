@@ -78,7 +78,7 @@ export const t = {
     },
     rnp: {
       title: 'RNP jadvali',
-      lead: 'Mijozning «РНП» jadvali — har bir koʻrsatkich kunma-kun, fakt, prognoz va reja bilan. Hammasi Bitrix24 va Meta Ads dan oʻzi yigʻiladi, kunlar Toshkent vaqti boʻyicha.',
+      lead: 'Mijozning «РНП» jadvali — har bir koʻrsatkich kunma-kun, fakt, prognoz va reja bilan. Raqamlar Bitrix24 va Meta Ads dan oʻzi yigʻiladi; rejalar, P&L xarajatlari va «Ходим сони» shu jadvalda kiritiladi. Kunlar Toshkent vaqti boʻyicha.',
     },
     leads: {
       title: 'Lidlar',

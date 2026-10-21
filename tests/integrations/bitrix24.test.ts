@@ -10,6 +10,7 @@ import {
   startOfUtcDay,
 } from '@/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
 import {
+  callDirection,
   dealStatus,
   categoryFromSemantic,
   logisticsRole,
@@ -520,5 +521,16 @@ describe('dealUtm — the ad tags a lead carries', () => {
   it('is null for a deal with no tags, so metadata does not fill with empty objects', async () => {
     const { dealUtm } = await import('@/server/integrations/crm/bitrix24/Bitrix24CrmProvider')
     expect(dealUtm({ ID: '1', UTM_SOURCE: '', TITLE: 'x' })).toBeNull()
+  })
+})
+
+describe('callDirection — CALL_TYPE as Bitrix24 documents it (2026-10-02)', () => {
+  it('reads 1 as outgoing, 2 and 3 as incoming, 4 as a callback', () => {
+    // It read 1 as INBOUND: the floor's own dialling was stored as «inbound».
+    expect(callDirection('external', '1')).toBe('OUTBOUND')
+    expect(callDirection('external', '2')).toBe('INBOUND')
+    expect(callDirection('external', '3')).toBe('INBOUND')
+    expect(callDirection('external', '4')).toBe('CALLBACK')
+    expect(callDirection(undefined, '5')).toBe('OUTBOUND')
   })
 })
