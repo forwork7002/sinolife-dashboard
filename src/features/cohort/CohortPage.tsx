@@ -9,6 +9,7 @@ import { CohortHeatmap, type CohortMatrixRow, type CohortView } from '@/componen
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
+import { BanknoteGlyph, CrossCircleGlyph, PeopleGlyph, RepeatGlyph } from '@/components/ui/Icons'
 import { GaugeTile, Meter, SectionHeader, StatTile } from '@/components/ui/Stat'
 import { InfoTip } from '@/components/ui/Tooltip'
 import { ChartSkeleton, EmptyState, ErrorState } from '@/components/states/States'
@@ -664,13 +665,27 @@ export function CohortPage() {
               rather than the tile silently choosing one.
             */
             hint={f ? `${formatNumber(f.summary.newCustomersWon)} tasi xarid qildi` : undefined}
+            icon={PeopleGlyph}
+            spark={f && f.series.length > 1 ? f.series.map((p) => p.newCustomers) : undefined}
+            sparkColor="var(--series-1)"
+            sparkLabel="Kunlik yangi mijozlar"
           />
+          {/*
+            The daily points are the chart's own line one card down (series-1 /
+            series-3 there too). They count bucket VISITS and legitimately sum
+            past the tile's distinct persons — see the repository's
+            `customerFlow` comment; the tile's number stays the summary's.
+          */}
           <StatTile
             status={flowStatus}
             label="Qaytgan mijozlar"
             value={f?.summary.returningCustomers ?? null}
             unit="count"
             hint="Ilgari xarid qilgan · shu davrda yana buyurtma bergan"
+            icon={RepeatGlyph}
+            spark={f && f.series.length > 1 ? f.series.map((p) => p.returningCustomers) : undefined}
+            sparkColor="var(--series-3)"
+            sparkLabel="Kunlik qaytgan mijozlar"
           />
           {/*
             A SOʻM FIGURE, NOT A THIRD «TAKRORIY TUSHUM ULUSHI» — and this is a
@@ -695,6 +710,7 @@ export function CohortPage() {
             value={f?.summary.repeatRevenue.amount ?? null}
             unit="money"
             hint="Shu davrdagi buyurtmalardan · birinchi xarid emas"
+            icon={BanknoteGlyph}
           />
           <StatTile
             status={flowStatus}
@@ -713,6 +729,7 @@ export function CohortPage() {
                starts comparing two numbers that were never comparable. */
             hint={`${CUSTOMER_AT_RISK_DAYS} kundan beri buyurtma yoʻq · davrga bogʻliq emas`}
             tone="warning"
+            icon={CrossCircleGlyph}
           />
         </div>
 
@@ -928,12 +945,14 @@ export function CohortPage() {
             hint={
               data ? `${formatNumber(data.totalCustomers)} ta mijozdan` : undefined
             }
+            icon={RepeatGlyph}
           />
           <StatTile
             status={tileStatus}
             label="Jami mijozlar"
             value={data?.totalCustomers ?? null}
             unit="count"
+            icon={PeopleGlyph}
             /*
               «YETKAZILGAN» AND «YOPILGAN (WON)» NAME THE SAME EVENT, not two
               clocks — a deal becomes WON the instant it reaches Успешно,

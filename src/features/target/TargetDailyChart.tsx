@@ -11,6 +11,14 @@ import {
 } from 'recharts'
 
 import { ChartTooltipPanel } from '@/components/charts/chartTooltip'
+import {
+  BAR_RADIUS,
+  type BarSeriesSlot,
+  SeriesGradientDefs,
+  seriesColour,
+  seriesGradientFill,
+  useSeriesGradientPrefix,
+} from '@/components/charts/SeriesGradientDefs'
 import { formatCompactUzs, formatDate, formatNumber, formatPercent } from '@/lib/format'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 
@@ -26,10 +34,18 @@ import type { TargetGroupDto } from './targetApi'
  *
  * Loaded on its own (`next/dynamic` in TargetPage), like every recharts
  * importer here: recharts is most of what a route downloads.
+ *
+ * THE BARS WEAR THE SHARED LIT-FROM-ABOVE FILL (SeriesGradientDefs) in their
+ * own slot's hue; the legend and the tooltip keep the flat token, which is the
+ * bar's cap colour.
  */
 
-const LEADS_COLOUR = 'var(--series-1)'
-const ORDERS_COLOUR = 'var(--series-3)'
+const LEADS_SLOT: BarSeriesSlot = 1
+const ORDERS_SLOT: BarSeriesSlot = 3
+// The flat token still paints the legend square and the tooltip dot — the
+// bar's CAP colour, so identity reads the same in all three places.
+const LEADS_COLOUR = seriesColour(LEADS_SLOT)
+const ORDERS_COLOUR = seriesColour(ORDERS_SLOT)
 
 interface Point {
   readonly label: string
@@ -46,6 +62,7 @@ export function TargetDailyChart({
   height?: number
 }) {
   const reducedMotion = useReducedMotion()
+  const gradient = useSeriesGradientPrefix()
   const points: Point[] = days.map((row) => ({
     label: row.key.slice(8, 10) + '.' + row.key.slice(5, 7),
     row,
@@ -73,6 +90,7 @@ export function TargetDailyChart({
               barGap={2}
               barCategoryGap="20%"
             >
+              <SeriesGradientDefs prefix={gradient} slots={[LEADS_SLOT, ORDERS_SLOT]} />
               <CartesianGrid vertical={false} stroke="var(--grid)" strokeDasharray="0" />
               <XAxis
                 dataKey="label"
@@ -97,15 +115,15 @@ export function TargetDailyChart({
               />
               <Bar
                 dataKey="leads"
-                fill={LEADS_COLOUR}
-                radius={[3, 3, 0, 0]}
+                fill={seriesGradientFill(gradient, LEADS_SLOT)}
+                radius={BAR_RADIUS}
                 isAnimationActive={!reducedMotion}
                 animationDuration={420}
               />
               <Bar
                 dataKey="orders"
-                fill={ORDERS_COLOUR}
-                radius={[3, 3, 0, 0]}
+                fill={seriesGradientFill(gradient, ORDERS_SLOT)}
+                radius={BAR_RADIUS}
                 isAnimationActive={!reducedMotion}
                 animationDuration={420}
               />

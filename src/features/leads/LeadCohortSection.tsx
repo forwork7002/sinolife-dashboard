@@ -7,6 +7,7 @@ import { ErrorState } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
 import { MultiSelect, SegmentedControl } from '@/components/ui/Controls'
 import { type Column, DataTable } from '@/components/ui/DataTable'
+import { ArrowOutGlyph, CheckCircleGlyph, ClockGlyph, InboxGlyph, RepeatGlyph } from '@/components/ui/Icons'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
 import { apiGet } from '@/lib/api'
 import { formatDate, formatNumber, formatPercent } from '@/lib/format'
@@ -232,6 +233,7 @@ function Tiles({ data, status, ropName }: { data: LeadCohortOverviewDto | undefi
         value={k?.arrived ?? null}
         unit="count"
         hint={k && data ? `${shortDay(data.cohortFrom)} – ${shortDay(data.to)} · bugun ${formatNumber(k.arrivedToday)}${of}` : undefined}
+        icon={InboxGlyph}
       />
       <StatTile
         status={status}
@@ -239,6 +241,7 @@ function Tiles({ data, status, ropName }: { data: LeadCohortOverviewDto | undefi
         value={k?.distributedToday ?? null}
         unit="count"
         hint={`bugun sotuvchilarga berilgan, qachon tushganidan qatʼi nazar${of}`}
+        icon={ArrowOutGlyph}
       />
       <StatTile
         status={status}
@@ -246,6 +249,7 @@ function Tiles({ data, status, ropName }: { data: LeadCohortOverviewDto | undefi
         value={k?.aiQualified ?? null}
         unit="count"
         hint={k ? `tushganlarning ${share(k.aiQualified, k.arrived) ?? '—'} — «ИИ квал сана» toʻldirilgan` : undefined}
+        icon={CheckCircleGlyph}
       />
       <StatTile
         status={status}
@@ -254,6 +258,7 @@ function Tiles({ data, status, ropName }: { data: LeadCohortOverviewDto | undefi
         unit="count"
         tone={k && k.undistributed > 0 ? 'warning' : 'neutral'}
         hint={k ? `tushgan, lekin «Лид таркатилган сана» boʻsh · ${share(k.undistributed, k.arrived) ?? '—'}` : undefined}
+        icon={ClockGlyph}
       />
       <StatTile
         status={status}
@@ -267,6 +272,7 @@ function Tiles({ data, status, ropName }: { data: LeadCohortOverviewDto | undefi
               }`
             : undefined
         }
+        icon={RepeatGlyph}
       />
     </section>
   )

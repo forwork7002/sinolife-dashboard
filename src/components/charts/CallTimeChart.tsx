@@ -11,6 +11,14 @@ import {
 } from 'recharts'
 
 import { ChartTooltipPanel } from '@/components/charts/chartTooltip'
+import {
+  BAR_RADIUS,
+  type BarSeriesSlot,
+  SeriesGradientDefs,
+  seriesColour,
+  seriesGradientFill,
+  useSeriesGradientPrefix,
+} from '@/components/charts/SeriesGradientDefs'
 import type { CallTimePoint } from '@/components/charts/callTimePoints'
 import { NO_VALUE, formatDuration, formatNumber, formatPercent } from '@/lib/format'
 import { useReducedMotion } from '@/lib/useReducedMotion'
@@ -26,10 +34,18 @@ import { useReducedMotion } from '@/lib/useReducedMotion'
  * legs, so they share the axis honestly; a second axis is forbidden in this
  * codebase. Talk time and the median ride the tooltip rather than a third mark,
  * because seconds on a count axis would be a second unit.
+ *
+ * THE BARS WEAR THE SHARED LIT-FROM-ABOVE FILL (SeriesGradientDefs) in their
+ * own slot's hue; the legend and the tooltip keep the flat token, which is the
+ * bar's cap colour.
  */
 
-const CALLS_COLOUR = 'var(--series-1)'
-const CONNECTED_COLOUR = 'var(--series-3)'
+const CALLS_SLOT: BarSeriesSlot = 1
+const CONNECTED_SLOT: BarSeriesSlot = 3
+// The flat token still paints the legend square and the tooltip dot — the
+// bar's CAP colour, so identity reads the same in all three places.
+const CALLS_COLOUR = seriesColour(CALLS_SLOT)
+const CONNECTED_COLOUR = seriesColour(CONNECTED_SLOT)
 
 export function CallTimeChart({
   points,
@@ -42,6 +58,7 @@ export function CallTimeChart({
   height?: number
 }) {
   const reducedMotion = useReducedMotion()
+  const gradient = useSeriesGradientPrefix()
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: height ?? '100%' }}>
@@ -63,6 +80,7 @@ export function CallTimeChart({
               barGap={2}
               barCategoryGap="20%"
             >
+              <SeriesGradientDefs prefix={gradient} slots={[CALLS_SLOT, CONNECTED_SLOT]} />
               <CartesianGrid vertical={false} stroke="var(--grid)" strokeDasharray="0" />
               <XAxis
                 dataKey="label"
@@ -87,15 +105,15 @@ export function CallTimeChart({
               />
               <Bar
                 dataKey="calls"
-                fill={CALLS_COLOUR}
-                radius={[3, 3, 0, 0]}
+                fill={seriesGradientFill(gradient, CALLS_SLOT)}
+                radius={BAR_RADIUS}
                 isAnimationActive={!reducedMotion}
                 animationDuration={420}
               />
               <Bar
                 dataKey="connected"
-                fill={CONNECTED_COLOUR}
-                radius={[3, 3, 0, 0]}
+                fill={seriesGradientFill(gradient, CONNECTED_SLOT)}
+                radius={BAR_RADIUS}
                 isAnimationActive={!reducedMotion}
                 animationDuration={420}
               />

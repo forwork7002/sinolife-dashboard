@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 
+import { Sparkline } from '@/components/charts/Sparkline'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
-import { DotGlyph, RingGlyph, SquareGlyph, TriangleGlyph } from '@/components/ui/Icons'
+import { DotGlyph, RingGlyph, SquareGlyph, TriangleGlyph, type GlyphProps } from '@/components/ui/Icons'
 import { Tooltip } from '@/components/ui/Tooltip'
 import {
   NO_VALUE,
@@ -22,6 +23,12 @@ import {
  * context below. The context slot takes a delta, a meter or a sparkline —
  * whichever actually explains the number — because a figure with no reference
  * point cannot be judged, and a row of bare numbers is a report nobody acts on.
+ * The reference tiles (2026-09-28) add a page-accent chip and a sparkline —
+ * each optional and each only where the caller already holds the fact. A
+ * delta is NOT a prop of its own: no caller holds a DeltaDto for a tile (the
+ * only one on the wire is `totals.wonDelta`, which FaktFigure prints), and
+ * the day one does, `context` already takes a TrendIndicator — the way
+ * MarketingKpiBand's tile carries its delta today.
  *
  * `tone` colours the value only for genuinely evaluative figures (a delivery
  * rate, a margin). Ordinary counts and amounts stay in primary ink: colouring
@@ -37,6 +44,10 @@ export function StatTile({
   accent,
   money = 'compact',
   status = 'ready',
+  icon: Icon,
+  spark,
+  sparkColor,
+  sparkLabel,
 }: {
   label: string
   value: number | null
@@ -44,6 +55,31 @@ export function StatTile({
   hint?: string
   context?: ReactNode
   tone?: 'neutral' | 'good' | 'warning' | 'critical'
+  /**
+   * The chip before the label. CHROME: it names what the tile is about and
+   * wears the PAGE accent (see .stat-chip), never the tile's series — a chip
+   * that took the data colour would make «FAKT 1» read as orange on one band
+   * and blue on the next. Give every tile in a band one, or none: the chip
+   * is 26px tall and a band with chips on half its tiles has two label
+   * heights. Hidden from readers; the label beside it is the name.
+   */
+  icon?: ComponentType<GlyphProps>
+  /**
+   * The daily values behind the headline, when the caller ALREADY holds them
+   * (calls per day, leads per day). Never derived, never fetched for the
+   * tile. Fewer than two points draws nothing — not Sparkline's own em dash,
+   * which under a figure reads as a second, missing value. A series of
+   * nothing but zeros draws nothing either: the figure already says 0, so a
+   * flat line under it adds no story and reads as the placeholder trend the
+   * brief forbids. That case is common, not a corner — /target and the DM
+   * tile hand over zero-filled calendar days, so an empty window is 30
+   * points of 0.
+   */
+  spark?: readonly number[]
+  /** The series the chart below draws this measure in, so tile and chart read as one measure; default is the neutral magnitude hue. */
+  sparkColor?: string
+  /** Accessible name for the sparkline — REQUIRED whenever `spark` is passed; it must name the window («Kunlik …»), which the drawing cannot. */
+  sparkLabel?: string
   /**
    * How much of a soʻm figure the tile prints.
    *
@@ -81,6 +117,11 @@ export function StatTile({
   return (
     <div className="card flex flex-col px-4 py-3.5">
       <div className="flex items-center gap-1.5">
+        {Icon && (
+          <span aria-hidden="true" className="stat-chip">
+            <Icon size={14} />
+          </span>
+        )}
         {accent && (
           <span
             aria-hidden="true"
@@ -160,6 +201,15 @@ export function StatTile({
         <p className="mt-1 truncate text-[11px]" style={{ color: 'var(--ink-muted)' }}>
           {hint}
         </p>
+      )}
+
+      {/* Only on a READY tile: a live trend under a skeleton or under
+          «Olinmadi» would claim data the figure is still waiting for. And
+          only with something in it — see `spark`. */}
+      {status === 'ready' && spark && spark.length >= 2 && spark.some((v) => v !== 0) && (
+        <div className="mt-2">
+          <Sparkline values={spark} color={sparkColor} label={sparkLabel} height={22} />
+        </div>
       )}
 
       {context && <div className="mt-2.5">{context}</div>}

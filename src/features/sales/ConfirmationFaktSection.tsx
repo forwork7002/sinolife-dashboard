@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import { ErrorState } from '@/components/states/States'
 import { DataTable, type Column } from '@/components/ui/DataTable'
+import { ArrowOutGlyph, BanknoteGlyph, ClockGlyph, CrossCircleGlyph, TrendGlyph } from '@/components/ui/Icons'
 import { GaugeTile, RankBadge, StatTile } from '@/components/ui/Stat'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -316,6 +317,7 @@ export function QueueBand({
         unit="money"
         money="full"
         status={status}
+        icon={ArrowOutGlyph}
         hint={
           totals
             ? `${formatNumber(totals.openOrders)} ta buyurtma yoʻlda — tasdiqlangan, hali yetkazilmagan`
@@ -335,6 +337,7 @@ export function QueueBand({
         unit="money"
         money="full"
         status={status}
+        icon={CrossCircleGlyph}
         tone={totals && totals.lostAfterConfirmOrders > 0 ? 'warning' : 'neutral'}
         hint={
           totals
@@ -347,6 +350,7 @@ export function QueueBand({
         value={outsideFakt1}
         unit="count"
         status={status}
+        icon={ClockGlyph}
         hint={
           rejected !== null && undecided !== null
             ? `${formatNumber(rejected)} ta rad etildi · ${formatNumber(undecided)} ta hali navbatda yoki koʻtarmadi`
@@ -402,6 +406,7 @@ export function QueueBand({
         unit="money"
         money="full"
         status={status}
+        icon={TrendGlyph}
         hint={
           totals && data
             ? totals.wonOrders === 0
@@ -420,6 +425,7 @@ export function QueueBand({
         unit="money"
         money="full"
         status={status}
+        icon={BanknoteGlyph}
         hint={
           totals ? `${formatNumber(totals.sellersInBonus)} ta sotuvchi darajani oldi` : undefined
         }

@@ -216,4 +216,50 @@ describe('the stylesheet contract the attribute depends on', () => {
     expect(css).toMatch(/:root:where\(:not\(\[data-theme="light"\]\)\)/)
     expect(css).toContain(':root[data-theme="dark"]')
   })
+
+  it('paints the figure hero in the dark palette in both themes, in lockstep with the forced-dark block', () => {
+    /*
+      `.card-hero--navy` restates the dark token set for its own subtree so
+      the lead FIGURE card is navy on the light page too (DESIGN TOKENS, «THE
+      HERO'S OWN PALETTE»). Opt-in by modifier, never the bare `.card-hero`:
+      three full-height tables wear that class for its rim and brackets, and
+      keyed on it the light theme on those pages was three-quarters navy.
+      CSS cannot share the declarations, so the copy is pinned here: a value
+      that drifts, or a dark token added to the theme blocks and not to the
+      hero, fails by name. Board chrome (--medal/--emal/--bi/--px) never sits
+      in a hero and is counted by its own tests.
+    */
+    const css = readFileSync(resolve(process.cwd(), 'src/app/globals.css'), 'utf8')
+    const block = (opener: string) => {
+      const at = css.indexOf(opener)
+      expect(at, opener).toBeGreaterThan(-1)
+      return css.slice(at, css.indexOf('\n}', at))
+    }
+    const tokens = (s: string) =>
+      new Map([...s.matchAll(/^\s*(--[\w-]+): ([^;]+);/gm)].map((m) => [m[1]!, m[2]!.trim()]))
+
+    const dark = tokens(block(':root[data-theme="dark"] {'))
+    const heroBlock = block('@media screen {')
+    expect(heroBlock).toMatch(/\.card-hero--navy \{\s*\n\s*color-scheme: dark;/)
+    // The bare class must not be the key — see the opt-in note above.
+    expect(heroBlock).not.toMatch(/\.card-hero\s*[{,]/)
+    const hero = tokens(heroBlock)
+
+    const CHROME = /^--(medal|emal|bi|px)/
+    for (const [name, value] of dark) {
+      if (CHROME.test(name)) continue
+      expect(hero.get(name), name).toBe(value)
+    }
+    for (const name of hero.keys()) {
+      if (name.startsWith('--edge-hero-')) continue
+      expect(dark.has(name), `${name} is not a theme token`).toBe(true)
+    }
+    // The two hairline stops are :root's definition verbatim — declared again
+    // only because a var() in a custom property resolves where it is declared.
+    for (const stop of ['--edge-hero-top', '--edge-hero-bottom']) {
+      const values = [...css.matchAll(new RegExp(`^\\s*${stop}: ([^;]+);`, 'gm'))].map((m) => m[1]!.trim())
+      expect(values, stop).toHaveLength(2)
+      expect(values[0]).toBe(values[1])
+    }
+  })
 })

@@ -4,6 +4,7 @@ import { useState } from 'react'
 
 import { Card } from '@/components/ui/Card'
 import { type Column, DataTable } from '@/components/ui/DataTable'
+import { ChatGlyph, CheckCircleGlyph, InboxGlyph, PercentGlyph, TargetGlyph } from '@/components/ui/Icons'
 import { SectionHeader, StatTile } from '@/components/ui/Stat'
 import { formatDateTime, formatNumber } from '@/lib/format'
 import { PRODUCT_LABEL, PRODUCT_TONE } from '@/features/target/targetTheme'
@@ -79,13 +80,18 @@ function Tiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; sta
           value={t?.registration.leads ?? null}
           unit="count"
           hint={t ? `barcha manbalar · ${formatNumber(t.registration.success)} kval` : undefined}
+          icon={InboxGlyph}
         />
+        {/* No spark: `ads` is form + page channel outcomes while `forms.days`
+            is built from the owners' rows — not verified to be the same
+            population, so nothing is summed. */}
         <StatTile
           status={status}
           label="Reklama lidlari"
           value={t?.ads.leads ?? null}
           unit="count"
           hint={t ? `lid-forma + reklama sahifalari · ${formatNumber(t.ads.success)} kval` : undefined}
+          icon={TargetGlyph}
         />
         <StatTile
           status={status}
@@ -93,6 +99,7 @@ function Tiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; sta
           value={t?.ads.successPercent ?? null}
           unit="percent"
           hint="«Сделка успешна» ÷ reklama lidlari"
+          icon={PercentGlyph}
         />
         <StatTile
           status={status}
@@ -100,6 +107,11 @@ function Tiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; sta
           value={t?.conversations ?? null}
           unit="count"
           hint="«ИИ обработка» — Instagramga yozgan har bir odam"
+          icon={ChatGlyph}
+          /* dm.days is summed over the same pages as totals.conversations
+             (leadSourcesService), so the shape is the tile's own days. */
+          spark={data && data.dm.days.length > 1 ? data.dm.days.map((d) => d.conversations) : undefined}
+          sparkLabel="Kunlik DM murojaatlar"
         />
         <StatTile
           status={status}
@@ -110,6 +122,7 @@ function Tiles({ data, status }: { data: LeadSourcesOverviewDto | undefined; sta
           hint={
             t ? `Meta ${formatNumber(t.metaFormLeads)} liddan Bitrix24 ga ${formatNumber(t.formLeads)} tasi tushgan` : undefined
           }
+          icon={CheckCircleGlyph}
         />
       </div>
       {data?.importedAt && (

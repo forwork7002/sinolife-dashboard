@@ -14,6 +14,14 @@ import {
 } from 'recharts'
 
 import { ChartTooltipPanel } from '@/components/charts/chartTooltip'
+import {
+  BAR_RADIUS,
+  type BarSeriesSlot,
+  SeriesGradientDefs,
+  seriesColour,
+  seriesGradientFill,
+  useSeriesGradientPrefix,
+} from '@/components/charts/SeriesGradientDefs'
 import { formatCompactUzs } from '@/lib/format'
 import { useReducedMotion } from '@/lib/useReducedMotion'
 import type { MarketingDayDto } from './marketingApi'
@@ -61,6 +69,8 @@ import { TriangleGlyph } from '@/components/ui/Icons'
 /** The plot geometry both panels must agree on, or the axis is not shared. */
 const AXIS_WIDTH = 62
 const MARGIN = { top: 8, right: 12, left: 0, bottom: 0 } as const
+/** Spend's slot — the Bar's own comment says why it is 2. */
+const SPEND_SLOT: BarSeriesSlot = 2
 
 export function MarketingDynamics({
   days,
@@ -75,6 +85,7 @@ export function MarketingDynamics({
   readonly dailyFrom: string
 }) {
   const reducedMotion = useReducedMotion()
+  const gradient = useSeriesGradientPrefix()
 
   const points = days.map((day) => ({
     date: day.date,
@@ -132,6 +143,7 @@ export function MarketingDynamics({
       <div style={{ width: '100%', height: 176 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={plotted} margin={MARGIN}>
+            <SeriesGradientDefs prefix={gradient} slots={[SPEND_SLOT]} />
             <CartesianGrid vertical={false} stroke="var(--grid)" strokeDasharray="0" />
             {/* The axis exists (it is what positions the bars) but prints
                 nothing: the lower panel carries the dates for both. */}
@@ -158,9 +170,11 @@ export function MarketingDynamics({
               // draws REVENUE in series-1, the slot revenue holds on every
               // other screen, so spend takes the next slot and each hue means
               // one measure on this page. Radius only on the top corners —
-              // a bar sits ON the baseline.
-              fill="var(--series-2)"
-              radius={[3, 3, 0, 0]}
+              // a bar sits ON the baseline — and the fill is the shared
+              // lit-from-above gradient in this slot's own hue
+              // (SeriesGradientDefs).
+              fill={seriesGradientFill(gradient, SPEND_SLOT)}
+              radius={BAR_RADIUS}
               maxBarSize={16}
               isAnimationActive={!reducedMotion}
               animationDuration={520}
@@ -348,7 +362,7 @@ function DynamicsTooltip({
       header={dayLabel(point.date)}
       rows={[
         {
-          swatch: 'var(--series-2)',
+          swatch: seriesColour(SPEND_SLOT),
           label: 'Xarajat',
           value: moneyFromUsd(point.spendUsd, mode, rate, 'unit'),
         },

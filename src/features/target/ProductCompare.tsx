@@ -37,7 +37,7 @@ export function ProductCompare({
 }) {
   if (status === 'loading' || !meta) {
     return (
-      <section className="card-hero px-5 py-5 sm:px-6" aria-busy="true">
+      <section className="card-hero card-hero--navy px-5 py-5 sm:px-6" aria-busy="true">
         <div className="skeleton h-[38px] w-60" role="status">
           <span className="sr-only">Yuklanmoqda</span>
         </div>
@@ -56,7 +56,7 @@ export function ProductCompare({
 
   return (
     <section
-      className="card-hero brackets reveal px-5 py-5 sm:px-6"
+      className="card-hero card-hero--navy brackets reveal px-5 py-5 sm:px-6"
       aria-label="Collagen va Zextra"
     >
       <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">

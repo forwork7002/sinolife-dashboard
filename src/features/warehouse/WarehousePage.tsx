@@ -157,7 +157,7 @@ export function WarehousePage() {
         them as the number this rate deliberately leaves out. The tiles below
         stay subordinate: they are volume and money, not the verdict.
       */}
-      <section className="card-hero brackets reveal px-5 py-5 sm:px-6" aria-label="Yetkazish darajasi">
+      <section className="card-hero card-hero--navy brackets reveal px-5 py-5 sm:px-6" aria-label="Yetkazish darajasi">
         {query.isError ? (
           <ErrorState
             message={(query.error as Error).message}

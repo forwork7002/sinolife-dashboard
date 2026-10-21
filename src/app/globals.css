@@ -92,7 +92,11 @@
    * dark mode ink flips to near-white, so the very same mix becomes the
    * white-alpha gradient (18% → 8%) that Linear paints its raised cards with,
    * in the same family as --edge-highlight's 8% white. No dark-mode override
-   * to forget, no way for the two themes to drift apart.
+   * to forget, no way for the two themes to drift apart. The one place that
+   * re-binds ink for itself — .card-hero--navy, navy in both themes — restates
+   * these two stops, because a var() in a custom property resolves where it
+   * is declared, and :root's ink is not the hero's (see THE HERO'S OWN
+   * PALETTE below).
    */
   --edge-hero-top: color-mix(in oklab, var(--ink-primary) 18%, transparent);
   --edge-hero-bottom: color-mix(in oklab, var(--ink-primary) 8%, transparent);
@@ -611,6 +615,111 @@
   --glow-hero-mix: 40%;
   --card-sheen: 5%;
   --line-glow: drop-shadow(0 0 6px rgba(80, 140, 255, 0.55));
+}
+
+/**
+ * THE HERO'S OWN PALETTE — the FIGURE hero is navy in BOTH themes (2026-09-28).
+ *
+ * The client's reference boards keep the «Balance» card deep navy with white
+ * ink on the light lavender page. Rather than a second set of hero rules, the
+ * card re-binds the theme tokens for its own subtree to the dark values, so
+ * every token-reading descendant — figures, rings, meters, Recharts axes,
+ * grid, cursor and tooltip (portalled INTO .recharts-wrapper, so it inherits),
+ * skeletons, chips, controls — follows with no component change. In dark mode
+ * every line here is a no-op (same values); in light mode it is the hero.
+ *
+ * OPT-IN, by `.card-hero--navy` beside `.card-hero`, never by the bare class.
+ * The reference is ONE figure card, and the eight heroes that are one — KPI,
+ * Marja, Logistika, Oylik, Yetkazish, Marketing, Savdo, Collagen/Zextra —
+ * wear the modifier. Three more panels wear `.card-hero` for its rim and
+ * brackets and are full-height TABLES: the confirmation queue (746px, to the
+ * bottom of the window), the users table (the only thing on that page) and
+ * the cohort matrix. Keyed on the bare class, the light theme on those pages
+ * was three-quarters navy — a dark screen for a reader who chose light — and
+ * a table is not what the reference paints navy.
+ *
+ * WHY THE VALUES ARE WRITTEN OUT A THIRD TIME. CSS has no mixin, and the
+ * forced-dark block cannot lend its declarations to a class (adding
+ * `.card-hero--navy` to its selector would drag the hero into print). The
+ * duplication is pinned instead: `tests/features/theme.test.ts` reads this
+ * block against `:root[data-theme="dark"]` and fails on any value that
+ * drifts, or any dark token missing here. Board chrome (--medal-*, --emal-*,
+ * --bi-*, --px*) is deliberately absent — no board chrome ever sits in a
+ * hero, and those families are counted by their own tests.
+ *
+ * `@media screen`: print inherits :root as before — a navy block with white
+ * ink is invisible on paper with background graphics off, every browser's
+ * default.
+ *
+ * `--edge-hero-*` are restated here on purpose. A var() inside a custom
+ * property is substituted where the property is DECLARED, so :root's copy
+ * carries :root's ink (near-black in light) and would paint a 1.01:1
+ * hairline on the navy card; declared on the hero they mix from the hero's
+ * own white ink — 1.70:1, the hairline dark mode already has.
+ *
+ * `--accent` is NOT re-bound and cannot be: PageShell writes it inline per
+ * page, already resolved to the light slot's hex. The bloom, the figure glow
+ * and the focus ring therefore use the light accent on the navy card — every
+ * eligible slot measures ≥ 3.48:1 against #121a38 (ring) and leaves
+ * --ink-muted ≥ 4.53:1 on the bloom's peak.
+ */
+@media screen {
+  .card-hero--navy {
+    color-scheme: dark;
+
+    --page: #070b1c;
+    --surface: #0c1229;
+    --surface-raised: #121a38;
+    --surface-sunken: #080d20;
+    --ink-primary: #f2f5ff;
+    --ink-secondary: #aab4d4;
+    --ink-muted: #8f9bc4;
+    --grid: #1d2649;
+    --track: #2a3563;
+    --axis: #34406e;
+    --border: rgba(122, 150, 255, 0.16);
+    --border-strong: rgba(122, 150, 255, 0.30);
+
+    --edge-highlight: inset 0 1px 0 rgba(150, 180, 255, 0.13);
+    --kbd-edge: inset 0 -1px 0 rgba(0, 0, 0, 0.55);
+    --edge-hero-top: color-mix(in oklab, var(--ink-primary) 18%, transparent);
+    --edge-hero-bottom: color-mix(in oklab, var(--ink-primary) 8%, transparent);
+
+    --series-1: #4f8bff;
+    --series-2: #d8591e;
+    --series-3: #22c7cf;
+    --series-4: #bd8a1c;
+    --series-5: #f6458d;
+    --series-6: #55841d;
+    --series-7: #9a6bff;
+    --series-8: #ec3934;
+
+    --seq-250: #1c43c4;
+    --seq-350: #3462e4;
+    --seq-450: #5081ff;
+    --seq-550: #7ca4ff;
+    --seq-650: #a8c4ff;
+
+    --status-good: #2fb862;
+    --status-warning: #d9a01c;
+    --status-serious: #f0762e;
+    --status-critical: #f0524e;
+
+    --delta-up: #2fb862;
+    --delta-down: #f56b62;
+
+    --shadow-card: 0 1px 2px rgba(2, 5, 20, 0.55), 0 8px 24px -12px rgba(40, 80, 220, 0.25);
+    --shadow-raised: 0 1px 2px rgba(2, 5, 20, 0.55), 0 12px 32px -10px rgba(40, 80, 220, 0.35);
+    --shadow-float: 0 2px 4px rgba(0, 0, 0, 0.5), 0 20px 44px -12px rgba(0, 0, 0, 0.8);
+
+    --shadow-ambient: 0 0 15px rgba(0, 0, 0, 0.35), 0 0 3px rgba(0, 0, 0, 0.5);
+    --atmos-mix-accent: 22%;
+    --atmos-mix-violet: 18%;
+    --grain-alpha: 0.04;
+    --glow-hero-mix: 40%;
+    --card-sheen: 5%;
+    --line-glow: drop-shadow(0 0 6px rgba(80, 140, 255, 0.55));
+  }
 }
 
 /**
@@ -1201,6 +1310,14 @@ body::after {
   }
 }
 
+/* The hero's backlight and the figure glow are the same kind of wash. */
+@media (prefers-contrast: more) {
+  .card-hero {
+    --atmos-mix-accent: 0%;
+    --glow-hero-mix: 0%;
+  }
+}
+
 /* ===========================================================================
  * SURFACE PRIMITIVES
  * ======================================================================== */
@@ -1243,6 +1360,10 @@ body::after {
  * gradient clipped to the border box, and a transparent 1px border between
  * them leaving exactly that much of the gradient visible. The stops are
  * --edge-hero-*, which flip with the theme by construction — see the token.
+ * With `.card-hero--navy` beside it the card is NAVY IN BOTH THEMES (since
+ * 2026-09-28): its theme tokens are re-bound on the element in DESIGN TOKENS
+ * («THE HERO'S OWN PALETTE»), which is also where the two stops are restated
+ * for the hero's own ink, and which says why the modifier is opt-in.
  *
  * Declared after .card ON PURPOSE: a call site may stack the two classes,
  * and source order is what lets this one win every property they share.
@@ -2245,14 +2366,27 @@ tr:hover > .tcol-sticky:not(.is-edge) {
 }
 
 /* Headings break evenly instead of orphaning one word; body copy avoids
-   single-word last lines. One line of CSS each — free typography. */
-h1,
-h2 {
-  text-wrap: balance;
-}
+   single-word last lines. One line of CSS each — free typography.
 
-p {
-  text-wrap: pretty;
+   IN `@layer base`, for the reason the border-color rule above gives.
+   Unlayered, `p { text-wrap }` outranked every Tailwind utility — and the
+   shorthand also sets `text-wrap-mode: wrap`, which is the longhand
+   `.truncate`'s `white-space: nowrap` sets the other way. So from the day
+   this rule landed (2026-08-26) no `<p class="truncate">` ever stopped
+   wrapping: it wrapped AND clipped, and the ellipsis fell mid-word on the
+   first line. Invisible while every label fit; found 2026-09-28 when the
+   stat tile's chip narrowed its label column and «Tasdiqlangandan keyin
+   bekor» came out as «Tasdiqlangand…» over «keyin bekor», with the figures
+   of one band at two heights. Layered, a utility wins again. */
+@layer base {
+  h1,
+  h2 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
 }
 
 
@@ -5119,6 +5253,68 @@ p {
   }
   .org-badge-you,
   .org-tag--head {
+    border: 1px solid CanvasText;
+  }
+}
+
+/* ===========================================================================
+ * STAT TILE — koʻk chip
+ *
+ * The icon chip on a KPI tile (StatTile `icon`). CHROME, deliberately: it
+ * wears the page accent so a band reads as one screen's, and it is the SAME
+ * on every tile of a band — which is what keeps it from being read as the
+ * tile's data colour; that stays with the `accent` dot and the series
+ * tokens. Mixed from `var(--accent)` AT THE ELEMENT, never via
+ * --accent-soft / --accent-ink: those are declared on :root, where var() has
+ * already resolved to series-1, so every page's chip would come out blue
+ * (the atmosphere token's own note, and .card-hero's reason for mixing in
+ * place; PageShell sets only --accent on its subtree).
+ *
+ * A tint, not a solid block — measured 2026-09-28: a white glyph on the
+ * bare accent fails on the dark cyan slot (2.07:1) and a darkened accent
+ * vanishes into the navy card (1.4–3.1:1 in dark), while the accent mixed
+ * 88% with ink, on a 22% tint of itself over the card, clears 3:1 for all
+ * seven slots in both themes (worst: light series-4 3.04, dark series-6
+ * 3.72). The gradient STARTS at the 22% stop and only fades, so the glyph
+ * never sits on anything more saturated than what was measured. Lit from
+ * the top by the card's own --edge-highlight, so chip and card catch the
+ * same light. No filter, no backdrop: a band draws six of these.
+ * ======================================================================== */
+.stat-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  /* 8px is a literal on purpose: the house radii (--radius-panel-*) are
+     12/16/20 — panel sizes — and Tailwind's own scale is not redeclared. */
+  border-radius: 8px;
+  color: color-mix(in oklab, var(--accent) 88%, var(--ink-primary));
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--accent) 22%, transparent),
+    color-mix(in oklab, var(--accent) 10%, transparent)
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, var(--accent) 28%, transparent),
+    var(--edge-highlight);
+}
+
+/* ONE stroke weight in a band. Five of the chips reuse the confirmation
+   marks (tick, cross, clock, arrow, bars), drawn at `mark` weight — 2 — to
+   carry meaning at 12px in the queue; beside the 1.7 chip silhouettes they
+   read heavier, and 14px does not even it out because both weights are
+   literal device pixels (non-scaling-stroke). The property beats the
+   presentation attribute, so the marks keep their weight everywhere else. */
+.stat-chip [stroke] {
+  stroke-width: 1.7;
+}
+
+/* Forced colours discard the tint and the inset ring, leaving a glyph
+   floating in nothing. CanvasText border, as every other chip in this file. */
+@media (forced-colors: active) {
+  .stat-chip {
     border: 1px solid CanvasText;
   }
 }
