@@ -51,8 +51,21 @@ describe('figureText', () => {
   it('keeps the grid’s rounding: a count whole, dollars and rates to one decimal', () => {
     expect(figureText(16.67, 'count')).toBe('17')
     expect(figureText(1234.56, 'usd')).toBe('$1.234,6')
-    expect(formatUsd(2.25)).toBe('$2,3')
+    expect(figureText(20.9157, 'usd')).toBe('$20,9')
     expect(figureText(33.333, 'percent')).toMatch(/^33,3/)
+  })
+
+  it('writes a price under $10 to the cent, as the sheet does (2026-10-02)', () => {
+    // A 0,77 fact and its 0,80 plan both read «$0,8» to one decimal; the index between them did not.
+    expect(formatUsd(0.77)).toBe('$0,77')
+    expect(formatUsd(0.8)).toBe('$0,80')
+    expect(formatUsd(2.25)).toBe('$2,25')
+    expect(formatUsd(1.2378)).toBe('$1,24')
+    expect(figureText(0.97, 'usd')).toBe('$0,97')
+    // The cent that rounds up to $10 is past the line; nothing is «$0,00».
+    expect(formatUsd(9.996)).toBe('$10')
+    expect(formatUsd(0)).toBe('$0')
+    expect(formatUsd(0.004)).toBe('$0')
   })
 })
 
@@ -76,5 +89,11 @@ describe('contentMinWidths', () => {
     expect(widths.index).toBeGreaterThan(measure('1.666,7%') + 24)
     // A kind with no figure anywhere says nothing (the default stands).
     expect(widths.forecast).toBeUndefined()
+  })
+
+  it('measures a plan in its own unit — a share over a soʻm row (`planUnit`)', () => {
+    const widths = contentMinWidths([block([row({ key: 'pj:collagen:fakt2', label: 'Сумма факт2 (успешка)', unit: 'uzs', plan: 80.61, planUnit: 'percent' })])], measure)
+    // «80,6%», not the soʻm «81».
+    expect(widths.plan).toBe('80,6%'.length * 8 + 24 + 4)
   })
 })

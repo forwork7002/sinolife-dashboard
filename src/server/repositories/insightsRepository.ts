@@ -1990,9 +1990,11 @@ export class InsightsRepository {
    * what tells a reader how current «Bugun» is: CALLS arrives on the
    * three-hourly reference pass, not on the two-minute tick.
    *
-   * DIRECTION IS NOT AN ARM. `voximplant.statistic.get` reports the LEG, not
-   * the intent — 338 467 inbound against 27 833 outbound on a floor whose job
-   * is ringing customers. A split by direction reads backwards.
+   * DIRECTION IS NOT AN ARM. The 338 467 «inbound» against 27 833 «outbound»
+   * once read here was the import reading Bitrix24's CALL_TYPE backwards (1 is
+   * outgoing — the floor ringing customers); `callDirection` follows the docs
+   * since 2026-10-02, but rows written before keep the old label until a CALLS
+   * pass re-reads them, so a split by direction would still mislead.
    *
    * NO SCOPE AND NO CURRENCY. `customers` is COMPANY_WIDE and the route asks
    * for `analytics:read:all`, so there is no `restrictToEmployeeIds` to thread;

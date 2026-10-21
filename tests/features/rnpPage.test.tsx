@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { RnpLine, RnpOverviewDto, RnpRowDto } from '@/features/rnp/rnpApi'
+import { t } from '@/lib/messages'
 
 /**
  * «RNP jadvali» — the page is the client's sheet and nothing else.
@@ -130,6 +131,11 @@ let posted: unknown[] = []
 let postedTo: string[] = []
 /** How many times the sheet was read — a save must read it again. */
 let reads = 0
+/** The month each read asked for. */
+let readMonths: (string | null)[] = []
+
+/** The month it is in Tashkent as the test runs — what the page opens on. */
+const CURRENT = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Tashkent', year: 'numeric', month: '2-digit' }).format(new Date()).slice(0, 7)
 
 beforeEach(() => {
   window.history.replaceState(null, '', '/rnp')
@@ -137,13 +143,17 @@ beforeEach(() => {
   posted = []
   postedTo = []
   reads = 0
+  readMonths = []
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === 'POST') {
         posted.push(JSON.parse(String(init.body)))
         postedTo.push(url)
-      } else reads += 1
+      } else {
+        reads += 1
+        readMonths.push(new URL(url, 'http://x').searchParams.get('month'))
+      }
       return {
         ok: true,
         status: 200,
@@ -169,6 +179,16 @@ async function draw() {
     </QueryClientProvider>,
   )
   await waitFor(() => expect(screen.getByRole('region', { name: 'RNP jadvali' })).toBeTruthy())
+  return client
+}
+
+/** The sheet read again, as the minute's poll does. */
+async function poll(client: QueryClient) {
+  await act(async () => {
+    await client.refetchQueries({ queryKey: ['rnp-overview'] })
+    // TanStack hands the result to React on its next tick: let it land before the test goes on.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
 }
 
 function labels(): string[] {
@@ -267,6 +287,129 @@ describe('RnpPage — the sheet', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Qayta urinish' })).toBeTruthy())
   })
 
+  it('keeps the sheet when a background read fails — the error card is only for no sheet at all (2026-10-02)', async () => {
+    const client = await draw()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 502, json: async () => ({ error: { code: 'INTERNAL_ERROR', message: 'Server xatosi' } }) })),
+    )
+    await poll(client)
+    expect(screen.getByRole('region', { name: 'RNP jadvali' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Qayta urinish' })).toBeNull()
+  })
+
+  it('says under the title what is typed here, not that everything is collected', () => {
+    expect(t.modules.rnp.lead).toContain('Raqamlar Bitrix24 va Meta Ads dan oʻzi yigʻiladi')
+    expect(t.modules.rnp.lead).toContain('rejalar, P&L xarajatlari va «Ходим сони» shu jadvalda kiritiladi')
+    expect(t.modules.rnp.lead).not.toContain('Hammasi')
+  })
+
+  describe('the month (2026-10-02)', () => {
+    const box = () => within(screen.getByTestId('page-toolbar')).getByLabelText('Oy') as HTMLInputElement
+
+    it('requests only a whole month the sheet can show, and keeps a half-typed one in the box', async () => {
+      await draw()
+      expect(box().min).toBe('2025-01')
+      expect(box().max).toBe(CURRENT)
+      expect(readMonths).toEqual([CURRENT])
+      // A year typed digit by digit, a future month, one before the floor: nothing is read.
+      for (const v of ['0002-10', '0202-10', '2099-01', '2024-12']) {
+        act(() => fireEvent.change(box(), { target: { value: v } }))
+        expect(box().value).toBe(v)
+      }
+      expect(readMonths).toEqual([CURRENT])
+      expect(window.location.search).toBe('')
+      // Left half-typed, the box shows the month on screen again.
+      act(() => fireEvent.blur(box()))
+      expect(box().value).toBe(CURRENT)
+    })
+
+    it('keeps a picked month in the URL, and strips it for the current one', async () => {
+      window.history.replaceState(null, '', '/rnp?rop=Sevinch')
+      await draw()
+      act(() => fireEvent.change(box(), { target: { value: '2025-06' } }))
+      await waitFor(() => expect(readMonths).toContain('2025-06'))
+      expect(new URLSearchParams(window.location.search).get('month')).toBe('2025-06')
+      // The ROP cut rides along untouched.
+      expect(new URLSearchParams(window.location.search).get('rop')).toBe('Sevinch')
+      act(() => fireEvent.change(box(), { target: { value: CURRENT } }))
+      expect(new URLSearchParams(window.location.search).get('month')).toBeNull()
+      expect(box().value).toBe(CURRENT)
+    })
+
+    it('opens on the URL’s month when the sheet can show it, else on the current one', async () => {
+      window.history.replaceState(null, '', '/rnp?month=2025-06')
+      await draw()
+      expect(readMonths).toEqual(['2025-06'])
+      expect(box().value).toBe('2025-06')
+      cleanup()
+      for (const stale of ['2099-01', '2024-12', 'abc']) {
+        window.history.replaceState(null, '', `/rnp?month=${stale}`)
+        readMonths = []
+        await draw()
+        expect(readMonths).toEqual([CURRENT])
+        cleanup()
+      }
+    })
+  })
+
+  describe('the ROP list (2026-10-02)', () => {
+    const lg = (team: string, sub: string, key: string): RnpLine => ({ kind: 'value', row: null, team, label: 'Логистика  Сумма факт1', sub, tone: 'section', fact: 'plain', bold: true, key })
+    const ordered: RnpOverviewDto = {
+      ...FIXTURE,
+      lines: [
+        ...FIXTURE.lines.slice(0, 4),
+        { kind: 'value', row: 157, team: 'Charos', label: 'Дозвон сони', sub: null, tone: 'plain', fact: 'plain', bold: false, key: 'team:Charos:reach' },
+        ...FIXTURE.lines.slice(4),
+        lg('Shohjaxon', 'Шохжахон РОП', 'lg:Shohjaxon:fakt1'),
+      ],
+    }
+
+    it('lists the teams in the sheet’s order, a team with only logistics lines too, under its column-B name', async () => {
+      fixture = ordered
+      await draw()
+      const select = within(screen.getByTestId('page-toolbar')).getByLabelText('ROP') as HTMLSelectElement
+      expect([...select.options].map((o) => o.textContent)).toEqual(['Barchasi', 'Charos', 'Sevinch', 'Шохжахон РОП'])
+      act(() => fireEvent.change(select, { target: { value: 'Shohjaxon' } }))
+      await waitFor(() => expect(labels()).toHaveLength(2))
+      expect(labels()[0]).toContain('Логистика — Шохжахон РОП')
+    })
+
+    it('keeps a link’s ROP that this month has no lines for, and shows the whole sheet', async () => {
+      window.history.replaceState(null, '', '/rnp?rop=Ghost')
+      await draw()
+      expect((within(screen.getByTestId('page-toolbar')).getByLabelText('ROP') as HTMLSelectElement).value).toBe('')
+      expect(labels()).toHaveLength(6)
+      expect(window.location.search).toBe('?rop=Ghost')
+    })
+  })
+
+  describe('«Bugun» (2026-10-02)', () => {
+    it('is a button on a month that has today, and brings today’s column beside the frozen block', async () => {
+      await draw()
+      const grid = screen.getByRole('region', { name: 'RNP jadvali' })
+      let left = 0
+      Object.defineProperty(grid, 'scrollLeft', { configurable: true, get: () => left, set: (v: number) => void (left = v) })
+      const today = within(grid).getAllByRole('columnheader').find((th) => th.getAttribute('aria-current') === 'date')!
+      const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        return { left: this === today ? 900 : 0, width: 0, height: 0 } as DOMRect
+      })
+      const button = within(screen.getByTestId('page-toolbar')).getByRole('button', { name: 'Bugun: 02.09.2026' })
+      expect(button.title).toBe('Bugungi kunga oʻtish')
+      act(() => fireEvent.click(button))
+      expect(grid.scrollLeft).toBe(900)
+      rect.mockRestore()
+    })
+
+    it('stays a plain fact on a month without today', async () => {
+      fixture = { ...FIXTURE, today: '2026-10-02' }
+      await draw()
+      const toolbar = screen.getByTestId('page-toolbar')
+      expect(within(toolbar).queryByRole('button', { name: /Bugun/ })).toBeNull()
+      expect(toolbar.textContent).toContain('Bugun:02.10.2026')
+    })
+  })
+
   describe('typed P&L costs', () => {
     const costRow = (days: (number | null)[]) =>
       row({
@@ -331,6 +474,37 @@ describe('RnpPage — the sheet', () => {
       expect(posted[0]).toEqual({ month: '2026-09', cells: [{ day: '2026-09-01', project: 'Collagen', line: 'bloggers', value: null }] })
     })
 
+    it('lets an untouched field take another save that arrives while it has focus, and sends nothing (2026-10-02)', async () => {
+      fixture = withCosts(true)
+      const client = await draw()
+      // Focused, nothing typed — empty, and one with a figure.
+      fireEvent.focus(field('02.09'))
+      fixture = withCosts(true, [2_000_000, 700_000, null])
+      await poll(client)
+      await act(async () => {
+        fireEvent.blur(field('02.09'))
+      })
+      fireEvent.focus(field('01.09'))
+      await act(async () => {
+        fireEvent.blur(field('01.09'))
+      })
+      // Never the old figure (or an empty cell) written back over the other save.
+      expect(posted).toHaveLength(0)
+      expect(field('02.09').value).toBe('700.000')
+      expect(field('01.09').value).toBe('2.000.000')
+    })
+
+    it('rings the field that has focus', async () => {
+      fixture = withCosts(true)
+      await draw()
+      expect(field('02.09').style.boxShadow).toContain('var(--border-strong)')
+      fireEvent.focus(field('02.09'))
+      expect(field('02.09').style.boxShadow).toBe('inset 0 0 0 2px var(--accent)')
+      fireEvent.blur(field('02.09'))
+      await act(async () => {})
+      expect(field('02.09').style.boxShadow).toContain('var(--border-strong)')
+    })
+
     it('puts the figure back on Escape and sends nothing', async () => {
       fixture = withCosts(true)
       await draw()
@@ -347,7 +521,7 @@ describe('RnpPage — the sheet', () => {
       fixture = withCosts(true)
       await draw()
       fireEvent.focus(field('02.09'))
-      for (const typo of ['12.5', '1.2345', '-300', '12abc', '2000000000000']) {
+      for (const typo of ['12.5', '1.2345', '-300', '12abc', '2000000000000', '1.250 000']) {
         fireEvent.change(field('02.09'), { target: { value: typo } })
         fireEvent.keyDown(field('02.09'), { key: 'Enter' })
         const input = field('02.09')
@@ -355,14 +529,17 @@ describe('RnpPage — the sheet', () => {
         const message = document.getElementById(input.getAttribute('aria-describedby')!)!
         expect(message.getAttribute('role')).toBe('alert')
         expect(message.textContent).toMatch(/son|katta/)
+        // The cell globals.css lifts over the rows below while it holds a refusal.
+        expect(message.parentElement!.matches('td[data-cost-cell]')).toBe(true)
       }
       // Leaving the field does not send a typo either.
       fireEvent.blur(field('02.09'))
       await act(async () => {})
       expect(posted).toHaveLength(0)
-      // Thousands separated by dots (as the field shows them), spaces or commas are fine.
+      // Thousands under ONE separator — dots (as the field shows them), spaces or commas — are fine;
+      // a mix («1.250 000», in the list above) is a typo.
       fireEvent.focus(field('02.09'))
-      fireEvent.change(field('02.09'), { target: { value: '1.250 000' } })
+      fireEvent.change(field('02.09'), { target: { value: '1 250 000' } })
       expect(field('02.09').getAttribute('aria-invalid')).toBeNull()
       await act(async () => {
         fireEvent.keyDown(field('02.09'), { key: 'Enter' })
@@ -433,7 +610,8 @@ describe('RnpPage — the sheet', () => {
     it('types a plan the sheet types, with a decimal comma, and posts it to /rnp/plan', async () => {
       fixture = withPlans(true)
       await draw()
-      expect(plan().value).toBe('80')
+      // With its sign, like the figures beside it (2026-10-02).
+      expect(plan().value).toBe('80%')
       fireEvent.focus(plan())
       fireEvent.change(plan(), { target: { value: '82,5' } })
       await act(async () => {
@@ -442,6 +620,43 @@ describe('RnpPage — the sheet', () => {
       await waitFor(() => expect(posted).toHaveLength(1))
       expect(postedTo).toEqual(['/api/v1/rnp/plan'])
       expect(posted[0]).toEqual({ month: '2026-09', cells: [{ team: 'Lola', metric: 'plan_pct', value: 82.5 }] })
+    })
+
+    it('shows a dollar plan with its sign and takes one pasted from the client’s sheet, «16 000$» (2026-10-02)', async () => {
+      const usd: RnpOverviewDto = {
+        ...FIXTURE,
+        canEditPlans: true,
+        blocks: [
+          ...FIXTURE.blocks,
+          {
+            id: 'marketing',
+            kind: 'marketing',
+            title: 'Маркетинг',
+            subtitle: null,
+            team: null,
+            sheet: null,
+            rows: [row({ key: 'meta:collagen:budget', label: 'Бюджет Collagen', unit: 'usd', plan: 36_000, planInput: { team: '', metric: 'budget_collagen' } })],
+          },
+        ],
+        lines: [...FIXTURE.lines, { kind: 'value', row: 14, team: null, label: 'Бюджет Collagen', sub: null, tone: 'plain', fact: 'money', bold: false, key: 'meta:collagen:budget' }],
+      }
+      fixture = usd
+      await draw()
+      const budget = () => screen.getByRole('textbox', { name: 'Kompaniya · Бюджет Collagen — reja, $' }) as HTMLInputElement
+      expect(budget().value).toBe('$36.000')
+      // Tabbing through what the field shows sends nothing.
+      fireEvent.focus(budget())
+      await act(async () => {
+        fireEvent.blur(budget())
+      })
+      expect(posted).toHaveLength(0)
+      fireEvent.focus(budget())
+      fireEvent.change(budget(), { target: { value: '16 000$' } })
+      await act(async () => {
+        fireEvent.keyDown(budget(), { key: 'Enter' })
+      })
+      await waitFor(() => expect(posted).toHaveLength(1))
+      expect(posted[0]).toEqual({ month: '2026-09', cells: [{ team: '', metric: 'budget_collagen', value: 16_000 }] })
     })
 
     it('leaves a plan the sheet computes as a figure, and every plan read-only without kpi:manage', async () => {

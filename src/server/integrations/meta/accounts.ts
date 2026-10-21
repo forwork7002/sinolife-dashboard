@@ -14,7 +14,9 @@
  * Read at query time, never stored: correcting a row here corrects history
  * without a re-import. An account missing from this list is still counted —
  * under «Boshqa», by its own name — so a new account cannot silently vanish
- * from the spend total.
+ * from the spend total. The product budgets are another matter: RNP's and
+ * «Lidlar»'s count only Collagen and Zextra (`adBudgetProduct`), so a new
+ * product account reaches them only once it is mapped here.
  *
  * The sheet also has columns no account behind this token covers: Аббос
  * (Zextra), Sobirjon's July Collagen spend, «Organic» and «Telegram».
@@ -61,10 +63,15 @@ export const META_ACCOUNT_OWNERS: Readonly<Record<string, MetaAccountOwner>> = O
   '1766424904604300': { product: 'Zextra', targetolog: 'Umar' }, // Umar (Zextra)
   /*
     The client's own AI targetolog (2026-09-25: «collagen ai targetolog men bir
-    ai targetolog yaratdim … hali uni ishlatmadim») — not running yet, so it
-    spends nothing; named now so its first dollar lands on its own row.
+    ai targetolog yaratdim … hali uni ishlatmadim»). Its account is
+    1052133867828964 «Collagen AI Targetolog» (AI BM) — spending since 29.09
+    on «Sinolife | Collagen | Barter blogger …»; unmapped, it was «Boshqa» and
+    the RNP sheet's Collagen budget left it out (2026-10-02). The id first
+    mapped here is the client's spare Collagen account, which Meta now names
+    «Zapas Collagen»; it has not spent since 01.09, and stays Collagen.
   */
-  '4016900891780426': { product: 'Collagen', targetolog: 'AI targetolog' }, // Collagen AI targetolog
+  '1052133867828964': { product: 'Collagen', targetolog: 'AI targetolog' }, // Collagen AI Targetolog
+  '4016900891780426': { product: 'Collagen', targetolog: 'AI targetolog' }, // Zapas Collagen
   /*
     Eldor's two accounts outside Collagen and Zextra, asked for on 2026-09-28
     («HR Eldor … kosmetika eldor shu larni tortaan … hr jadvalcha»). Neither
@@ -94,9 +101,10 @@ export function ownerOf(accountId: string, accountName: string): MetaAccountOwne
  *            142.7 / 231.7 / 184.7 / 159.0 $ — within Meta's own later
  *            revisions of a day.
  *   hiring — a DM campaign that recruits staff, not customers
- *            («EX - Sinolife (vakansiya) - DM»). On neither sheet; that one
- *            campaign is exactly the gap between Meta's DM total and the
- *            sheet's on 01.08 (7.4 $).
+ *            («EX - Sinolife (vakansiya) - DM», and since 19.09 «EX - TOF -
+ *            Vacancy - 19.09» on Collagen Eldor, named in English). On
+ *            neither sheet; the first is exactly the gap between Meta's DM
+ *            total and the sheet's on 01.08 (7.4 $).
  *   other  — traffic, awareness, sales objectives: on neither sheet, still
  *            counted in the grand total so no dollar vanishes.
  *
@@ -105,7 +113,7 @@ export function ownerOf(accountId: string, accountName: string): MetaAccountOwne
  */
 export type CampaignChannel = 'form' | 'dm' | 'hiring' | 'other'
 
-const HIRING = /vakans|вакан|ishga\s+olish|\bhr\b/i
+const HIRING = /vakans|vacanc|вакан|ishga\s+olish|\bhr\b/i
 
 /** Accounts that only ever recruit — every campaign on them is hiring, whatever its name. */
 const HIRING_ACCOUNTS: ReadonlySet<string> = new Set(['1657709689205277']) // HR Eldor
@@ -154,9 +162,10 @@ export const DM_PAGE_OF_PRODUCT: Readonly<Record<TargetProduct, string>> = Objec
  * The narrow columns set beside the ad sheets — the client's own side table
  * («Сентябрь 269,0$ / Навой HR», one row a day). Checked 2026-09-28: the
  * sheet's «Навой HR» 02–18.09 is «EX - Sinolife (vakansiya) - DM - 23.04» on
- * Sinolife family Eldor to within a dollar a day (169,7 $ both); 21–26.09
- * (100 $) is on no account the Meta MCP could read that day — HR Eldor had
- * never spent.
+ * Sinolife family Eldor to within a dollar a day (169,7 $ both). Its 21–26.09
+ * (100 $) is «EX - TOF - Vacancy - 19.09» and its «— Копия» on Collagen
+ * Eldor (103,38 $ those days, found 2026-10-02): `HIRING` missed the English
+ * spelling, so they were counted as Collagen's budget instead.
  *
  *   hr        — every hiring campaign on any account (`campaignChannel`).
  *   kosmetika — Kosmetika Eldor's other campaigns; its «Vakansiya» ones are HR.

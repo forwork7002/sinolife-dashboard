@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { CALL_DATA_FLOOR } from '@/lib/callQuality'
 import {
   CALLS_RELIABLE_FROM,
+  RNP_PLAN_METRICS,
   type RnpFaktDay,
   type RnpRowDto,
   type RnpSheetInput,
@@ -55,9 +56,9 @@ function input(over: Partial<RnpSheetInput> = {}): RnpSheetInput {
       fakt('2026-09-21', '(ROP yoʻq)', { fakt1Orders: 1, fakt1Minor: som(200_000) }),
     ],
     leads: [
-      { day: '2026-09-17', rop: 'Sevinch', registrar: null, leads: 4 },
-      { day: '2026-09-21', rop: 'Sevinch', registrar: null, leads: 3 },
-      { day: '2026-09-21', rop: null, registrar: null, leads: 1 },
+      { day: '2026-09-17', rop: 'Sevinch', leads: 4 },
+      { day: '2026-09-21', rop: 'Sevinch', leads: 3 },
+      { day: '2026-09-21', rop: null, leads: 1 },
     ],
     registration: [{ day: '2026-09-21', leads: 4, duplicates: 1, qualified: 2, aiConversations: 2 }],
     calls: [
@@ -85,7 +86,6 @@ function input(over: Partial<RnpSheetInput> = {}): RnpSheetInput {
       fakt: [{ rop: 'Sevinch', fakt1Minor: som(30_000_000), fakt2Minor: null }],
     },
     registrarKval: [],
-    registrarGroups: [],
     noRop: '(ROP yoʻq)',
     canEditPlans: false,
     ...over,
@@ -126,7 +126,7 @@ describe('buildRnpSheet — the forecast', () => {
     expect(reach.forecast).toBeCloseTo((reach.fact! / 14) * 30, 6)
   })
 
-  it('forecasts from the first day, and equals the fact once the month is over', () => {
+  it('forecasts from the first day, and equals the fact once the month is over — for a row trusted every day', () => {
     const first = buildRnpSheet(input({ today: '2026-09-01' }))
     const day1 = row(first, 'team:Sevinch', 'team:Sevinch:fakt1')
     expect(day1.forecast).toBe(day1.fact! * 30)
@@ -178,9 +178,11 @@ describe('buildRnpSheet — teams', () => {
     const isBase = new Map(dto.teams.map((t) => [t.rop, t.isBase]))
     expect(isBase.get('Sevinch')).toBe(false)
     expect(isBase.get('Charos')).toBe(true)
-    expect(dto.teams[0]!.rop).toBe('Sevinch') // the month's FAKT 1 leads the order
+    // The sheet's order, not the month's FAKT 1 (2026-10-02): Гулзора's block comes first though she sold nothing.
+    expect(dto.teams.slice(0, 3).map((t) => t.rop)).toEqual(['Gulzora', 'Sevinch', 'Lola'])
     const charos = block(dto, 'team:Charos')
-    expect(charos.title).toBe('Малика РОП – БАЗА')
+    // The sheet's own hyphen, as its rows 161 / 299 write it.
+    expect(charos.title).toBe('Малика РОП - БАЗА')
     expect(charos.subtitle).toBe('Charos(ROP) · Malika Rahmonova')
     const reach = charos.rows[0]!
     expect(reach.label).toMatch(/Дозвон/)
@@ -313,7 +315,7 @@ describe('buildRnpSheet — days the portal did not record whole', () => {
     const dto = buildRnpSheet({
       ...base,
       // 1–15.09: «РОП (Первичка)» on one lead in five, orders counted in full.
-      leads: [...base.leads, { day: '2026-09-05', rop: 'Sevinch', registrar: null, leads: 1 }],
+      leads: [...base.leads, { day: '2026-09-05', rop: 'Sevinch', leads: 1 }],
       fakt: [...base.fakt, fakt('2026-09-05', 'Sevinch', { fakt1Orders: 5, fakt1Minor: som(5_000_000) })],
     })
     const reach = row(dto, 'team:Sevinch', 'team:Sevinch:reach')
@@ -434,32 +436,35 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
         registration: [{ day: '2026-09-02', leads: 819, duplicates: 0, qualified: 150, aiConversations: 0 }],
         // «Сделка успешна» by its closing day — row 48 only, never the groups.
         registrarKval: [{ day: '2026-09-02', registrar: 'Фарангиз', qualified: 999 }],
-        // The leads handed to the ROPs that day, by the registrar on the deal.
+        // The leads handed to each ROP team that day.
         leads: [
-          { day: '2026-09-02', rop: 'Sevinch', registrar: 'Фарангиз', leads: 20 },
-          { day: '2026-09-02', rop: 'Aziz', registrar: 'Фарангиз', leads: 13 },
-          { day: '2026-09-02', rop: 'Lola', registrar: 'Назокат', leads: 25 },
-          { day: '2026-09-02', rop: 'Sevinch', registrar: 'Рухшона', leads: 17 },
-          { day: '2026-09-02', rop: 'Sevinch', registrar: 'Ситора', leads: 20 },
-          { day: '2026-09-02', rop: 'Saidaziz', registrar: 'Умида', leads: 40 },
-          { day: '2026-09-02', rop: 'Saidaziz', registrar: null, leads: 15 },
-          // Not handed to a ROP team (the Регистрация copy, the desk head): no group counts it.
-          { day: '2026-09-02', rop: null, registrar: 'Фарангиз', leads: 50 },
-        ],
-        registrarGroups: [
-          { registrar: 'Фарангиз', group: 'Sevinch' },
-          { registrar: 'Назокат', group: 'Sevinch' },
-          { registrar: 'Рухшона', group: 'Zextra' },
-          { registrar: 'Ситора', group: 'Zextra' },
+          { day: '2026-09-02', rop: 'Sevinch', leads: 57 },
+          { day: '2026-09-02', rop: 'Azizbek', leads: 13 },
+          { day: '2026-09-02', rop: 'Lola', leads: 25 },
+          { day: '2026-09-02', rop: 'Shohjaxon', leads: 6 },
+          // A БАЗА head's: counted, but in no group — the team is measured by calls.
+          { day: '2026-09-02', rop: 'Charos', leads: 2 },
+          // Not handed to a ROP team (the Регистрация copy, the desk head): no row counts it.
+          { day: '2026-09-02', rop: null, leads: 50 },
         ],
       }),
     )
 
-  it('counts a group\'s kval as the leads its registrars handed to the ROPs, by «Лид таркатилган сана»', () => {
+  it('counts a group\'s kval as the leads handed to the team it is named after — the series of its «Квал лид сони» (2026-10-02)', () => {
     const d = dto()
-    expect(on(row(d, 'registration', 'reg:group:Sevinch:qualified'), '2026-09-02')).toBe(58)
+    expect(on(row(d, 'registration', 'reg:group:Sevinch:qualified'), '2026-09-02')).toBe(57)
+    // «Aziz guruh» is Azizbek's team.
+    expect(on(row(d, 'registration', 'reg:group:Aziz:qualified'), '2026-09-02')).toBe(13)
+    expect(row(d, 'registration', 'reg:group:Lola:qualified').days).toEqual(row(d, 'team:Lola', 'team:Lola:reach').days)
     expect(on(row(d, 'registration', 'reg:qualified_collagen'), '2026-09-02')).toBe(999)
     expect(row(d, 'registration', 'reg:group:Sevinch:qualified').sheet).toEqual({ row: 51, label: 'Sevinch guruh — квал' })
+    expect(row(d, 'registration', 'reg:group:Sevinch:qualified').hint).toContain('Севинч РОП')
+  })
+
+  it('never dashes a group: a team handed nothing got 0, which is a measurement', () => {
+    const d = dto()
+    expect(on(row(d, 'registration', 'reg:group:Gulzora:qualified'), '2026-09-02')).toBe(0)
+    expect(row(d, 'registration', 'reg:group:Gulzora:qualified').fact).toBe(0)
   })
 
   it('has no Zextra desk any more: «Регистрация COLLAGEN» is every kval, and Asliddin / Sadriddin are groups', () => {
@@ -470,19 +475,18 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     expect(row(d, 'registration', 'reg:group:Sadriddin:qualified').sheet?.row).toBe(1012)
   })
 
-  it('keeps the leads of an unassigned registrar visible so the groups add up to «РОП ларга тарқатилди»', () => {
+  it('puts the leads of every team with no group row in «Boshqa jamoalar», so the rows add up to «РОП ларга тарқатилди»', () => {
     const d = dto()
-    // Умида (no group yet) 40 + a deal with no registrar 15 + Рухшона 17 and Ситора 20,
-    // whose «Zextra» desk the sheet no longer draws — until the form puts them in a group.
-    expect(on(row(d, 'registration', 'reg:group:none:qualified'), '2026-09-02')).toBe(92)
+    const others = row(d, 'registration', 'reg:group:none:qualified')
+    expect(others.label).toBe('Boshqa jamoalar — квал')
+    expect(on(others, '2026-09-02')).toBe(8)
+    // The hint names who is in it.
+    expect(others.hint).toContain('Шохжахон РОП')
+    expect(others.hint).toContain('Малика РОП - БАЗА')
     const groups = d.blocks.find((b) => b.id === 'registration')!.rows.filter((r) => r.key.startsWith('reg:group:'))
     const sum = groups.reduce((acc, r) => acc + (on(r, '2026-09-02') ?? 0), 0)
-    expect(sum).toBe(150)
-    expect(on(row(d, 'registration', 'reg:distributed'), '2026-09-02')).toBe(150)
-    // Nobody is assigned to Gulzora's group: not known to be zero, so empty.
-    expect(on(row(d, 'registration', 'reg:group:Gulzora:qualified'), '2026-09-02')).toBeNull()
-    expect(row(d, 'registration', 'reg:group:Gulzora:qualified').fact).toBeNull()
-    expect(on(row(d, 'registration', 'reg:group:Sevinch:qualified'), '2026-09-02')).toBe(58)
+    expect(sum).toBe(57 + 13 + 25 + 6 + 2)
+    expect(on(row(d, 'registration', 'reg:distributed'), '2026-09-02')).toBe(sum)
   })
 })
 
@@ -682,14 +686,14 @@ describe('buildRnpSheet — the page is the client\'s sheet, row by row', () => 
     const withNewTeam = buildRnpSheet(
       input({ fakt: [...input().fakt, fakt('2026-09-21', 'Bosh', { fakt1Orders: 1, fakt1Minor: som(1_500_000) })] }),
     )
-    const heading = withNewTeam.lines.findIndex((l) => l.kind === 'title' && l.sub === 'Bitrix24ʼdan · sheetda bloki yoʻq' && l.label.includes('Bosh'))
-    expect(heading).toBeGreaterThan(-1)
+    const first = withNewTeam.lines.findIndex((l) => l.added === true && l.team === 'Bosh' && l.kind === 'value' && l.key === 'team:Bosh:plan_pct')
+    expect(first).toBeGreaterThan(-1)
     const lastTeamRow = withNewTeam.lines.findIndex((l) => l.row === 246)
     const warehouseRow = withNewTeam.lines.findIndex((l) => l.row === 264)
     // Only orders nobody's team claims are added in the plain fixture — and they are real money.
-    expect(x.lines.filter((l) => l.sub === 'Bitrix24ʼdan · sheetda bloki yoʻq').map((l) => l.label)).toEqual(['Логистика — (ROP yoʻq)'])
-    expect(heading).toBeGreaterThan(lastTeamRow)
-    expect(heading).toBeLessThan(warehouseRow)
+    expect(x.lines.filter((l) => l.added).map((l) => [l.label, l.sub])).toEqual([['Логистика  Сумма факт1', '(ROP yoʻq)']])
+    expect(first).toBeGreaterThan(lastTeamRow)
+    expect(first).toBeLessThan(warehouseRow)
   })
 
   it('points every filled line at a row the payload carries', () => {
@@ -716,7 +720,7 @@ describe('buildRnpSheet — every sheet row claimed once, and on the layout', ()
     expect(at(314)).toMatchObject({ kind: 'value', key: 'lg:Shohjaxon:fakt1' })
   })
 
-  it('keeps the kval of registrars in no group on the page, after the groups', () => {
+  it('keeps the leads of teams with no group row on the page, after the groups', () => {
     const x = buildRnpSheet(input())
     const i = x.lines.findIndex((l) => l.kind === 'value' && l.key === 'reg:group:none:qualified')
     expect(i).toBeGreaterThan(x.lines.findIndex((l) => l.row === 1013))
@@ -837,5 +841,212 @@ describe('buildRnpSheet — review fixes of 2026-09-30', () => {
     const r = row(buildRnpSheet(input()), 'team:Charos', 'team:Charos:plan_pct')
     expect(r.plan).toBeNull()
     expect(r.dayPlan).toBeNull()
+  })
+})
+
+describe('buildRnpSheet — the audit fixes of 2026-10-02', () => {
+  /* Two teams the sheet has no block for: Kompaniya (a little money) and Zafar (more of it). */
+  const withAdded = () =>
+    buildRnpSheet(
+      input({
+        teams: [...input().teams, { rop: 'Kompaniya', head: 'Murod Sodiqov' }, { rop: 'Zafar', head: null }],
+        fakt: [
+          ...input().fakt,
+          fakt('2026-09-21', 'Kompaniya', { fakt1Orders: 1, fakt1Minor: som(1_500_000) }),
+          fakt('2026-09-22', 'Zafar', { fakt1Orders: 3, fakt1Minor: som(9_000_000) }),
+        ],
+        leads: [...input().leads, { day: '2026-09-21', rop: 'Kompaniya', leads: 2 }],
+      }),
+    )
+  type Line = ReturnType<typeof buildRnpSheet>['lines'][number]
+  const valueLines = (x: ReturnType<typeof buildRnpSheet>, prefix: string) => x.lines.filter((l) => l.kind === 'value' && l.key?.startsWith(prefix) === true)
+  /* What a block looks like without its team: labels, tones, bold, and what each line measures. */
+  const shape = (lines: readonly Line[]) => lines.map((l) => (l.kind === 'value' ? [l.label, l.tone, l.fact, l.bold, l.key?.split(':').at(-1)] : []))
+
+  it("draws an added team on a sheet block's template — its labels, its order, the name on the first line", () => {
+    const x = withAdded()
+    const added = valueLines(x, 'team:Kompaniya:')
+    expect(shape(added)).toEqual(shape(valueLines(x, 'team:Gulzora:')))
+    expect(added[0]).toMatchObject({ row: null, team: 'Kompaniya', label: 'План бажарилиши', sub: 'Kompaniya РОП', tone: 'team', key: 'team:Kompaniya:plan_pct', added: true })
+    expect(added[1]).toMatchObject({ label: 'Квал лид сони', key: 'team:Kompaniya:reach' })
+    expect(added.slice(1).some((l) => l.added)).toBe(false)
+    // No heading band any more: the first line carries the name, as a sheet block's does.
+    expect(x.lines.some((l) => l.kind === 'title' && l.team === 'Kompaniya')).toBe(false)
+    // The rows themselves read the sheet's names too.
+    expect(row(x, 'team:Kompaniya', 'team:Kompaniya:reach').label).toBe('Квал лид сони')
+    expect(row(x, 'team:Charos', 'team:Charos:reach').label).toBe('Дозвон сони')
+  })
+
+  it('draws an added logistics block on the sheet\'s five lines, «Жараёнда, %» left in the payload', () => {
+    const x = withAdded()
+    const added = valueLines(x, 'lg:Kompaniya:')
+    expect(shape(added)).toEqual(shape(valueLines(x, 'lg:Gulzora:')))
+    expect(added.map((l) => l.label)).toEqual(['Логистика  Сумма факт1', 'Успешка сумма факт 2', 'Успешкность % 📌', 'Отказ %', 'Отказ сумма'])
+    expect(added[0]).toMatchObject({ sub: 'Kompaniya РОП', added: true })
+    expect(row(x, 'logistics:Kompaniya', 'lg:Kompaniya:open_pct').key).toBe('lg:Kompaniya:open_pct')
+  })
+
+  it('gives a team one name — its block, its logistics and the ROP list', () => {
+    const x = withAdded()
+    expect(block(x, 'team:Kompaniya').title).toBe('Kompaniya РОП')
+    expect(block(x, 'logistics:Kompaniya').title).toBe('Логистика — Kompaniya РОП')
+    expect(x.teams.find((t) => t.rop === 'Kompaniya')?.label).toBe('Kompaniya РОП')
+    expect(x.teams.find((t) => t.rop === 'Charos')?.label).toBe('Малика РОП - БАЗА')
+    // «(ROP yoʻq)» is not a team: it keeps its own name.
+    expect(block(x, 'logistics:(ROP yoʻq)').title).toBe('Логистика — (ROP yoʻq)')
+  })
+
+  it("orders the teams as the sheet does and the rest by name — never by the month's money", () => {
+    const x = withAdded()
+    expect(x.teams.map((t) => t.rop)).toEqual(['Gulzora', 'Sevinch', 'Lola', 'Saidaziz', 'Asliddin', 'Sadriddin', 'Charos', 'Marjona', 'Azizbek', 'Maftuna', 'Hayot', 'Baza', 'Kompaniya', 'Zafar'])
+    const firstOf = (team: string) => x.lines.findIndex((l) => l.team === team)
+    expect(firstOf('Kompaniya')).toBeLessThan(firstOf('Zafar'))
+  })
+
+  it("prints the page's own month on row 346, where the sheet kept «ИЮЛЬ»", async () => {
+    const { sheetLines } = await import('@/server/domain/rnp/rnpSheetView')
+    const x = buildRnpSheet(input())
+    expect(x.lines.find((l) => l.row === 346)).toMatchObject({ label: 'Квал лид сони', sub: 'СЕНТЯБРЬ' })
+    expect(sheetLines(x.blocks, { month: '2026-10', teamName: (rop) => rop }).find((l) => l.row === 346)).toMatchObject({ sub: 'ОКТЯБРЬ' })
+  })
+
+  it('keeps row 45 under the totals it is computed from, not under «Цена лида Zextra»', () => {
+    const rows = buildRnpSheet(input()).lines.map((l) => l.row)
+    expect(rows.indexOf(45)).toBe(rows.indexOf(44) + 1)
+    expect(rows.indexOf(47)).toBe(rows.indexOf(40) + 1)
+  })
+
+  it('draws «Отказ сумма» alike in every logistics block', () => {
+    const refused = buildRnpSheet(input()).lines.filter((l) => l.kind === 'value' && l.row !== null && /^lg:.+:refused$/.test(l.key ?? ''))
+    expect(refused).toHaveLength(12)
+    expect(new Set(refused.map((l) => l.kind === 'value' && l.bold))).toEqual(new Set([false]))
+  })
+
+  it('computes C of the brand P&L\'s «Сумма факт2» and «База усп» as the sheet does — a share, never a typed soʻm', () => {
+    const x = buildRnpSheet(
+      input({
+        fakt: [
+          fakt('2026-09-21', 'Sevinch', { fakt1Orders: 2, fakt1Minor: som(3_000_000), fakt2Orders: 1, fakt2Minor: som(2_000_000) }),
+          fakt('2026-09-21', 'Baza', { fakt1Orders: 1, fakt1Minor: som(1_000_000), fakt2Orders: 1, fakt2Minor: som(1_000_000) }),
+        ],
+      }),
+    )
+    // C395 `=D395/D394`: 3 M of 4 M; C397 `=IFERROR(D397/D395,0)`: 1 M of 3 M.
+    const f2 = row(x, 'project:collagen', 'pj:collagen:fakt2')
+    expect(f2.plan).toBeCloseTo(75, 6)
+    expect(f2).toMatchObject({ planUnit: 'percent', planInput: null, dayPlan: null, index: null, unit: 'uzs' })
+    expect(row(x, 'project:collagen', 'pj:collagen:base_fakt2').plan).toBeCloseTo(100 / 3, 6)
+    // Zextra sold nothing: no share at all, not 0.
+    expect(row(x, 'project:zextra', 'pj:zextra:fakt2').plan).toBeNull()
+    // Nothing stores them, so the plan route refuses them.
+    expect(RNP_PLAN_METRICS as readonly string[]).not.toContain('brand_fakt2')
+    expect(RNP_PLAN_METRICS as readonly string[]).not.toContain('brand_base_fakt2')
+  })
+
+  it("prints «—», not 0, for the month of a row trusted only from a later day (August's БАЗА calls)", () => {
+    const aug = Array.from({ length: 31 }, (_, i) => `2026-08-${String(i + 1).padStart(2, '0')}`)
+    const x = buildRnpSheet(
+      input({ month: '2026-08', days: aug, today: '2026-10-02', usdRates: aug.map(() => 12_000), fakt: [], leads: [], registration: [], meta: [], warehouse: [], calls: aug.map((day) => ({ day, rop: 'Charos', connected: 100 })) }),
+    )
+    const reach = row(x, 'team:Charos', 'team:Charos:reach')
+    expect(reach.days.filter((v) => v === 100)).toHaveLength(31) // drawn, muted
+    expect(reach.fact).toBeNull()
+    expect(reach.forecast).toBeNull()
+  })
+
+  it("keeps a closed month's reliable-day pace on a row trusted from a later day", () => {
+    const x = buildRnpSheet(input({ today: '2026-10-03', calls: days.map((day) => ({ day, rop: 'Charos', connected: 10 })) }))
+    const reach = row(x, 'team:Charos', 'team:Charos:reach')
+    // 15–30.09: 16 trusted days of 10 calls — paced over the month, not the fact.
+    expect(reach.fact).toBe(160)
+    expect(reach.forecast).toBeCloseTo((160 / 16) * 30, 6)
+  })
+
+  it("converts the month's first days, before the bank's first answer, at that first answer — never at 0", () => {
+    const rates = days.map((d) => (d < '2026-09-03' ? null : d <= '2026-09-28' ? 11_900 : null))
+    const x = buildRnpSheet(input({ usdRates: rates, meta: [{ day: '2026-09-01', product: 'Collagen', spendMicroUsd: 100_000_000n, leads: 1 }] }))
+    expect(on(row(x, 'project:collagen', 'pj:collagen:spend_uzs'), '2026-09-01')).toBe(100 * 11_900)
+    expect(row(x, 'project:collagen', 'pj:collagen:spend_uzs').fact).toBe(100 * 11_900)
+  })
+
+  it('dates the header\'s rate by the day the bank answered, not a day it was carried to', () => {
+    const rates = days.map((d) => (d <= '2026-09-26' ? 11_900 : null))
+    expect(buildRnpSheet(input({ usdRates: rates })).settings).toEqual({ usdRate: 11_900, usdRateDate: '2026-09-26' })
+  })
+
+  it('opens no plan cell on the undrawn company logistics block', () => {
+    const x = buildRnpSheet(input({ plans: { rows: [{ team: '', metric: 'success_rate', fromDay: 1, valueCenti: 9_000n }], fakt: [] } }))
+    expect(row(x, 'logistics', 'lg:success')).toMatchObject({ planInput: null, plan: null })
+    expect(row(x, 'logistics', 'lg:refused_pct').plan).toBeNull()
+  })
+
+  it("says a БАЗА team's calls reach the sheet about every 3 hours, and a lead team's leads are fresh hand-outs", () => {
+    const x = buildRnpSheet(input())
+    expect(row(x, 'team:Charos', 'team:Charos:reach').hint).toMatch(/har 3 soatda/)
+    expect(row(x, 'team:Sevinch', 'team:Sevinch:reach').hint).toMatch(/30 kun ichida yaratilganlari/)
+  })
+
+  it("names, on the projects' «Сумма факт1», who is in «Свод» but in neither project", () => {
+    const x = buildRnpSheet(input({ fakt: [...input().fakt, fakt('2026-09-21', 'Hayot', { fakt1Orders: 1, fakt1Minor: som(500_000) })] }))
+    const hint = row(x, 'project:collagen', 'pj:collagen:fakt1').hint!
+    expect(hint).toContain('Ҳаёт РОП')
+    expect(hint).toContain('(ROP yoʻq)')
+    expect(hint).not.toContain('Севинч')
+    expect(row(x, 'project:zextra', 'pj:zextra:fakt1').hint).toBe(hint)
+    expect(block(x, 'project:collagen').subtitle).toBe('Brend: buyurtmani sotgan jamoa (jadvaldagi roʻyxat); lid: manba yoki forma.')
+  })
+
+  it("explains the P&L's percent rows with the constants in force", () => {
+    const x = buildRnpSheet(input())
+    expect(row(x, 'project:collagen', 'pj:collagen:cost_share').hint).toBe('Маркетинг харажат факт ÷ Сумма факт2 (успешка).')
+    expect(row(x, 'project:collagen', 'pj:collagen:cost_plan').hint).toBe('Сумма факт2 (успешка) × 11%.')
+    expect(row(x, 'project:collagen', 'pj:collagen:cost_targetolog').hint).toBe('Таргет бюджет × 10%.')
+  })
+
+  it("prices a БАЗА team's calls at its own schedule, as the sheet does, and says which", () => {
+    const base = input()
+    const x = buildRnpSheet({
+      ...base,
+      plans: {
+        ...base.plans,
+        rows: [
+          ...base.plans.rows,
+          { team: 'Charos', metric: 'lead_value', fromDay: 1, valueCenti: 40_000_000n },
+          { team: 'Charos', metric: 'lead_value', fromDay: 27, valueCenti: 20_000_000n },
+        ],
+      },
+    })
+    const pct = row(x, 'team:Charos', 'team:Charos:plan_pct')
+    // 21.09: 1 000 000 over 4 calls × 400 000 — not the company's 500 000 of that day.
+    expect(on(pct, '2026-09-21')).toBeCloseTo((1_000_000 / (4 * 400_000)) * 100, 6)
+    expect(pct.hint).toContain('jamoaning oʻz qiymati')
+    expect(pct.hint).toContain('400.000, 27.09 dan 200.000')
+    // A lead team keeps the company's schedule, named as it stands this month.
+    expect(row(x, 'team:Sevinch', 'team:Sevinch:plan_pct').hint).toContain('jadvaldagi doimiy: 400.000, 19.09 dan 500.000')
+  })
+
+  it('prints «—» for the rates of a team whose leads are fewer than its orders, and says why', () => {
+    const x = buildRnpSheet(
+      input({
+        fakt: [
+          ...input().fakt,
+          ...['2026-09-20', '2026-09-21', '2026-09-22'].map((day) => fakt(day, 'Marjona', { fakt1Orders: 18, fakt1Minor: som(27_000_000), fakt2Orders: 3, fakt2Minor: som(4_000_000) })),
+        ],
+        leads: [...input().leads, { day: '2026-09-21', rop: 'Marjona', leads: 1 }],
+      }),
+    )
+    for (const key of ['conv1', 'conv2', 'plan_pct']) {
+      const r = row(x, 'team:Marjona', `team:Marjona:${key}`)
+      expect(r.fact).toBeNull()
+      expect(r.days.every((v) => v === null)).toBe(true)
+      expect(r.hint).toContain('«РОП (Первичка)»')
+      expect(r.hint).toContain('16.09 dan beri 1 ta lid, 54 ta ФАКТ 1 buyurtma')
+    }
+    // The counts beside them stay.
+    expect(row(x, 'team:Marjona', 'team:Marjona:reach').fact).toBe(1)
+    expect(row(x, 'team:Marjona', 'team:Marjona:orders1').fact).toBe(54)
+    // A team with leads enough keeps its rates; a БАЗА team is measured by calls and never guarded.
+    expect(row(x, 'team:Sevinch', 'team:Sevinch:conv1').fact).toBeCloseTo((5 / 7) * 100, 6)
+    expect(on(row(x, 'team:Charos', 'team:Charos:conv1'), '2026-09-21')).toBe(25)
   })
 })

@@ -45,6 +45,18 @@ function weekdayIndex(day: string): number {
   return new Date(`${day}T12:00:00Z`).getUTCDay()
 }
 
+/** The first month `/rnp/overview` answers — its schema's floor. */
+export const RNP_FIRST_MONTH = '2025-01'
+
+/**
+ * A `YYYY-MM` the sheet can open on — a whole month from `RNP_FIRST_MONTH`
+ * to the current one — or null: a half-typed month box, a future month or a
+ * stale link's value is never requested (2026-10-02).
+ */
+export function rnpMonthIn(value: string | null, current: string): string | null {
+  return value !== null && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) && value >= RNP_FIRST_MONTH && value <= current ? value : null
+}
+
 /** `2026-09-16` → «16.09». */
 export function dayMonth(day: string): string {
   return `${day.slice(8, 10)}.${day.slice(5, 7)}`
