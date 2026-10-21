@@ -1,0 +1,15 @@
+Traceback (most recent call last):
+  File "/tmp/claude-1000/-home-smack-Work/3cafbbb8-420e-433d-b2e1-dfd935c4851a/scratchpad/etalon.py", line 4, in <module>
+    won = json.load(open('won_revenue.json'))
+                    ~~~~^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'won_revenue.json'
+Traceback (most recent call last):
+  File "/tmp/claude-1000/-home-smack-Work/3cafbbb8-420e-433d-b2e1-dfd935c4851a/scratchpad/etalon2.py", line 5, in <module>
+    deals = json.load(open('won_revenue.json')) + json.load(open('nonwon_revenue.json'))
+                      ~~~~^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'won_revenue.json'
+Traceback (most recent call last):
+  File "/tmp/claude-1000/-home-smack-Work/3cafbbb8-420e-433d-b2e1-dfd935c4851a/scratchpad/etalon3.py", line 2, in <module>
+    B=json.load(open('baza.json'))
+                ~~~~^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'baza.json'
