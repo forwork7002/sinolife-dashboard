@@ -60,7 +60,10 @@ export function PayrollSheet({
     >
       <table
         className="table-fixed border-separate border-spacing-0 text-sm"
-        style={{ width: `calc(var(--pay-name) + ${restPx}px)` }}
+        // Kartaning butun kengligini egallaydi (keng ekranda oʻngda boʻsh joy qolmaydi);
+        // `minWidth` — ustunlar oʻqilmaydigan darajada siqilmasligi uchun eng kichik chegara.
+        // `table-fixed` boʻlgani uchun ortiqcha joy ustunlarga proporsional taqsimlanadi.
+        style={{ width: '100%', minWidth: `calc(var(--pay-name) + ${restPx}px)` }}
       >
         <caption className="sr-only">Sotuvchilar maoshi — boʻlim, jamoa va sotuvchi boʻyicha</caption>
         <colgroup>
