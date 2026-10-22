@@ -61,6 +61,17 @@ describe("adBudgetProduct", () => {
     });
   });
 
+  it("puts the AI targetolog's own Zextra cabinet on AI targetolog · Zextra (2026-10-22)", () => {
+    // Unmapped, its Meta leads left Zextra's «Meta leadlari · forma» while its deals stayed in «Forma leadlari».
+    expect(ownerOf("1426259419634277", "Zextra AI")).toEqual({
+      product: "Zextra",
+      targetolog: "AI targetolog",
+    });
+    expect(
+      adBudgetProduct(row({ accountId: "1426259419634277", accountName: "Zextra AI" })),
+    ).toBe("Zextra");
+  });
+
   it("puts both of Tursunbek's accounts on Tursunbek · Zextra (2026-10-06)", () => {
     expect(
       ownerOf("2230777724410928", "Zextra (Tursunbek Targetolog)"),

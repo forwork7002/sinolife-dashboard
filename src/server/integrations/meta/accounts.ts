@@ -80,6 +80,15 @@ export const META_ACCOUNT_OWNERS: Readonly<Record<string, MetaAccountOwner>> = O
   */
   '1052133867828964': { product: 'Collagen', targetolog: 'AI targetolog' }, // Collagen AI Targetolog
   /*
+    The AI targetolog's Zextra cabinet since 2026-10-19 — its config's
+    `ZEXTRA_AD_ACCOUNT_ID`, «Zextra's own ad account in the AI BM». Unmapped,
+    its Meta leads were «Boshqa», out of Zextra's «Meta leadlari · forma»,
+    while the deals its integration opens for them stayed in «Forma
+    leadlari»: on 2026-10-22 the hero read Bitrix24 at 130 % of Meta (1 958 of
+    1 509), where 01–15.10 had read 99.8 %.
+  */
+  '1426259419634277': { product: 'Zextra', targetolog: 'AI targetolog' }, // Zextra (AI BM)
+  /*
     Eldor's two accounts outside Collagen and Zextra, asked for on 2026-09-28
     («HR Eldor … kosmetika eldor shu larni tortaan … hr jadvalcha»). Neither
     is a product page's money: HR Eldor recruits staff, Kosmetika Eldor sells

@@ -1404,6 +1404,20 @@ describe('«Targetologlar» counts Meta\'s way — every CRM-form fill (2026-10-
   }
   const owner = (d: ReturnType<typeof leadSourcesOverview>, key: string) => d.forms.owners.find((o) => o.key === key)!
 
+  it('files an AI targetolog deal by its «Проект», so a Zextra lead meets the Zextra cabinet (2026-10-22)', () => {
+    const d = leadSourcesOverview({
+      ...input,
+      registration: [
+        ...input.registration,
+        // Its Meta form names no product; the deal's «Проект» does.
+        reg({ formTitle: 'CRM-формы «AI targetolog · Yangi forma 20.10»', productLine: 'Zextra', leads: 4 }),
+      ],
+    })
+    expect(owner(d, 'Zextra|AI targetolog').bitrixLeads).toBe(4)
+    // The collagen form's deals stay where they were.
+    expect(owner(d, 'Collagen|AI targetolog').bitrixLeads).toBe(2)
+  })
+
   it('sets the fills beside Meta\'s leads, and keeps what the deals became', () => {
     const d = leadSourcesOverview(input)
     const umar = owner(d, 'Collagen|Umar')

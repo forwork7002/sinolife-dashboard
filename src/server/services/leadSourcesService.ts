@@ -44,6 +44,7 @@ import {
   ownerOf,
 } from '@/server/integrations/meta/accounts'
 import {
+  AI_TARGETOLOG,
   type LeadChannel,
   type LeadTile,
   LEAD_CHANNELS,
@@ -612,7 +613,16 @@ function formTailOwners(forms: Iterable<string>): ReadonlyMap<string, string> {
 function leadOwner(row: OwnedLead, tails: ReadonlyMap<string, string>): LeadOwner | null {
   const form = formNameOf(row.formTitle)
   const byForm = form === null ? null : formOwner(form)
-  if (byForm) return { key: `${byForm.product}|${byForm.targetolog}`, targetolog: byForm.targetolog, product: byForm.product }
+  if (byForm) {
+    /*
+      The AI targetolog's deals carry the product in «Проект» (Zextra since
+      2026-10-19, its own cabinet), its Meta form's name may not: read it as
+      the hero's `leadBrand` does, so a Zextra lead meets the Zextra cabinet's
+      Meta leads rather than landing on «Collagen · AI targetolog».
+    */
+    const product = byForm.targetolog === AI_TARGETOLOG ? (leadBrand(row.sourceId, row.formTitle, row.productLine) ?? byForm.product) : byForm.product
+    return { key: `${product}|${byForm.targetolog}`, targetolog: byForm.targetolog, product }
+  }
   const person = (form === null ? undefined : tails.get(form)) ?? targetologOfField(row.targetolog)
   if (person !== null) {
     const product = leadBrand(row.sourceId, row.formTitle, row.productLine)
