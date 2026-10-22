@@ -90,15 +90,23 @@ export interface MetaMetricsDto {
 
 export interface MetaOwnerDto extends MetaColumnDto, MetaMetricsDto {
   readonly accounts: readonly string[]
+  /** Meta's lead-form leads of this column alone — the cards' «Facebook forma leadlari». */
+  readonly metaFormLeads: number
+  readonly metaFormCplUsd: number | null
 }
 
 /** One person across both products. */
 export interface MetaTargetologDto extends MetaMetricsDto {
   readonly targetolog: string
+  /** Meta's lead-FORM leads alone (DM, «Sayt», hiring out) — the cohort «Bitrix лид» answers. */
+  readonly metaFormLeads: number
+  /** Form-campaign spend ÷ `metaFormLeads`. */
+  readonly metaFormCplUsd: number | null
   readonly products: readonly {
     readonly product: MetaProduct
     readonly spendUsd: number
     readonly metaLeads: number
+    readonly metaFormLeads: number
   }[]
   readonly accounts: readonly string[]
   /** This person's lead forms in Bitrix24 — «Lidlar» → «Targetologlar»'s figures; null = not read. */

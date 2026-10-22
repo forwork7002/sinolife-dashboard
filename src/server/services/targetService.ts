@@ -140,6 +140,10 @@ export interface MetaMetricsDto {
 export interface MetaOwnerDto extends MetaColumnDto, MetaMetricsDto {
   /** The ad accounts behind it, by name — so a reader can find them in Meta. */
   readonly accounts: readonly string[]
+  /** Meta's lead-FORM leads of this column alone — the cards' «Facebook forma leadlari», per account. */
+  readonly metaFormLeads: number
+  /** Form-campaign spend ÷ `metaFormLeads`. */
+  readonly metaFormCplUsd: number | null
 }
 
 /**
@@ -151,10 +155,22 @@ export interface MetaOwnerDto extends MetaColumnDto, MetaMetricsDto {
  */
 export interface MetaTargetologDto extends MetaMetricsDto {
   readonly targetolog: string
+  /**
+   * Meta's leads from this person's LEAD-FORM campaigns alone (`campaignChannel`
+   * 'form', «Sayt» and hiring out) — the funnel top the card's «Bitrix лид»
+   * answers, so the two are the same cohort (the client, 2026-10-22:
+   * «facebookdan tushgan lead va facebookdan bitrix24ga tushgan lead»).
+   * `metaLeads` beside it is every campaign, DM and site included.
+   */
+  readonly metaFormLeads: number
+  /** Form-campaign spend ÷ `metaFormLeads` — the price of one Facebook form lead. */
+  readonly metaFormCplUsd: number | null
   readonly products: readonly {
     readonly product: MetaProduct
     readonly spendUsd: number
     readonly metaLeads: number
+    /** This product's lead-form leads alone (`metaFormLeads`'s rule). */
+    readonly metaFormLeads: number
   }[]
   readonly accounts: readonly string[]
   /** What this person's lead forms brought into Bitrix24 (`withTargetologLeads`); null = not read. */
@@ -542,6 +558,28 @@ export function metaBlock(input: {
     site: isSiteCampaign(c.campaignName),
   }))
 
+  /*
+    FACEBOOK FORM LEADS PER PERSON (and per product column), the funnel top the
+    card's «Bitrix лид» answers. The same filter `productTotals` uses for
+    `metaFormLeads` — `channel === 'form'`, «Sayt» and hiring out — so the card
+    and the hero agree, and «Facebook forma leadlari ↔ Bitrix lid» compare like
+    with like. `metaLeads` (every campaign) stays on the row beside it.
+  */
+  const formLeadsByKey = new Map<string, number>()
+  const formSpendByKey = new Map<string, bigint>()
+  const formLeadsByPerson = new Map<string, number>()
+  const formSpendByPerson = new Map<string, bigint>()
+  for (const c of campaigns) {
+    if (c.channel !== 'form' || c.site) continue
+    const owner = ownerOf(c.accountId, c.accountName)
+    const key = `${owner.product}|${owner.targetolog}`
+    formLeadsByKey.set(key, (formLeadsByKey.get(key) ?? 0) + c.leads)
+    formSpendByKey.set(key, (formSpendByKey.get(key) ?? 0n) + c.spendMicroUsd)
+    formLeadsByPerson.set(owner.targetolog, (formLeadsByPerson.get(owner.targetolog) ?? 0) + c.leads)
+    formSpendByPerson.set(owner.targetolog, (formSpendByPerson.get(owner.targetolog) ?? 0n) + c.spendMicroUsd)
+  }
+  const formCpl = (key: string) => ratio(Number(formSpendByKey.get(key) ?? 0n) / MICRO, formLeadsByKey.get(key) ?? 0)
+
   /** The owners and pages of `products`; null is every owner, «Boshqa» included. */
   const productTotals = (products: readonly MetaProduct[] | null): MetaProductTotalsDto => {
     const accs = ordered.filter((a) => products === null || products.includes(a.column.product))
@@ -649,21 +687,29 @@ export function metaBlock(input: {
     days,
     targetologs: [...people.values()]
       .sort((a, b) => Number(b.spend - a.spend))
-      .map((p) => ({
-        targetolog: p.targetolog,
-        ...metrics(p.spend, p.leads, p.impressions, p.clicks),
-        products: p.parts.map((a) => ({
-          product: a.column.product,
-          spendUsd: usd(a.spend),
-          metaLeads: a.leads,
-        })),
-        accounts: [...new Set(p.parts.flatMap((a) => [...a.accounts]))].sort(),
-        bitrix: null,
-      })),
+      .map((p) => {
+        const formLeads = formLeadsByPerson.get(p.targetolog) ?? 0
+        return {
+          targetolog: p.targetolog,
+          ...metrics(p.spend, p.leads, p.impressions, p.clicks),
+          metaFormLeads: formLeads,
+          metaFormCplUsd: ratio(Number(formSpendByPerson.get(p.targetolog) ?? 0n) / MICRO, formLeads),
+          products: p.parts.map((a) => ({
+            product: a.column.product,
+            spendUsd: usd(a.spend),
+            metaLeads: a.leads,
+            metaFormLeads: formLeadsByKey.get(a.column.key) ?? 0,
+          })),
+          accounts: [...new Set(p.parts.flatMap((a) => [...a.accounts]))].sort(),
+          bitrix: null,
+        }
+      }),
     owners: ordered.map((a) => ({
       ...a.column,
       ...metrics(a.spend, a.leads, a.impressions, a.clicks),
       accounts: [...a.accounts].sort(),
+      metaFormLeads: formLeadsByKey.get(a.column.key) ?? 0,
+      metaFormCplUsd: formCpl(a.column.key),
     })),
     products,
     total: productTotals(null),

@@ -110,17 +110,18 @@ const OWNER_COLUMNS: readonly Column<MetaOwnerDto>[] = [
   },
   {
     key: 'leads',
-    header: 'Meta leadlari',
+    header: 'Forma leadlari',
     align: 'right',
     numeric: true,
-    render: (row) => formatNumber(row.metaLeads),
+    // The cards' «Facebook forma leadlari» per account — lead-form campaigns alone, as «Bitrix лид» answers.
+    render: (row) => formatNumber(row.metaFormLeads),
   },
   {
     key: 'cpl',
     header: '1 lead narxi',
     align: 'right',
     numeric: true,
-    render: (row) => usd(row.metaCplUsd),
+    render: (row) => usd(row.metaFormCplUsd),
   },
   {
     key: 'impressions',
@@ -238,7 +239,7 @@ function TargetologCards({
                       className="inline-block h-2 w-2 rounded-sm"
                       style={{ background: PRODUCT_TONE[part.product] }}
                     />
-                    {PRODUCT_LABEL[part.product]} {usd(part.spendUsd)} · {formatNumber(part.metaLeads)} lead
+                    {PRODUCT_LABEL[part.product]} {usd(part.spendUsd)} · {formatNumber(part.metaFormLeads)} lead
                   </span>
                 ))}
               </p>
@@ -256,12 +257,21 @@ function TargetologCards({
           )}
 
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
-            <Metric label="Meta leadlari" value={formatNumber(p.metaLeads)} />
-            <Metric label="1 lead narxi" value={usd(p.metaCplUsd)} strong />
+            <Metric
+              label="Facebook forma leadlari"
+              value={formatNumber(p.metaFormLeads)}
+              hint="Meta'ning lead-forma kampaniyalari leadlari — DM, «Sayt» va vakansiya kirmaydi. «Bitrix lid» bilan bir xil cohort, taqqoslasa boʻladi."
+            />
+            <Metric label="1 lead narxi" value={usd(p.metaFormCplUsd)} strong hint="Forma kampaniyalari sarfi ÷ Facebook forma leadlari" />
             <Metric
               label="Bitrix lid"
               value={p.bitrix ? formatNumber(p.bitrix.leads) : '—'}
-              hint="Targetolog CRM-formalari Bitrix24 Регистрация ga ochgan lidlar"
+              hint="Targetolog CRM-formalari Bitrix24 Регистрация ga ochgan lidlar — Facebook forma leadlaridan haqiqatan CRM ga tushgani"
+            />
+            <Metric
+              label="Qamrov"
+              value={formatPercent(p.bitrix && p.metaFormLeads > 0 ? (p.bitrix.leads / p.metaFormLeads) * 100 : null)}
+              hint="Bitrix lid ÷ Facebook forma leadlari — Meta sanagan forma leadlarining qanchasi Bitrix24 ga yetib kelgani (qolgani dublikat/yaroqsiz/yetib kelmagan)"
             />
             <Metric
               label="Kval %"

@@ -352,6 +352,29 @@ describe('metaBlock — the «Лид база» sheet', () => {
       expect(zextra.metaFormLeads).toBe(80)
     })
 
+    it('gives each card the person\'s own Facebook form leads — the cohort «Bitrix лид» answers, DM/«Sayt»/vakansiya out', () => {
+      const umar = paired.targetologs.find((t) => t.targetolog === 'Umar')!
+      const kamron = paired.targetologs.find((t) => t.targetolog === 'Kamron')!
+      const eldor = paired.targetologs.find((t) => t.targetolog === 'Элдор')!
+      // Umar's «Collagen form» alone (1 000); «Sms-1» (DM), «Sayt-1» (site) and the vakansiya are not form leads.
+      expect(umar.metaFormLeads).toBe(1_000)
+      expect(umar.metaFormCplUsd).toBeCloseTo(150 / 1_000, 6)
+      // Umar's «Meta leadlari» (every campaign, from the daily sheet) stays the larger figure beside it.
+      expect(umar.metaLeads).toBe(244)
+      expect(kamron.metaFormLeads).toBe(80)
+      // Элдор spent (daily rows) but ran no campaign grain this window: his form leads are 0, not his metaLeads.
+      expect(eldor.metaFormLeads).toBe(0)
+      expect(eldor.metaFormCplUsd).toBeNull()
+      // The split under a two-product person carries each product's own form leads.
+      expect(umar.products.map((part) => part.metaFormLeads)).toEqual([1_000])
+      // The targetolog × product table (owners) reads the same form leads, so card and table agree.
+      const umarOwner = paired.owners.find((o) => o.targetolog === 'Umar' && o.product === 'Collagen')!
+      expect(umarOwner.metaFormLeads).toBe(1_000)
+      expect(umarOwner.metaFormCplUsd).toBeCloseTo(150 / 1_000, 6)
+      expect(paired.owners.find((o) => o.targetolog === 'Kamron')!.metaFormLeads).toBe(80)
+      expect(paired.owners.find((o) => o.targetolog === 'Элдор')!.metaFormLeads).toBe(0)
+    })
+
     it('sets the form leads that reached Bitrix24 beside them, and the pages apart', () => {
       expect(collagen).toMatchObject({ bitrixFormLeads: 930, bitrixPageLeads: 370, bitrixLeads: 1_300 })
       expect(collagen.formReachPercent).toBeCloseTo(93, 6)
