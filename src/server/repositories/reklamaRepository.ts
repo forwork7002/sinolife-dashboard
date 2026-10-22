@@ -274,7 +274,10 @@ export class ReklamaRepository {
     >(
       `
       WITH ml AS (
-        SELECT m."id", m."campaignId", m."formId", m."formName", m."createdTime", m."phoneKeys"
+        -- The form's NEWEST name in the window on every row: max() picked the alphabetically last one.
+        SELECT m."id", m."campaignId", m."formId",
+               first_value(m."formName") OVER (PARTITION BY m."formId" ORDER BY m."createdTime" DESC, m."id" DESC) AS "formName",
+               m."createdTime", m."phoneKeys"
         FROM "meta_lead" m
         WHERE m."createdTime" >= $1 AND m."createdTime" < $2
       ),
@@ -318,7 +321,7 @@ export class ReklamaRepository {
       SELECT
         ml."campaignId" AS campaign_id,
         ml."formId" AS form_id,
-        -- A renamed form carries its newest name on new rows only: one name per form in the answer.
+        -- One name per form in the answer: every row of a form carries its newest (see ml).
         max(ml."formName") AS form_name,
         hit.stage,
         hit.status,

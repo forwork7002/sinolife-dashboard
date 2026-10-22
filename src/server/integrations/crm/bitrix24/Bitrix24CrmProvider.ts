@@ -207,6 +207,8 @@ const REQUESTED_LINES_PER_READ = 20
  * How long an enumeration item a fresh `crm.deal.fields` did not know stays
  * written off (`deadLabels`) before a deal naming it may ask again.
  */
+/** How long the enumeration labels are trusted before `crm.deal.fields` is read again — a rename keeps its id. */
+const ENUM_LABELS_TTL_MS = 3 * 3_600_000
 const DEAD_LABEL_MS = 60 * 60_000
 
 /** The activity list — the open-line chats' method. */
@@ -541,6 +543,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * when a deal names an item it does not hold — see `toRawDeals`.
    */
   private enumLabels: Map<string, Map<string, string>> | undefined
+  private enumLabelsAt = 0
   /** `field:id` pairs the page being mapped named and `enumLabels` lacked. */
   private readonly labelMisses = new Set<string>()
   /**
@@ -1189,7 +1192,13 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * it when a row names an item it lacks.
    */
   private async loadEnumLabels(): Promise<Map<string, Map<string, string>>> {
-    if (this.enumLabels) return this.enumLabels
+    /*
+      AND A RENAME (2026-10-22): an item renamed in the portal keeps its id, so
+      no miss ever asked again and new deals were written under the old text
+      until a deploy. The memo now ages out with the reference pass's three
+      hours — one `crm.deal.fields` per three hours.
+    */
+    if (this.enumLabels && Date.now() - this.enumLabelsAt < ENUM_LABELS_TTL_MS) return this.enumLabels
 
     const payload = await this.call<Record<string, { items?: { ID: string; VALUE: string }[] }>>(
       'crm.deal.fields',
@@ -1203,6 +1212,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
     }
 
     this.enumLabels = map
+    this.enumLabelsAt = Date.now()
     return map
   }
 

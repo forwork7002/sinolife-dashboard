@@ -170,6 +170,16 @@ const REFERENCE_EVERY = Number(process.env.SYNC_REFERENCE_EVERY ?? 180)
  * Set to 0 to turn it off.
  */
 const ROISTAT_EVERY = Number(process.env.SYNC_ROISTAT_EVERY ?? 60)
+/**
+ * ON THE WALL CLOCK SINCE 2026-10-22, HOURLY. It was `tick % ROISTAT_EVERY`:
+ * 60 ticks at the deployed 120 s tick is TWO hours, and `tick` starts at 0
+ * with every process — so on a day of deploys less than two hours apart it
+ * never ran at all, and /target's so'm spend sat on yesterday's rate. Now
+ * `SYNC_ROISTAT_MIN` minutes (default 60) since the newest snapshot's
+ * `importedAt`, the way Meta and the sweep keep time. `SYNC_ROISTAT_EVERY`
+ * 0 still switches it off.
+ */
+const ROISTAT_MS = ROISTAT_EVERY > 0 ? Number(process.env.SYNC_ROISTAT_MIN ?? 60) * 60_000 : 0
 
 /**
  * Meta Ads spend, lead-form leads and ad→form links, every `SYNC_META_MIN`
@@ -1068,6 +1078,7 @@ async function main() {
     failing token is retried once per period, never every tick.
   */
   let lastMetaAt: Date | null = null
+  let lastRoistatAt: Date | null = null
   /** The nightly 37-day re-read (`META_DEEP_REFRESH_DAYS`); in memory — a restart at night costs one more. */
   let lastMetaDeepAt: Date | null = null
   /**
@@ -1143,6 +1154,12 @@ async function main() {
     // Not fatal: unknown means «due», which is exactly what a restart did before.
     console.warn(`  ${stamp()} ! oxirgi maʼlumotnoma/tozalash vaqti oʻqilmadi:`, error)
   }
+  if (ROISTAT_MS > 0) {
+    const roistat = await prisma.marketingSnapshot
+      .aggregate({ _max: { importedAt: true } })
+      .catch(() => null)
+    lastRoistatAt = roistat?._max.importedAt ?? null
+  }
   if (META_TOKEN && META_MS > 0) {
     try {
       const meta = await prisma.metaAdDaily.aggregate({ _max: { importedAt: true } })
@@ -1203,7 +1220,7 @@ async function main() {
     `  Sinxronizatsiya har ${INTERVAL_SEC}s. Maʼlumotnomalar har ${REFERENCE_EVERY} tsiklda` +
       ` (oxirgisi: ${lastReferenceAt?.toISOString() ?? 'yozilmagan'}).` +
       (SWEEP_EVERY > 0 ? ` Oxirgi tozalash: ${lastSweepAt?.toISOString() ?? 'yozilmagan'}.` : '') +
-      (ROISTAT_EVERY > 0 ? ` Roistat har ${ROISTAT_EVERY} tsiklda.` : ' Roistat oʻchirilgan.') +
+      (ROISTAT_MS > 0 ? ` Roistat har ${Math.round(ROISTAT_MS / 60_000)} daqiqada.` : ' Roistat oʻchirilgan.') +
       (META_TOKEN && META_MS > 0
         ? ` Meta har ${Math.round(META_MS / 60_000)} daqiqada (oxirgisi: ${lastMetaAt?.toISOString() ?? 'yozilmagan'}).`
         : ' Meta oʻchirilgan (token yoʻq).') +
@@ -1224,11 +1241,14 @@ async function main() {
   /**
    * One Meta pass — spend (with the history walk, and the 37-day re-read when
    * `deep`), then the forms' leads, then the ad→form links — each in a try of
-   * its own. Never throws: it runs beside the loop, and a rejection there
-   * would be nobody's to catch.
+   * its own; `deep` also re-reads a week of every form's leads and re-checks
+   * the recently spending ads' forms. Never throws: it runs beside the loop,
+   * and a rejection there would be nobody's to catch. True when every
+   * account's spend was read.
    */
-  async function runMetaPass(token: string, deep: boolean): Promise<void> {
+  async function runMetaPass(token: string, deep: boolean): Promise<boolean> {
     const metaStarted = Date.now()
+    let complete = false
     try {
       const r = await importMetaSpend(prisma, token, zonedDateKey(new Date(), WORKER_TIME_ZONE), {
         refreshDays: deep ? META_DEEP_REFRESH_DAYS : undefined,
@@ -1242,6 +1262,7 @@ async function main() {
           `  (${((Date.now() - metaStarted) / 1000).toFixed(1)}s)`,
       )
       for (const refused of r.failed) console.warn(`  ${stamp()} meta akkaunt oʻqilmadi — ${refused}`)
+      complete = r.failed.every((f) => f.includes(' · eski tarix: '))
     } catch (error) {
       console.warn(`  ${stamp()} meta muvaffaqiyatsiz: ${(error as Error).message}`)
     }
@@ -1253,7 +1274,7 @@ async function main() {
     */
     const leadsStarted = Date.now()
     try {
-      const r = await importMetaLeads(prisma, token)
+      const r = await importMetaLeads(prisma, token, undefined, { deep })
       console.log(
         `  ${stamp()} meta lidlar: ${r.pages} sahifa, ${r.forms} forma, ${r.leads} yangi lid` +
           `  (${((Date.now() - leadsStarted) / 1000).toFixed(1)}s)`,
@@ -1270,7 +1291,7 @@ async function main() {
     */
     const adFormsStarted = Date.now()
     try {
-      const r = await importMetaAdForms(prisma, token)
+      const r = await importMetaAdForms(prisma, token, { recheck: deep })
       console.log(
         `  ${stamp()} meta reklama→forma: ${r.ads} reklama oʻqildi, ${r.withForm} tasida forma` +
           `  (${((Date.now() - adFormsStarted) / 1000).toFixed(1)}s)`,
@@ -1279,6 +1300,7 @@ async function main() {
     } catch (error) {
       console.warn(`  ${stamp()} meta reklama→forma muvaffaqiyatsiz: ${(error as Error).message}`)
     }
+    return complete
   }
 
   let stopping = false
@@ -2025,7 +2047,9 @@ async function main() {
       on the first tick after every redeploy delays the first real sync for
       nothing — the source changes a few times a day.
     */
-    if (ROISTAT_EVERY > 0 && tick > 0 && tick % ROISTAT_EVERY === 0 && !stopping) {
+    const roistatDue = ROISTAT_MS > 0 && tick > 0 && isPassDue(lastRoistatAt, new Date(), ROISTAT_MS) && !stopping
+    if (roistatDue) {
+      lastRoistatAt = new Date()
       await runRoistatImport()
     }
 
@@ -2040,16 +2064,21 @@ async function main() {
       META_TOKEN &&
       tick > 0 &&
       metaInFlight === null &&
-      (ROISTAT_EVERY <= 0 || tick % ROISTAT_EVERY !== 0) &&
+      !roistatDue &&
       isPassDue(lastMetaAt, new Date(), META_MS) &&
       !stopping
     ) {
-      lastMetaAt = new Date()
-      const deep = isSweepDue(lastMetaDeepAt, lastMetaAt, 86_400_000, WORKER_TIME_ZONE)
-      if (deep) lastMetaDeepAt = lastMetaAt
-      metaInFlight = runMetaPass(META_TOKEN, deep).finally(() => {
-        metaInFlight = null
-      })
+      const startedAt = new Date()
+      lastMetaAt = startedAt
+      const deep = isSweepDue(lastMetaDeepAt, startedAt, 86_400_000, WORKER_TIME_ZONE)
+      metaInFlight = runMetaPass(META_TOKEN, deep)
+        .then((complete) => {
+          // Only a night pass that read every account counts as the night's: a refused one is asked again next pass.
+          if (deep && complete) lastMetaDeepAt = startedAt
+        })
+        .finally(() => {
+          metaInFlight = null
+        })
     }
 
     /*

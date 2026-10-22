@@ -195,7 +195,17 @@
   from 2026-07-01 to Insights' floor (`metaHistoryFloor`, 36 months),
   remembered per account and grain in `meta_history_read` — an account with no
   older spend is asked once. Meta's lead-form LEADS cannot go further back
-  than Meta keeps them (90 days); Bitrix24 has the rest.
+  than Meta keeps them (90 days); Bitrix24 has the rest. The night pass also
+  re-reads a week of every form Meta counts more leads on than we hold
+  (closed ones too — `importMetaLeads` `deep`) and re-checks the forms of ads
+  that spent in the last 3 days (`importMetaAdForms` `recheck`); it counts as
+  the night's only when every account was read.
+- **Roistat is on the wall clock too (2026-10-22)**: `SYNC_ROISTAT_MIN` (60)
+  since the newest `marketing_snapshot.importedAt`. It was `tick % 60` — two
+  hours at 120 s, and never on a day of deploys under two hours apart.
+- **Bitrix24 dropdown labels age out every 3 h** (`ENUM_LABELS_TTL_MS`): a
+  renamed «Проект» / targetolog / region item keeps its id, so only a miss
+  re-read them before. Deals already stored keep the old text until modified.
 
 - **THE PORTAL CAN BLOCK ITSELF, AND THE DASHBOARD NOW SAYS SO.** On
   2026-09-14 every REST call came back `401` with

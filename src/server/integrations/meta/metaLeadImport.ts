@@ -172,20 +172,32 @@ async function gatherFormPages(token: string, failed: string[]): Promise<PageRow
   return [...byId.values()]
 }
 
+/**
+ * THE NIGHTLY RE-READ (2026-10-22, `deep`). The hourly read asks each active
+ * form only past its newest row less an hour, and a closed form not at all —
+ * so a lead Meta made visible late, and the leads a form took between the
+ * last read and being paused, were never read. Once a night every form whose
+ * Meta count is above what is stored — open or closed, on a page the token
+ * gained yesterday too — is asked again for its last `DEEP_OVERLAP_MS`;
+ * `skipDuplicates` keeps what is already in. A closed form whose old leads
+ * Meta has dropped (past 90 days) stays above its count for good: one call a
+ * night, never one a pass.
+ */
+const DEEP_OVERLAP_MS = 7 * 86_400_000
+
 export async function importMetaLeads(
   prisma: PrismaClient,
   token: string,
   budgetMs: number = RUN_BUDGET_MS,
+  options: { readonly deep?: boolean } = {},
 ): Promise<MetaLeadImportResult> {
   const deadline = Date.now() + budgetMs
   const failed: string[] = []
   const pages = await gatherFormPages(token, failed)
-  const newest = new Map(
-    (await prisma.metaLead.groupBy({ by: ['formId'], _max: { createdTime: true } })).map((f) => [
-      f.formId,
-      f._max.createdTime,
-    ]),
-  )
+  const stored = await prisma.metaLead.groupBy({ by: ['formId'], _max: { createdTime: true }, _count: { _all: true } })
+  const newest = new Map(stored.map((f) => [f.formId, f._max.createdTime]))
+  const storedCount = new Map(stored.map((f) => [f.formId, f._count._all]))
+  const overlapMs = options.deep ? DEEP_OVERLAP_MS : OVERLAP_MS
 
   // Past the first run a closed form with nothing stored has nothing to give: asking it every hour is a call for no row.
   const firstRun = newest.size === 0
@@ -230,7 +242,8 @@ export async function importMetaLeads(
 
     for (const form of pageForms) {
       const latest = newest.get(form.id) ?? null
-      if (form.status !== 'ACTIVE' && (latest || !firstRun)) continue
+      const behind = Number(form.leads_count ?? 0) > (storedCount.get(form.id) ?? 0)
+      if (options.deep ? form.status !== 'ACTIVE' && !behind : form.status !== 'ACTIVE' && (latest || !firstRun)) continue
       if (Date.now() >= deadline) {
         failed.push('vaqt tugadi — qolgan formalar keyingi oʻqishda')
         outOfTime = true
@@ -250,7 +263,7 @@ export async function importMetaLeads(
                       {
                         field: 'time_created',
                         operator: 'GREATER_THAN',
-                        value: Math.floor((latest.getTime() - OVERLAP_MS) / 1000),
+                        value: Math.floor((latest.getTime() - overlapMs) / 1000),
                       },
                     ]),
                   }

@@ -66,8 +66,22 @@ export interface MetaAdFormImportResult {
   readonly failed: readonly string[]
 }
 
-export async function importMetaAdForms(prisma: PrismaClient, token: string): Promise<MetaAdFormImportResult> {
-  const pending = await prisma.$queryRaw<{ adId: string; accountId: string }[]>`
+/**
+ * THE NIGHTLY RE-CHECK (2026-10-22, `recheck`). Read once, an ad kept what its
+ * first read said for good: one missing from a short answer stood with no
+ * form, and a creative re-pointed at another form kept the old one. Once a
+ * night the ads that spent in the last `RECHECK_DAYS` and were read more
+ * than a day ago are asked again, inside the same `MAX_ADS` — the
+ * `ads_management` budget is why this is nightly and not every pass.
+ */
+const RECHECK_DAYS = 3
+
+export async function importMetaAdForms(
+  prisma: PrismaClient,
+  token: string,
+  options: { readonly recheck?: boolean } = {},
+): Promise<MetaAdFormImportResult> {
+  const fresh = await prisma.$queryRaw<{ adId: string; accountId: string }[]>`
     SELECT a."adId", min(a."accountId") AS "accountId"
     FROM "meta_ad_insight_daily" a
     WHERE a."objective" IN ('OUTCOME_LEADS', 'LEAD_GENERATION')
@@ -78,6 +92,22 @@ export async function importMetaAdForms(prisma: PrismaClient, token: string): Pr
     ORDER BY max(a."date") DESC, a."adId"
     LIMIT ${MAX_ADS}
   `
+  const again =
+    options.recheck && fresh.length < MAX_ADS
+      ? await prisma.$queryRaw<{ adId: string; accountId: string }[]>`
+          SELECT a."adId", min(a."accountId") AS "accountId"
+          FROM "meta_ad_insight_daily" a
+          JOIN "meta_ad_form" f ON f."adId" = a."adId"
+          WHERE a."spendMicroUsd" > 0
+            AND a."date" >= CURRENT_DATE - ${RECHECK_DAYS}::int
+            AND f."readAt" < now() - interval '1 day'
+          GROUP BY a."adId"
+          ORDER BY max(a."date") DESC, a."adId"
+          LIMIT ${MAX_ADS - fresh.length}
+        `
+      : []
+  const pending = [...fresh, ...again]
+  const recheckIds = again.map((a) => a.adId)
   const byAccount = new Map<string, string[]>()
   for (const p of pending) byAccount.set(p.accountId, [...(byAccount.get(p.accountId) ?? []), p.adId])
 
@@ -109,7 +139,11 @@ export async function importMetaAdForms(prisma: PrismaClient, token: string): Pr
       }
       const found = new Map(rows.map((r) => [r.id, adFormOf(r)]))
       const data = ids.map((adId) => ({ adId, ...(found.get(adId) ?? { formId: '', pageId: '' }) }))
-      await prisma.metaAdForm.createMany({ data, skipDuplicates: true })
+      // A re-checked ad Meta answered for is replaced, stamped now; one it left out keeps its row.
+      await prisma.$transaction([
+        prisma.metaAdForm.deleteMany({ where: { adId: { in: ids.filter((id) => recheckIds.includes(id) && found.has(id)) } } }),
+        prisma.metaAdForm.createMany({ data, skipDuplicates: true }),
+      ])
       ads += data.length
       withForm += data.filter((d) => d.formId !== '').length
     }

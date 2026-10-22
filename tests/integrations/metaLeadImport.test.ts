@@ -117,14 +117,15 @@ describe('importMetaLeads', () => {
     },
   })
 
-  function fakePrisma(newest: { formId: string; at: string }[] = []) {
+  function fakePrisma(newest: { formId: string; at: string; count?: number }[] = []) {
     const written: { id: string }[] = []
     const listed: Record<string, unknown>[] = []
     const dropped: unknown[] = []
     const prisma = {
       ...formTable(listed, dropped),
       metaLead: {
-        groupBy: async () => newest.map((n) => ({ formId: n.formId, _max: { createdTime: new Date(n.at) } })),
+        groupBy: async () =>
+          newest.map((n) => ({ formId: n.formId, _max: { createdTime: new Date(n.at) }, _count: { _all: n.count ?? 1 } })),
         createMany: async ({ data, skipDuplicates }: { data: { id: string }[]; skipDuplicates: boolean }) => {
           expect(skipDuplicates).toBe(true)
           written.push(...data)
@@ -150,6 +151,8 @@ describe('importMetaLeads', () => {
         const url = new URL(raw)
         asked.push(url)
         const json = (body: unknown, ok = true) => ({ ok, status: ok ? 200 : 400, json: async () => body })
+        // No Business Manager behind the token: the pages are `me/accounts`' alone (ec97f232).
+        if (url.pathname.endsWith('/me/businesses')) return json({ data: [] })
         if (url.pathname.endsWith('/me/accounts')) {
           return json({
             data: [
@@ -186,7 +189,8 @@ describe('importMetaLeads', () => {
     ])
     const r = await importMetaLeads(prisma, 'user-token')
 
-    expect(r).toEqual({ pages: 2, forms: 2, leads: 2, failed: [] })
+    // «Listed only» has no token of its own, so since ec97f232 it is not counted as a page at all.
+    expect(r).toEqual({ pages: 1, forms: 2, leads: 2, failed: [] })
     expect(written.map((w) => w.id)).toEqual(['f-new-1', 'f-seen-1'])
 
     const leadCalls = asked.filter((u) => u.pathname.endsWith('/leads'))
@@ -252,6 +256,42 @@ describe('importMetaLeads', () => {
     const later = stubGraph((form) => [lead(`${form}-1`)])
     await importMetaLeads(fakePrisma([{ formId: 'f-seen', at: '2026-10-08T04:00:00Z' }]).prisma, 'user-token')
     expect(later.filter((u) => u.pathname.endsWith('/leads')).map((u) => u.pathname.split('/').at(-2))).toEqual(['f-new', 'f-seen'])
+  })
+
+  it('re-reads a week of every form behind Meta\'s count at night, the archived one too — 2026-10-22', async () => {
+    const asked = stubGraph((form) => [lead(`${form}-1`)])
+    const { prisma } = fakePrisma([
+      { formId: 'f-new', at: '2026-10-08T04:00:00Z', count: 25 }, // caught up: 25 of 25, but ACTIVE
+      { formId: 'f-seen', at: '2026-10-08T04:00:00Z' },
+      { formId: 'f-old', at: '2026-09-01T00:00:00Z' }, // archived, Meta's count unknown: not behind
+    ])
+    await importMetaLeads(prisma, 'user-token', undefined, { deep: true })
+    const leadCalls = asked.filter((u) => u.pathname.endsWith('/leads'))
+    expect(leadCalls.map((u) => u.pathname.split('/').at(-2))).toEqual(['f-new', 'f-seen'])
+    expect(JSON.parse(leadCalls[1]!.searchParams.get('filtering')!)).toEqual([
+      { field: 'time_created', operator: 'GREATER_THAN', value: Date.parse('2026-10-01T04:00:00Z') / 1000 },
+    ])
+  })
+
+  it('asks an archived form at night when Meta counts more leads than are stored', async () => {
+    const asked = stubGraph((form) => [lead(`${form}-1`)])
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (raw: string) => {
+        const url = new URL(raw)
+        asked.push(url)
+        const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
+        if (url.pathname.endsWith('/me/businesses')) return json({ data: [] })
+        if (url.pathname.endsWith('/me/accounts')) return json({ data: [{ id: 'p1', name: 'P', access_token: 't' }] })
+        if (url.pathname.endsWith('/leadgen_forms')) return json({ data: [{ id: 'f-old', name: 'Old', status: 'ARCHIVED', leads_count: 9 }] })
+        return json({ data: [lead('f-old-2')] })
+      }),
+    )
+    const { prisma, written } = fakePrisma([{ formId: 'f-old', at: '2026-09-01T00:00:00Z', count: 7 }])
+    await importMetaLeads(prisma, 'user-token')
+    expect(written).toEqual([])
+    await importMetaLeads(prisma, 'user-token', undefined, { deep: true })
+    expect(written.map((w) => w.id)).toEqual(['f-old-2'])
   })
 
   it('stops asking when its time is up, says so, and leaves the rest to the next run', async () => {
