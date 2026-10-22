@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { InboundCallsSection } from '@/features/calls/InboundCallsSection'
+import { returningCsv } from '@/features/calls/ReturningCallersCard'
 
 /** «Соф янги» pressed: the tile's numbers, laid out as the client's own sheet. */
 
@@ -92,6 +93,43 @@ vi.mock('@/lib/api', async (importOriginal) => ({
         meta: { period: { days: 0 } },
       }
     }
+    if (path === '/insights/calls/analysis') {
+      const outcome = (numbers: number, answered: number, calledBack: number, talked: number) => ({
+        numbers,
+        answered,
+        calledBack,
+        talked,
+        lost: numbers - talked,
+      })
+      return {
+        data: {
+          days: [{ day: '2026-10-16', calls: 4, numbers: 3, fresh: outcome(2, 1, 0, 1), returning: outcome(3, 1, 1, 2), unfinished: true }],
+          total: { calls: 4, numbers: 3, fresh: outcome(2, 1, 0, 1), returning: outcome(7, 3, 2, 5) },
+          returning: { buckets: { d14_30: 7, m1_3: 0, m3_6: 0, m6: 0 }, medianDays: 21, longestDays: 29, funnels: [] },
+          analysisFrom: '2026-09-30T19:00:00.000Z',
+          historyFrom: '2026-09-14T19:00:00.000Z',
+          floorApplied: false,
+        },
+        meta: {},
+      }
+    }
+    if (path === '/insights/calls/analysis/numbers') {
+      const row = (key: string, talked: boolean) => ({
+        key,
+        phone: `+998${key}`,
+        tel: `+998${key}`,
+        group: 'returning',
+        firstCallAt: '2026-10-16T03:00:00.000Z',
+        calls: 1,
+        answered: false,
+        calledBack: talked,
+        talked,
+        silenceDays: 21,
+        contact: { name: 'Dilnoza', bitrixId: '777' },
+        state: 'Первичный отдел · Янги лид',
+      })
+      return { data: { rows: [row('901111111', false), row('902222222', true)] }, meta: {} }
+    }
     return { data: { rows: [], waiting: 0, calledBack: 0, reached: 0 }, meta: {} }
   },
 }))
@@ -160,5 +198,59 @@ describe('a pressed group tile', () => {
     expect(within(card).getByText(/Эски харидор — raqamlar roʻyxati/)).toBeTruthy()
     expect(within(card).queryByText('+998978277500')).toBeNull()
     expect((await tileOf('Эски харидор')).getAttribute('aria-controls')).toBe('inbound-group-callers')
+  })
+})
+
+describe('«Қайта мурожат» — the CLAUDE.md\'s figures on the tiles (2026-10-22)', () => {
+  const tileOf = async (label: string) =>
+    (await screen.findByText(label, { selector: '[data-testid="inbound-groups"] p' })).closest('button')!
+
+  it('stands green beside «Соф янги», each with how it ended', async () => {
+    open()
+    // The analysis is its own request: the tile turns pressable once it has answered.
+    await screen.findByText('Yakunda: 5 tasi gaplashildi · 2 tasi yoʻqotildi')
+    const tiles = within(screen.getByTestId('inbound-groups'))
+    const labels = tiles.getAllByRole('button').map((b) => b.querySelector('p')?.textContent)
+    expect(labels.slice(0, 2)).toEqual(['Соф янги', 'Қайта мурожат'])
+    const returning = await tileOf('Қайта мурожат')
+    expect(within(returning).getByText('7')).toBeTruthy()
+    expect(within(returning).getByText(/mediana 21 kun, eng uzogʻi 29 kun/)).toBeTruthy()
+    expect(within(await tileOf('Соф янги')).getByText('Yakunda: 1 tasi gaplashildi · 1 tasi yoʻqotildi')).toBeTruthy()
+  })
+
+  it('opens its numbers — the lost ones first — and shows the day column', async () => {
+    open()
+    await screen.findByText('Yakunda: 5 tasi gaplashildi · 2 tasi yoʻqotildi')
+    fireEvent.click(await tileOf('Қайта мурожат'))
+    const card = await screen.findByTestId('returning-callers')
+    expect(await within(card).findByText('+998901111111')).toBeTruthy()
+    expect(within(card).queryByText('+998902222222')).toBeNull()
+    fireEvent.click(within(card).getByRole('button', { name: /Hammasi/ }))
+    expect(within(card).getByText('+998902222222')).toBeTruthy()
+    expect(screen.getByRole('columnheader', { name: 'Қайта мурожат' })).toBeTruthy()
+  })
+
+  it('writes the CLAUDE.md\'s CSV of the lost, «;»-separated, with the contact link', () => {
+    const csv = returningCsv([
+      {
+        key: '901111111',
+        phone: '+998901111111',
+        tel: '+998901111111',
+        group: 'returning',
+        firstCallAt: '2026-10-16T03:00:00.000Z',
+        calls: 2,
+        answered: false,
+        calledBack: false,
+        talked: false,
+        silenceDays: 54,
+        contact: { name: 'Dilnoza', bitrixId: '777' },
+        state: 'Первичный отдел · Янги лид',
+      },
+    ])
+    expect(csv.startsWith('﻿')).toBe(true)
+    const [head, line] = csv.replace('﻿', '').split('\r\n')
+    expect(head!.split(';')).toHaveLength(12)
+    expect(line).toContain(';+998901111111;2;yoʻq;yoʻq;yoʻq;54;777;Dilnoza;Первичный отдел · Янги лид;')
+    expect(line!.endsWith('/crm/contact/details/777/')).toBe(true)
   })
 })

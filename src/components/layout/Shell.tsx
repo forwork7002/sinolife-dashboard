@@ -101,12 +101,6 @@ import {
 interface NavItem {
   readonly href: string
   /**
-   * The section route whose grant opens this entry, when it is not `href`
-   * itself — a screen under another's section (`/customers/inbound` rides
-   * `/customers`), so no new grant has to be ticked on every account.
-   */
-  readonly gate?: string
-  /**
    * Shown only to an account that holds `users:manage`.
    *
    * Outside the section system on purpose — see `requireUserAdmin`. The page
@@ -130,8 +124,6 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     items: [
       { href: '/analytics/cohort', label: t.nav.cohort, icon: LayersIcon },
       { href: '/customers', label: t.nav.customers, icon: PhoneIcon },
-      // The client's «Кирувчи қўнғироқлар таҳлили» (2026-10-22), on «Qoʻngʻiroqlar»'s grant.
-      { href: '/customers/inbound', gate: '/customers', label: t.nav.inboundAnalysis, icon: InboxIcon },
       { href: '/analytics/sales', label: t.nav.sales, icon: ChartIcon },
       { href: '/margin', label: t.nav.margin, icon: CoinIcon },
     ],
@@ -467,7 +459,7 @@ export function Shell({
   const search = useSearchParams()
   const hrefFor = useCallback(
     (href: string) => {
-      if (href !== currentHref(pathname)) return `${href}${sectionQuery[href] ?? ''}`
+      if (!isActive(pathname, href)) return `${href}${sectionQuery[href] ?? ''}`
       const query = search.toString()
       return query ? `${pathname}?${query}` : pathname
     },
@@ -568,7 +560,7 @@ export function Shell({
   const canOpen = (item: NavItem) => {
     if (item.adminOnly) return viewer?.canManageUsers === true
     if (!role) return false
-    return canSeeHref(role, grantedRoutes, item.gate ?? item.href)
+    return canSeeHref(role, grantedRoutes, item.href)
   }
 
   const visibleNav = NAV.filter(canOpen)
@@ -595,7 +587,7 @@ export function Shell({
         label: item.label,
         icon: item.icon,
         href: hrefFor(item.href),
-        active: item.href === currentHref(pathname),
+        active: isActive(pathname, item.href),
         badge: item.href === '/leads' ? criticalLeads : 0,
       })),
   })).filter((group) => group.items.length > 0)
@@ -1665,16 +1657,6 @@ function relativeMinutes(minutes: number): string {
  * match `/analytics/sales-forecast`. Exact-or-followed-by-a-slash is the rule
  * that gets both right.
  */
-/**
- * The menu entry the path belongs to: the longest href it is or lies under, so
- * `/customers/inbound` lights «Kiruvchi tahlil» and not «Qoʻngʻiroqlar» too.
- */
-function currentHref(pathname: string): string | null {
-  let best: string | null = null
-  for (const item of NAV) if (isActive(pathname, item.href) && (best === null || item.href.length > best.length)) best = item.href
-  return best
-}
-
 function isActive(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(`${href}/`)

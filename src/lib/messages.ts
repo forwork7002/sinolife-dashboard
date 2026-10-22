@@ -28,7 +28,6 @@ export const t = {
   nav: {
     cohort: 'Mijoz qaytishi',
     customers: 'Qoʻngʻiroqlar',
-    inboundAnalysis: 'Kiruvchi tahlil',
     logistics: 'Logistika natijasi',
     sales: 'Savdo dinamikasi',
     confirmation: 'Tasdiqlash navbati',
