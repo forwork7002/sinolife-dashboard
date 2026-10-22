@@ -269,7 +269,13 @@ export async function importMetaSpend(
   options: MetaImportOptions = {},
 ): Promise<MetaImportResult> {
   const refreshDays = options.refreshDays ?? META_REFRESH_DAYS
-  const historyDeadline = Date.now() + (options.historyMs ?? 0)
+  /*
+    THE WALK'S TIME IS ITS OWN (2026-10-22). It was a deadline from the pass's
+    start, and the forward read of 28 accounts takes ~300 s — so on the first
+    live passes the deadline had passed before the first account's walk:
+    «eski tarix: 0 qator» every time. Now only time spent walking is spent.
+  */
+  let historyLeft = options.historyMs ?? 0
   const floor = metaHistoryFloor(today)
   const [adSpans, campaignSpans, adInsightSpans] = await Promise.all([
     prisma.metaAdDaily.groupBy({ by: ['accountId'], _min: { date: true }, _max: { date: true } }),
@@ -362,18 +368,20 @@ export async function importMetaSpend(
       A refusal here costs only the walk — it resumes from its marker.
     */
     if (!options.historyMs) continue
-    if (Date.now() >= historyDeadline) {
+    if (historyLeft <= 0) {
       historyPending += 1
       continue
     }
+    const walkStarted = Date.now()
     try {
-      const walked = await backfillAccount(prisma, token, account, floor, historyDeadline)
+      const walked = await backfillAccount(prisma, token, account, floor, walkStarted + historyLeft)
       historyRows += walked.rows
       if (!walked.done) historyPending += 1
     } catch (error) {
       historyPending += 1
       failed.push(`${account.name} · eski tarix: ${(error as Error).message}`)
     }
+    historyLeft -= Date.now() - walkStarted
   }
 
   if (unread === accounts.length && accounts.length > 0) {

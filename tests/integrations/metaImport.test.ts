@@ -652,6 +652,17 @@ describe('importMetaSpend — the history before 2026-07-01 (2026-10-22)', () =>
     expect(iso('ad')).toBeUndefined()
   })
 
+  it('walks even when the forward read took longer than the walk\'s whole budget — the first live passes', async () => {
+    const { prisma, iso } = world({ firstSpend: '2024-01-01' })
+    // Every look at the clock is ten minutes on: the forward read alone «takes» far past 90 s.
+    let now = 0
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 600_000))
+    const r = await importMetaSpend(prisma, 'token', '2026-10-22', { historyMs: 90_000 })
+    vi.restoreAllMocks()
+    expect(iso('account')).toBe('2023-10-01')
+    expect(r.historyRows).toBe(0)
+  })
+
   it('re-reads 37 days on the nightly pass instead of a week', async () => {
     const { prisma, asked } = world({ firstSpend: null })
     await importMetaSpend(prisma, 'token', '2026-10-22', { refreshDays: META_DEEP_REFRESH_DAYS })
