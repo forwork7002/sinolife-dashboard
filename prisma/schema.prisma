@@ -2152,3 +2152,54 @@ model LeadWatchSync {
 
   @@map("lead_watch_sync")
 }
+
+// ---------------------------------------------------------------------------
+// «AI registrator» (2026-10-22) — `src/app/api/ai-registrator/calls/route.ts`
+//
+// The Sinolife voice agent (a separate service on the Eskiz server) rings the
+// Регистрация leads, talks to the client and, when they are interested, puts
+// them through to a seller live (115, 112, 114 — the first one free). Bitrix24
+// keeps none of that in a field this dashboard can read: the agent writes a
+// timeline comment, and the ATS logs a call. So the agent POSTs every finished
+// call here, and «Lidlar → AI registrator» follows the deals it handed over.
+// ---------------------------------------------------------------------------
+
+/// One finished AI registrator call, as the agent reported it. Upserted by
+/// `callId`: the agent retries a push that did not get its 200, and a retry
+/// must be the same row. Joined to `deal` by `dealExternalId` at READ time —
+/// the push can land before the sync has read the deal.
+model AiRegistratorCall {
+  /// The agent's own call id (a UUID, its ARI channel id).
+  callId           String    @id
+  /// The Регистрация deal's portal id — `deal."externalId"` (BITRIX24).
+  dealExternalId   String
+  phone            String
+  /// Which attempt on this lead the agent counted it as, from 1.
+  attempt          Int
+  startedAt        DateTime
+  /// When the client picked up; null for a call nobody answered.
+  answeredAt       DateTime?
+  endedAt          DateTime
+  /// From the pick-up to the end; 0 when nobody answered.
+  durationSec      Int
+  /// The agent's own vocabulary: interested_transferred, transfer_failed,
+  /// interested_callback, not_interested, no_answer, busy, … — see
+  /// `domain/aiRegistrator/aiRegistrator.ts` `AI_OUTCOMES`.
+  outcome          String
+  /// The extension that ANSWERED the transfer («115»); null when none did.
+  transferredTo    String?
+  /// Every extension tried, in order: [{ ext, result, at }], result one of
+  /// answered / busy / no_answer / failed. Null on a call with no transfer.
+  transferAttempts Json?
+  /// What the agent wrote down: for_whom, problem, region, summary, … Shown
+  /// as given, never aggregated except `problem` / `summary` on the deal rows.
+  result           Json?
+  /// The agent's own test calls (its admin's phone): stored, never counted.
+  isTest           Boolean   @default(false)
+  receivedAt       DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([startedAt])
+  @@index([dealExternalId])
+  @@map("ai_registrator_call")
+}

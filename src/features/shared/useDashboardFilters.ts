@@ -341,6 +341,8 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
   '/rnp',
   // «Lidlar»: `src/app/(app)/leads/page.tsx` reads none either; its tab and day are local state (2026-10-06 audit).
   '/leads',
+  // «AI registrator»: `src/app/(app)/leads/ai-registrator/page.tsx` reads no searchParams either.
+  '/leads/ai-registrator',
   // «Sotuvchilar oyligi»: `src/app/(app)/payroll/page.tsx` reads none either; on the dashboard window since 2026-10-17.
   '/payroll',
 ])

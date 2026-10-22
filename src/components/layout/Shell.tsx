@@ -101,6 +101,12 @@ import {
 interface NavItem {
   readonly href: string
   /**
+   * The section route whose grant opens this entry, when it is not `href`
+   * itself — a screen under another's section (`/leads/ai-registrator` rides
+   * `/leads`), so no new grant has to be ticked on every account.
+   */
+  readonly gate?: string
+  /**
    * Shown only to an account that holds `users:manage`.
    *
    * Outside the section system on purpose — see `requireUserAdmin`. The page
@@ -151,6 +157,8 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     items: [
       { href: '/marketing', label: t.nav.marketing, icon: MegaphoneIcon },
       { href: '/leads', label: t.nav.leads, icon: InboxIcon },
+      // The owner's «AI registrator» (2026-10-22): the voice agent's leads, on «Lidlar»'s grant.
+      { href: '/leads/ai-registrator', gate: '/leads', label: t.nav.aiRegistrator, icon: BotIcon },
       { href: '/target', label: t.nav.target, icon: FunnelIcon },
       { href: '/roistat', label: t.nav.roistat, icon: ChartIcon },
     ],
@@ -459,7 +467,7 @@ export function Shell({
   const search = useSearchParams()
   const hrefFor = useCallback(
     (href: string) => {
-      if (!isActive(pathname, href)) return `${href}${sectionQuery[href] ?? ''}`
+      if (href !== currentHref(pathname)) return `${href}${sectionQuery[href] ?? ''}`
       const query = search.toString()
       return query ? `${pathname}?${query}` : pathname
     },
@@ -560,7 +568,7 @@ export function Shell({
   const canOpen = (item: NavItem) => {
     if (item.adminOnly) return viewer?.canManageUsers === true
     if (!role) return false
-    return canSeeHref(role, grantedRoutes, item.href)
+    return canSeeHref(role, grantedRoutes, item.gate ?? item.href)
   }
 
   const visibleNav = NAV.filter(canOpen)
@@ -587,7 +595,7 @@ export function Shell({
         label: item.label,
         icon: item.icon,
         href: hrefFor(item.href),
-        active: isActive(pathname, item.href),
+        active: item.href === currentHref(pathname),
         badge: item.href === '/leads' ? criticalLeads : 0,
       })),
   })).filter((group) => group.items.length > 0)
@@ -1657,6 +1665,16 @@ function relativeMinutes(minutes: number): string {
  * match `/analytics/sales-forecast`. Exact-or-followed-by-a-slash is the rule
  * that gets both right.
  */
+/**
+ * The menu entry the path belongs to: the longest href it is or lies under, so
+ * `/leads/ai-registrator` lights «AI registrator» and not «Lidlar» too.
+ */
+function currentHref(pathname: string): string | null {
+  let best: string | null = null
+  for (const item of NAV) if (isActive(pathname, item.href) && (best === null || item.href.length > best.length)) best = item.href
+  return best
+}
+
 function isActive(pathname: string, href: string): boolean {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(`${href}/`)
@@ -2024,6 +2042,16 @@ function PhoneIcon() {
         strokeWidth="1.7"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+/** «AI registrator»: a robot's head — the voice agent, not a person on the phone. */
+function BotIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="4.5" y="8" width="15" height="11" rx="3" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M12 8V4.5M9 13h.01M15 13h.01M9.5 16h5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   )
 }

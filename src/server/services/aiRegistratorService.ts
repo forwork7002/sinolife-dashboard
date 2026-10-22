@@ -1,0 +1,289 @@
+import { rateBp } from '@/server/domain/analytics/rates'
+import {
+  type AiCall,
+  type CallFunnel,
+  type ExtensionAttempts,
+  type GroupStats,
+  type Handoff,
+  type LeadOutcome,
+  type LeadVerdict,
+  type SaleDeal,
+  FOLLOW_DAYS,
+  HANDOFF_SLACK_MS,
+  MIN_LEADS_TO_COMPARE,
+  aiTransfers,
+  assignSales,
+  attemptsByExtension,
+  attemptsOf,
+  callFunnel,
+  groupStats,
+  leadOutcome,
+} from '@/server/domain/aiRegistrator/aiRegistrator'
+import { floorNumberOf, indexByFloorNumber } from '@/server/domain/employees/floorNumber'
+import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
+import type { Period } from '@/server/domain/period/period'
+import type { AiRegistratorRepository } from '@/server/repositories/aiRegistratorRepository'
+import { LIVE_CACHE, ttlCache } from './ttlCache'
+
+const DAY_MS = 86_400_000
+
+/** One cohort, with its rates. A rate over 0 leads is `null`, never 0. */
+export interface AiGroupDto {
+  readonly leads: number
+  readonly withSalesDeal: number
+  readonly ordered: number
+  readonly orderSum: MoneyDto
+  readonly sold: number
+  readonly soldSum: MoneyDto
+  readonly lost: number
+  readonly noDeal: number
+  readonly orderedRateBp: number | null
+  readonly soldRateBp: number | null
+  /** Delivered money ÷ leads; null over 0 leads. */
+  readonly soldPerLead: MoneyDto | null
+  readonly medianHoursToOrder: number | null
+}
+
+/** One seller, the AI's leads beside their own classic ones in the same window. */
+export interface AiSellerRowDto {
+  readonly key: string
+  readonly employeeId: string | null
+  readonly name: string | null
+  /** The extension the AI rang them on; null for a seller only the classic side names. */
+  readonly ext: string | null
+  readonly ai: AiGroupDto
+  readonly classic: AiGroupDto
+}
+
+export interface AiExtensionDto extends ExtensionAttempts {
+  readonly name: string | null
+}
+
+export interface AiSaleDto {
+  readonly dealId: string
+  readonly pipeline: string | null
+  readonly stage: string | null
+  readonly status: SaleDeal['status']
+  readonly amount: MoneyDto
+  readonly createdAt: string
+}
+
+/** One lead the AI put through (or tried to): the call, the seller, and every deal that followed. */
+export interface AiDealRowDto {
+  readonly dealId: string
+  readonly title: string | null
+  readonly phone: string
+  readonly at: string
+  readonly outcome: string
+  readonly transferredTo: string | null
+  /** The seller the extension resolves to by its floor number. */
+  readonly seller: string | null
+  readonly attempts: readonly { readonly ext: string; readonly result: string }[]
+  readonly problem: string | null
+  readonly summary: string | null
+  /** The Регистрация deal now; null until the sync has read it. */
+  readonly lead: { readonly pipeline: string | null; readonly stage: string | null; readonly status: string } | null
+  readonly sales: readonly AiSaleDto[]
+  /** Who the sales side credits, when it is not the person the AI rang. */
+  readonly soldBy: string | null
+  /** `not_transferred`: every transfer failed. `not_synced`: the deal is not in the store yet. */
+  readonly verdict: LeadVerdict | 'not_transferred' | 'not_synced'
+}
+
+export interface AiRegistratorDto {
+  readonly funnel: CallFunnel
+  readonly ai: AiGroupDto
+  readonly classic: AiGroupDto
+  readonly sellers: readonly AiSellerRowDto[]
+  readonly extensions: readonly AiExtensionDto[]
+  readonly deals: readonly AiDealRowDto[]
+  /** The AI side has at least `minLeads` leads — below it the screen says no conclusion is possible yet. */
+  readonly enoughToCompare: boolean
+  readonly minLeads: number
+  readonly followDays: number
+  readonly slackMinutes: number
+}
+
+const cache = ttlCache<AiRegistratorDto>(60_000, LIVE_CACHE)
+
+const textOf = (result: Readonly<Record<string, unknown>> | null, key: string): string | null => {
+  const value = result?.[key]
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null
+}
+
+/**
+ * «Lidlar → AI registrator». Every definition is in
+ * `domain/aiRegistrator/aiRegistrator.ts`; this joins the agent's pushed calls
+ * to the synced deals and shapes the answer.
+ */
+export class AiRegistratorService {
+  constructor(
+    private readonly repository: AiRegistratorRepository,
+    private readonly currency: string,
+  ) {}
+
+  report(period: Period, now: Date): Promise<AiRegistratorDto> {
+    const key = `ai|${period.preset}|${period.start.toISOString()}|${period.end.toISOString()}`
+    return cache.get(key, () => this.build(period, now))
+  }
+
+  private async build(period: Period, now: Date): Promise<AiRegistratorDto> {
+    const [calls, classicLeads, roster] = await Promise.all([
+      this.repository.calls(period.start, period.end),
+      this.repository.classicLeads(period.start, period.end),
+      this.repository.roster(),
+    ])
+    const real = calls.filter((c) => !c.isTest)
+    const transfers = aiTransfers(real)
+    const transferred = new Set(transfers.map((t) => t.dealExternalId))
+    const failed = latestFailed(real, transferred)
+
+    const leads = await this.repository.leadDeals([...transferred, ...failed.keys()])
+    const aiCohort = transfers.map((t) => ({ ...t, customerId: leads.get(t.dealExternalId)?.customerId ?? null }))
+
+    // Every contact either cohort reaches, and every hand-off those contacts ever had.
+    const customerIds = [
+      ...new Set(
+        [...aiCohort.map((t) => t.customerId), ...classicLeads.map((l) => l.customerId)].filter((id): id is string => !!id),
+      ),
+    ]
+    const cohortHandoffs: Handoff[] = [
+      ...aiCohort.flatMap((t) => (t.customerId ? [{ leadKey: t.dealExternalId, customerId: t.customerId, at: t.call.startedAt }] : [])),
+      ...classicLeads.flatMap((l) => (l.customerId ? [{ leadKey: l.externalId, customerId: l.customerId, at: l.closedAt }] : [])),
+    ]
+    let byLead = new Map<string, SaleDeal[]>()
+    if (cohortHandoffs.length > 0) {
+      const times = cohortHandoffs.map((h) => h.at.getTime())
+      const from = new Date(Math.min(...times) - HANDOFF_SLACK_MS)
+      const to = new Date(Math.min(Math.max(...times) + FOLLOW_DAYS * DAY_MS, now.getTime() + DAY_MS))
+      const [history, sales] = await Promise.all([this.repository.handoffs(customerIds), this.repository.sales(customerIds, from, to)])
+      byLead = assignSales([...history, ...cohortHandoffs], sales)
+    }
+    const outcomeOf = (leadKey: string): LeadOutcome => leadOutcome(byLead.get(leadKey) ?? [])
+
+    // Names: the AI side by the extension's floor number, the classic side by the employee the sale credits.
+    const badge = indexByFloorNumber(roster, (p) => p)
+    const nameOf = new Map(roster.map((p) => [p.id, p.fullName]))
+    const employeeOfExt = (ext: string | null): string | null => {
+      const n = ext ? floorNumberOf(ext) : null
+      return n === null ? null : (badge.get(n) ?? null)
+    }
+
+    const aiRows = aiCohort.map((t) => ({ t, outcome: outcomeOf(t.dealExternalId), handoffAt: t.call.startedAt }))
+    const classicRows = classicLeads.map((l) => ({ l, outcome: outcomeOf(l.externalId), handoffAt: l.closedAt }))
+
+    // Sellers: everyone the AI rang (by extension) or put a lead through to, beside their own classic leads.
+    const extensions = attemptsByExtension(real)
+    const sellerKeys = new Map<string, { employeeId: string | null; ext: string | null }>()
+    for (const ext of [...extensions.map((e) => e.ext), ...aiRows.map((r) => r.t.call.transferredTo ?? '')]) {
+      if (!ext) continue
+      const employeeId = employeeOfExt(ext)
+      const key = employeeId ?? `ext:${ext}`
+      if (!sellerKeys.has(key)) sellerKeys.set(key, { employeeId, ext })
+    }
+    const sellers: AiSellerRowDto[] = [...sellerKeys.entries()]
+      .map(([key, s]) => ({
+        key,
+        employeeId: s.employeeId,
+        name: s.employeeId ? (nameOf.get(s.employeeId) ?? null) : null,
+        ext: s.ext,
+        ai: this.group(
+          groupStats(aiRows.filter((r) => (employeeOfExt(r.t.call.transferredTo) ?? `ext:${r.t.call.transferredTo}`) === key)),
+        ),
+        classic: this.group(groupStats(s.employeeId ? classicRows.filter((r) => r.outcome.sellerId === s.employeeId) : [])),
+      }))
+      .sort((a, b) => (a.ext ?? '').localeCompare(b.ext ?? '', 'en', { numeric: true }))
+
+    const deals: AiDealRowDto[] = [
+      ...aiRows.map(({ t, outcome }) => {
+        const lead = leads.get(t.dealExternalId)
+        const sellerId = employeeOfExt(t.call.transferredTo)
+        return {
+          ...this.dealBase(t.call, lead),
+          seller: sellerId ? (nameOf.get(sellerId) ?? null) : null,
+          sales: (byLead.get(t.dealExternalId) ?? []).map((d) => this.sale(d)),
+          soldBy:
+            outcome.sellerId && outcome.sellerId !== sellerId ? (nameOf.get(outcome.sellerId) ?? null) : null,
+          verdict: lead ? outcome.verdict : ('not_synced' as const),
+        }
+      }),
+      ...[...failed.values()].map((call) => ({
+        ...this.dealBase(call, leads.get(call.dealExternalId)),
+        seller: null,
+        sales: [],
+        soldBy: null,
+        verdict: 'not_transferred' as const,
+      })),
+    ].sort((a, b) => b.at.localeCompare(a.at))
+
+    return {
+      funnel: callFunnel(calls),
+      ai: this.group(groupStats(aiRows)),
+      classic: this.group(groupStats(classicRows)),
+      sellers,
+      extensions: extensions.map((e) => {
+        const id = employeeOfExt(e.ext)
+        return { ...e, name: id ? (nameOf.get(id) ?? null) : null }
+      }),
+      deals,
+      enoughToCompare: aiRows.length >= MIN_LEADS_TO_COMPARE,
+      minLeads: MIN_LEADS_TO_COMPARE,
+      followDays: FOLLOW_DAYS,
+      slackMinutes: HANDOFF_SLACK_MS / 60_000,
+    }
+  }
+
+  private dealBase(call: AiCall, lead: { title: string; pipeline: string | null; stage: string | null; status: string } | undefined) {
+    return {
+      dealId: call.dealExternalId,
+      title: lead?.title ?? null,
+      phone: call.phone,
+      at: call.startedAt.toISOString(),
+      outcome: call.outcome,
+      transferredTo: call.transferredTo,
+      attempts: attemptsOf(call).map((a) => ({ ext: a.ext, result: a.result })),
+      problem: textOf(call.result, 'problem'),
+      summary: textOf(call.result, 'summary'),
+      lead: lead ? { pipeline: lead.pipeline, stage: lead.stage, status: lead.status } : null,
+    }
+  }
+
+  private sale(d: SaleDeal): AiSaleDto {
+    return {
+      dealId: d.externalId,
+      pipeline: d.pipeline,
+      stage: d.stage,
+      status: d.status,
+      amount: toMoneyDto(money(d.amountMinor, this.currency)),
+      createdAt: d.createdAt.toISOString(),
+    }
+  }
+
+  private group(g: GroupStats): AiGroupDto {
+    return {
+      leads: g.leads,
+      withSalesDeal: g.withSalesDeal,
+      ordered: g.ordered,
+      orderSum: toMoneyDto(money(g.orderMinor, this.currency)),
+      sold: g.sold,
+      soldSum: toMoneyDto(money(g.soldMinor, this.currency)),
+      lost: g.lost,
+      noDeal: g.noDeal,
+      orderedRateBp: rateBp(g.ordered, g.leads),
+      soldRateBp: rateBp(g.sold, g.leads),
+      soldPerLead: g.leads === 0 ? null : toMoneyDto(money(g.soldMinor / BigInt(g.leads), this.currency)),
+      medianHoursToOrder: g.medianHoursToOrder,
+    }
+  }
+}
+
+/** Deals whose every transfer in the window failed — the latest such call each, none the AI put through. */
+function latestFailed(calls: readonly AiCall[], transferred: ReadonlySet<string>): Map<string, AiCall> {
+  const out = new Map<string, AiCall>()
+  for (const call of calls) {
+    if (call.outcome !== 'transfer_failed' || transferred.has(call.dealExternalId)) continue
+    const held = out.get(call.dealExternalId)
+    if (!held || call.startedAt > held.startedAt) out.set(call.dealExternalId, call)
+  }
+  return out
+}

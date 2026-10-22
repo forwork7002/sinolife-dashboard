@@ -348,7 +348,7 @@ Two duplications the feature cannot avoid, both deliberate:
 
 Moved there whole on 2026-10-20 (it was 155 KB of this file): the removed screens, then the table page → URL → feature → endpoint(s) → service → repository → **which date the window filters on**, then one part per screen. Read the screen's table row and its part before changing a screen, its endpoint or any query behind it — the window basis differs per screen, and the wrong one gives plausible, wrong numbers.
 
-Screens: Savdo dinamikasi `/analytics/sales` · Mijoz qaytishi `/analytics/cohort` · Qoʻngʻiroqlar `/customers` · Reklama samarasi `/marketing` · Lidlar `/leads` · RNP jadvali `/rnp` · Target tahlili `/target` · Roistat `/roistat` · Yalpi marja `/margin` · Logistika `/logistics` · Sverka `/sverka` · Tasdiqlash navbati `/confirmation` · Sotuvchilar oyligi `/payroll` · Sotuvchilar reytingi `/sellers` · KPI rejalari `/kpi` · Struktura `/structure`.
+Screens: Savdo dinamikasi `/analytics/sales` · Mijoz qaytishi `/analytics/cohort` · Qoʻngʻiroqlar `/customers` · Reklama samarasi `/marketing` · Lidlar `/leads` · AI registrator `/leads/ai-registrator` · RNP jadvali `/rnp` · Target tahlili `/target` · Roistat `/roistat` · Yalpi marja `/margin` · Logistika `/logistics` · Sverka `/sverka` · Tasdiqlash navbati `/confirmation` · Sotuvchilar oyligi `/payroll` · Sotuvchilar reytingi `/sellers` · KPI rejalari `/kpi` · Struktura `/structure`.
 
 ## The 2026-09-10 cull — in `docs/claude/history.md` (what was deleted for having no client caller, and how to tell).
 

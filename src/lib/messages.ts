@@ -39,6 +39,7 @@ export const t = {
     margin: 'Yalpi marja',
     marketing: 'Reklama samarasi',
     leads: 'Lidlar',
+    aiRegistrator: 'AI registrator',
     target: 'Target tahlili',
     roistat: 'Roistat',
     sverka: 'Sverka (MoySklad)',

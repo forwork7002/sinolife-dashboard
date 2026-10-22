@@ -30,6 +30,7 @@ import { InboundAnalysisRepository } from '@/server/repositories/inboundAnalysis
 import { InboundCallsRepository } from '@/server/repositories/inboundCallsRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { CrmEventRepository } from '@/server/repositories/crmEventRepository'
+import { AiRegistratorRepository } from '@/server/repositories/aiRegistratorRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
@@ -52,6 +53,7 @@ import { RoistatService } from './roistatService'
 import { SverkaService } from './sverkaService'
 import { InboundAnalysisService } from './inboundAnalysisService'
 import { InboundCallsService } from './inboundCallsService'
+import { AiRegistratorService } from './aiRegistratorService'
 
 const dealRepository = new DealRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
@@ -76,6 +78,13 @@ const searchRepository = new SearchRepository(prisma)
 export const scopeRepository = new ScopeRepository(prisma)
 /** `/api/bitrix24/events` — the portal's outgoing events, queued for the worker. */
 export const crmEventRepository = new CrmEventRepository(prisma)
+/*
+  «AI registrator» (2026-10-22): the voice agent's pushed calls — written by
+  `/api/ai-registrator/calls`, read by «Lidlar → AI registrator» beside the
+  synced deals they handed over. See aiRegistratorService.ts.
+*/
+export const aiRegistratorRepository = new AiRegistratorRepository(prisma)
+export const aiRegistratorService = new AiRegistratorService(aiRegistratorRepository, env.APP_DEFAULT_CURRENCY)
 
 export const scopeService = new ScopeService(scopeRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)

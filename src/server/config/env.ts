@@ -165,6 +165,16 @@ const schema = z
       .optional()
       .transform((v) => (v === '' ? undefined : v)),
     /*
+      The bearer token the AI registrator (the voice agent on the Eskiz server)
+      sends with each finished call — see `/api/ai-registrator/calls`.
+      Optional: without it that endpoint answers 404 and the «AI registrator»
+      screen shows no calls.
+    */
+    AI_REGISTRATOR_INGEST_TOKEN: z
+      .string()
+      .optional()
+      .transform((v) => (v === '' ? undefined : v)),
+    /*
       An HTTP CONNECT relay every portal call goes through — see
       `createPortalFetch` in `bitrix24/portalAddresses.ts` for why. Optional:
       without it the calls leave from this server directly.
