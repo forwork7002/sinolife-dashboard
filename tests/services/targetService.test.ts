@@ -352,13 +352,14 @@ describe('metaBlock — the «Лид база» sheet', () => {
       expect(zextra.metaFormLeads).toBe(80)
     })
 
-    it('gives each card the person\'s own Facebook form leads — the cohort «Bitrix лид» answers, DM/«Sayt»/vakansiya out', () => {
+    it('gives each card the person\'s own Facebook form leads — «Lidlar»\'s «Meta lid»: «Sayt» in, DM and vakansiya out', () => {
       const umar = paired.targetologs.find((t) => t.targetolog === 'Umar')!
       const kamron = paired.targetologs.find((t) => t.targetolog === 'Kamron')!
       const eldor = paired.targetologs.find((t) => t.targetolog === 'Элдор')!
-      // Umar's «Collagen form» alone (1 000); «Sms-1» (DM), «Sayt-1» (site) and the vakansiya are not form leads.
-      expect(umar.metaFormLeads).toBe(1_000)
-      expect(umar.metaFormCplUsd).toBeCloseTo(150 / 1_000, 6)
+      // «Collagen form» (1 000) and «Sayt-1» (9) — its leads land as the website form's fills, which «Bitrix лид»
+      // counts; left out, Bitrix read above Facebook (Timur, 2026-10-22). «Sms-1» (DM) and the vakansiya stay out.
+      expect(umar.metaFormLeads).toBe(1_009)
+      expect(umar.metaFormCplUsd).toBeCloseTo((150 + 12) / 1_009, 6)
       // Umar's «Meta leadlari» (every campaign, from the daily sheet) stays the larger figure beside it.
       expect(umar.metaLeads).toBe(244)
       expect(kamron.metaFormLeads).toBe(80)
@@ -366,11 +367,13 @@ describe('metaBlock — the «Лид база» sheet', () => {
       expect(eldor.metaFormLeads).toBe(0)
       expect(eldor.metaFormCplUsd).toBeNull()
       // The split under a two-product person carries each product's own form leads.
-      expect(umar.products.map((part) => part.metaFormLeads)).toEqual([1_000])
+      expect(umar.products.map((part) => part.metaFormLeads)).toEqual([1_009])
       // The targetolog × product table (owners) reads the same form leads, so card and table agree.
       const umarOwner = paired.owners.find((o) => o.targetolog === 'Umar' && o.product === 'Collagen')!
-      expect(umarOwner.metaFormLeads).toBe(1_000)
-      expect(umarOwner.metaFormCplUsd).toBeCloseTo(150 / 1_000, 6)
+      expect(umarOwner.metaFormLeads).toBe(1_009)
+      expect(umarOwner.metaFormCplUsd).toBeCloseTo((150 + 12) / 1_009, 6)
+      // The hero keeps its own pair, «Sayt» out.
+      expect(collagen.metaFormLeads).toBe(1_000)
       expect(paired.owners.find((o) => o.targetolog === 'Kamron')!.metaFormLeads).toBe(80)
       expect(paired.owners.find((o) => o.targetolog === 'Элдор')!.metaFormLeads).toBe(0)
     })
@@ -515,6 +518,9 @@ describe('withTargetologLeads — the cards\' kval, kval % and FAKT 1 clients', 
     outcome: { leads: leads - 1, success },
     bitrixLeads: leads,
     fakt1Clients,
+    metaLeads: leads * 2,
+    formlessLeads: 0,
+    leadsBasis: 'fills' as 'fills' | 'deals',
   })
   const forms = {
     owners: [
@@ -557,6 +563,21 @@ describe('withTargetologLeads — the cards\' kval, kval % and FAKT 1 clients', 
     )
     expect(card(unread, 'Sobirjon')).toMatchObject({ qualified: 18, clients: null, costPerClientUsd: null })
     expect(card(withTargetologLeads(overview, { ...forms, fakt1Targetologs: null, owners: forms.owners.map((o) => ({ ...o, fakt1Clients: null })) }, 'Zextra'), 'Sobirjon')!.clients).toBeNull()
+  })
+
+  it('reads «Qamrov» as «Lidlar» does: form leads in Bitrix24 over Meta\'s form leads, summed over the person\'s rows', () => {
+    // Fills: 20 + 30 Bitrix over 40 + 60 Meta.
+    expect(card(withTargetologLeads(overview, forms, 'all'), 'Sobirjon')!.reachPercent).toBeCloseTo(50, 6)
+    // Deals (an old window): the «Ген лид» only the «Таргетолог» field filed are in «Bitrix lid», not in «Qamrov».
+    const deals = {
+      ...forms,
+      owners: [{ ...owner('Sobirjon', 'Collagen', 40, 20, 8, 3), leadsBasis: 'deals' as const, formlessLeads: 5 }],
+    }
+    const sobirjon = card(withTargetologLeads(overview, deals, 'all'), 'Sobirjon')!
+    expect(sobirjon.leads).toBe(20)
+    expect(sobirjon.reachPercent).toBeCloseTo((15 / 40) * 100, 6)
+    // No Meta form lead: no reach rather than a division by zero.
+    expect(card(withTargetologLeads(overview, forms, 'all'), 'Kamron')!.reachPercent).toBeNull()
   })
 
   it('leaves every card unread when the forms scan failed', () => {

@@ -123,6 +123,8 @@ export interface TargetologBitrixDto {
   /** «Факт1 мижоз»; null while the phone match is not read. */
   readonly clients: number | null
   readonly costPerClientUsd: number | null
+  /** «Qamrov»: form leads in Bitrix24 ÷ Meta's form leads, «Lidlar»'s rule. */
+  readonly reachPercent: number | null
 }
 
 /** One product (or both, as the total): Meta's delivery and the pages' results. */

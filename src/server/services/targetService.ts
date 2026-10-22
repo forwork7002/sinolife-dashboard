@@ -157,10 +157,10 @@ export interface MetaTargetologDto extends MetaMetricsDto {
   readonly targetolog: string
   /**
    * Meta's leads from this person's LEAD-FORM campaigns alone (`campaignChannel`
-   * 'form', «Sayt» and hiring out) — the funnel top the card's «Bitrix лид»
-   * answers, so the two are the same cohort (the client, 2026-10-22:
-   * «facebookdan tushgan lead va facebookdan bitrix24ga tushgan lead»).
-   * `metaLeads` beside it is every campaign, DM and site included.
+   * 'form', hiring out, «Sayt» in — «Lidlar»'s «Meta lid») — the funnel top the
+   * card's «Bitrix лид» answers, so the two are the same cohort (the client,
+   * 2026-10-22: «facebookdan tushgan lead va facebookdan bitrix24ga tushgan
+   * lead»). `metaLeads` beside it is every campaign, DM included.
    */
   readonly metaFormLeads: number
   /** Form-campaign spend ÷ `metaFormLeads` — the price of one Facebook form lead. */
@@ -206,6 +206,12 @@ export interface TargetologBitrixDto {
   readonly clients: number | null
   /** formUsd ÷ clients. */
   readonly costPerClientUsd: number | null
+  /**
+   * «Qamrov»: the form leads that reached Bitrix24 ÷ Meta's form leads, «Lidlar»'s
+   * `reachPercent` summed over the person's rows — the deals the «Таргетолог»
+   * field alone filed here passed through no Meta form, so they are left out.
+   */
+  readonly reachPercent: number | null
 }
 
 /**
@@ -560,17 +566,19 @@ export function metaBlock(input: {
 
   /*
     FACEBOOK FORM LEADS PER PERSON (and per product column), the funnel top the
-    card's «Bitrix лид» answers. The same filter `productTotals` uses for
-    `metaFormLeads` — `channel === 'form'`, «Sayt» and hiring out — so the card
-    and the hero agree, and «Facebook forma leadlari ↔ Bitrix lid» compare like
-    with like. `metaLeads` (every campaign) stays on the row beside it.
+    card's «Bitrix лид» answers. «Lidlar» → «Targetologlar»'s own rule, since
+    «Bitrix лид» is that tab's figure: every `channel === 'form'` campaign,
+    hiring out, «Sayt» IN — its leads arrive as the website form's fills, which
+    «Bitrix лид» counts. Left out (as the hero does), Timur's card read 351
+    Facebook against 468 Bitrix (2026-10-22). `metaLeads` (every campaign)
+    stays on the row beside it.
   */
   const formLeadsByKey = new Map<string, number>()
   const formSpendByKey = new Map<string, bigint>()
   const formLeadsByPerson = new Map<string, number>()
   const formSpendByPerson = new Map<string, bigint>()
   for (const c of campaigns) {
-    if (c.channel !== 'form' || c.site) continue
+    if (c.channel !== 'form') continue
     const owner = ownerOf(c.accountId, c.accountName)
     const key = `${owner.product}|${owner.targetolog}`
     formLeadsByKey.set(key, (formLeadsByKey.get(key) ?? 0) + c.leads)
@@ -728,6 +736,11 @@ export interface TargetologFormsInput {
     /** The Bitrix24 count of Meta's form leads — the fills since 2026-10-15 (`FormOwnerDto.bitrixLeads`). */
     readonly bitrixLeads: number
     readonly fakt1Clients: number | null
+    /** Meta's form leads on this row — what «Qamrov» divides by. */
+    readonly metaLeads: number
+    /** «Ген лид» the «Таргетолог» field alone filed here: in `bitrixLeads` on 'deals', never a form's. */
+    readonly formlessLeads: number
+    readonly leadsBasis: 'fills' | 'deals'
   }[]
   readonly fakt1Targetologs: readonly { readonly targetolog: string; readonly clients: number }[] | null
 }
@@ -746,14 +759,19 @@ export function withTargetologLeads(
   product: TargetProductFilter,
 ): TargetOverviewDto {
   if (forms === null) return overview
-  const people = new Map<string, { formUsd: number; leads: number; success: number; clients: number | null }>()
+  type Person = { formUsd: number; leads: number; success: number; clients: number | null; metaLeads: number; formLeads: number }
+  const empty = (): Person => ({ formUsd: 0, leads: 0, success: 0, clients: 0, metaLeads: 0, formLeads: 0 })
+  const people = new Map<string, Person>()
   for (const o of forms.owners) {
     if (product !== 'all' && o.product !== product) continue
-    const acc = people.get(o.targetolog) ?? { formUsd: 0, leads: 0, success: 0, clients: 0 }
+    const acc = people.get(o.targetolog) ?? empty()
     acc.formUsd += o.formUsd
     acc.leads += o.bitrixLeads
     acc.success += o.outcome.success
     acc.clients = acc.clients === null || o.fakt1Clients === null ? null : acc.clients + o.fakt1Clients
+    acc.metaLeads += o.metaLeads
+    // «Lidlar»'s `reachPercent` numerator: on the deals, the field-filed «Ген лид» are no form's.
+    acc.formLeads += o.leadsBasis === 'deals' ? o.bitrixLeads - o.formlessLeads : o.bitrixLeads
     people.set(o.targetolog, acc)
   }
   // Both products: the distinct count, so a client of a Collagen and a Zextra form is one.
@@ -767,7 +785,7 @@ export function withTargetologLeads(
     meta: {
       ...overview.meta,
       targetologs: overview.meta.targetologs.map((t) => {
-        const acc = people.get(t.targetolog) ?? { formUsd: 0, leads: 0, success: 0, clients: 0 }
+        const acc = people.get(t.targetolog) ?? empty()
         const clients =
           forms.fakt1Targetologs === null ? null : distinct ? (distinct.get(t.targetolog) ?? 0) : acc.clients
         const formUsd = cents(acc.formUsd)
@@ -781,6 +799,7 @@ export function withTargetologLeads(
             costPerQualifiedUsd: formUsd > 0 ? ratio(formUsd, acc.success) : null,
             clients,
             costPerClientUsd: formUsd > 0 && clients !== null ? ratio(formUsd, clients) : null,
+            reachPercent: percent(acc.formLeads, acc.metaLeads),
           },
         }
       }),

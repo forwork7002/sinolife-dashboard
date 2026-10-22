@@ -260,9 +260,9 @@ function TargetologCards({
             <Metric
               label="Facebook forma leadlari"
               value={formatNumber(p.metaFormLeads)}
-              hint="Meta'ning lead-forma kampaniyalari leadlari — DM, «Sayt» va vakansiya kirmaydi. «Bitrix lid» bilan bir xil cohort, taqqoslasa boʻladi."
+              hint="Meta'ning lead-forma kampaniyalari leadlari («Sayt» ham) — DM va vakansiya kirmaydi. «Lidlar → Targetologlar» dagi «Meta lid» bilan bir xil, «Bitrix lid» bilan taqqoslasa boʻladi."
             />
-            <Metric label="1 lead narxi" value={usd(p.metaFormCplUsd)} strong hint="Forma kampaniyalari sarfi ÷ Facebook forma leadlari" />
+            <Metric label="1 lead narxi" value={usd(p.metaFormCplUsd)} strong hint="Forma kampaniyalari sarfi («Sayt» bilan) ÷ Facebook forma leadlari" />
             <Metric
               label="Bitrix lid"
               value={p.bitrix ? formatNumber(p.bitrix.leads) : '—'}
@@ -270,8 +270,8 @@ function TargetologCards({
             />
             <Metric
               label="Qamrov"
-              value={formatPercent(p.bitrix && p.metaFormLeads > 0 ? (p.bitrix.leads / p.metaFormLeads) * 100 : null)}
-              hint="Bitrix lid ÷ Facebook forma leadlari — Meta sanagan forma leadlarining qanchasi Bitrix24 ga yetib kelgani (qolgani dublikat/yaroqsiz/yetib kelmagan)"
+              value={formatPercent(p.bitrix?.reachPercent ?? null)}
+              hint="Formadan Bitrix24 ga tushgan lidlar ÷ Facebook forma leadlari — «Lidlar» dagi qamrov. Formasiz, faqat «Таргетолог» maydoni bilan yozilgan lidlar kirmaydi. 100% dan oshsa — formani reklamadan tashqari ham toʻldirishgan."
             />
             <Metric
               label="Kval %"
