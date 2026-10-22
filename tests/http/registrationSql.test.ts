@@ -65,8 +65,8 @@ describe('bezkvalLeadsSql', () => {
   it('reads a window of Tashkent days by the lead\'s instant, end-exclusive', () => {
     expect(sql).toContain(`x.at >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
     expect(sql).toContain(`x.at < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
-    expect(sql).toContain(`(x.at AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day`)
-    expect(sql).toContain(`extract(hour FROM (x.at AT TIME ZONE 'UTC' AT TIME ZONE $3))::int AS hour`)
+    expect(sql).toContain(`(w.at AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day`)
+    expect(sql).toContain(`extract(hour FROM (w.at AT TIME ZONE 'UTC' AT TIME ZONE $3))::int AS hour`)
   })
 
   it('dates a Lead Guard deal by «Лид тушган сана», found through either index', () => {
@@ -77,15 +77,19 @@ describe('bezkvalLeadsSql', () => {
 
   it('takes a deal born in Регистрация or Первичный отдел, or standing in one now — every stage', () => {
     expect(sql).toContain(`FROM "crm_deal_birth" b`)
-    expect(sql).toContain(`WHERE b."dealExternalId" = d."externalId" AND b."externalSource" = d."externalSource"`)
-    expect(sql).toContain(`AND (b."categoryId" IN (0, 12) OR p."externalId" IN ('0', '12'))`)
+    expect(sql).toContain(`WHERE born."categoryId" IN (0, 12) OR w.pipeline IN ('0', '12')`)
+    // Read once for the window's ids — never a lookup per deal (a month timed out that way, 2026-10-22).
+    expect(sql).toContain(`WHERE b."dealExternalId" IN (SELECT external_id FROM w)`)
+    expect(sql).not.toContain('LEFT JOIN LATERAL')
+    expect(sql).not.toContain('phone_nines')
     expect(sql).not.toMatch(/[Дд]убл/)
     expect(sql).not.toContain(`p."role"`)
   })
 
   it('hands over every number of the contact, and the contact even before the customer pass links it', () => {
-    expect(sql).toContain(`phone_nines(cu."phones" || cu."phone") END AS phones`)
-    expect(sql).toContain(`COALESCE(cu."externalId", d."metadata"->>'contactId') AS contact_id`)
+    expect(sql).toContain(`array_remove(cu."phones" || cu."phone", NULL) END AS phones`)
+    expect(sql).toContain(`d."metadata"->>'contactId' AS meta_contact`)
+    expect(sql).toContain(`COALESCE(cu."externalId", w.meta_contact) AS contact_id`)
     expect(sql).toContain(`d."dealPhone" AS deal_phone`)
   })
 
@@ -95,7 +99,7 @@ describe('bezkvalLeadsSql', () => {
     expect(sql).toContain(`WHERE h."headId" = o."id" AND h."isActive"`)
     expect(sql).toContain(`AND o."fullName" ~* '(^|[^[:alpha:]])rop([^[:alpha:]]|$)'`)
     expect(sql).toContain(`o."fullName") AS name`)
-    expect(sql).toContain(`WHERE o."id" IN (SELECT rop_id FROM w UNION SELECT rop_primary_id FROM w)`)
+    expect(sql).toContain(`WHERE o."id" IN (SELECT rop_id FROM lead UNION SELECT rop_primary_id FROM lead)`)
     expect(sql).toContain(`LEFT JOIN names k ON k."id" = w.rop_id`)
     expect(sql).toContain(`LEFT JOIN names lr ON lr."id" = w.rop_primary_id`)
     // The old guesses are gone: the owner, the seller's unit, the hand-over log.
@@ -105,7 +109,7 @@ describe('bezkvalLeadsSql', () => {
 
   it('reads the names only for the day card', () => {
     expect(sql).not.toContain('sales_source')
-    expect(detail).toContain(`LEFT JOIN "sales_source" s ON s."id" = d."sourceId"`)
+    expect(detail).toContain(`LEFT JOIN "sales_source" s ON s."id" = w.source_id`)
     expect(detail).toContain(`st."name" AS stage`)
   })
 })
@@ -139,7 +143,8 @@ describe('bezkvalHistorySql', () => {
     // A fence: the LATERAL must stay a per-contact index read, never a hash of every deal.
     expect(sql).toMatch(/IS DISTINCT FROM '8'\s+OFFSET 0\s+\) y/)
     expect(sql).toContain(`AND p."externalId" IS DISTINCT FROM '8'`)
-    expect(sql).toContain(`(b."categoryId" IN (0, 12) OR p."externalId" IN ('0', '12')) AS is_lead`)
+    expect(sql).toContain(`(born."categoryId" IN (0, 12) OR pd.pipeline_ext IN ('0', '12')) AS is_lead`)
+    expect(sql).toContain(`WHERE b."dealExternalId" IN (SELECT external_id FROM pd)`)
     expect(sql).toContain(`FILTER (WHERE is_lead AND at >= (($1::date)::timestamp AT TIME ZONE $4 AT TIME ZONE 'UTC') - interval '30 days')`)
   })
 

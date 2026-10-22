@@ -225,32 +225,34 @@ export class RegistrationRepository {
   static bezkvalLeadsSql(detail = false): string {
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
     const hi = `(($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
-    const local = `(x.at AT TIME ZONE 'UTC' AT TIME ZONE $3)`
+    const local = `(w.at AT TIME ZONE 'UTC' AT TIME ZONE $3)`
     /*
-      THE ROP NAMES ONCE PER PERSON, NOT PER DEAL: a month is ~90 000 deals
-      and a dozen people in the two fields, and the head / «… rop» rule is two
-      correlated reads — so the window is read first (MATERIALIZED) and the
-      names of the people it names after, then joined back.
+      SET-BASED, NOT PER DEAL (2026-10-22, production). The first version read
+      each deal's birth through a LATERAL lookup and normalised each contact's
+      numbers with phone_nines() per row: with «crm_deal_birth» new and still
+      filling, the planner had no statistics for it, and a month ran past the
+      20 s statement timeout — the grid answered 500. Now the window is read
+      once (MATERIALIZED), its births are read once for its deal ids, the ROP
+      names once per person, and the numbers go out raw (the domain takes
+      their last nine digits, `phoneNine`).
     */
     return `
       WITH w AS MATERIALIZED (
         SELECT d."id" AS deal_id,
                d."externalId" AS external_id,
+               d."externalSource" AS external_source,
                x.at,
-               ${local}::date::text AS day,
-               extract(hour FROM ${local})::int AS hour,
                x.lead_guard,
-               b."categoryId" AS born_category,
                p."externalId" AS pipeline,
-               COALESCE(cu."externalId", d."metadata"->>'contactId') AS contact_id,
-               CASE WHEN cu."id" IS NULL THEN '{}'::text[] ELSE phone_nines(cu."phones" || cu."phone") END AS phones,
+               d."customerId" AS customer_id,
+               d."metadata"->>'contactId' AS meta_contact,
                d."dealPhone" AS deal_phone,
                d."ropKvalLidEmployeeId" AS rop_id,
                d."leadRopEmployeeId" AS rop_primary_id${
                  detail
                    ? `,
-               s."name" AS source,
-               st."name" AS stage,
+               d."sourceId" AS source_id,
+               d."stageId" AS stage_id,
                p."name" AS pipeline_name`
                    : ''
                }
@@ -262,34 +264,57 @@ export class RegistrationRepository {
             SELECT CASE WHEN g.lead_guard THEN d."leadArrivedAt" ELSE d."createdAtSource" END AS at, g.lead_guard
           ) x
           LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
-          LEFT JOIN LATERAL (
-            SELECT b."categoryId"
-              FROM "crm_deal_birth" b
-             WHERE b."dealExternalId" = d."externalId" AND b."externalSource" = d."externalSource"
-             ORDER BY b."bornAt", b."externalId"
-             LIMIT 1
-          ) b ON true
-          LEFT JOIN "customer" cu ON cu."id" = d."customerId"${
-            detail
-              ? `
-          LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
-          LEFT JOIN "deal_stage" st ON st."id" = d."stageId"`
-              : ''
-          }
          WHERE ((d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi})
                 OR (d."leadArrivedAt" >= ${lo} AND d."leadArrivedAt" < ${hi}))
            AND x.at >= ${lo} AND x.at < ${hi}
-           AND (b."categoryId" IN (0, 12) OR p."externalId" IN ('0', '12'))
+      ),
+      born AS MATERIALIZED (
+        SELECT DISTINCT ON (b."externalSource", b."dealExternalId") b."externalSource", b."dealExternalId", b."categoryId"
+          FROM "crm_deal_birth" b
+         WHERE b."dealExternalId" IN (SELECT external_id FROM w)
+         ORDER BY b."externalSource", b."dealExternalId", b."bornAt", b."externalId"
+      ),
+      lead AS MATERIALIZED (
+        SELECT w.*, born."categoryId" AS born_category
+          FROM w
+          LEFT JOIN born ON born."dealExternalId" = w.external_id AND born."externalSource" = w.external_source
+         WHERE born."categoryId" IN (0, 12) OR w.pipeline IN ('0', '12')
       ),
       names AS MATERIALIZED (
         SELECT o."id", COALESCE(${RegistrationRepository.bezkvalOwnerRopSql('o')}, o."fullName") AS name
           FROM "employee" o
-         WHERE o."id" IN (SELECT rop_id FROM w UNION SELECT rop_primary_id FROM w)
+         WHERE o."id" IN (SELECT rop_id FROM lead UNION SELECT rop_primary_id FROM lead)
       )
-      SELECT w.*, k.name AS rop, lr.name AS rop_primary
-        FROM w
+      SELECT w.deal_id,
+             w.external_id,
+             w.at,
+             ${local}::date::text AS day,
+             extract(hour FROM ${local})::int AS hour,
+             w.lead_guard,
+             w.born_category,
+             w.pipeline,
+             COALESCE(cu."externalId", w.meta_contact) AS contact_id,
+             CASE WHEN cu."id" IS NULL THEN '{}'::text[] ELSE array_remove(cu."phones" || cu."phone", NULL) END AS phones,
+             w.deal_phone,
+             k.name AS rop,
+             lr.name AS rop_primary${
+               detail
+                 ? `,
+             s."name" AS source,
+             st."name" AS stage,
+             w.pipeline_name`
+                 : ''
+             }
+        FROM lead w
+        LEFT JOIN "customer" cu ON cu."id" = w.customer_id
         LEFT JOIN names k ON k."id" = w.rop_id
-        LEFT JOIN names lr ON lr."id" = w.rop_primary_id`
+        LEFT JOIN names lr ON lr."id" = w.rop_primary_id${
+          detail
+            ? `
+        LEFT JOIN "sales_source" s ON s."id" = w.source_id
+        LEFT JOIN "deal_stage" st ON st."id" = w.stage_id`
+            : ''
+        }`
   }
 
   /**
@@ -322,32 +347,39 @@ export class RegistrationRepository {
       -- LATERAL behind OFFSET 0 (no pull-up), so each contact's deals come off
       -- the customerId index: joined plainly, the planner took «owners» for
       -- millions of rows and hashed every deal of the portal (PGlite, 2026-10-22).
-      prior AS (
+      -- Their births are read once, for their ids — never a lookup per deal.
+      pd AS MATERIALIZED (
         SELECT o.key, y.*
           FROM owners o
           CROSS JOIN LATERAL (
             SELECT d."externalId" AS external_id,
+                   d."externalSource" AS external_source,
                    p."name" AS pipeline,
-                   x.at,
-                   (b."categoryId" IN (0, 12) OR p."externalId" IN ('0', '12')) AS is_lead
+                   p."externalId" AS pipeline_ext,
+                   x.at
               FROM "deal" d
               LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
               CROSS JOIN LATERAL (
                 SELECT CASE WHEN COALESCE(d."leadVia" ILIKE '%lead guard%' AND d."leadArrivedAt" IS NOT NULL, false)
                             THEN d."leadArrivedAt" ELSE d."createdAtSource" END AS at
               ) x
-              LEFT JOIN LATERAL (
-                SELECT b."categoryId"
-                  FROM "crm_deal_birth" b
-                 WHERE b."dealExternalId" = d."externalId" AND b."externalSource" = d."externalSource"
-                 ORDER BY b."bornAt", b."externalId"
-                 LIMIT 1
-              ) b ON true
              WHERE d."customerId" = o.customer_id
                AND x.at < ${lo}
                AND p."externalId" IS DISTINCT FROM '8'
             OFFSET 0
           ) y
+      ),
+      born AS MATERIALIZED (
+        SELECT DISTINCT ON (b."externalSource", b."dealExternalId") b."externalSource", b."dealExternalId", b."categoryId"
+          FROM "crm_deal_birth" b
+         WHERE b."dealExternalId" IN (SELECT external_id FROM pd)
+         ORDER BY b."externalSource", b."dealExternalId", b."bornAt", b."externalId"
+      ),
+      prior AS (
+        SELECT pd.key, pd.external_id, pd.pipeline, pd.at,
+               (born."categoryId" IN (0, 12) OR pd.pipeline_ext IN ('0', '12')) AS is_lead
+          FROM pd
+          LEFT JOIN born ON born."dealExternalId" = pd.external_id AND born."externalSource" = pd.external_source
       )
       SELECT DISTINCT ON (key)
              key,

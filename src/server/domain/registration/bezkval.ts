@@ -58,7 +58,7 @@ export interface BezkvalLeadRow {
   readonly pipeline: string | null
   /** The contact's portal id. */
   readonly contactId: string | null
-  /** Every number of the contact, the last nine digits. */
+  /** Every number of the contact, as typed — `dealKeys` takes their last nine digits. */
   readonly phones: readonly string[]
   /** The deal's own «Телефон ракам», raw. */
   readonly dealPhone: string | null
