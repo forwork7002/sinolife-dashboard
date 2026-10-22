@@ -40,6 +40,14 @@ const pin = 'sticky left-0 z-[1] text-left'
 
 const COLUMNS = ['Лид сони', 'План', 'Факт-1 ПР', 'Отклонение', 'Транз-1', 'Конверсия', 'Факт-2 ПР', 'Транз-2', 'Дозвон', 'Длительность', 'Dostup'] as const
 
+/**
+ * Guruh sarlavhasining KOʻRINADIGAN nomi — ichki kalit emas. Bitrix24'da
+ * «Charos(ROP)» boʻlimi «Malika»ga oʻzgargach (mijoz, 2026-10-22), bu tabda ham
+ * «Malika guruhi» koʻrinsin. Ichki «Charos» kaliti oʻzgarmaydi — u sheet eksporti
+ * (SHEET_TEAM_NAMES / *_SHEET_ROW), baho shkalalari va TEAM_ALIASES foldiga kerak.
+ */
+const TEAM_DISPLAY: Readonly<Record<string, string>> = { Charos: 'Malika' }
+
 /** The split's colour for a team it has; a team it lacks takes the next unused slot, the no-team group grey. */
 function groupColor(rop: string | null, index: number, colors: ReadonlyMap<string, string>): string {
   if (rop === null) return 'var(--ink-muted)'
@@ -156,7 +164,7 @@ function Group({ group, color }: { group: RopReportGroupDto; color: string }) {
           <span className="sticky left-3 inline-flex items-center gap-2">
             <span className="h-3 w-1 rounded-full" style={{ background: color }} aria-hidden />
             <span className="text-[13px] font-semibold" style={{ color: 'var(--ink-primary)' }}>
-              {group.rop ? `${group.rop} guruhi` : 'Jamoasiz'}
+              {group.rop ? `${TEAM_DISPLAY[group.rop] ?? group.rop} guruhi` : 'Jamoasiz'}
             </span>
             <span className="text-xs font-normal" style={muted}>
               {group.rop ? `${formatNumber(group.sellers.length)} kishi` : 'ROP jamoasi koʻrsatilmagan lid va buyurtmalar'}
