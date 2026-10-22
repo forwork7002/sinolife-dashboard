@@ -331,6 +331,8 @@ const SHALLOW_ROUTES: ReadonlySet<string> = new Set([
     would otherwise pay the round trip.
   */
   '/customers',
+  // «Kiruvchi tahlil»: `src/app/(app)/customers/inbound/page.tsx` reads no searchParams either.
+  '/customers/inbound',
   // «Target tahlili»: `src/app/(app)/target/page.tsx` reads no searchParams either.
   '/target',
   // «Roistat»: `src/app/(app)/roistat/page.tsx` reads no searchParams either.

@@ -26,6 +26,7 @@ import { RegistrationRepository } from '@/server/repositories/registrationReposi
 import { RnpRepository } from '@/server/repositories/rnpRepository'
 import { RoistatRepository } from '@/server/repositories/roistatRepository'
 import { SverkaRepository } from '@/server/repositories/sverkaRepository'
+import { InboundAnalysisRepository } from '@/server/repositories/inboundAnalysisRepository'
 import { InboundCallsRepository } from '@/server/repositories/inboundCallsRepository'
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { CrmEventRepository } from '@/server/repositories/crmEventRepository'
@@ -49,6 +50,7 @@ import { RegistrationService } from './registrationService'
 import { RnpService } from './rnpService'
 import { RoistatService } from './roistatService'
 import { SverkaService } from './sverkaService'
+import { InboundAnalysisService } from './inboundAnalysisService'
 import { InboundCallsService } from './inboundCallsService'
 
 const dealRepository = new DealRepository(prisma)
@@ -84,6 +86,15 @@ export const insightsService = new InsightsService(insightsRepository)
 */
 const inboundCallsRepository = new InboundCallsRepository(prisma)
 export const inboundCallsService = new InboundCallsService(inboundCallsRepository, env.APP_TIMEZONE)
+/*
+  «Kiruvchi tahlil» (2026-10-22): «Соф янги» and «Қайта мурожат» followed to the
+  end, on «Qoʻngʻiroqlar»'s own calls and contacts. See inboundAnalysisService.ts.
+*/
+export const inboundAnalysisService = new InboundAnalysisService(
+  inboundCallsRepository,
+  new InboundAnalysisRepository(prisma),
+  env.APP_TIMEZONE,
+)
 export const pulseService = new PulseService(pulseRepository)
 export const searchService = new SearchService(searchRepository)
 export const alertsService = new AlertsService(insightsRepository, referenceRepository)
