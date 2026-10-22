@@ -207,6 +207,13 @@ const REQUESTED_LINES_PER_READ = 20
  * How long an enumeration item a fresh `crm.deal.fields` did not know stays
  * written off (`deadLabels`) before a deal naming it may ask again.
  */
+/** An enumeration item renamed in the portal: `field` is its `UF_CRM_…` key. */
+export interface LabelRename {
+  readonly field: string
+  readonly from: string
+  readonly to: string
+}
+
 /** How long the enumeration labels are trusted before `crm.deal.fields` is read again — a rename keeps its id. */
 const ENUM_LABELS_TTL_MS = 3 * 3_600_000
 const DEAD_LABEL_MS = 60 * 60_000
@@ -544,6 +551,9 @@ export class Bitrix24CrmProvider implements CrmProvider {
    */
   private enumLabels: Map<string, Map<string, string>> | undefined
   private enumLabelsAt = 0
+  /** The labels as last read, for `noteRenames` — kept across `reloadEnumLabels`, which clears `enumLabels`. */
+  private lastLabels: Map<string, Map<string, string>> | undefined
+  private renames: LabelRename[] = []
   /** `field:id` pairs the page being mapped named and `enumLabels` lacked. */
   private readonly labelMisses = new Set<string>()
   /**
@@ -1211,9 +1221,38 @@ export class Bitrix24CrmProvider implements CrmProvider {
       map.set(field, new Map(items.map((i) => [String(i.ID), i.VALUE])))
     }
 
+    this.noteRenames(map)
     this.enumLabels = map
     this.enumLabelsAt = Date.now()
     return map
+  }
+
+  /**
+   * Items whose label changed since this process last read them — the deals
+   * already stored carry the OLD text (`label()` stores text, not ids), and
+   * the worker rewrites them (`applyLabelRenames`). A label another item
+   * still carries is left alone: rewriting it would move that item's deals.
+   */
+  private noteRenames(next: Map<string, Map<string, string>>): void {
+    const before = this.lastLabels
+    this.lastLabels = next
+    if (!before) return
+    for (const [field, items] of next) {
+      const old = before.get(field)
+      if (!old) continue
+      const current = new Set(items.values())
+      for (const [id, label] of items) {
+        const was = old.get(id)
+        if (was !== undefined && was !== label && !current.has(was)) this.renames.push({ field, from: was, to: label })
+      }
+    }
+  }
+
+  /** The renames seen since the last call, handed over once. */
+  takeLabelRenames(): LabelRename[] {
+    const out = this.renames
+    this.renames = []
+    return out
   }
 
   /**

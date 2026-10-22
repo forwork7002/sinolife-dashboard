@@ -51,6 +51,7 @@ describe('the deals pass', () => {
     const calls: string[] = []
     const changes: unknown[] = []
     const writes: { sql: string; params: unknown[] }[] = []
+    const pending: unknown[] = []
     const prisma = {
       employee: { findMany: async () => [] },
       pipeline: { findMany: async () => [{ id: 'reg' }] },
@@ -59,6 +60,13 @@ describe('the deals pass', () => {
         createMany: async ({ data }: { data: unknown[] }) => {
           calls.push('changes')
           changes.push(...data)
+          return { count: data.length }
+        },
+      },
+      dealPendingLink: {
+        deleteMany: async () => ({ count: 0 }),
+        createMany: async ({ data }: { data: unknown[] }) => {
+          pending.push(...data)
           return { count: data.length }
         },
       },
@@ -81,7 +89,7 @@ describe('the deals pass', () => {
     }
     const resolver = { map: async (e: string) => maps[e], mapFor: async () => new Map(), isCached: () => false }
     const deals = createSyncHandlers(prisma as never, 'BITRIX24', resolver as never).find((h) => h.entity === 'DEALS')!
-    return { deals, calls, changes, writes }
+    return { deals, calls, changes, writes, pending }
   }
   const deal = (externalId: string, owner: string, pipeline: string, stage = 'NEW'): RawDeal => ({
     externalId,
@@ -128,6 +136,18 @@ describe('the deals pass', () => {
     expect(params[at]).toBe('azizbek')
     expect(params[columns.indexOf('createdByEmployeeId')]).toBe('doniyor')
     expect(params[columns.length + at]).toBeNull()
+  })
+
+  it('remembers the portal id of a ROP the roster does not know yet, to fill in later — 2026-10-22', async () => {
+    const { deals, pending } = fakes([])
+    await deals.persist([
+      { ...deal('1', '10', '0'), createdByExternalId: '10', ropKvalLidExternalId: '7010', sourceExternalId: 'UC_NEW' },
+      { ...deal('2', '10', '0'), createdByExternalId: '10', ropKvalLidExternalId: '999' },
+    ])
+    expect(pending).toEqual([
+      { externalSource: 'BITRIX24', dealExternalId: '1', field: 'sourceId', externalRef: 'UC_NEW' },
+      { externalSource: 'BITRIX24', dealExternalId: '2', field: 'ropKvalLidEmployeeId', externalRef: '999' },
+    ])
   })
 
   it('records nothing when the write fails', async () => {

@@ -1021,6 +1021,20 @@ export function createSyncHandlers(
       const rows: unknown[][] = []
       const written: RawDeal[] = []
       let skipped = 0
+      /*
+        A LINK THE MAPS DO NOT HOLD YET IS REMEMBERED, NOT LOST (2026-10-22).
+        Stage and owner are required, so a deal missing either is skipped and
+        re-read after `RESOLVE`. The optional four were written NULL — a deal
+        naming a source made, or a ROP / creator hired, after the last
+        reference pass kept NULL until somebody touched it again, off its
+        channel on «Lidlar», /target and /roistat. The portal's id goes to
+        `deal_pending_link`; `repairPendingLinks` fills the column once the
+        reference data arrives, with no request to the portal.
+      */
+      const pending: { externalSource: typeof source; dealExternalId: string; field: string; externalRef: string }[] = []
+      const remember = (record: { externalId: string }, field: string, ref: string | null | undefined, resolved: string | null) => {
+        if (ref && resolved === null) pending.push({ externalSource: source, dealExternalId: record.externalId, field, externalRef: ref })
+      }
 
       for (const record of batch) {
         const stageId = stageMap.get(record.stageExternalId)
@@ -1074,6 +1088,15 @@ export function createSyncHandlers(
           ownerOnSalesTeam: operatorMap.onSalesTeam.has(employeeId),
         })
         const operatorEmployeeId = copied ? null : snapshotEmployeeId
+        const sourceId = link(sourceMap, record.sourceExternalId)
+        const leadRopEmployeeId = record.leadRopExternalId ? (employeeMap.get(record.leadRopExternalId) ?? null) : null
+        const ropKvalLidEmployeeId = record.ropKvalLidExternalId
+          ? (employeeMap.get(record.ropKvalLidExternalId) ?? null)
+          : null
+        remember(record, 'sourceId', record.sourceExternalId, sourceId)
+        remember(record, 'leadRopEmployeeId', record.leadRopExternalId, leadRopEmployeeId)
+        remember(record, 'ropKvalLidEmployeeId', record.ropKvalLidExternalId, ropKvalLidEmployeeId)
+        remember(record, 'createdByEmployeeId', record.createdByExternalId, createdByEmployeeId)
 
         written.push(record)
         rows.push([
@@ -1087,7 +1110,7 @@ export function createSyncHandlers(
           record.status,
           employeeId,
           link(customerMap, record.customerExternalId),
-          link(sourceMap, record.sourceExternalId),
+          sourceId,
           link(pipelineMap, record.pipelineExternalId),
           record.orderCode ?? null,
           record.countsAsRevenue,
@@ -1110,9 +1133,10 @@ export function createSyncHandlers(
           record.leadDistributedOn ?? null,
           ts(record.aiQualifiedAt),
           // A ROP the roster does not know yet is null, not a skipped deal:
-          // the lead still counts, under «ROP koʻrsatilmagan».
-          record.leadRopExternalId ? (employeeMap.get(record.leadRopExternalId) ?? null) : null,
-          record.ropKvalLidExternalId ? (employeeMap.get(record.ropKvalLidExternalId) ?? null) : null,
+          // the lead still counts, under «ROP koʻrsatilmagan» — until
+          // `repairPendingLinks` names them.
+          leadRopEmployeeId,
+          ropKvalLidEmployeeId,
           createdByEmployeeId,
           record.repeatLead ?? null,
           record.isReturnCustomer ?? false,
@@ -1146,6 +1170,21 @@ export function createSyncHandlers(
           const inRegistration = written.filter((r) => leadPipelines.has(link(pipelineMap, r.pipelineExternalId) ?? ''))
           const changes = ownerChangesOf(before, inRegistration, employeeMap)
           if (changes.length > 0) await tx.dealOwnerChange.createMany({ data: changes })
+          if (pending.length > 0) {
+            // The deal's CURRENT unresolved id per field replaces a different older one; the same
+            // one keeps its row and its `createdAt`, so a re-read is not a new id asking for `RESOLVE`.
+            await tx.dealPendingLink.deleteMany({
+              where: {
+                OR: pending.map((p) => ({
+                  externalSource: p.externalSource,
+                  dealExternalId: p.dealExternalId,
+                  field: p.field,
+                  externalRef: { not: p.externalRef },
+                })),
+              },
+            })
+            await tx.dealPendingLink.createMany({ data: pending, skipDuplicates: true })
+          }
           return before
         },
         { maxWait: 10_000, timeout: 60_000 },

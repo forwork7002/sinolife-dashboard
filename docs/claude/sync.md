@@ -205,7 +205,18 @@
   hours at 120 s, and never on a day of deploys under two hours apart.
 - **Bitrix24 dropdown labels age out every 3 h** (`ENUM_LABELS_TTL_MS`): a
   renamed «Проект» / targetolog / region item keeps its id, so only a miss
-  re-read them before. Deals already stored keep the old text until modified.
+  re-read them before. **The deals already stored follow too**: the provider
+  diffs each re-read against the last (`takeLabelRenames`) and the worker
+  rewrites the text column (`sync/labelRenames.ts`; enum-read fields excluded).
+  A rename made while no worker was running is not seen.
+- **An optional link the maps lack is remembered (2026-10-22,
+  `deal_pending_link`)**: source, lead ROP, «ROP KVAL LID», creator. The
+  deals handler writes the deal with NULL and the portal id there; a new id
+  asks for `RESOLVE` (20-min gap), and after any reference / `RESOLVE` pass
+  `repairPendingLinks` fills the still-NULL columns in SQL. Ids that never
+  arrive are dropped after a week.
+- `crm_form_fill` deliberately never deletes — see `formFillFeed.ts`: a fill
+  Meta counted stays counted.
 
 - **THE PORTAL CAN BLOCK ITSELF, AND THE DASHBOARD NOW SAYS SO.** On
   2026-09-14 every REST call came back `401` with

@@ -1590,6 +1590,23 @@ model MetaLeadForm {
   @@map("meta_lead_form")
 }
 
+/// A deal's optional link the sync could not resolve when it wrote the deal
+/// (2026-10-22) — a source made, or a ROP / creator hired, after the last
+/// reference pass. `field` is the deal column ('sourceId', 'leadRopEmployeeId',
+/// 'ropKvalLidEmployeeId', 'createdByEmployeeId'), `externalRef` the portal's
+/// id. `repairPendingLinks` fills the column once the reference row exists.
+model DealPendingLink {
+  externalSource ExternalSource
+  dealExternalId String
+  field          String
+  externalRef    String
+  createdAt      DateTime       @default(now())
+
+  @@id([externalSource, dealExternalId, field])
+  @@index([createdAt])
+  @@map("deal_pending_link")
+}
+
 /// How far back each ad account has been asked of Meta, per grain (2026-10-22)
 /// — `metaImport.ts` `backfillAccount`. Every day from `readFrom` on has been
 /// read at this grain; no row means `META_HISTORY_FROM`, the forward pass's own

@@ -90,6 +90,8 @@ import {
 } from '../src/server/integrations/crm/sync/formFillFeed'
 import { META_DEEP_REFRESH_DAYS, importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { importMetaAdForms } from '../src/server/integrations/meta/metaAdFormImport'
+import { applyLabelRenames } from '../src/server/integrations/crm/sync/labelRenames'
+import { pendingLinksSince, repairPendingLinks } from '../src/server/integrations/crm/sync/pendingLinks'
 import { importMetaLeads } from '../src/server/integrations/meta/metaLeadImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
 import { resolvePeriod, sinceMonth, zonedDateKey } from '../src/server/domain/period/period'
@@ -1436,6 +1438,52 @@ async function main() {
           `  ${stamp()} ${dealsSkipped} bitim yozilmadi (xodimi yoki bosqichi hali yoʻq) —` +
             ' keyingi tsiklda xodimlar, bosqichlar va manbalar qayta oʻqiladi',
         )
+      }
+
+      /*
+        AND A DEAL WRITTEN WITHOUT ITS SOURCE / ROP / CREATOR (2026-10-22,
+        `deal_pending_link`): a new id asks for the same `RESOLVE` pass, and
+        after any pass that read the reference data the columns are filled
+        from what it brought — in the database, no portal request.
+      */
+      try {
+        if (plan.reference || plan.resolve) {
+          const repaired = await repairPendingLinks(prisma)
+          if (repaired.filled > 0 || repaired.dropped > 0) {
+            console.log(
+              `  ${stamp()} bogʻlanmagan bitimlar: ${repaired.filled} ta maydon toʻldirildi` +
+                (repaired.dropped > 0 ? `, ${repaired.dropped} tasi bir haftadan beri topilmadi — tashlandi` : '') +
+                `, ${repaired.waiting} ta kutmoqda`,
+            )
+          }
+        }
+        const lastAsked = [lastReferenceAt, lastResolveAt].filter((d): d is Date => d !== null)
+        const newPending = await pendingLinksSince(
+          prisma,
+          lastAsked.length > 0 ? new Date(Math.max(...lastAsked.map((d) => d.getTime()))) : null,
+        )
+        if (!resolveOwed && isResolvePassDue(newPending, [lastReferenceAt, lastResolveAt], new Date())) {
+          resolveOwed = true
+          console.log(
+            `  ${stamp()} ${newPending} ta bitim yangi manba yoki xodimni nomladi —` +
+              ' keyingi tsiklda xodimlar, bosqichlar va manbalar qayta oʻqiladi',
+          )
+        }
+      } catch (error) {
+        console.warn(`  ${stamp()} bogʻlanmagan bitimlar tekshirilmadi: ${(error as Error).message}`)
+      }
+
+      // A dropdown item renamed in the portal: the deals stored under its old text follow it.
+      const renames = provider.takeLabelRenames()
+      if (renames.length > 0) {
+        try {
+          const changed = await applyLabelRenames(prisma, renames)
+          console.log(
+            `  ${stamp()} portalda nomi oʻzgargan: ${renames.map((r) => `«${r.from}» → «${r.to}»`).join(', ')} — ${changed} ta bitimda yangilandi`,
+          )
+        } catch (error) {
+          console.warn(`  ${stamp()} nomi oʻzgarganlar yozilmadi: ${(error as Error).message}`)
+        }
       }
 
       /*
