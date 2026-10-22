@@ -133,15 +133,53 @@ export interface MetaLeadImportResult {
  */
 const RUN_BUDGET_MS = 300_000
 
+/**
+ * EVERY PAGE THE TOKEN CAN READ FORMS FROM. `me/accounts` lists only the pages
+ * the user holds a role on directly; the client's forms live on brand pages
+ * owned through Business Managers (Sinolife.uzb, Zextra, Collagen …), so we
+ * also walk each of the token's businesses' `owned_pages` and `client_pages`
+ * and union them in, keyed by id. A page is kept only when the edge hands back
+ * its own `access_token` — without one its `leadgen_forms` cannot be read, so
+ * adding it would only be a page listed «Faol» with no forms. A business or
+ * edge the token may not read is logged and skipped, never fatal: the read
+ * falls back to `me/accounts` alone, exactly as before.
+ */
+async function gatherFormPages(token: string, failed: string[]): Promise<PageRow[]> {
+  const byId = new Map<string, PageRow>()
+  const add = (rows: PageRow[]) => {
+    for (const page of rows) if (page.access_token && !byId.has(page.id)) byId.set(page.id, page)
+  }
+  add(await getAll<PageRow>(`${GRAPH}/me/accounts?${query({ fields: 'id,name,access_token', limit: '100' }, token)}`))
+  let businesses: { id: string; name?: string }[] = []
+  try {
+    businesses = await getAll(`${GRAPH}/me/businesses?${query({ fields: 'id,name', limit: '100' }, token)}`)
+  } catch (error) {
+    failed.push(oneLine(`biznes roʻyxati oʻqilmadi (${(error as Error).name})`))
+  }
+  for (const business of businesses) {
+    for (const edge of ['owned_pages', 'client_pages'] as const) {
+      try {
+        add(
+          await getAll<PageRow>(
+            `${GRAPH}/${business.id}/${edge}?${query({ fields: 'id,name,access_token', limit: '100' }, token)}`,
+          ),
+        )
+      } catch (error) {
+        failed.push(oneLine(`${business.name ?? business.id} ${edge}: ${(error as Error).message}`))
+      }
+    }
+  }
+  return [...byId.values()]
+}
+
 export async function importMetaLeads(
   prisma: PrismaClient,
   token: string,
   budgetMs: number = RUN_BUDGET_MS,
 ): Promise<MetaLeadImportResult> {
   const deadline = Date.now() + budgetMs
-  const pages = await getAll<PageRow>(
-    `${GRAPH}/me/accounts?${query({ fields: 'id,name,access_token', limit: '100' }, token)}`,
-  )
+  const failed: string[] = []
+  const pages = await gatherFormPages(token, failed)
   const newest = new Map(
     (await prisma.metaLead.groupBy({ by: ['formId'], _max: { createdTime: true } })).map((f) => [
       f.formId,
@@ -151,7 +189,6 @@ export async function importMetaLeads(
 
   // Past the first run a closed form with nothing stored has nothing to give: asking it every hour is a call for no row.
   const firstRun = newest.size === 0
-  const failed: string[] = []
   let forms = 0
   let leads = 0
   let outOfTime = false

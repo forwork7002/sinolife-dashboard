@@ -349,10 +349,12 @@ const FORM_TARGETOLOGS: readonly (readonly [RegExp, string])[] = [
   [/timur|тимур/i, 'Timur'],
   // Zextra forms since 05.10.2026 («Tursunbek-zextra Zextra filtr savol»).
   [/tursunbek|турсунбек/i, 'Tursunbek'],
+  // Otabek, a new Zextra targetolog (live-read 2026-10-22, «Otabek Zextra»).
+  [/otabek|отабек/i, 'Otabek'],
 ]
 
 /** Targetologs whose every Meta account is Zextra: a form of theirs that names no product sold the Zextra. */
-export const ZEXTRA_ONLY_TARGETOLOGS: ReadonlySet<string> = new Set(['Kamron', 'Tursunbek'])
+export const ZEXTRA_ONLY_TARGETOLOGS: ReadonlySet<string> = new Set(['Kamron', 'Tursunbek', 'Otabek'])
 
 /**
  * Whose form this is, from its name — or null when the name names nobody.

@@ -98,6 +98,19 @@ export const META_ACCOUNT_OWNERS: Readonly<Record<string, MetaAccountOwner>> = O
   */
   '1657709689205277': { product: 'Boshqa', targetolog: 'Элдор' }, // HR Eldor
   '517245084208402': { product: 'Boshqa', targetolog: 'Элдор' }, // Kosmetika Eldor
+  /*
+    Five accounts read live from the Meta MCP on 2026-10-22, each ACTIVE and
+    spending under an owner the map did not yet name, so their money and their
+    form leads stood under «Boshqa». «67 - Umar - zextra-2» is Umar's second
+    Zextra cabinet (BM Bezlimit 001), the one that made his card read low.
+    «65 - Timuro Zextra new» is Timur's; «Otabek Zextra» is a new targetolog
+    (see `FORM_TARGETOLOGS`); «Sinolife HR - Eldor» is the live HR account that
+    replaced the dead id above (1657709689205277, gone from the token's list).
+  */
+  '281168404452929': { product: 'Zextra', targetolog: 'Umar' }, // 67 - Umar - zextra-2
+  '954486075839762': { product: 'Zextra', targetolog: 'Timur' }, // 65 - Timuro Zextra new
+  '1443410463591627': { product: 'Zextra', targetolog: 'Otabek' }, // Otabek Zextra
+  '1070954552396880': { product: 'Boshqa', targetolog: 'Элдор' }, // Sinolife HR - Eldor
 })
 
 export function ownerOf(accountId: string, accountName: string): MetaAccountOwner {
