@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { NutritionistCard } from '@/features/kpi/NutritionistCard'
 import { ProductCompareCard } from '@/features/kpi/ProductCompareCard'
+import { SverkaDaysCard } from '@/features/kpi/SverkaDaysCard'
 import { SverkaSummaryCard } from '@/features/kpi/SverkaSummaryCard'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
@@ -315,6 +316,8 @@ export function KpiPage() {
       <NutritionistCard />
 
       <ProductCompareCard />
+
+      <SverkaDaysCard />
 
       <SverkaSummaryCard />
 

@@ -21,6 +21,7 @@ import {
   type BitrixSide,
   type MoyskladSide,
   type OrphanKind,
+  type ProductBasis,
   type ProductRow,
   type SverkaIssue,
   type SverkaItem,
@@ -45,6 +46,14 @@ import {
   NUTRITIONIST_BRANDS,
   nutritionistPay,
 } from '@/server/domain/sverka/nutritionist'
+import {
+  type BrandLine,
+  type DayOrder,
+  type OrderVerdict,
+  type SverkaDay,
+  dayOrders,
+  sverkaDays,
+} from '@/server/domain/sverka/sverkaDays'
 import type { Period } from '@/server/domain/period/period'
 import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { InsightsRepository, type SverkaDealRow } from '@/server/repositories/insightsRepository'
@@ -177,6 +186,67 @@ export interface BrandProductsDto {
 /** «Tovarlar · Bitrix24 ↔ MoySklad» — one entry per `NUTRITIONIST_BRANDS`, in that order. */
 export interface KpiProductsDto {
   readonly brands: readonly BrandProductsDto[]
+}
+
+/** One side of a day: «Нутрицолог»'s orders, «Tovarlar»'s pieces and soʻm. */
+export interface KpiDaySideDto {
+  readonly orders: number
+  readonly pieces: number
+  readonly amount: number
+}
+
+export interface KpiDayDto {
+  /** YYYY-MM-DD, the Tashkent day the deals were queued on; null on the total row. */
+  readonly day: string | null
+  readonly bitrix: KpiDaySideDto
+  readonly moysklad: KpiDaySideDto
+  /** Orders of the day whose two sides disagree. */
+  readonly mismatched: number
+}
+
+export interface KpiDayOrderItemDto {
+  readonly key: string
+  readonly name: string
+  readonly bitrixQuantity: number
+  readonly moyskladQuantity: number
+  readonly bitrixAmount: number
+  readonly moyskladAmount: number
+}
+
+export interface KpiDayOrderDto {
+  /** The Bitrix24 deal id. */
+  readonly dealId: string | null
+  readonly brand: NutritionistBrand
+  readonly queuedAt: string | null
+  readonly inBitrix: boolean
+  readonly inMoysklad: boolean
+  readonly verdict: OrderVerdict
+  readonly bitrix: {
+    readonly stage: string
+    /** The deal's own sum. */
+    readonly amount: number
+    readonly seller: string | null
+    /** The team stamped at the sale, else the owner's department. */
+    readonly rop: string | null
+  } | null
+  readonly moysklad: {
+    readonly orderName: string
+    readonly state: string | null
+    /** The order's own sum. */
+    readonly amount: number
+    readonly moment: string
+  } | null
+  /** The products of the sides it is counted on — what its pieces add to the day. */
+  readonly items: readonly KpiDayOrderItemDto[]
+}
+
+/** «Kunlar boʻyicha · Bitrix24 ↔ MoySklad» — the days, their total, and one day's orders when asked. */
+export interface KpiDaysDto {
+  readonly days: readonly KpiDayDto[]
+  /** Equals «Нутрицолог» and «Tovarlar» over the same brand and FAKT figure. */
+  readonly total: KpiDayDto
+  /** The `day` asked for, its orders; null when no day was asked. */
+  readonly orders: readonly KpiDayOrderDto[] | null
 }
 
 export interface SverkaTeamDto {
@@ -375,6 +445,40 @@ function bitrixSideOf(d: SverkaDealRow, items: readonly SverkaItem[]): BitrixSid
   }
 }
 
+const dayDto = (d: SverkaDay): KpiDayDto => ({
+  day: d.day,
+  bitrix: { orders: d.bitrix.orders, pieces: d.bitrix.pieces, amount: som(d.bitrix.amountMinor) },
+  moysklad: { orders: d.moysklad.orders, pieces: d.moysklad.pieces, amount: som(d.moysklad.amountMinor) },
+  mismatched: d.mismatched,
+})
+
+function dayOrderDto(o: DayOrder): KpiDayOrderDto {
+  const bx = o.line.bitrix
+  const ms = o.line.moysklad
+  return {
+    dealId: o.line.dealId,
+    brand: o.brand,
+    queuedAt: bx?.queuedAt?.toISOString() ?? null,
+    inBitrix: o.inBitrix,
+    inMoysklad: o.inMoysklad,
+    verdict: o.verdict,
+    bitrix: bx
+      ? { stage: bx.stageName, amount: som(bx.amountMinor), seller: bx.seller, rop: bx.ropSource ?? bx.rop }
+      : null,
+    moysklad: ms
+      ? { orderName: ms.orderName, state: ms.stateName, amount: som(ms.sumMinor), moment: ms.moment.toISOString() }
+      : null,
+    items: o.items.map((i) => ({
+      key: i.key,
+      name: i.name,
+      bitrixQuantity: i.bitrixQuantity,
+      moyskladQuantity: i.moyskladQuantity,
+      bitrixAmount: som(i.bitrixMinor),
+      moyskladAmount: som(i.moyskladMinor),
+    })),
+  }
+}
+
 /** `SverkaOverviewDto` without its deal and product rows — what «KPI rejalari» prints. */
 export type SverkaSummaryDto = Omit<SverkaOverviewDto, 'lines' | 'products'>
 
@@ -431,6 +535,31 @@ export class SverkaService {
         fakt1: productRows(lines[brand], 'FAKT1').map(productDto),
         fakt2: productRows(lines[brand], 'FAKT2').map(productDto),
       })),
+    }
+  }
+
+  /**
+   * «Kunlar boʻyicha · Bitrix24 ↔ MoySklad» on «KPI rejalari»: the two cards
+   * above it cut by the day each deal was queued (`sverkaDays`), over the SAME
+   * cached lines, so the days sum to «Нутрицолог»'s orders and «Tovarlar»'s
+   * pieces and soʻm. With `day`, that day's orders and every product of each.
+   */
+  async days(
+    period: Period,
+    timeZone: string,
+    basis: ProductBasis,
+    brand: NutritionistBrand | 'all',
+    day: string | null,
+  ): Promise<KpiDaysDto> {
+    const lines = await this.brandLines(period)
+    const tagged: BrandLine[] = NUTRITIONIST_BRANDS.filter((b) => brand === 'all' || b === brand).flatMap((b) =>
+      lines[b].map((line) => ({ brand: b, line })),
+    )
+    const { days, total } = sverkaDays(tagged, basis, timeZone)
+    return {
+      days: days.map(dayDto),
+      total: dayDto(total),
+      orders: day === null ? null : dayOrders(tagged, basis, timeZone, day).map(dayOrderDto),
     }
   }
 

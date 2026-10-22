@@ -334,6 +334,23 @@ export const brandFilter = z.enum(BRAND_FILTERS).default('all')
 /** «Reklama samarasi»: the window and the brand switch. */
 export const reklamaOverviewQuerySchema = periodQuerySchema.and(z.object({ brand: brandFilter }))
 
+/**
+ * «Kunlar boʻyicha · Bitrix24 ↔ MoySklad» on «KPI rejalari»: the window, the
+ * FAKT figure, the brand («Нутрицолог»'s two, or both), and the day whose
+ * orders to list — a plain YYYY-MM-DD key, matched against each deal's
+ * Tashkent queue day, never turned into an instant.
+ */
+export const kpiDaysQuerySchema = periodQuerySchema.and(
+  z.object({
+    basis: z.enum(['FAKT1', 'FAKT2']).default('FAKT1'),
+    brand: z.enum(['all', 'Collagen', 'Zextra']).default('all'),
+    day: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, { error: 'Expected a date in YYYY-MM-DD format' })
+      .optional(),
+  }),
+)
+
 export const targetOverviewQuerySchema = periodQuerySchema.and(
   z.object({ scope: targetScope, product: targetProduct }),
 )
