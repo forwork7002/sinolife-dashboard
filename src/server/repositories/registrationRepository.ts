@@ -17,6 +17,24 @@ import { InsightsRepository } from './insightsRepository'
 
 const dateOf = (day: string) => new Date(`${day}T00:00:00Z`)
 
+/** «Безквал»'s window read a week at a time — see `bezkvalLeads`. */
+const BEZKVAL_CHUNK_DAYS = 7
+
+/** `from`…`to` (inclusive calendar days) cut into runs of at most `size` days, in order. */
+export function dayChunks(from: string, to: string, size: number): [string, string][] {
+  const out: [string, string][] = []
+  const step = (day: string, n: number) => {
+    const t = new Date(`${day}T00:00:00Z`)
+    t.setUTCDate(t.getUTCDate() + n)
+    return t.toISOString().slice(0, 10)
+  }
+  for (let lo = from; lo <= to; lo = step(lo, size)) {
+    const hi = step(lo, size - 1)
+    out.push([lo, hi < to ? hi : to])
+  }
+  return out
+}
+
 /** A row of `bezkvalLeadsSql`, as node-postgres hands it over. */
 export interface BezkvalLeadSqlRow {
   deal_id: string
@@ -141,10 +159,22 @@ export class RegistrationRepository {
     return bezkvalDayRows(bezkvalClients(await this.bezkvalLeads(from, to, timeZone)))
   }
 
-  /** Every lead of `from`…`to` (inclusive, `timeZone` days); `detail` adds the source, stage and pipeline names. */
+  /**
+   * Every lead of `from`…`to` (inclusive, `timeZone` days); `detail` adds the
+   * source, stage and pipeline names.
+   *
+   * A MONTH IS READ IN WEEKS, SIDE BY SIDE (2026-10-22). One statement over
+   * the grid's 29 settled days ran past the web pool's 20 s statement timeout
+   * cold on production — the old «Безквал» read did, that afternoon: a past
+   * day on «Lidlar» answered 500. Each lead belongs to one day by its own
+   * instant, so the weeks never overlap and simply add up.
+   */
   async bezkvalLeads(from: string, to: string, timeZone: string, detail = false): Promise<BezkvalLeadRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<BezkvalLeadSqlRow[]>(RegistrationRepository.bezkvalLeadsSql(detail), from, to, timeZone)
-    return rows.map(RegistrationRepository.bezkvalLeadOf)
+    const sql = RegistrationRepository.bezkvalLeadsSql(detail)
+    const parts = await Promise.all(
+      dayChunks(from, to, BEZKVAL_CHUNK_DAYS).map(([lo, hi]) => this.prisma.$queryRawUnsafe<BezkvalLeadSqlRow[]>(sql, lo, hi, timeZone)),
+    )
+    return parts.flat().map(RegistrationRepository.bezkvalLeadOf)
   }
 
   /** One row of `bezkvalLeadsSql` as the domain reads it — shared with `RnpRepository.bezkvalDays`. */

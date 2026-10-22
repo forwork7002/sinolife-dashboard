@@ -110,6 +110,21 @@ describe('bezkvalLeadsSql', () => {
   })
 })
 
+describe('dayChunks — a month read a week at a time', () => {
+  it('covers every day once, in order, the last run short', async () => {
+    const { dayChunks } = await import('@/server/repositories/registrationRepository')
+    expect(dayChunks('2026-09-22', '2026-10-20', 7)).toEqual([
+      ['2026-09-22', '2026-09-28'],
+      ['2026-09-29', '2026-10-05'],
+      ['2026-10-06', '2026-10-12'],
+      ['2026-10-13', '2026-10-19'],
+      ['2026-10-20', '2026-10-20'],
+    ])
+    expect(dayChunks('2026-10-21', '2026-10-21', 7)).toEqual([['2026-10-21', '2026-10-21']])
+    expect(dayChunks('2026-10-22', '2026-10-21', 7)).toEqual([])
+  })
+})
+
 describe('bezkvalHistorySql', () => {
   const sql = bare(RegistrationRepository.bezkvalHistorySql())
 
