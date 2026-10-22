@@ -561,12 +561,22 @@ describe('importMetaSpend — the history before 2026-07-01 (2026-10-22)', () =>
   const ACCOUNT = { account_id: '990016692137088', name: 'Umar - 64' }
 
   /** One account with rows from July; `firstSpend` is what the account-grain walk turns up. */
-  function world(opts: { marks?: { grain: string; readFrom: Date }[]; firstSpend: string | null }) {
+  function world(opts: { marks?: { grain: string; readFrom: Date }[]; firstSpend: string | null; spendDays?: string[] }) {
     const marks = new Map((opts.marks ?? []).map((m) => [m.grain, m.readFrom]))
     const prisma = {
       metaAdDaily: {
         groupBy: async () => [{ accountId: ACCOUNT.account_id, _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-21') } }],
         aggregate: async () => ({ _min: { date: opts.firstSpend ? day(opts.firstSpend) : null } }),
+        // The newest account-grain day in [gte, lt): every day from the first spend on, unless `spendDays` says which.
+        findFirst: async (args: { where: { date: { gte: Date; lt: Date } } }) => {
+          const { gte, lt } = args.where.date
+          if (opts.spendDays) {
+            const hit = opts.spendDays.map(day).filter((d) => d >= gte && d < lt).sort((a, b) => b.getTime() - a.getTime())[0]
+            return hit ? { date: hit } : null
+          }
+          const prev = new Date(lt.getTime() - 86_400_000)
+          return opts.firstSpend && prev >= gte && prev >= day(opts.firstSpend) ? { date: prev } : null
+        },
         deleteMany: () => 'delete',
         createMany: () => 'create',
       },
@@ -624,6 +634,19 @@ describe('importMetaSpend — the history before 2026-07-01 (2026-10-22)', () =>
       'ad 2026-05-15..2026-05-19',
     ])
     expect([iso('account'), iso('campaign'), iso('ad')]).toEqual(['2023-10-01', '2026-05-15', '2026-05-15'])
+    expect(r.historyPending).toBe(0)
+  })
+
+  it('skips the months the account did not spend in, unasked — the first live passes', async () => {
+    const { prisma, asked, iso } = world({ firstSpend: '2025-02-03', spendDays: ['2025-02-03', '2025-02-20'] })
+    const r = await importMetaSpend(prisma, 'token', '2026-10-22', { historyMs: 60_000 })
+    expect(asked().filter((a) => !a.endsWith('..2026-10-22'))).toEqual([
+      'account 2023-10-01..2026-06-30',
+      'campaign 2025-02-03..2025-02-20',
+      'ad 2025-02-07..2025-02-20',
+      'ad 2025-02-03..2025-02-03', // 04–06.02 spent nothing: not asked
+    ])
+    expect([iso('campaign'), iso('ad')]).toEqual(['2025-02-03', '2025-02-03'])
     expect(r.historyPending).toBe(0)
   })
 

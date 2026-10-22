@@ -616,7 +616,25 @@ async function backfillAccount(
   ] as const
   for (const [grain, days, read] of grains) {
     let from = readFrom.get(grain)!
-    for (let slice = backfillSlice(from, target, days); slice; slice = backfillSlice(from, target, days)) {
+    while (from > target) {
+      /*
+        ONLY WHERE THE ACCOUNT SPENT (2026-10-22). Walked a month at a time
+        regardless, the first live passes spent their whole budget asking
+        Meta for empty months between July and an account's last older
+        spend — «eski tarix: 0 qator» pass after pass. The account grain
+        already says which days had any: each slice ends on the newest such
+        day below what is read, and a stretch with none is skipped unasked.
+      */
+      const last = await prisma.metaAdDaily.findFirst({
+        where: { accountId, date: { gte: new Date(`${target}T00:00:00Z`), lt: new Date(`${from}T00:00:00Z`) } },
+        orderBy: { date: 'desc' },
+        select: { date: true },
+      })
+      if (!last) {
+        await remember(grain, target)
+        break
+      }
+      const slice = backfillSlice(new Date(last.date.getTime() + 86_400_000).toISOString().slice(0, 10), target, days)!
       if (Date.now() >= deadline) return { rows, done: false }
       rows += await read(prisma, token, account, { from: slice.since, until: slice.until })
       await remember(grain, slice.since)
