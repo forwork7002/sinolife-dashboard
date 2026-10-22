@@ -26,7 +26,16 @@
  * WHICH DAYS. An account with no rows yet reads from `META_HISTORY_FROM`;
  * after that its last `META_REFRESH_DAYS` days are re-read every run, because
  * Meta keeps revising a day's spend and leads for several days after it ends.
- * Per account, never one date for the table (see `importMetaSpend`).
+ * Per account, never one date for the table (see `importMetaSpend`). The
+ * worker also asks, once a night, for a `META_DEEP_REFRESH_DAYS` window — the
+ * 28-day attribution Meta revises a day under, and a week over.
+ *
+ * AND EVERYTHING BEFORE IT (2026-10-22). The client: «hammasini, eskilarini
+ * ham torta olishi kerak». `historyMs` walks each account back from
+ * `META_HISTORY_FROM` to `metaHistoryFloor` — as far as Insights answers —
+ * a bounded step a pass, remembered in `meta_history_read` (see
+ * `backfillAccount`), so an account with no older spend is asked once and
+ * never again.
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
@@ -38,6 +47,13 @@ export const GRAPH = 'https://graph.facebook.com/v21.0'
 /** Where the history starts: the sheet's first month. */
 const META_HISTORY_FROM = '2026-07-01'
 const META_REFRESH_DAYS = 7
+/** The nightly re-read: Meta's 28-day click attribution, and a week over. */
+export const META_DEEP_REFRESH_DAYS = 37
+/**
+ * How far back Insights answers: 37 months, Meta says, and a start past it is
+ * a 400 for the whole request. 36 from the first of the month stays inside.
+ */
+const META_FLOOR_MONTHS = 36
 
 const REQUEST_TIMEOUT_MS = 30_000
 
@@ -162,6 +178,7 @@ export function dateSlices(since: string, until: string, days: number): { since:
 export function grainStarts(
   adMin: ReadonlyMap<string, Date | null>,
   grain: ReadonlyMap<string, { min: Date | null; max: Date | null }>,
+  refreshDays: number = META_REFRESH_DAYS,
 ): (accountId: string) => string {
   const day = (d: Date) => d.toISOString().slice(0, 10)
   return (accountId) => {
@@ -178,16 +195,36 @@ export function grainStarts(
     */
     const span = (have.max.getTime() - have.min.getTime()) / 86_400_000
     if (day(have.min) > historyStart && span <= META_REFRESH_DAYS + 1) return historyStart
-    return sinceOf(have.max)
+    return sinceOf(have.max, refreshDays)
   }
 }
 
-/** First day to (re)read: the history start with no rows yet, else a week back from the latest. */
-function sinceOf(latest: Date | null): string {
+/** First day to (re)read: the history start with no rows yet, else `refreshDays` back from the latest. */
+function sinceOf(latest: Date | null, refreshDays: number = META_REFRESH_DAYS): string {
   const since = latest
-    ? new Date(latest.getTime() - META_REFRESH_DAYS * 86_400_000).toISOString().slice(0, 10)
+    ? new Date(latest.getTime() - refreshDays * 86_400_000).toISOString().slice(0, 10)
     : META_HISTORY_FROM
   return since < META_HISTORY_FROM ? META_HISTORY_FROM : since
+}
+
+/** The first of the month `META_FLOOR_MONTHS` before `today`'s: the oldest day Insights is asked for. */
+export function metaHistoryFloor(today: string): string {
+  const [year, month] = today.split('-').map(Number)
+  const index = year! * 12 + (month! - 1) - META_FLOOR_MONTHS
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}-01`
+}
+
+/**
+ * The next window to read walking BACK from `readFrom` (every day from it on
+ * is in) towards `target`: at most `days` days ending the day before
+ * `readFrom`, never before `target`. Null once `readFrom` has reached it.
+ */
+export function backfillSlice(readFrom: string, target: string, days: number): { since: string; until: string } | null {
+  if (readFrom <= target) return null
+  const start = new Date(`${readFrom}T00:00:00Z`).getTime()
+  const until = new Date(start - 86_400_000).toISOString().slice(0, 10)
+  const since = new Date(start - days * 86_400_000).toISOString().slice(0, 10)
+  return { since: since < target ? target : since, until }
 }
 
 export interface MetaImportResult {
@@ -206,13 +243,34 @@ export interface MetaImportResult {
   /** The run's refresh window for the worker's log — see `importMetaSpend`. */
   readonly since: string
   readonly until: string
+  /** Rows of every grain written by the walk back past the history start (`historyMs`). */
+  readonly historyRows: number
+  /** Accounts whose walk back is not finished — the next pass carries on. */
+  readonly historyPending: number
+}
+
+export interface MetaImportOptions {
+  /**
+   * Days re-read back from each account's latest — `META_REFRESH_DAYS` by
+   * default, `META_DEEP_REFRESH_DAYS` on the nightly pass.
+   */
+  readonly refreshDays?: number
+  /**
+   * Time this pass may spend walking accounts back past the history start
+   * (`backfillAccount`). 0, the default, does not walk at all.
+   */
+  readonly historyMs?: number
 }
 
 export async function importMetaSpend(
   prisma: PrismaClient,
   token: string,
   today: string,
+  options: MetaImportOptions = {},
 ): Promise<MetaImportResult> {
+  const refreshDays = options.refreshDays ?? META_REFRESH_DAYS
+  const historyDeadline = Date.now() + (options.historyMs ?? 0)
+  const floor = metaHistoryFloor(today)
   const [adSpans, campaignSpans, adInsightSpans] = await Promise.all([
     prisma.metaAdDaily.groupBy({ by: ['accountId'], _min: { date: true }, _max: { date: true } }),
     prisma.metaCampaignDaily.groupBy({ by: ['accountId'], _min: { date: true }, _max: { date: true } }),
@@ -231,11 +289,11 @@ export async function importMetaSpend(
     asked from July every hour: one paged account-level call.
   */
   const adMax = new Map(adSpans.map((a) => [a.accountId, a._max.date]))
-  const fromOf = (accountId: string) => sinceOf(adMax.get(accountId) ?? null)
+  const fromOf = (accountId: string) => sinceOf(adMax.get(accountId) ?? null, refreshDays)
   const spans = (grain: typeof campaignSpans) =>
     new Map(grain.map((c) => [c.accountId, { min: c._min.date, max: c._max.date }]))
-  const campaignFromOf = grainStarts(adMin, spans(campaignSpans))
-  const adFromOf = grainStarts(adMin, spans(adInsightSpans))
+  const campaignFromOf = grainStarts(adMin, spans(campaignSpans), refreshDays)
+  const adFromOf = grainStarts(adMin, spans(adInsightSpans), refreshDays)
 
   const accounts = await listAccounts(prisma, token)
   const failed: string[] = []
@@ -244,6 +302,8 @@ export async function importMetaSpend(
   let campaignRows = 0
   let adRows = 0
   let unread = 0
+  let historyRows = 0
+  let historyPending = 0
   /*
     The run's window in the worker's log: the earliest day an account WITH
     rows was read from. One read from the history start because it has none —
@@ -288,18 +348,48 @@ export async function importMetaSpend(
       start — seven empty slices for «Zapas Collagen» and Newgen_davi01,
       forever. It is asked the hour its account grain first shows a day.
     */
-    if (!adMin.get(account.account_id) && !spentNow) continue
+    if (adMin.get(account.account_id) || spentNow) {
+      try {
+        adRows += await importAccountAds(prisma, token, account, { from: adFromOf(account.account_id), today })
+      } catch (error) {
+        failed.push(`${account.name} · eʼlon darajasi: ${(error as Error).message}`)
+      }
+    }
+
+    /*
+      The walk back, last and inside the pass's own time: today's numbers
+      come first, and an account Meta refused above was `continue`d past.
+      A refusal here costs only the walk — it resumes from its marker.
+    */
+    if (!options.historyMs) continue
+    if (Date.now() >= historyDeadline) {
+      historyPending += 1
+      continue
+    }
     try {
-      adRows += await importAccountAds(prisma, token, account, { from: adFromOf(account.account_id), today })
+      const walked = await backfillAccount(prisma, token, account, floor, historyDeadline)
+      historyRows += walked.rows
+      if (!walked.done) historyPending += 1
     } catch (error) {
-      failed.push(`${account.name} · eʼlon darajasi: ${(error as Error).message}`)
+      historyPending += 1
+      failed.push(`${account.name} · eski tarix: ${(error as Error).message}`)
     }
   }
 
   if (unread === accounts.length && accounts.length > 0) {
     throw new Error(`hech bir akkaunt oʻqilmadi — ${failed[0]}`)
   }
-  return { accounts: accounts.length, rows, campaignRows, adRows, failed, since: since ?? earliest, until: today }
+  return {
+    accounts: accounts.length,
+    rows,
+    campaignRows,
+    adRows,
+    failed,
+    since: since ?? earliest,
+    until: today,
+    historyRows,
+    historyPending,
+  }
 }
 
 /**
@@ -344,13 +434,26 @@ async function importAccount(
   window: { from: string; campaignFrom: string; today: string },
 ): Promise<{ rows: number; campaignRows: number }> {
   const { from, campaignFrom, today } = window
+  const rows = await importAccountGrain(prisma, token, account, { from, until: today })
+  const campaignRows = await importCampaignGrain(prisma, token, account, { from: campaignFrom, until: today })
+  return { rows, campaignRows }
+}
+
+/** The account grain for one account, `[from, until]`, replacing that window. */
+async function importAccountGrain(
+  prisma: PrismaClient,
+  token: string,
+  account: Account,
+  window: { from: string; until: string },
+): Promise<number> {
+  const { from, until } = window
 
   const insights = await getAll<InsightRow>(
     `${GRAPH}/act_${account.account_id}/insights?${query(
       {
         level: 'account',
         fields: 'spend,impressions,clicks,actions',
-        time_range: JSON.stringify({ since: from, until: today }),
+        time_range: JSON.stringify({ since: from, until }),
         time_increment: '1',
         limit: '500',
       },
@@ -364,7 +467,7 @@ async function importAccount(
     prisma.metaAdDaily.deleteMany({
       where: {
         accountId: account.account_id,
-        date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${today}T00:00:00Z`) },
+        date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${until}T00:00:00Z`) },
       },
     }),
     prisma.metaAdDaily.createMany({
@@ -379,6 +482,17 @@ async function importAccount(
       })),
     }),
   ])
+  return insights.length
+}
+
+/** The campaign grain for one account, `[from, until]`, replacing that window. */
+async function importCampaignGrain(
+  prisma: PrismaClient,
+  token: string,
+  account: Account,
+  window: { from: string; until: string },
+): Promise<number> {
+  const { from, until } = window
 
   /*
     In slices of a month: the first run backfills from July, and a
@@ -386,7 +500,7 @@ async function importAccount(
     kind Meta answers with a 500 («reduce the amount of data»).
   */
   const campaigns: InsightRow[] = []
-  for (const slice of dateSlices(campaignFrom, today, CAMPAIGN_SLICE_DAYS)) {
+  for (const slice of dateSlices(from, until, CAMPAIGN_SLICE_DAYS)) {
     campaigns.push(
       ...(await getAll<InsightRow>(
         `${GRAPH}/act_${account.account_id}/insights?${query(
@@ -407,7 +521,7 @@ async function importAccount(
     prisma.metaCampaignDaily.deleteMany({
       where: {
         accountId: account.account_id,
-        date: { gte: new Date(`${campaignFrom}T00:00:00Z`), lte: new Date(`${today}T00:00:00Z`) },
+        date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${until}T00:00:00Z`) },
       },
     }),
     prisma.metaCampaignDaily.createMany({
@@ -428,8 +542,80 @@ async function importAccount(
         })),
     }),
   ])
+  return campaigns.length
+}
 
-  return { rows: insights.length, campaignRows: campaigns.length }
+type HistoryGrain = 'account' | 'campaign' | 'ad'
+
+/**
+ * One account walked back past `META_HISTORY_FROM`, as far as `deadline`
+ * allows, each step written and then remembered in `meta_history_read`.
+ *
+ * WHY A MARKER AND NOT THE ROWS. An account that never spent before August
+ * has no row before August whether it was asked or not; read off the rows,
+ * it would be asked for three empty years every pass, forever. The marker
+ * is «every day from `readFrom` on has been asked at this grain»; a missing
+ * one means `META_HISTORY_FROM`, which the forward pass has always covered.
+ *
+ * THE ORDER. The account grain first, in one request — a row a day at most,
+ * so three years is a few pages — down to the floor. Its earliest row is
+ * then the account's first day of spend, and the campaign and ad grains walk
+ * only down to it, a month and a fortnight a request as the forward pass
+ * slices them: a year of nothing costs one call, not thirty.
+ */
+async function backfillAccount(
+  prisma: PrismaClient,
+  token: string,
+  account: Account,
+  floor: string,
+  deadline: number,
+): Promise<{ rows: number; done: boolean }> {
+  const accountId = account.account_id
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  const marks = await prisma.metaHistoryRead.findMany({ where: { accountId } })
+  const readFrom = new Map<HistoryGrain, string>(
+    (['account', 'campaign', 'ad'] as const).map((g) => {
+      const mark = marks.find((m) => m.grain === g)
+      return [g, mark ? iso(mark.readFrom) : META_HISTORY_FROM]
+    }),
+  )
+  const remember = (grain: HistoryGrain, day: string) =>
+    prisma.metaHistoryRead.upsert({
+      where: { accountId_grain: { accountId, grain } },
+      create: { accountId, grain, readFrom: new Date(`${day}T00:00:00Z`) },
+      update: { readFrom: new Date(`${day}T00:00:00Z`) },
+    })
+
+  let rows = 0
+  const accountFrom = readFrom.get('account')!
+  if (accountFrom > floor) {
+    rows += await importAccountGrain(prisma, token, account, {
+      from: floor,
+      until: new Date(new Date(`${accountFrom}T00:00:00Z`).getTime() - 86_400_000).toISOString().slice(0, 10),
+    })
+    await remember('account', floor)
+  }
+
+  const first = await prisma.metaAdDaily.aggregate({ where: { accountId }, _min: { date: true } })
+  // Never spent at all: nothing below the history start to read at a finer grain.
+  if (!first._min.date) return { rows, done: true }
+  const target = iso(first._min.date) < floor ? floor : iso(first._min.date)
+
+  const grains = [
+    ['campaign', CAMPAIGN_SLICE_DAYS, importCampaignGrain],
+    ['ad', AD_SLICE_DAYS, (p: PrismaClient, t: string, a: Account, w: { from: string; until: string }) =>
+      importAccountAds(p, t, a, { from: w.from, today: w.until })],
+  ] as const
+  for (const [grain, days, read] of grains) {
+    let from = readFrom.get(grain)!
+    for (let slice = backfillSlice(from, target, days); slice; slice = backfillSlice(from, target, days)) {
+      if (Date.now() >= deadline) return { rows, done: false }
+      rows += await read(prisma, token, account, { from: slice.since, until: slice.until })
+      await remember(grain, slice.since)
+      from = slice.since
+    }
+  }
+  return { rows, done: true }
 }
 
 /**

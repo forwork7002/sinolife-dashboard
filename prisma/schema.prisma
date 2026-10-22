@@ -1446,6 +1446,9 @@ model MetaAdDaily {
 
   @@unique([accountId, date])
   @@index([date])
+  /// The screens' «yangilangan» stamp is `max(importedAt)` on every request (2026-10-22: indexed
+  /// once the history walk grew these tables to years).
+  @@index([importedAt])
   @@map("meta_ad_daily")
 }
 
@@ -1481,6 +1484,9 @@ model MetaCampaignDaily {
 
   @@unique([campaignId, date])
   @@index([date])
+  /// The screens' «yangilangan» stamp is `max(importedAt)` on every request (2026-10-22: indexed
+  /// once the history walk grew these tables to years).
+  @@index([importedAt])
   @@map("meta_campaign_daily")
 }
 
@@ -1522,6 +1528,9 @@ model MetaAdInsightDaily {
   @@index([accountId, date])
   @@index([campaignId, date])
   @@index([adsetId, date])
+  /// The screens' «yangilangan» stamp is `max(importedAt)` on every request (2026-10-22: indexed
+  /// once the history walk grew these tables to years).
+  @@index([importedAt])
   @@map("meta_ad_insight_daily")
 }
 
@@ -1579,6 +1588,22 @@ model MetaLeadForm {
   listedAt    DateTime  @default(now())
 
   @@map("meta_lead_form")
+}
+
+/// How far back each ad account has been asked of Meta, per grain (2026-10-22)
+/// — `metaImport.ts` `backfillAccount`. Every day from `readFrom` on has been
+/// read at this grain; no row means `META_HISTORY_FROM`, the forward pass's own
+/// start. Rows are not the answer: an account with no older spend has none
+/// either way, and would be asked for three empty years every pass.
+model MetaHistoryRead {
+  accountId String
+  /// 'account' | 'campaign' | 'ad'
+  grain     String
+  readFrom  DateTime @db.Date
+  updatedAt DateTime @updatedAt
+
+  @@id([accountId, grain])
+  @@map("meta_history_read")
 }
 
 /// Which lead form each lead-form ad points at, read once off its creative

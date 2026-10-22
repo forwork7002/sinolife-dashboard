@@ -88,7 +88,7 @@ const historyCache = processWide('sinolife.leadWatch.historyCache', () => ttlCac
 
 /*
   «Yetib keldi» per targetolog over yesterday and today. Meta's side moves
-  once an hour (`SYNC_META_EVERY`), so ten minutes loses nothing — and read
+  every fifteen minutes (`SYNC_META_MIN`), so ten minutes loses little — and read
   on every build it would be a two-day Регистрация scan a minute that only
   this screen asks for.
 */

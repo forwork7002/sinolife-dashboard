@@ -88,7 +88,7 @@ import {
   prismaFormFillStore,
   refreshFormFills,
 } from '../src/server/integrations/crm/sync/formFillFeed'
-import { importMetaSpend } from '../src/server/integrations/meta/metaImport'
+import { META_DEEP_REFRESH_DAYS, importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { importMetaAdForms } from '../src/server/integrations/meta/metaAdFormImport'
 import { importMetaLeads } from '../src/server/integrations/meta/metaLeadImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
@@ -172,12 +172,28 @@ const REFERENCE_EVERY = Number(process.env.SYNC_REFERENCE_EVERY ?? 180)
 const ROISTAT_EVERY = Number(process.env.SYNC_ROISTAT_EVERY ?? 60)
 
 /**
- * Meta Ads spend, every N ticks — hourly at the one-minute tick. Off without
- * `META_ACCESS_TOKEN`. In-process, unlike Roistat: fourteen accounts' daily
- * rows are a few hundred small objects, not a five-megabyte page, and the
- * calls go to Meta, never to Bitrix24, so the portal's budget is untouched.
+ * Meta Ads spend, lead-form leads and ad→form links, every `SYNC_META_MIN`
+ * minutes. Off without `META_ACCESS_TOKEN`. In-process, unlike Roistat:
+ * fourteen accounts' daily rows are a few hundred small objects, not a
+ * five-megabyte page, and the calls go to Meta, never to Bitrix24, so the
+ * portal's budget is untouched.
+ *
+ * FIFTEEN MINUTES, IN MINUTES, SINCE 2026-10-22. It was `SYNC_META_EVERY`
+ * ticks — the live spec's 30 at its 120 s tick, hourly. The client: «har bir
+ * oʻzgarish Facebook va Bitrix24 dagi srazi yangilansin». Meta refreshes a
+ * running day's Insights roughly every quarter hour; asking oftener reads the
+ * same numbers. Each pass is ~3 Insights calls an account for the week, so
+ * ~12 an hour an account — the `ads_insights` budget, never `ads_management`.
+ * `SYNC_META_EVERY` is IGNORED now: the live spec still carries it, and
+ * honouring it would have kept production hourly with this file saying 15.
  */
-const META_EVERY = Number(process.env.SYNC_META_EVERY ?? 60)
+const META_MS = Number(process.env.SYNC_META_MIN ?? 15) * 60_000
+/**
+ * How long one pass may walk accounts back past 2026-07-01, toward Insights'
+ * 37-month floor (`importMetaSpend` `historyMs`). The pass runs beside the
+ * Bitrix24 loop, not in it, so this bounds Meta's load, not the portal's.
+ */
+const META_HISTORY_MS = Number(process.env.SYNC_META_HISTORY_SEC ?? 90) * 1000
 const META_TOKEN = process.env.META_ACCESS_TOKEN?.trim() || null
 
 /**
@@ -1051,8 +1067,16 @@ async function main() {
     column is the last successful pass); the loop stamps each attempt, so a
     failing token is retried once per period, never every tick.
   */
-  const META_MS = META_EVERY * INTERVAL_SEC * 1000
   let lastMetaAt: Date | null = null
+  /** The nightly 37-day re-read (`META_DEEP_REFRESH_DAYS`); in memory — a restart at night costs one more. */
+  let lastMetaDeepAt: Date | null = null
+  /**
+   * The pass in flight, if any. Since 2026-10-22 Meta runs BESIDE the loop:
+   * awaited, a pass with the history walk held the Bitrix24 tick and the
+   * portal-events drain for minutes, and «srazi» is the portal's promise
+   * first. One at a time — a slow pass is never doubled.
+   */
+  let metaInFlight: Promise<void> | null = null
   // In memory only: a restart costs one near and one wide check, ~150 invocations.
   const recentSweepAt = new Map<string, Date>()
   // In memory only: a restart costs one pass of the feeds, two requests.
@@ -1180,8 +1204,8 @@ async function main() {
       ` (oxirgisi: ${lastReferenceAt?.toISOString() ?? 'yozilmagan'}).` +
       (SWEEP_EVERY > 0 ? ` Oxirgi tozalash: ${lastSweepAt?.toISOString() ?? 'yozilmagan'}.` : '') +
       (ROISTAT_EVERY > 0 ? ` Roistat har ${ROISTAT_EVERY} tsiklda.` : ' Roistat oʻchirilgan.') +
-      (META_TOKEN && META_EVERY > 0
-        ? ` Meta har ${META_EVERY} tsiklda (oxirgisi: ${lastMetaAt?.toISOString() ?? 'yozilmagan'}).`
+      (META_TOKEN && META_MS > 0
+        ? ` Meta har ${Math.round(META_MS / 60_000)} daqiqada (oxirgisi: ${lastMetaAt?.toISOString() ?? 'yozilmagan'}).`
         : ' Meta oʻchirilgan (token yoʻq).') +
       (MOYSKLAD_TOKEN && MOYSKLAD_EVERY > 0
         ? ` MoySklad har ${MOYSKLAD_EVERY} tsiklda.`
@@ -1196,6 +1220,66 @@ async function main() {
       (relayHost() ? ` Bitrix24 soʻrovlari oraliq server orqali: ${relayHost()}.` : ' Bitrix24 soʻrovlari toʻgʻridan-toʻgʻri.') +
       '\n',
   )
+
+  /**
+   * One Meta pass — spend (with the history walk, and the 37-day re-read when
+   * `deep`), then the forms' leads, then the ad→form links — each in a try of
+   * its own. Never throws: it runs beside the loop, and a rejection there
+   * would be nobody's to catch.
+   */
+  async function runMetaPass(token: string, deep: boolean): Promise<void> {
+    const metaStarted = Date.now()
+    try {
+      const r = await importMetaSpend(prisma, token, zonedDateKey(new Date(), WORKER_TIME_ZONE), {
+        refreshDays: deep ? META_DEEP_REFRESH_DAYS : undefined,
+        historyMs: META_HISTORY_MS,
+      })
+      console.log(
+        `  ${stamp()} meta${deep ? ' (tungi chuqur qayta oʻqish)' : ''}: ${r.accounts} akkaunt, ${r.rows} kun-qator, ${r.campaignRows} kampaniya-kun, ${r.adRows} eʼlon-kun (${r.since} – ${r.until})` +
+          (r.historyRows > 0 || r.historyPending > 0
+            ? `, eski tarix: ${r.historyRows} qator` + (r.historyPending > 0 ? `, ${r.historyPending} akkaunt davom etadi` : ', tugadi')
+            : '') +
+          `  (${((Date.now() - metaStarted) / 1000).toFixed(1)}s)`,
+      )
+      for (const refused of r.failed) console.warn(`  ${stamp()} meta akkaunt oʻqilmadi — ${refused}`)
+    } catch (error) {
+      console.warn(`  ${stamp()} meta muvaffaqiyatsiz: ${(error as Error).message}`)
+    }
+
+    /*
+      The lead forms' own leads, for the campaigns' kval — after the spend,
+      in a try of its own: it is the page's budget, not the ad accounts',
+      and a token without `leads_retrieval` must not cost the spend import.
+    */
+    const leadsStarted = Date.now()
+    try {
+      const r = await importMetaLeads(prisma, token)
+      console.log(
+        `  ${stamp()} meta lidlar: ${r.pages} sahifa, ${r.forms} forma, ${r.leads} yangi lid` +
+          `  (${((Date.now() - leadsStarted) / 1000).toFixed(1)}s)`,
+      )
+      for (const refused of r.failed) console.warn(`  ${stamp()} meta forma oʻqilmadi — ${refused}`)
+    } catch (error) {
+      console.warn(`  ${stamp()} meta lidlar muvaffaqiyatsiz: ${(error as Error).message}`)
+    }
+
+    /*
+      Which form each lead-form ad points at, off its creative — the only
+      link to a form on a page the token is not assigned to. Once per ad,
+      in its own try: it is the ad accounts' `ads_management` budget.
+    */
+    const adFormsStarted = Date.now()
+    try {
+      const r = await importMetaAdForms(prisma, token)
+      console.log(
+        `  ${stamp()} meta reklama→forma: ${r.ads} reklama oʻqildi, ${r.withForm} tasida forma` +
+          `  (${((Date.now() - adFormsStarted) / 1000).toFixed(1)}s)`,
+      )
+      for (const refused of r.failed) console.warn(`  ${stamp()} meta reklama→forma toʻxtadi — ${refused}`)
+    } catch (error) {
+      console.warn(`  ${stamp()} meta reklama→forma muvaffaqiyatsiz: ${(error as Error).message}`)
+    }
+  }
 
   let stopping = false
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
@@ -1950,64 +2034,22 @@ async function main() {
       clock (`lastMetaAt`, above), and never on Roistat's tick so the two
       passengers never ride together. A failure is logged and forgotten until
       the next period — Meta being down must never cost a Bitrix24 tick.
+      Started, not awaited (`metaInFlight`): the loop goes on with the portal.
     */
     if (
       META_TOKEN &&
       tick > 0 &&
+      metaInFlight === null &&
       (ROISTAT_EVERY <= 0 || tick % ROISTAT_EVERY !== 0) &&
       isPassDue(lastMetaAt, new Date(), META_MS) &&
       !stopping
     ) {
       lastMetaAt = new Date()
-      const metaStarted = Date.now()
-      try {
-        const r = await importMetaSpend(
-          prisma,
-          META_TOKEN,
-          zonedDateKey(new Date(), WORKER_TIME_ZONE),
-        )
-        console.log(
-          `  ${stamp()} meta: ${r.accounts} akkaunt, ${r.rows} kun-qator, ${r.campaignRows} kampaniya-kun, ${r.adRows} eʼlon-kun (${r.since} – ${r.until})` +
-            `  (${((Date.now() - metaStarted) / 1000).toFixed(1)}s)`,
-        )
-        for (const refused of r.failed) console.warn(`  ${stamp()} meta akkaunt oʻqilmadi — ${refused}`)
-      } catch (error) {
-        console.warn(`  ${stamp()} meta muvaffaqiyatsiz: ${(error as Error).message}`)
-      }
-
-      /*
-        The lead forms' own leads, for the campaigns' kval — after the spend,
-        in a try of its own: it is the page's budget, not the ad accounts',
-        and a token without `leads_retrieval` must not cost the spend import.
-      */
-      const leadsStarted = Date.now()
-      try {
-        const r = await importMetaLeads(prisma, META_TOKEN)
-        console.log(
-          `  ${stamp()} meta lidlar: ${r.pages} sahifa, ${r.forms} forma, ${r.leads} yangi lid` +
-            `  (${((Date.now() - leadsStarted) / 1000).toFixed(1)}s)`,
-        )
-        for (const refused of r.failed) console.warn(`  ${stamp()} meta forma oʻqilmadi — ${refused}`)
-      } catch (error) {
-        console.warn(`  ${stamp()} meta lidlar muvaffaqiyatsiz: ${(error as Error).message}`)
-      }
-
-      /*
-        Which form each lead-form ad points at, off its creative — the only
-        link to a form on a page the token is not assigned to. Once per ad,
-        in its own try: it is the ad accounts' `ads_management` budget.
-      */
-      const adFormsStarted = Date.now()
-      try {
-        const r = await importMetaAdForms(prisma, META_TOKEN)
-        console.log(
-          `  ${stamp()} meta reklama→forma: ${r.ads} reklama oʻqildi, ${r.withForm} tasida forma` +
-            `  (${((Date.now() - adFormsStarted) / 1000).toFixed(1)}s)`,
-        )
-        for (const refused of r.failed) console.warn(`  ${stamp()} meta reklama→forma toʻxtadi — ${refused}`)
-      } catch (error) {
-        console.warn(`  ${stamp()} meta reklama→forma muvaffaqiyatsiz: ${(error as Error).message}`)
-      }
+      const deep = isSweepDue(lastMetaDeepAt, lastMetaAt, 86_400_000, WORKER_TIME_ZONE)
+      if (deep) lastMetaDeepAt = lastMetaAt
+      metaInFlight = runMetaPass(META_TOKEN, deep).finally(() => {
+        metaInFlight = null
+      })
     }
 
     /*
@@ -2188,6 +2230,10 @@ async function main() {
       await sleep(EVENTS_DRAIN_MS > 0 ? Math.min(left, EVENTS_DRAIN_MS) : left)
     }
   }
+
+  // A Meta pass in flight finishes its account — each grain is its own
+  // transaction, so one cut short leaves the last pass's rows, never a hole.
+  if (metaInFlight) await Promise.race([metaInFlight, sleep(15_000)])
 
   // Releasing the lock explicitly lets a replacement worker start at once
   // instead of waiting out the connection's own timeout.

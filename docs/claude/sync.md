@@ -184,6 +184,18 @@
 - Roistat is a second, unrelated source (a `var D = {…}` literal inside a 5.5 MB
   static page, parsed by brace-matching, not regex). It lands in its own tables
   and is spawned as a child process, hourly.
+- **Meta (2026-10-22): every 15 minutes, beside the loop, with its whole
+  history.** `SYNC_META_MIN` (default 15) — it was `SYNC_META_EVERY` ticks
+  (the live spec's 30 × 120 s: hourly), which is now ignored. The pass is started,
+  not awaited (`metaInFlight` in `syncWorker.ts`), so it never holds a Bitrix24
+  tick or the events drain. Each pass re-reads every account's last 7 days;
+  the first pass inside 01:00–06:00 Tashkent re-reads 37
+  (`META_DEEP_REFRESH_DAYS`: Meta's 28-day attribution revises old days). And
+  each pass spends up to `SYNC_META_HISTORY_SEC` (90) walking accounts back
+  from 2026-07-01 to Insights' floor (`metaHistoryFloor`, 36 months),
+  remembered per account and grain in `meta_history_read` — an account with no
+  older spend is asked once. Meta's lead-form LEADS cannot go further back
+  than Meta keeps them (90 days); Bitrix24 has the rest.
 
 - **THE PORTAL CAN BLOCK ITSELF, AND THE DASHBOARD NOW SAYS SO.** On
   2026-09-14 every REST call came back `401` with

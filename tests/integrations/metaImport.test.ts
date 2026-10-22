@@ -4,9 +4,12 @@ import type { PrismaClient } from '@/generated/prisma/client'
 
 import {
   adInsightRow,
+  backfillSlice,
   dateSlices,
   grainStarts,
   importMetaSpend,
+  META_DEEP_REFRESH_DAYS,
+  metaHistoryFloor,
   metaConversations,
   metaLeads,
   microUsd,
@@ -528,5 +531,130 @@ describe('adInsightRow — one ad on one day', () => {
 
   it('skips a row without an ad id', () => {
     expect(adInsightRow(account, { date_start: '2026-10-04', campaign_id: '100001', spend: '3.00' })).toBeNull()
+  })
+})
+
+describe('metaHistoryFloor — as far back as Insights answers', () => {
+  it('is the first of the month thirty-six months back, inside Meta\'s 37', () => {
+    expect(metaHistoryFloor('2026-10-22')).toBe('2023-10-01')
+    expect(metaHistoryFloor('2026-01-05')).toBe('2023-01-01')
+    expect(metaHistoryFloor('2026-12-31')).toBe('2023-12-01')
+  })
+})
+
+describe('backfillSlice — the walk back, one bounded window at a time', () => {
+  it('ends the day before what is already read and never passes the target', () => {
+    expect(backfillSlice('2026-07-01', '2023-10-01', 31)).toEqual({ since: '2026-05-31', until: '2026-06-30' })
+    expect(backfillSlice('2026-07-01', '2026-06-20', 31)).toEqual({ since: '2026-06-20', until: '2026-06-30' })
+  })
+
+  it('is done once the target is reached', () => {
+    expect(backfillSlice('2026-06-20', '2026-06-20', 31)).toBeNull()
+    expect(backfillSlice('2026-06-20', '2026-07-01', 31)).toBeNull()
+  })
+})
+
+describe('importMetaSpend — the history before 2026-07-01 (2026-10-22)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  const day = (iso: string) => new Date(`${iso}T00:00:00Z`)
+  const ACCOUNT = { account_id: '990016692137088', name: 'Umar - 64' }
+
+  /** One account with rows from July; `firstSpend` is what the account-grain walk turns up. */
+  function world(opts: { marks?: { grain: string; readFrom: Date }[]; firstSpend: string | null }) {
+    const marks = new Map((opts.marks ?? []).map((m) => [m.grain, m.readFrom]))
+    const prisma = {
+      metaAdDaily: {
+        groupBy: async () => [{ accountId: ACCOUNT.account_id, _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-21') } }],
+        aggregate: async () => ({ _min: { date: opts.firstSpend ? day(opts.firstSpend) : null } }),
+        deleteMany: () => 'delete',
+        createMany: () => 'create',
+      },
+      metaCampaignDaily: {
+        groupBy: async () => [{ accountId: ACCOUNT.account_id, _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-21') } }],
+        deleteMany: () => 'delete',
+        createMany: () => 'create',
+      },
+      metaAdInsightDaily: {
+        groupBy: async () => [{ accountId: ACCOUNT.account_id, _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-21') } }],
+        deleteMany: () => 'delete',
+        createMany: () => 'create',
+      },
+      metaHistoryRead: {
+        findMany: async () => [...marks].map(([grain, readFrom]) => ({ accountId: ACCOUNT.account_id, grain, readFrom })),
+        upsert: async (args: { where: { accountId_grain: { grain: string } }; create: { readFrom: Date } }) => {
+          marks.set(args.where.accountId_grain.grain, args.create.readFrom)
+        },
+      },
+      $transaction: async () => [],
+    } as unknown as PrismaClient
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes('/me/adaccounts')
+        ? new Response(JSON.stringify({ data: [ACCOUNT] }))
+        : new Response(JSON.stringify({ data: [] })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const asked = () =>
+      fetchMock.mock.calls
+        .map(([url]) => new URL(url))
+        .filter((u) => u.searchParams.get('level'))
+        .map((u) => `${u.searchParams.get('level')} ${(JSON.parse(u.searchParams.get('time_range')!) as { since: string; until: string }).since}..${(JSON.parse(u.searchParams.get('time_range')!) as { until: string }).until}`)
+    const iso = (grain: string) => marks.get(grain)?.toISOString().slice(0, 10)
+    return { prisma, asked, iso }
+  }
+
+  it('does not walk back at all unless the worker gives it time — the tests above, and a hand run', async () => {
+    const { prisma, asked } = world({ firstSpend: '2025-03-10' })
+    await importMetaSpend(prisma, 'token', '2026-10-22')
+    expect(asked().every((a) => a.endsWith('..2026-10-22'))).toBe(true)
+  })
+
+  it('reads the account grain to the floor in one request, then the finer grains down to the first spend', async () => {
+    const { prisma, asked, iso } = world({ firstSpend: '2026-05-15' })
+    const r = await importMetaSpend(prisma, 'token', '2026-10-22', { historyMs: 60_000 })
+
+    const history = asked().filter((a) => !a.endsWith('..2026-10-22'))
+    expect(history).toEqual([
+      'account 2023-10-01..2026-06-30',
+      'campaign 2026-05-31..2026-06-30',
+      'campaign 2026-05-15..2026-05-30',
+      'ad 2026-06-17..2026-06-30',
+      'ad 2026-06-03..2026-06-16',
+      'ad 2026-05-20..2026-06-02',
+      'ad 2026-05-15..2026-05-19',
+    ])
+    expect([iso('account'), iso('campaign'), iso('ad')]).toEqual(['2023-10-01', '2026-05-15', '2026-05-15'])
+    expect(r.historyPending).toBe(0)
+  })
+
+  it('asks nothing more of an account already walked back to its first spend', async () => {
+    const { prisma, asked } = world({
+      firstSpend: '2026-05-15',
+      marks: [
+        { grain: 'account', readFrom: day('2023-10-01') },
+        { grain: 'campaign', readFrom: day('2026-05-15') },
+        { grain: 'ad', readFrom: day('2026-05-15') },
+      ],
+    })
+    await importMetaSpend(prisma, 'token', '2026-10-22', { historyMs: 60_000 })
+    expect(asked().filter((a) => !a.endsWith('..2026-10-22'))).toEqual([])
+  })
+
+  it('stops when the pass\'s time is spent and says the account is still owed', async () => {
+    const { prisma, iso } = world({ firstSpend: '2024-01-01' })
+    // Every look at the clock is a second later: the account grain fits, the first finer slice does not.
+    let now = 0
+    vi.spyOn(Date, 'now').mockImplementation(() => (now += 1_000))
+    const r = await importMetaSpend(prisma, 'token', '2026-10-22', { historyMs: 1_500 })
+    vi.restoreAllMocks()
+    expect(r.historyPending).toBe(1)
+    expect(iso('account')).toBe('2023-10-01')
+    expect(iso('ad')).toBeUndefined()
+  })
+
+  it('re-reads 37 days on the nightly pass instead of a week', async () => {
+    const { prisma, asked } = world({ firstSpend: null })
+    await importMetaSpend(prisma, 'token', '2026-10-22', { refreshDays: META_DEEP_REFRESH_DAYS })
+    expect(asked()).toContain('account 2026-09-14..2026-10-22')
   })
 })
