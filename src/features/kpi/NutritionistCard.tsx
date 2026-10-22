@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 
 import { ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
+import { DeltaBadge, gapIsZero, ReconcileChip, RowMark, rowTint } from '@/features/kpi/reconcile'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { ApiClientError, apiGet } from '@/lib/api'
 import { formatNumber } from '@/lib/format'
@@ -89,53 +90,57 @@ export function NutritionistCard() {
                   <th className="py-1 text-right font-medium">MoySklad × {rate} $</th>
                 </tr>
               </thead>
-              {data.brands.map((brand) => (
-                <tbody key={brand.brand}>
-                  <tr className="border-t" style={{ borderColor: 'var(--grid)' }}>
-                    <th
-                      scope="rowgroup"
-                      colSpan={6}
-                      className="pt-2.5 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide"
-                      style={{ color: 'var(--ink-secondary)' }}
-                    >
-                      {brand.brand}
-                    </th>
-                  </tr>
-                  {(
-                    [
-                      ['FAKT 1', brand.fakt1],
-                      ['FAKT 2', brand.fakt2],
-                    ] as const
-                  ).map(([label, row]) => {
-                    const gap = row.moysklad - row.bitrix
-                    return (
-                      <tr key={label} className="border-t" style={{ borderColor: 'var(--grid)' }}>
-                        <th scope="row" className="py-1.5 pr-3 text-left font-medium" style={{ color: 'var(--ink-primary)' }}>
-                          {label}
-                        </th>
-                        <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--ink-primary)' }}>
-                          {formatNumber(row.bitrix)}
-                        </td>
-                        <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--ink-primary)' }}>
-                          {formatNumber(row.moysklad)}
-                        </td>
-                        <td
-                          className="py-1.5 pr-3 text-right"
-                          style={{ color: gap === 0 ? 'var(--ink-muted)' : 'var(--status-critical)' }}
-                        >
-                          {gap > 0 ? `+${formatNumber(gap)}` : formatNumber(gap)}
-                        </td>
-                        <td className="py-1.5 pr-3 text-right font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                          {usd(row.bitrixUsd)}
-                        </td>
-                        <td className="py-1.5 text-right font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                          {usd(row.moyskladUsd)}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              ))}
+              {data.brands.map((brand) => {
+                const fakts = [
+                  ['FAKT 1', brand.fakt1],
+                  ['FAKT 2', brand.fakt2],
+                ] as const
+                const mismatches = fakts.reduce((n, [, row]) => (gapIsZero(row.moysklad - row.bitrix) ? n : n + 1), 0)
+                return (
+                  <tbody key={brand.brand}>
+                    <tr className="border-t" style={{ borderColor: 'var(--grid)' }}>
+                      <th
+                        scope="rowgroup"
+                        colSpan={6}
+                        className="pt-2.5 pb-1 text-left text-[11px] font-semibold uppercase tracking-wide"
+                        style={{ color: 'var(--ink-secondary)' }}
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <span>{brand.brand}</span>
+                          <ReconcileChip mismatches={mismatches} />
+                        </span>
+                      </th>
+                    </tr>
+                    {fakts.map(([label, row]) => {
+                      const gap = row.moysklad - row.bitrix
+                      const matched = gapIsZero(gap)
+                      const tint = rowTint(matched)
+                      return (
+                        <tr key={label} className="border-t" style={{ borderColor: 'var(--grid)', background: tint }}>
+                          <th scope="row" className="py-1.5 pr-3 text-left font-medium" style={{ color: 'var(--ink-primary)' }}>
+                            <RowMark matched={matched}>{label}</RowMark>
+                          </th>
+                          <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--ink-primary)' }}>
+                            {formatNumber(row.bitrix)}
+                          </td>
+                          <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--ink-primary)' }}>
+                            {formatNumber(row.moysklad)}
+                          </td>
+                          <td className="py-1.5 pr-3 text-right">
+                            <DeltaBadge value={gap} format={formatNumber} />
+                          </td>
+                          <td className="py-1.5 pr-3 text-right font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                            {usd(row.bitrixUsd)}
+                          </td>
+                          <td className="py-1.5 text-right font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                            {usd(row.moyskladUsd)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                )
+              })}
             </table>
           </div>
         )}

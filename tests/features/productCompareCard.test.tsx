@@ -63,37 +63,46 @@ function mount() {
 }
 
 const cells = (row: HTMLElement) => within(row).getAllByRole('cell').map((c) => c.textContent)
+// The heading row now carries a «mos» / «N farq» chip, so its accessible name
+// no longer equals the brand label exactly — match the label as a prefix.
+const headingName = (brand: string) => new RegExp(`^${brand} buyurtmalari · jami`)
 const rowsOf = (brand: string) =>
-  within(screen.getByRole('rowheader', { name: `${brand} buyurtmalari · jami` }).closest('tbody') as HTMLElement).getAllByRole('row')
+  within(screen.getByRole('rowheader', { name: headingName(brand) }).closest('tbody') as HTMLElement).getAllByRole('row')
 
 describe('ProductCompareCard', () => {
   it('prints each brand\'s total on its heading row, then every product with both counts, the gap and the soʻm', async () => {
     answer.refuse = false
     answer.calls = []
     mount()
-    await screen.findByRole('rowheader', { name: 'Collagen buyurtmalari · jami' })
+    await screen.findByRole('rowheader', { name: headingName('Collagen') })
     // The dashboard window only: the employee / department filters do not narrow it.
     expect(answer.calls[0]).toEqual(['/kpi/products', { preset: 'this_month' }])
     const collagen = rowsOf('Collagen')
     expect(collagen).toHaveLength(3)
-    expect(cells(collagen[0])).toEqual(['150', '148', '-2', '120,000,000', '118,400,000', '-1,600,000'])
+    // A gap prints as a magnitude beside a drawn ▲/▼ (no sign in the text); a
+    // reconciled figure is a muted «—». The whole-unit rounding is unchanged.
+    expect(cells(collagen[0])).toEqual(['150', '148', '2', '120,000,000', '118,400,000', '1,600,000'])
     expect(within(collagen[1]).getByRole('rowheader').textContent).toBe('Collagen Marine Sinolife')
-    expect(cells(collagen[1])).toEqual(['120', '118', '-2', '96,000,000', '94,400,000', '-1,600,000'])
-    expect(cells(collagen[2])).toEqual(['30', '30', '0', '24,000,000', '24,000,000', '0'])
-    expect(cells(rowsOf('Zextra')[0])).toEqual(['40', '40', '0', '32,000,000', '32,000,000', '0'])
+    expect(cells(collagen[1])).toEqual(['120', '118', '2', '96,000,000', '94,400,000', '1,600,000'])
+    expect(cells(collagen[2])).toEqual(['30', '30', '—', '24,000,000', '24,000,000', '—'])
+    expect(cells(rowsOf('Zextra')[0])).toEqual(['40', '40', '—', '32,000,000', '32,000,000', '—'])
+    // The heading chip reads the brand's verdict: Collagen has one product off
+    // (Marine), Zextra reconciles whole.
+    expect(screen.getByRole('rowheader', { name: headingName('Collagen') }).textContent).toContain('1 farq')
+    expect(screen.getByRole('rowheader', { name: headingName('Zextra') }).textContent).toContain('mos')
   })
 
   it('switches every brand to FAKT 2, and says so where a brand has none', async () => {
     answer.refuse = false
     mount()
-    await screen.findByRole('rowheader', { name: 'Collagen buyurtmalari · jami' })
+    await screen.findByRole('rowheader', { name: headingName('Collagen') })
     fireEvent.click(screen.getByRole('button', { name: 'FAKT 2' }))
     expect(screen.getByRole('button', { name: 'FAKT 2' }).getAttribute('aria-pressed')).toBe('true')
     const collagen = rowsOf('Collagen')
     expect(collagen).toHaveLength(2)
-    expect(cells(collagen[0]).slice(0, 3)).toEqual(['70', '71', '+1'])
+    expect(cells(collagen[0]).slice(0, 3)).toEqual(['70', '71', '1'])
     const zextra = rowsOf('Zextra')
-    expect(cells(zextra[0]).slice(0, 3)).toEqual(['0', '0', '0'])
+    expect(cells(zextra[0]).slice(0, 3)).toEqual(['0', '0', '—'])
     expect(zextra[1].textContent).toBe('Bu davrda tovar yoʻq')
   })
 

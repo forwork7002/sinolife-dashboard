@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react'
 import { ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
+import { DeltaBadge, gapIsZero, ReconcileChip, RowMark, rowTint } from '@/features/kpi/reconcile'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import type { SverkaProductDto } from '@/features/sverka/sverkaApi'
 import { ApiClientError, apiGet } from '@/lib/api'
@@ -29,18 +30,6 @@ const BASIS_OPTIONS: readonly { readonly value: Basis; readonly label: string }[
   { value: 'fakt1', label: 'FAKT 1' },
   { value: 'fakt2', label: 'FAKT 2' },
 ]
-
-/*
-  A gap is read in whole units. MoySklad's lines carry tiyin and the totals are
-  float sums, so a kopeck or float noise would otherwise print «-0» / «+1» in
-  red beside two equal figures — under one soʻm (or one piece) is no gap.
-*/
-const gapText = (value: number, format: (v: number) => string) => {
-  const whole = Math.round(value)
-  if (whole === 0) return '0'
-  return whole > 0 ? `+${format(whole)}` : format(whole)
-}
-const gapColor = (value: number) => (Math.round(value) === 0 ? 'var(--ink-muted)' : 'var(--status-critical)')
 
 /** The product column stays put while the figures scroll under it on a phone. */
 const PIN = 'tcol-sticky is-edge left-0'
@@ -138,8 +127,14 @@ export function ProductCompareCard() {
   )
 }
 
+/** A product reconciles when BOTH its piece gap and its money gap round to zero. */
+function rowMatched(row: SverkaProductDto): boolean {
+  return gapIsZero(row.moyskladQuantity - row.bitrixQuantity) && gapIsZero(row.moyskladAmount - row.bitrixAmount)
+}
+
 function BrandRows({ brand, rows }: { readonly brand: BrandProductsDto['brand']; readonly rows: readonly SverkaProductDto[] }) {
   const total = totalsOf(rows)
+  const mismatches = rows.reduce((n, r) => (rowMatched(r) ? n : n + 1), 0)
   return (
     <tbody>
       <tr className="border-t" style={{ borderColor: 'var(--grid)' }}>
@@ -148,7 +143,10 @@ function BrandRows({ brand, rows }: { readonly brand: BrandProductsDto['brand'];
           className={`${PIN} pt-2.5 pb-1.5 pr-3 text-left text-[11px] font-semibold uppercase tracking-wide`}
           style={{ color: 'var(--ink-secondary)' }}
         >
-          {brand} buyurtmalari · jami
+          <span className="inline-flex items-center gap-2">
+            <span>{brand} buyurtmalari · jami</span>
+            <ReconcileChip mismatches={mismatches} />
+          </span>
         </th>
         <Cells {...total} strong />
       </tr>
@@ -159,48 +157,65 @@ function BrandRows({ brand, rows }: { readonly brand: BrandProductsDto['brand'];
           </td>
         </tr>
       ) : (
-        rows.map((row) => (
-          <tr key={row.key} className="border-t" style={{ borderColor: 'var(--grid)' }}>
-            <th scope="row" className={`${PIN} py-1.5 pr-3 text-left font-medium`} style={{ color: 'var(--ink-primary)' }}>
-              {row.name}
-            </th>
-            {/* The four figures by name: the DTO carries `key`, which React refuses in a spread. */}
-            <Cells
-              bitrixQuantity={row.bitrixQuantity}
-              moyskladQuantity={row.moyskladQuantity}
-              bitrixAmount={row.bitrixAmount}
-              moyskladAmount={row.moyskladAmount}
-            />
-          </tr>
-        ))
+        rows.map((row) => {
+          const matched = rowMatched(row)
+          const tint = rowTint(matched)
+          return (
+            <tr key={row.key} className="border-t" style={{ borderColor: 'var(--grid)' }}>
+              <th
+                scope="row"
+                className={`${PIN} py-1.5 pr-3 text-left font-medium`}
+                style={{ color: 'var(--ink-primary)', background: tint }}
+              >
+                <RowMark matched={matched}>{row.name}</RowMark>
+              </th>
+              {/* The four figures by name: the DTO carries `key`, which React refuses in a spread. */}
+              <Cells
+                bitrixQuantity={row.bitrixQuantity}
+                moyskladQuantity={row.moyskladQuantity}
+                bitrixAmount={row.bitrixAmount}
+                moyskladAmount={row.moyskladAmount}
+                tint={tint}
+              />
+            </tr>
+          )
+        })
       )}
     </tbody>
   )
 }
 
-function Cells({ bitrixQuantity, moyskladQuantity, bitrixAmount, moyskladAmount, strong = false }: Totals & { readonly strong?: boolean }) {
+function Cells({
+  bitrixQuantity,
+  moyskladQuantity,
+  bitrixAmount,
+  moyskladAmount,
+  strong = false,
+  tint,
+}: Totals & { readonly strong?: boolean; readonly tint?: string }) {
   const pieces = moyskladQuantity - bitrixQuantity
   const money = moyskladAmount - bitrixAmount
   const weight = strong ? 'font-semibold' : ''
+  const figure = { color: 'var(--ink-primary)', background: tint }
   return (
     <>
-      <td className={`py-1.5 pr-3 text-right ${weight}`} style={{ color: 'var(--ink-primary)' }}>
+      <td className={`py-1.5 pr-3 text-right ${weight}`} style={figure}>
         {formatNumber(bitrixQuantity)}
       </td>
-      <td className={`py-1.5 pr-3 text-right ${weight}`} style={{ color: 'var(--ink-primary)' }}>
+      <td className={`py-1.5 pr-3 text-right ${weight}`} style={figure}>
         {formatNumber(moyskladQuantity)}
       </td>
-      <td className={`py-1.5 pr-3 text-right ${weight}`} style={{ color: gapColor(pieces) }}>
-        {gapText(pieces, formatNumber)}
+      <td className="py-1.5 pr-3 text-right" style={{ background: tint }}>
+        <DeltaBadge value={pieces} format={formatNumber} />
       </td>
-      <td className={`py-1.5 pr-3 text-right ${weight}`} style={{ color: 'var(--ink-primary)' }}>
+      <td className={`py-1.5 pr-3 text-right ${weight}`} style={figure}>
         {formatFullUzs(bitrixAmount)}
       </td>
-      <td className={`py-1.5 pr-3 text-right ${weight}`} style={{ color: 'var(--ink-primary)' }}>
+      <td className={`py-1.5 pr-3 text-right ${weight}`} style={figure}>
         {formatFullUzs(moyskladAmount)}
       </td>
-      <td className={`py-1.5 text-right ${weight}`} style={{ color: gapColor(money) }}>
-        {gapText(money, formatFullUzs)}
+      <td className="py-1.5 text-right" style={{ background: tint }}>
+        <DeltaBadge value={money} format={formatFullUzs} />
       </td>
     </>
   )
