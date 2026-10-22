@@ -254,6 +254,10 @@ export interface RawDeal extends ExternalRecord {
   readonly leadRopExternalId?: string
   /** «ROP KVAL LID» — the Регистрация deal's ROP's portal user id; resolved on write. */
   readonly ropKvalLidExternalId?: string
+  /** «Как поступил лид», raw. */
+  readonly leadVia?: string
+  /** «Телефон ракам», raw. */
+  readonly dealPhone?: string
   /** CREATED_BY_ID — who opened the deal; resolved to an employee on write. */
   readonly createdByExternalId?: string
   /** «Такрор лид»; undefined is a new lead. */
@@ -338,6 +342,18 @@ export interface RawFormFill extends ExternalRecord {
   /** OWNER_TYPE_ID: '2' a deal, '3' a contact. */
   readonly ownerTypeId: string
   readonly ownerExternalId: string
+}
+
+/**
+ * Where a deal was born — its `crm.stagehistory` row of TYPE_ID 1. Not part of
+ * `CrmProvider`, like the form fills: read through the provider class itself
+ * (`fetchDealBirths`). `externalId` is the history row's id.
+ */
+export interface RawDealBirth extends ExternalRecord {
+  readonly dealExternalId: string
+  readonly categoryId: number
+  readonly stageExternalId: string
+  readonly bornAt: Date
 }
 
 export interface RawStore extends ExternalRecord {

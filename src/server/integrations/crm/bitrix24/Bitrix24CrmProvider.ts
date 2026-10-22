@@ -34,6 +34,7 @@ import {
   type RawDealItem,
   type RawDepartment,
   type RawEmployee,
+  type RawDealBirth,
   type RawFormFill,
   type RawOpenLineChat,
   type RawPayment,
@@ -220,6 +221,9 @@ const DEAD_LABEL_MS = 60 * 60_000
 
 /** The activity list — the open-line chats' method. */
 const ACTIVITY_LIST = 'crm.activity.list'
+
+/** The stage history — the deal births' method (`fetchDealBirths`). */
+const STAGE_HISTORY_LIST = 'crm.stagehistory.list'
 
 /**
  * Pages of fifty one open-chat read may take before it refuses.
@@ -2060,6 +2064,9 @@ export class Bitrix24CrmProvider implements CrmProvider {
       aiQualifiedAt: toDate(d[UF.AI_QUALIFIED_AT]),
       leadRopExternalId: portalUserId(d[UF.LEAD_ROP]),
       ropKvalLidExternalId: portalUserId(d[UF.ROP_KVAL_LID]),
+      // Free text, raw — the same trap as ADDRESS.
+      leadVia: nonEmpty(d[UF.LEAD_VIA]),
+      dealPhone: nonEmpty(d[UF.DEAL_PHONE]),
       createdByExternalId: portalUserId(d.CREATED_BY_ID),
       repeatLead: repeatLeadKind(d[UF.REPEAT_LEAD], this.label(UF.REPEAT_LEAD, d[UF.REPEAT_LEAD])),
       isReturnCustomer: d.IS_RETURN_CUSTOMER === 'Y',
@@ -2812,6 +2819,69 @@ export class Bitrix24CrmProvider implements CrmProvider {
       if (rows.length < LIST_PAGE) return { fills, complete: true }
     }
     return { fills, complete: false }
+  }
+
+  /**
+   * WHERE DEALS WERE BORN — `crm.stagehistory` rows of TYPE_ID 1 above
+   * `afterId`, oldest first: ONE batch of chained pages (`batchWalk`, up to
+   * fifty pages of fifty), and whether it reached the newest (`complete`).
+   * ~5 000 deals a day open across the pipelines (21.10.2026: 4 845), so an
+   * ordinary pass is one short page; a backfill moves 2 500 rows a call.
+   *
+   * THROWS RATHER THAN GUESSING, as `fetchFormFills`: the caller appends and
+   * never deletes, so a row of another TYPE_ID, at or under the floor, or
+   * without its deal, pipeline or date is an ignored filter, and refused.
+   */
+  async fetchDealBirths(afterId: string): Promise<{ births: RawDealBirth[]; complete: boolean }> {
+    const { rows, done } = await this.batchWalk<{
+      ID: number | string
+      OWNER_ID: number | string
+      CATEGORY_ID: number | string
+      STAGE_ID: string
+      CREATED_TIME: string
+      TYPE_ID: number | string
+    }>(
+      STAGE_HISTORY_LIST,
+      { entityTypeId: 2, filter: { TYPE_ID: 1 }, select: ['ID', 'OWNER_ID', 'CATEGORY_ID', 'STAGE_ID', 'CREATED_TIME', 'TYPE_ID'] },
+      afterId,
+      { unwrap: nestedIn('items'), refPath: '[items][49][ID]' },
+    )
+    const births: RawDealBirth[] = []
+    for (const row of rows) {
+      const id = nonEmpty(row.ID)
+      const deal = nonEmpty(row.OWNER_ID)
+      const category = nonEmpty(row.CATEGORY_ID)
+      const bornAt = toDate(row.CREATED_TIME)
+      const asked = id !== undefined && /^\d+$/.test(id) && Number(id) > Number(afterId) && String(row.TYPE_ID) === '1'
+      if (!asked || !deal || category === undefined || !/^\d+$/.test(category) || !row.STAGE_ID || !bornAt) {
+        throw new Bitrix24Error(
+          `Bitrix24 ${STAGE_HISTORY_LIST} (bitim tugʻilishi) soʻralmagan yoki chala yozuvni qaytardi: ${id !== undefined && /^\d+$/.test(id) ? id : '—'} — filtr eʼtiborsiz qoldi`,
+          undefined,
+          false,
+          undefined,
+          STAGE_HISTORY_LIST,
+        )
+      }
+      births.push({ externalId: id, dealExternalId: deal, categoryId: Number(category), stageExternalId: row.STAGE_ID, bornAt })
+    }
+    return { births, complete: done }
+  }
+
+  /**
+   * The id of the first deal birth at or after `since` — where the births
+   * feed starts on its very first pass. A DATE filter, asked once in a
+   * database's life (0.8 s on the live portal, 2026-10-22). Null when nothing
+   * is that new.
+   */
+  async firstDealBirthIdSince(since: Date): Promise<string | null> {
+    const payload = await this.call<unknown>(
+      STAGE_HISTORY_LIST,
+      { entityTypeId: 2, order: { ID: 'ASC' }, filter: { TYPE_ID: 1, '>=CREATED_TIME': isoLocal(since) }, select: ['ID'], start: -1 },
+      { retries: 0 },
+    )
+    const items = nestedIn<{ ID?: unknown }>('items')(payload.result)
+    const id = nonEmpty(items[0]?.ID)
+    return id !== undefined && /^\d+$/.test(id) ? id : null
   }
 
   /**

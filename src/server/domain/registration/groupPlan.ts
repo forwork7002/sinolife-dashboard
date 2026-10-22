@@ -8,8 +8,8 @@
  * over the month (the user's choice).
  *
  * WHERE EACH NUMBER COMES FROM:
- *   Usp soni — the team's «без квал» (2026-10-13): every Регистрация deal
- *     created on those days and credited to the ROP (`bezkvalDaysSql`), the
+ *   Usp soni — the team's «без квал» (2026-10-13): the clients of those
+ *     days credited to the ROP (`registration/bezkval.ts` since 2026-10-22), the
  *     /rnp group row «без квал» and /leads «Безквал» — so the three agree.
  *   Reja (Avto) — 200 000 × Usp soni (the user: «без квал ракам сонини
  *     *200.000 купайтириб план»).

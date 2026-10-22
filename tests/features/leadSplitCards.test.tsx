@@ -81,6 +81,7 @@ function fixture(over: Partial<LeadSplitDto> = {}): LeadSplitDto {
         week: rop === 'Azizbek' ? [0, 0, 0, 0, 0, 120, 275] : rop === 'Davlat' ? [0, 0, 0, 0, 0, 0, 61] : [0, 0, 0, 0, 0, 0, 0],
       })),
       unassigned: [0, 0, 0, 0, 0, 0, 330],
+      deals: [0, 0, 0, 0, 0, 150, 800],
     },
     previous: null,
     canEdit: true,
@@ -165,14 +166,15 @@ async function draw() {
 const sum = (rows: { shareBp: number }[]) => rows.reduce((a, r) => a + r.shareBp, 0)
 
 describe('LeadSplitCards', () => {
-  it('switches «Kimga qancha lid kelayapti» to «Безквал»: each ROP\'s Регистрация deals, and those no ROP owns', async () => {
+  it('switches «Kimga qancha lid kelayapti» to «Безквал»: each ROP\'s clients, those no ROP got, and the deals behind them', async () => {
     data = fixture()
     data = { ...data, week: { ...data.week, unassigned: [0, 0, 0, 0, 0, 0, 4] } }
     await draw()
     const card = screen.getByRole('heading', { name: 'Kimga qancha lid kelayapti' }).closest('section') as HTMLElement
     const grid = () => within(card).getByRole('table')
     expect(within(grid()).getByText('Berilmagan')).toBeTruthy()
-    expect(within(grid()).queryByText('ROP belgilanmagan')).toBeNull()
+    expect(within(grid()).queryByText('Tarqatilmagan')).toBeNull()
+    expect(within(grid()).queryByText('Jami lid (bitimlar)')).toBeNull()
     expect(within(grid()).queryByText('Davlat')).toBeNull()
 
     fireEvent.click(within(card).getByRole('button', { name: 'Безквал' }))
@@ -181,8 +183,11 @@ describe('LeadSplitCards', () => {
     expect(within(aziz).getByText('395')).toBeTruthy()
     expect(within(grid()).getByText('Davlat')).toBeTruthy()
     expect(within(grid()).queryByText('Berilmagan')).toBeNull()
-    expect(within(within(grid()).getByText('ROP belgilanmagan').closest('tr')!).getAllByText('330').length).toBe(2)
-    expect(within(card).getByText(/«Ответственный» shu ROP/)).toBeTruthy()
+    expect(within(within(grid()).getByText('Tarqatilmagan').closest('tr')!).getAllByText('330').length).toBe(2)
+    expect(within(within(grid()).getByText('Jami lid (bitimlar)').closest('tr')!).getByText('950')).toBeTruthy()
+    // A cell is a button: it opens the clients behind it.
+    expect(within(aziz).getByRole('button', { name: '275' })).toBeTruthy()
+    expect(within(card).getByText(/bitta mijoz \(telefon raqami/)).toBeTruthy()
   })
 
   it('reopens a split saved in leads and saves it unchanged', async () => {

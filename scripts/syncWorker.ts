@@ -88,6 +88,11 @@ import {
   prismaFormFillStore,
   refreshFormFills,
 } from '../src/server/integrations/crm/sync/formFillFeed'
+import {
+  DEAL_BIRTHS_FROM_MONTH,
+  prismaDealBirthStore,
+  refreshDealBirths,
+} from '../src/server/integrations/crm/sync/dealBirthFeed'
 import { META_DEEP_REFRESH_DAYS, importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { importMetaAdForms } from '../src/server/integrations/meta/metaAdFormImport'
 import { applyLabelRenames } from '../src/server/integrations/crm/sync/labelRenames'
@@ -409,6 +414,14 @@ const LEAD_WATCH_SLACK_MS = 30_000
 const FORM_FILLS_MS = 5 * 60_000
 
 /**
+ * How often the deal births are read (`dealBirthFeed.ts`): one batch a pass,
+ * ~290 a day. «Безквал»'s today is on a two-minute memo, and a deal whose
+ * birth is not read yet still counts by the pipeline it stands in; a pass
+ * that stopped at its cap (the first backfill) runs again on the next tick.
+ */
+const DEAL_BIRTHS_MS = 5 * 60_000
+
+/**
  * How far back the stage history is re-read once, at startup. Default: 45 days.
  *
  * A LOST ARRIVAL ROW TAKES AN ORDER OFF THE BOARD AND SAYS NOTHING. The
@@ -590,6 +603,11 @@ async function pruneSyncLog(db: PrismaClient): Promise<void> {
  * The same window: every deal the month grid can show was created, so
  * modified, after 1 September. ~254 000 deals (portal count 2026-10-07), ~5 100
  * invocations — inside the hourly ceiling.
+ *
+ * NOW (2026-10-22) for «Безквал» by the client's spec: `deal.leadVia` («Как
+ * поступил лид», UF_CRM_LG_VIA — a Lead Guard deal is dated by «Лид тушган
+ * сана») and `deal.dealPhone` («Телефон ракам», the number when the contact
+ * has none). The same window, for the same month grid.
  */
 /** The day contact relinking shipped; see the startup read of `lastSweepAt`. */
 const CONTACT_RELINK_SINCE = new Date('2026-09-25T00:00:00Z')
@@ -597,7 +615,7 @@ const CONTACT_RELINK_SINCE = new Date('2026-09-25T00:00:00Z')
 const DEALS_BACKFILL: DealsBackfill | null = {
   since: new Date('2026-09-01T00:00:00+05:00'),
   // After the deploy, so no DEALS backfill run earlier today settles it.
-  requestedAt: new Date('2026-10-07T18:00:00+05:00'),
+  requestedAt: new Date('2026-10-22T20:00:00+05:00'),
 }
 
 /**
@@ -1105,6 +1123,8 @@ async function main() {
   const leadWatchClock = prismaFeedClock(prisma)
   const openChatStore = prismaChatStore(prisma, 'BITRIX24')
   const formFillStore = prismaFormFillStore(prisma, 'BITRIX24')
+  const dealBirthStore = prismaDealBirthStore(prisma, 'BITRIX24')
+  let lastDealBirthsAt: Date | null = null
   /** Null while a backfill is behind: the next tick reads on at once. */
   let lastFormFillsAt: Date | null = null
   const triageRereadAt = new Map<string, Date>()
@@ -1732,6 +1752,42 @@ async function main() {
         const message = describeFeedError(error)
         console.warn(`  ${stamp()} forma toʻldirishlari muvaffaqiyatsiz: ${message}`)
         await leadWatchClock.failed('forms', message, new Date()).catch(() => undefined)
+      }
+    }
+
+    /*
+      THE DEAL BIRTHS — see `DEAL_BIRTHS_MS` and `dealBirthFeed.ts`. The same
+      guards, clock and try as the form fills beside it.
+    */
+    const birthsNow = new Date()
+    if (
+      isPassDue(lastDealBirthsAt, birthsNow, DEAL_BIRTHS_MS - LEAD_WATCH_SLACK_MS) &&
+      calm === 0 &&
+      !provider.gate.isOpen() &&
+      !stopping
+    ) {
+      lastDealBirthsAt = birthsNow
+      try {
+        const r = await refreshDealBirths({
+          clock: leadWatchClock,
+          store: dealBirthStore,
+          fetch: (afterId) => provider.fetchDealBirths(afterId),
+          firstIdSince: (since) => provider.firstDealBirthIdSince(since),
+          from: sinceMonth(DEAL_BIRTHS_FROM_MONTH, birthsNow, WORKER_TIME_ZONE).start,
+          now: birthsNow,
+          stopping: () => stopping,
+        })
+        if (!r.complete && !stopping) lastDealBirthsAt = null
+        if (r.bootstrap || !r.complete) {
+          console.log(
+            `  ${stamp()} bitim tugʻilishlari: #${r.floor} gacha ${r.written} ta yozildi` +
+              (r.complete ? '' : ' — hali yetib olinmadi, keyingi tsiklda davom etadi'),
+          )
+        }
+      } catch (error) {
+        const message = describeFeedError(error)
+        console.warn(`  ${stamp()} bitim tugʻilishlari muvaffaqiyatsiz: ${message}`)
+        await leadWatchClock.failed('births', message, new Date()).catch(() => undefined)
       }
     }
 

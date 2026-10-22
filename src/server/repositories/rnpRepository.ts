@@ -34,9 +34,10 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
-import { RegistrationRepository } from './registrationRepository'
+import { type BezkvalLeadSqlRow, RegistrationRepository } from './registrationRepository'
 import { dealFormTitleSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
+import { bezkvalClients, bezkvalDayRows } from '@/server/domain/registration/bezkval'
 
 /** Deals handed to one ROP on one day. `rop` null: not handed to a ROP team. */
 export interface RnpLeadDayRow {
@@ -243,14 +244,15 @@ export class RnpRepository {
   }
 
   /**
-   * «Безквал» per day × ROP team — `RegistrationRepository.bezkvalDaysSql`,
-   * the very statement behind «Kimga qancha lid kelayapti» on «Lidlar», so a
+   * «Безквал» per day × ROP team — `RegistrationRepository.bezkvalLeadsSql`
+   * grouped by `registration/bezkval.ts`, the very reading behind «Kimga qancha
+   * lid kelayapti» on «Lidlar», so a
    * group's «без квал» here and a ROP's «Безквал» there never disagree.
    * `statementTimeoutMs`: as `registrationDays`, for a month's closed days.
    */
   async bezkvalDays(from: string, to: string, statementTimeoutMs?: number): Promise<RnpLeadDayRow[]> {
-    type Row = { day: string; rop: string | null; leads: bigint }
-    const sql = RegistrationRepository.bezkvalDaysSql()
+    type Row = BezkvalLeadSqlRow
+    const sql = RegistrationRepository.bezkvalLeadsSql()
     const rows = statementTimeoutMs
       ? await this.prisma.$transaction(
           async (tx) => {
@@ -260,7 +262,7 @@ export class RnpRepository {
           { maxWait: CONNECTION_WAIT_MS, timeout: statementTimeoutMs + 5_000 },
         )
       : await this.prisma.$queryRawUnsafe<Row[]>(sql, from, to, this.tz)
-    return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads) }))
+    return bezkvalDayRows(bezkvalClients(rows.map(RegistrationRepository.bezkvalLeadOf)))
   }
 
   /**

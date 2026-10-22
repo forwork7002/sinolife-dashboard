@@ -16,6 +16,7 @@ import { t } from '@/lib/messages'
 
 import { GroupPlanCard } from './GroupPlanCard'
 import { LeadCohortSection } from './LeadCohortSection'
+import { BezkvalDayCard } from './BezkvalDayCard'
 import { LeadSplitCard, LeadWeekCard, today } from './LeadSplitCards'
 import { LeadSourcesSection } from './LeadSourcesSection'
 import type { LeadSourcesOverviewDto } from './leadSourcesApi'
@@ -93,7 +94,12 @@ export function LeadsPage() {
   // The ROP cards: their own day and their own request, so a failed overview does not take them down.
   const slots = {
     afterChannels: <LeadSplitCard day={day} onDay={setDay} />,
-    beforeForms: <LeadWeekCard day={day} />,
+    beforeForms: (
+      <>
+        <LeadWeekCard day={day} />
+        <BezkvalDayCard day={day} />
+      </>
+    ),
   }
 
   return (

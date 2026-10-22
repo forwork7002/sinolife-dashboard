@@ -48,7 +48,7 @@ nine of this portal's 208 active people sit in two. The importer kept only `[0]`
 so five of the twenty cards were short by one or two: Тошкент онлайн 0 against 1,
 Asliddin(ROP) 8 against 10, Azizbek(ROP) 14 against 16, Saidaziz(ROP) 14 against
 15, Sevinchxon(ROP) 8 against 10 (measured 2026-09-05). `department_member` now
-carries the full set and **nothing but the org chart reads it** — save «Безквал»'s one «… rop» registrar rule (`bezkvalDaysSql`), a count of deals, never money. (Its seller rule reads the PRIMARY unit, as every other analytic, and `department_member` only to keep registrars out.)
+carries the full set and **nothing but the org chart reads it** — save «Безквал»'s one «… rop» registrar rule (`bezkvalOwnerRopSql`, naming the team of the person in «ROP KVAL LID» / «РОП (Первичка)» since 2026-10-22), a count of clients, never money.
 `employee."departmentId"` is untouched and stays the PRIMARY unit: every analytic
 credits a person to exactly one unit, and rolling a two-unit person up both
 branches would count their headcount and their money twice.

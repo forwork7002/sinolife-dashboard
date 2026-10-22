@@ -230,8 +230,24 @@ describe('bezkvalDays — «Lidlar»\'s «Безквал» statement, for the sh
     const calls: unknown[][] = []
     const client = {
       $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
-        calls.push([sql === RegistrationRepository.bezkvalDaysSql() ? 'bezkval' : sql, ...params])
-        return [{ day: '2026-10-02', rop: 'Sevinch', leads: 24n }, { day: '2026-10-02', rop: null, leads: 7n }]
+        calls.push([sql === RegistrationRepository.bezkvalLeadsSql() ? 'bezkval' : sql, ...params])
+        const lead = (id: string, phone: string, rop: string | null) => ({
+          deal_id: id,
+          external_id: id,
+          at: new Date('2026-10-02T06:00:00Z'),
+          day: '2026-10-02',
+          hour: 11,
+          lead_guard: false,
+          born_category: 0,
+          pipeline: '0',
+          contact_id: `c${phone}`,
+          phones: [phone],
+          deal_phone: null,
+          rop,
+          rop_primary: null,
+        })
+        // Two deals of one number: one client, Sevinch's; another number with no ROP.
+        return [lead('1', '901234567', 'Sevinch'), lead('2', '901234567', null), lead('3', '931112233', null)]
       },
       $executeRawUnsafe: async (sql: string) => {
         calls.push([sql])
@@ -250,8 +266,8 @@ describe('bezkvalDays — «Lidlar»\'s «Безквал» statement, for the sh
     const rows = await new RnpRepository(client as never).bezkvalDays('2026-10-01', '2026-10-08')
     expect(calls).toEqual([['bezkval', '2026-10-01', '2026-10-08', env.APP_TIMEZONE]])
     expect(rows).toEqual([
-      { day: '2026-10-02', rop: 'Sevinch', leads: 24 },
-      { day: '2026-10-02', rop: null, leads: 7 },
+      { day: '2026-10-02', rop: 'Sevinch', leads: 1, deals: 2 },
+      { day: '2026-10-02', rop: null, leads: 1, deals: 1 },
     ])
   })
 

@@ -437,6 +437,14 @@ export const UF = Object.freeze({
   REGISTRAR: 'UF_CRM_1747975291848',
   /** «Такрор лид» — enumeration; empty is a new lead. See `repeatLeadKind()`. */
   REPEAT_LEAD: 'UF_CRM_178973948309676',
+  /**
+   * «Как поступил лид» — free text: «Bitrix forma», «Lead Guard (Bitrix'ga
+   * tushmagan)» or empty. A Lead Guard deal reached the portal after the fact,
+   * so «Безквал» dates it by LEAD_ARRIVED_AT (the client's spec, 2026-10-22).
+   */
+  LEAD_VIA: 'UF_CRM_LG_VIA',
+  /** «Телефон ракам» — free text, the number typed on the deal itself. */
+  DEAL_PHONE: 'UF_CRM_DEAL_1750679541518',
 } as const)
 
 export const UF_FIELDS: readonly string[] = Object.freeze(Object.values(UF))

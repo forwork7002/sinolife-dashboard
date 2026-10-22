@@ -24,6 +24,10 @@
  * The plan divides the NEW leads (`fresh`); «Haqiqatda olgan» is the portal's
  * count, duplicates included.
  *
+ * «БЕЗКВАЛ» IS `bezkval.ts` SINCE 2026-10-22 (the client's written spec):
+ * clients, not deals, by the ROP the first of their deals was handed to. The
+ * paragraph below is how it began.
+ *
  * «БЕЗКВАЛ» (the client, 2026-10-05: «Без квал лидларни хам куришимиз керак
  * хар бир ропларга Регистрациядан ответсвенный РОП белгиланганлари»). The
  * registration desk makes the ROP the «Ответственный» of a Регистрация deal
@@ -72,11 +76,14 @@ export interface DistributedDayRow {
   readonly duplicates: number
 }
 
-/** Регистрация deals created on `day`, by the team their owner heads (null: the owner heads none). */
+/** «Безквал» clients of `day` by the ROP they went to (null: «Tarqatilmagan») — see `bezkval.ts`. */
 export interface BezkvalDayRow {
   readonly day: string
   readonly rop: string | null
+  /** Distinct clients. */
   readonly leads: number
+  /** The lead deals those clients opened («Jami lid»); absent on rows read before it existed. */
+  readonly deals?: number
 }
 
 export interface SplitShare {
@@ -110,10 +117,12 @@ export interface LeadSplitDto {
   readonly unassigned: number
   readonly rops: readonly LeadSplitRopDto[]
   readonly week: { readonly days: readonly string[]; readonly unassigned: readonly number[] }
-  /** «Безквал» over `week.days`: each team's Регистрация deals it owns, then those no ROP owns. */
+  /** «Безквал» over `week.days`: each team's clients, then those no ROP got. */
   readonly bezkval: {
     readonly rops: readonly { readonly rop: string; readonly week: readonly number[] }[]
     readonly unassigned: readonly number[]
+    /** «Jami lid» — the lead deals of each day; null under one brand (a client's deals carry no brand of their own). */
+    readonly deals: readonly number[] | null
   }
   /** Null: nobody has set this day's split yet. */
   readonly split: { readonly updatedAt: string } | null
@@ -135,7 +144,7 @@ export function canonicalRop(rop: string): string {
 }
 
 /** The client's nine in their order, then any other team, by name. */
-function teamOrder(teams: Iterable<string>): string[] {
+export function teamOrder(teams: Iterable<string>): string[] {
   const extra = [...new Set(teams)].filter((rop) => !SPLIT_ROPS.includes(rop)).sort((a, b) => a.localeCompare(b, 'ru'))
   return [...SPLIT_ROPS, ...extra]
 }
@@ -180,9 +189,11 @@ export function buildLeadSplit(input: {
 
   const bezkvalByRop = new Map<string, number[]>()
   const bezkvalUnassigned = days.map(() => 0)
+  const bezkvalDeals = days.map(() => 0)
   for (const r of input.bezkval) {
     const i = at.get(r.day)
     if (i === undefined) continue
+    bezkvalDeals[i]! += r.deals ?? r.leads
     if (r.rop === null) {
       bezkvalUnassigned[i]! += r.leads
       continue
@@ -210,6 +221,7 @@ export function buildLeadSplit(input: {
     bezkval: {
       rops: teamOrder(bezkvalByRop.keys()).map((rop) => ({ rop, week: bezkvalByRop.get(rop) ?? days.map(() => 0) })),
       unassigned: bezkvalUnassigned,
+      deals: bezkvalDeals,
     },
     split: input.split ? { updatedAt: input.split.updatedAt } : null,
     previous,
@@ -262,7 +274,7 @@ export function leadSplitOfBrand(split: LeadSplitDto, brand: BrandFilter): LeadS
     unassigned,
     rops,
     week: { days: split.week.days, unassigned: brandless ? split.week.unassigned : zeros },
-    bezkval: { rops: teamRowsOfBrand(split.bezkval.rops, brand), unassigned: brandless ? split.bezkval.unassigned : zeros },
+    bezkval: { rops: teamRowsOfBrand(split.bezkval.rops, brand), unassigned: brandless ? split.bezkval.unassigned : zeros, deals: null },
     canEdit: false,
   }
 }

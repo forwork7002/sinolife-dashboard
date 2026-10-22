@@ -217,6 +217,19 @@
   arrive are dropped after a week.
 - `crm_form_fill` deliberately never deletes — see `formFillFeed.ts`: a fill
   Meta counted stays counted.
+- **Where each deal was born (2026-10-22, `crm_deal_birth`, `dealBirthFeed.ts`)**:
+  `crm.stagehistory.list` TYPE_ID 1 rows, every pipeline, read in id order
+  every 5 min (`DEAL_BIRTHS_MS`, one chained batch, up to 2 500 rows; the
+  backfill from 2026-08 runs `DEAL_BIRTH_BATCHES` a pass until caught up),
+  bookmark in `lead_watch_sync` row 'births', append-only like the form fills.
+  «Безквал» reads it: a Первичный отдел deal keeps its id into Тасдиклаш /
+  Доставка, an «ИИ обработка» deal moves into Регистрация, so
+  `deal.pipelineId` cannot say where a lead was born. Two deal columns came
+  with it: `leadVia` (UF_CRM_LG_VIA) and `dealPhone`
+  (UF_CRM_DEAL_1750679541518); the `DEALS_BACKFILL` of 2026-10-22 fills them
+  since 2026-09-01. The migration also made `phone_nines(text[])` and the GIN
+  index `customer_phone_nines_idx` over `phone_nines(phones || phone)` — not in
+  schema.prisma, drift on `migrate dev` is expected.
 
 - **THE PORTAL CAN BLOCK ITSELF, AND THE DASHBOARD NOW SAYS SO.** On
   2026-09-14 every REST call came back `401` with

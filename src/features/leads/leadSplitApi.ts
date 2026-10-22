@@ -31,14 +31,81 @@ export interface LeadSplitDto {
   readonly unassigned: number
   readonly rops: readonly LeadSplitRopDto[]
   readonly week: { readonly days: readonly string[]; readonly unassigned: readonly number[] }
-  /** «Безквал»: Регистрация deals whose «Ответственный» heads the team, by creation day over `week.days`. */
+  /** «Безквал»: each team's clients by day over `week.days` (`domain/registration/bezkval.ts`). */
   readonly bezkval: {
     readonly rops: readonly { readonly rop: string; readonly week: readonly number[] }[]
     readonly unassigned: readonly number[]
+    /** «Jami lid» — the lead deals of each day; null under one brand. */
+    readonly deals: readonly number[] | null
   }
   readonly split: { readonly updatedAt: string } | null
   readonly previous: { readonly day: string; readonly rows: readonly SplitShare[] } | null
   readonly canEdit: boolean
+}
+
+/*
+  «Bezkval lidlar» — mirrors `BezkvalDayDto` / `BezkvalClientsDto` in
+  `src/server/domain/registration/bezkval.ts`. Nothing checks the mirror.
+*/
+
+export type BezkvalKeyKind = 'phone' | 'dealPhone' | 'contact' | 'deal'
+
+export interface BezkvalRopLineDto {
+  /** Null: «Tarqatilmagan». */
+  readonly rop: string | null
+  readonly bezkval: number
+  readonly new30: number
+  readonly newEver: number
+  readonly repeat30: number
+  readonly sharePct: number
+}
+
+export interface BezkvalDayDto {
+  readonly day: string
+  readonly total: number
+  readonly bezkval: number
+  readonly new30: number
+  readonly newEver: number
+  readonly repeat30: number
+  readonly unassigned: number
+  readonly multiRop: number
+  readonly leadGuard: number
+  readonly movedIn: number
+  readonly noBirth: number
+  readonly keyKinds: Readonly<Record<BezkvalKeyKind, number>>
+  readonly rops: readonly BezkvalRopLineDto[]
+  readonly sources: readonly { readonly source: string | null; readonly bezkval: number; readonly new30: number }[]
+  readonly hours: readonly number[]
+  readonly trend: readonly { readonly day: string; readonly total: number; readonly bezkval: number }[]
+  readonly problems: readonly string[]
+}
+
+export interface BezkvalClientDealDto {
+  readonly id: string | null
+  readonly pipeline: string | null
+  readonly stage: string | null
+  readonly source: string | null
+  readonly rop: string | null
+  readonly at: string
+  readonly leadGuard: boolean
+}
+
+export interface BezkvalClientDto {
+  readonly phone: string | null
+  readonly kind: BezkvalKeyKind
+  readonly rop: string | null
+  readonly source: string | null
+  readonly hour: number
+  readonly new30: boolean
+  readonly newEver: boolean
+  readonly multiRop: boolean
+  readonly previous: { readonly id: string | null; readonly at: string; readonly pipeline: string | null } | null
+  readonly deals: readonly BezkvalClientDealDto[]
+}
+
+export interface BezkvalClientsDto {
+  readonly day: string
+  readonly clients: readonly BezkvalClientDto[]
 }
 
 export interface SaveSplitBody {

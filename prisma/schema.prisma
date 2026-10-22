@@ -917,6 +917,14 @@ model Deal {
   /// PROCESSING («Такрор - обработка»), OTHER for an item added later. Null is
   /// a NEW lead, and that is the portal's own meaning of the empty field.
   repeatLead         String?
+  /// UF_CRM_LG_VIA «Как поступил лид» — «Bitrix forma», «Lead Guard (Bitrix'ga
+  /// tushmagan)» or empty. A Lead Guard deal reached the portal late: its
+  /// «Безквал» day is «Лид тушган сана» (`leadArrivedAt`), not DATE_CREATE
+  /// (2026-10-22 spec; 21.10: 373 of 2 816 Регистрация deals). Free text, raw.
+  leadVia            String?
+  /// UF_CRM_DEAL_1750679541518 «Телефон ракам» — the number typed on the deal.
+  /// «Безквал» reads it only when the contact has no usable number. Raw.
+  dealPhone          String?
   /// IS_RETURN_CUSTOMER — Bitrix24's own repeat-purchase flag.
   isReturnCustomer Boolean        @default(false)
 
@@ -2120,6 +2128,35 @@ model OpenLineChat {
 
   @@unique([externalSource, externalId])
   @@map("open_line_chat")
+}
+
+/// WHERE A DEAL WAS BORN (2026-10-22, «Безквал»): the deal's `crm.stagehistory`
+/// row of TYPE_ID 1 — the portal writes one when the deal is created, with the
+/// pipeline (CATEGORY_ID) and stage it opened in. `deal.pipelineId` is only
+/// where it stands NOW: a Первичный отдел deal moves on to Тасдиклаш and
+/// Доставка under the same id (21.10: 56 of the 260 born there), and an «ИИ
+/// обработка» deal moves into Регистрация (102 that day). Written by
+/// `dealBirthFeed.ts` in id order, append-only, every pipeline. No foreign
+/// key: joined to `deal` on the portal id at read time, so a birth read before
+/// its deal is not lost.
+model CrmDealBirth {
+  id              String         @id @default(cuid())
+  externalSource  ExternalSource @default(BITRIX24)
+  /// The stage-history row's portal id.
+  externalId      String
+  /// OWNER_ID — `deal."externalId"`.
+  dealExternalId  String
+  /// CATEGORY_ID the deal opened in (0 Регистрация, 12 Первичный отдел, 20 «ИИ обработка» …).
+  categoryId      Int
+  /// STAGE_ID it opened in.
+  stageExternalId String
+  /// CREATED_TIME — the deal's creation instant.
+  bornAt          DateTime
+  createdAt       DateTime       @default(now())
+
+  @@unique([externalSource, externalId])
+  @@index([dealExternalId])
+  @@map("crm_deal_birth")
 }
 
 /// One CRM-FORM FILL as the portal recorded it (2026-10-15, the client: the

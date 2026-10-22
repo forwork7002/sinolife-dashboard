@@ -4,12 +4,38 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
+import {
+  type BezkvalHistoryRow,
+  type BezkvalLeadRow,
+  bezkvalClients,
+  bezkvalDayRows,
+} from '@/server/domain/registration/bezkval'
 import { type BezkvalDayRow, canonicalRop, type DistributedDayRow, type SavedSplit, type SplitShare } from '@/server/domain/registration/leadSplit'
 import type { RosterMember, SellerCallRow, SellerLeadRow } from '@/server/domain/registration/ropReport'
 
 import { InsightsRepository } from './insightsRepository'
 
 const dateOf = (day: string) => new Date(`${day}T00:00:00Z`)
+
+/** A row of `bezkvalLeadsSql`, as node-postgres hands it over. */
+export interface BezkvalLeadSqlRow {
+  deal_id: string
+  external_id: string | null
+  at: Date
+  day: string
+  hour: number
+  lead_guard: boolean
+  born_category: number | null
+  pipeline: string | null
+  contact_id: string | null
+  phones: string[] | null
+  deal_phone: string | null
+  rop: string | null
+  rop_primary: string | null
+  source?: string | null
+  stage?: string | null
+  pipeline_name?: string | null
+}
 
 export class RegistrationRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -110,105 +136,218 @@ export class RegistrationRepository {
           AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`
   }
 
-  /** «Безквал»: `from` / `to` are inclusive `YYYY-MM-DD` in `timeZone`. */
+  /** «Безквал» per day × ROP: `from` / `to` are inclusive `YYYY-MM-DD` in `timeZone`. See `domain/registration/bezkval.ts`. */
   async bezkvalDays(from: string, to: string, timeZone: string): Promise<BezkvalDayRow[]> {
-    const rows = await this.prisma.$queryRawUnsafe<{ day: string; rop: string | null; leads: bigint }[]>(
-      RegistrationRepository.bezkvalDaysSql(),
-      from,
-      to,
-      timeZone,
-    )
-    return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads) }))
+    return bezkvalDayRows(bezkvalClients(await this.bezkvalLeads(from, to, timeZone)))
+  }
+
+  /** Every lead of `from`…`to` (inclusive, `timeZone` days); `detail` adds the source, stage and pipeline names. */
+  async bezkvalLeads(from: string, to: string, timeZone: string, detail = false): Promise<BezkvalLeadRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<BezkvalLeadSqlRow[]>(RegistrationRepository.bezkvalLeadsSql(detail), from, to, timeZone)
+    return rows.map(RegistrationRepository.bezkvalLeadOf)
+  }
+
+  /** One row of `bezkvalLeadsSql` as the domain reads it — shared with `RnpRepository.bezkvalDays`. */
+  static bezkvalLeadOf(r: BezkvalLeadSqlRow): BezkvalLeadRow {
+    return {
+      dealId: r.deal_id,
+      externalId: r.external_id,
+      day: r.day,
+      at: r.at,
+      hour: Number(r.hour),
+      leadGuard: r.lead_guard,
+      bornCategory: r.born_category === null ? null : Number(r.born_category),
+      pipeline: r.pipeline,
+      contactId: r.contact_id,
+      phones: r.phones ?? [],
+      dealPhone: r.deal_phone,
+      rop: r.rop,
+      ropPrimary: r.rop_primary,
+      ...(r.source !== undefined ? { source: r.source, stage: r.stage ?? null, pipelineName: r.pipeline_name ?? null } : {}),
+    }
   }
 
   /**
-   * The Регистрация deals created each day, by the ROP they were handed to
-   * (the client 2026-10-06: «ропларни номига нечта сделка ўтаяпти», a deal
-   * stays the ROP's after it moves on). In order:
+   * The leads of a window of Tashkent days, ONE ROW PER DEAL — the client's
+   * spec of 2026-10-22, grouped into clients in `domain/registration/bezkval.ts`
+   * (union-find over a contact's numbers is not a GROUP BY). In SQL:
    *
-   * 0. «ROP KVAL LID» (`ropKvalLidEmployeeId`, from 2026-10-07): the portal's
-   *    own answer, stamped when the deal reached a ROP or a ROP's seller and
-   *    never rewritten after — so it holds where the guesses below cannot (a
-   *    hand-over before the sync recorded owner changes, a seller in two
-   *    units, a robot's assignment). Read through `bezkvalOwnerRopSql`, so it
-   *    names a team only when that person heads one;
-   * 1. the team today's «Ответственный» stands for (`bezkvalOwnerRopSql`);
-   * 2. a deal someone else opened, now with a seller whose PRIMARY unit is a
-   *    ROP's and who sits in no other kind of unit: that ROP — the ROP passed
-   *    it on. A registrar is listed in Регистрация, so the desk stays out even
-   *    when the portal also files them under a ROP (the user's 2026-10-05
-   *    choice); a deal the seller opened is theirs, not handed over; an
-   *    unknown opener (not yet re-read, or not on the roster) is not counted;
-   * 3. the last owner change to a ROP the sync recorded (`deal_owner_change`,
-   *    from 2026-10-06) — the deal went on to the desk or back office;
+   * A LEAD: born in Регистрация (#0) or Первичный отдел (#12) by its
+   * `crm_deal_birth` row, or standing in one of them now (an «ИИ обработка»
+   * deal moved into Регистрация, a deal the births feed has not reached).
+   * Every stage, «Дубликат (лид)» too.
    *
-   * else null.
+   * ITS INSTANT: «Лид тушган сана» when «Как поступил лид» names Lead Guard —
+   * the deal reached the portal after the fact — else DATE_CREATE. A late deal
+   * is found through the arrival index, so the window reads both indexes and
+   * keeps a deal whose instant falls inside it.
    *
-   * ONE LEAD IS COUNTED ONCE (the user, 2026-10-14: «dublikatlar ikkita
-   * birxillikni olmasligi kerak … yaqqol qancha tushganini bilishim uchun»). A deal in
-   * «Дубликат (лид)» is left out (read by NAME, as RNP's `registrationDaysSql`
-   * reads it), and of one PHONE NUMBER's
-   * deals on one Tashkent day only the first counts, credited by its own ROP
-   * (the user, the same day: «hamma kelib tushgan raqamlar»). The number is
-   * the contact's first, last nine digits (as «Факт1 мижоз» and the Meta lead
-   * match read one); a contact with no usable number stands for itself, a
-   * deal with no contact too. Measured 12.10 on the portal: 1 666 deals, 73
-   * in «Дубликат (лид)»; of the rest 1 520 contacts but 1 510 numbers — one
-   * number filed under two contacts is one lead. Every other stage counts.
-   * Served by the (pipelineId, createdAtSource) index.
+   * ITS NUMBERS: `phone_nines` over every number of the contact (the function
+   * the migration made, the last nine digits). Its contact: the customer's
+   * portal id, else the id the deal names while the customer pass has not
+   * linked it yet — two such deals are still one contact.
+   *
+   * ITS ROP: «ROP KVAL LID» and «РОП (Первичка)», each as the team that person
+   * heads (or a «… rop» registrar's unit, `bezkvalOwnerRopSql`), else the
+   * person's own name — the spec takes the name from the portal's user list,
+   * never a list typed here, so a name the field holds is never lost.
    */
-  static bezkvalDaysSql(): string {
+  static bezkvalLeadsSql(detail = false): string {
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
     const hi = `(($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
-    const day = `(d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date`
-    const nine = `right(regexp_replace(cu."phone", '[^0-9]', '', 'g'), 9)`
+    const local = `(x.at AT TIME ZONE 'UTC' AT TIME ZONE $3)`
+    /*
+      THE ROP NAMES ONCE PER PERSON, NOT PER DEAL: a month is ~90 000 deals
+      and a dozen people in the two fields, and the head / «… rop» rule is two
+      correlated reads — so the window is read first (MATERIALIZED) and the
+      names of the people it names after, then joined back.
+    */
     return `
-      WITH reg AS (
-        SELECT d."id",
-               ${day} AS day,
-               row_number() OVER (
-                 PARTITION BY COALESCE(
-                   CASE WHEN ${nine} ~ '^[0-9]{9}$' AND ${nine} !~ '^([0-9])\\1{8}$' THEN ${nine} END,
-                   d."customerId", d."id"), ${day}
-                 ORDER BY d."createdAtSource", d."id") AS nth
+      WITH w AS MATERIALIZED (
+        SELECT d."id" AS deal_id,
+               d."externalId" AS external_id,
+               x.at,
+               ${local}::date::text AS day,
+               extract(hour FROM ${local})::int AS hour,
+               x.lead_guard,
+               b."categoryId" AS born_category,
+               p."externalId" AS pipeline,
+               COALESCE(cu."externalId", d."metadata"->>'contactId') AS contact_id,
+               CASE WHEN cu."id" IS NULL THEN '{}'::text[] ELSE phone_nines(cu."phones" || cu."phone") END AS phones,
+               d."dealPhone" AS deal_phone,
+               d."ropKvalLidEmployeeId" AS rop_id,
+               d."leadRopEmployeeId" AS rop_primary_id${
+                 detail
+                   ? `,
+               s."name" AS source,
+               st."name" AS stage,
+               p."name" AS pipeline_name`
+                   : ''
+               }
           FROM "deal" d
-          JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
-          LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
-          LEFT JOIN "customer" cu ON cu."id" = d."customerId"
-         WHERE d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi}
-           AND COALESCE(st."name", '') !~ '[Дд]убл[^(]*\\([[:space:]]*[Лл]ид'
+          CROSS JOIN LATERAL (
+            SELECT COALESCE(d."leadVia" ILIKE '%lead guard%' AND d."leadArrivedAt" IS NOT NULL, false) AS lead_guard
+          ) g
+          CROSS JOIN LATERAL (
+            SELECT CASE WHEN g.lead_guard THEN d."leadArrivedAt" ELSE d."createdAtSource" END AS at, g.lead_guard
+          ) x
+          LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
+          LEFT JOIN LATERAL (
+            SELECT b."categoryId"
+              FROM "crm_deal_birth" b
+             WHERE b."dealExternalId" = d."externalId" AND b."externalSource" = d."externalSource"
+             ORDER BY b."bornAt", b."externalId"
+             LIMIT 1
+          ) b ON true
+          LEFT JOIN "customer" cu ON cu."id" = d."customerId"${
+            detail
+              ? `
+          LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
+          LEFT JOIN "deal_stage" st ON st."id" = d."stageId"`
+              : ''
+          }
+         WHERE ((d."createdAtSource" >= ${lo} AND d."createdAtSource" < ${hi})
+                OR (d."leadArrivedAt" >= ${lo} AND d."leadArrivedAt" < ${hi}))
+           AND x.at >= ${lo} AND x.at < ${hi}
+           AND (b."categoryId" IN (0, 12) OR p."externalId" IN ('0', '12'))
+      ),
+      names AS MATERIALIZED (
+        SELECT o."id", COALESCE(${RegistrationRepository.bezkvalOwnerRopSql('o')}, o."fullName") AS name
+          FROM "employee" o
+         WHERE o."id" IN (SELECT rop_id FROM w UNION SELECT rop_primary_id FROM w)
       )
-      SELECT
-        r.day::text AS day,
-        COALESCE(
-          ${RegistrationRepository.bezkvalOwnerRopSql('k')},
-          ${RegistrationRepository.bezkvalOwnerRopSql('e')},
-          (SELECT ${InsightsRepository.ropNameSql('dep."name"')}
-             FROM "department" dep
-            WHERE dep."id" = e."departmentId" AND dep."isActive"
-              AND d."createdByEmployeeId" IS NOT NULL
-              AND d."createdByEmployeeId" <> d."employeeId"
-              AND NOT EXISTS (
-                SELECT 1
-                  FROM "department_member" om
-                  JOIN "department" od ON od."id" = om."departmentId" AND od."isActive"
-                 WHERE om."employeeId" = e."id"
-                   AND ${InsightsRepository.ropNameSql('od."name"')} IS NULL)),
-          (SELECT x.rop
-             FROM "deal_owner_change" c
-             JOIN "employee" he ON he."id" = c."toEmployeeId"
-             CROSS JOIN LATERAL (SELECT ${RegistrationRepository.bezkvalOwnerRopSql('he')} AS rop) x
-            WHERE c."dealId" = d."id" AND x.rop IS NOT NULL
-            ORDER BY c."changedAt" DESC, c."createdAt" DESC
-            LIMIT 1)
-        ) AS rop,
-        count(*)::bigint AS leads
-      FROM reg r
-      JOIN "deal" d ON d."id" = r."id"
-      LEFT JOIN "employee" e ON e."id" = d."employeeId"
-      LEFT JOIN "employee" k ON k."id" = d."ropKvalLidEmployeeId"
-      WHERE r.nth = 1
-      GROUP BY 1, 2`
+      SELECT w.*, k.name AS rop, lr.name AS rop_primary
+        FROM w
+        LEFT JOIN names k ON k."id" = w.rop_id
+        LEFT JOIN names lr ON lr."id" = w.rop_primary_id`
+  }
+
+  /**
+   * What came BEFORE the day for each of its numbers and number-less
+   * contacts — «30 kunda yangi» and «Butunlay yangi» (the spec's 4.5).
+   * `$1` the day, `$2` its numbers (nine digits), `$3` its contacts' portal
+   * ids, `$4` the time zone.
+   *
+   * A number finds every contact that holds it (`phone_nines`, through its
+   * GIN index — the portal's `crm.duplicate.findbycomm`), and through them
+   * their deals; a contact key finds its own. Per key: the latest LEAD (the
+   * rule and the instant of `bezkvalLeadsSql`) of the 30 days before the day,
+   * and the latest deal of any pipeline but HR (#8) before it. A deal's
+   * secondary contacts are not read (the sync keeps CONTACT_ID only).
+   */
+  static bezkvalHistorySql(): string {
+    const lo = `(($1::date)::timestamp AT TIME ZONE $4 AT TIME ZONE 'UTC')`
+    return `
+      WITH owners AS MATERIALIZED (
+        SELECT DISTINCT 'p:' || n.nine AS key, cu."id" AS customer_id
+          FROM "customer" cu
+          CROSS JOIN LATERAL unnest(phone_nines(cu."phones" || cu."phone")) AS n(nine)
+         WHERE phone_nines(cu."phones" || cu."phone") && $2::text[]
+           AND n.nine = ANY($2::text[])
+        UNION
+        SELECT 'c:' || cu."externalId", cu."id"
+          FROM "customer" cu
+         WHERE cu."externalId" = ANY($3::text[])
+      ),
+      -- LATERAL behind OFFSET 0 (no pull-up), so each contact's deals come off
+      -- the customerId index: joined plainly, the planner took «owners» for
+      -- millions of rows and hashed every deal of the portal (PGlite, 2026-10-22).
+      prior AS (
+        SELECT o.key, y.*
+          FROM owners o
+          CROSS JOIN LATERAL (
+            SELECT d."externalId" AS external_id,
+                   p."name" AS pipeline,
+                   x.at,
+                   (b."categoryId" IN (0, 12) OR p."externalId" IN ('0', '12')) AS is_lead
+              FROM "deal" d
+              LEFT JOIN "pipeline" p ON p."id" = d."pipelineId"
+              CROSS JOIN LATERAL (
+                SELECT CASE WHEN COALESCE(d."leadVia" ILIKE '%lead guard%' AND d."leadArrivedAt" IS NOT NULL, false)
+                            THEN d."leadArrivedAt" ELSE d."createdAtSource" END AS at
+              ) x
+              LEFT JOIN LATERAL (
+                SELECT b."categoryId"
+                  FROM "crm_deal_birth" b
+                 WHERE b."dealExternalId" = d."externalId" AND b."externalSource" = d."externalSource"
+                 ORDER BY b."bornAt", b."externalId"
+                 LIMIT 1
+              ) b ON true
+             WHERE d."customerId" = o.customer_id
+               AND x.at < ${lo}
+               AND p."externalId" IS DISTINCT FROM '8'
+            OFFSET 0
+          ) y
+      )
+      SELECT DISTINCT ON (key)
+             key,
+             external_id,
+             pipeline,
+             at,
+             max(at) FILTER (WHERE is_lead AND at >= ${lo} - interval '30 days') OVER (PARTITION BY key) AS last_lead_at
+        FROM prior
+       ORDER BY key, at DESC, external_id DESC`
+  }
+
+  /** `bezkvalHistorySql` for one day's keys. */
+  async bezkvalHistory(day: string, timeZone: string, phones: readonly string[], contactIds: readonly string[]): Promise<BezkvalHistoryRow[]> {
+    if (phones.length === 0 && contactIds.length === 0) return []
+    const rows = await this.prisma.$queryRawUnsafe<
+      { key: string; external_id: string | null; pipeline: string | null; at: Date; last_lead_at: Date | null }[]
+    >(RegistrationRepository.bezkvalHistorySql(), day, [...phones], [...contactIds], timeZone)
+    return rows.map((r) => ({
+      key: r.key,
+      lastLeadAt: r.last_lead_at,
+      lastDeal: { externalId: r.external_id, at: r.at, pipeline: r.pipeline },
+    }))
+  }
+
+  /** Where the births feed is whole from (`lead_watch_sync` row 'births'), or null before its first pass. */
+  async dealBirthsFrom(): Promise<Date | null> {
+    const row = await this.prisma.leadWatchSync.findUnique({ where: { id: 'births' }, select: { state: true, lastSuccessAt: true } })
+    if (!row?.lastSuccessAt) return null
+    const from = (row.state as { from?: unknown } | null)?.from
+    return typeof from === 'string' && !Number.isNaN(new Date(from).getTime()) ? new Date(from) : null
   }
 
   /**

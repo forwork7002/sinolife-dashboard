@@ -15,6 +15,7 @@ import { apiGet, apiWrite } from '@/lib/api'
 import { apportion } from '@/lib/apportion'
 import { formatDate, formatDateShort, formatDateTime, formatNumber, formatPercent, tashkentDay } from '@/lib/format'
 
+import { type BezkvalDrill, BezkvalDrawer } from './BezkvalDayCard'
 import { type LeadSplitDto, type LeadSplitRopDto, type SaveSplitBody, SHARE_TOTAL_BP, type SplitShare } from './leadSplitApi'
 import { ROP_COLORS, ropInk } from './ropColors'
 
@@ -164,10 +165,11 @@ type WeekView = 'kval' | 'bezkval'
 export function LeadWeekCard({ day }: { day: string }) {
   const { overview, data, rows, colors } = useLeadSplit(day)
   const [view, setView] = useState<WeekView>('kval')
+  const [drill, setDrill] = useState<BezkvalDrill | null>(null)
   const hint =
     view === 'kval'
       ? `Har bir ROP ${formatDate(day)} gacha bir oyda olgan lidlar soni (Bitrix24, «РОП (Первичка)»). Rang qanchalik toʻq boʻlsa — shuncha koʻp. Oldingi kunlar — chapga suring.`
-      : `Безквал: Регистрация voronkasida shu ROP nomiga oʻtkazilgan bitimlar — Bitrix24ʼdagi «ROP KVAL LID» maydoni boʻyicha (ROP oʻz sotuvchisiga bergani ham shu ROPda qoladi); maydon hali kelmagan bitimda — avvalgi qoida («Ответственный» shu ROP yoki ismida «rop» bor registrator, ROP oʻz sotuvchisiga bergani, 06.10 dan keyin ROPdan oʻtgani); yaratilgan kuni boʻyicha (${formatDate(day)} gacha bir oy, barcha bosqichlar). Dubl sanalmaydi: «Дубликат (лид)» bosqichidagilar va bir telefon raqamining shu kundagi ikkinchi bitimi kirmaydi. Oldingi kunlar — chapga suring.`
+      : `Безквал: bir kunda bitta mijoz (telefon raqami; kontaktning hamma raqamlari bitta odam) = 1 lid, qayerdan va necha marta tushmasin. Lid — Регистрация yoki Первичный отдел voronkasida ochilgan (yoki hozir oʻsha yerda turgan) bitim, barcha bosqichlar, «Дубликат (лид)» ham. Kun — bitim yaratilgan kun, Lead Guard orqali kech kiritilgani esa «Лид тушган сана». ROP — mijozning shu kundagi bitimlaridan birinchi berilgan ROP («ROP KVAL LID», boʻlmasa «РОП (Первичка)»); hech biri yoʻq — «Tarqatilmagan». ${formatDate(day)} gacha bir oy; raqamni bosing — mijozlar va bitimlar ochiladi. Oldingi kunlar — chapga suring.`
   let grid: ReactNode = null
   if (data) {
     grid =
@@ -179,8 +181,11 @@ export function LeadWeekCard({ day }: { day: string }) {
           days={data.week.days}
           rows={data.bezkval.rops.map((r, i) => ({ ...r, color: colors.get(r.rop) ?? ROP_COLORS[(rows.length + i) % ROP_COLORS.length]! }))}
           unassigned={data.bezkval.unassigned}
-          unassignedLabel="ROP belgilanmagan"
+          unassignedLabel="Tarqatilmagan"
           resetKey={data.day}
+          totalLabel="Bezkval"
+          deals={data.bezkval.deals}
+          onCell={(d, rop) => setDrill({ day: d, title: `${rop ?? 'Tarqatilmagan'} · bezkval`, pick: rop === undefined ? {} : { rop } })}
         />
       )
   }
@@ -201,6 +206,7 @@ export function LeadWeekCard({ day }: { day: string }) {
       }
     >
       {overview.isError && !data ? <SplitError overview={overview} /> : (grid ?? <LoadingSkeleton rows={6} />)}
+      {drill && <BezkvalDrawer drill={drill} onClose={() => setDrill(null)} />}
     </ChartCard>
   )
 }
@@ -522,6 +528,9 @@ function WeekGrid({
   unassigned,
   unassignedLabel,
   resetKey,
+  totalLabel = 'Jami',
+  deals = null,
+  onCell,
 }: {
   days: readonly string[]
   rows: readonly { readonly rop: string; readonly color: string; readonly week: readonly number[] }[]
@@ -529,6 +538,11 @@ function WeekGrid({
   unassignedLabel: string
   /** The day: a new one scrolls the grid back to its latest days. */
   resetKey: string
+  totalLabel?: string
+  /** «Jami lid» under the total — the deals behind the clients («Безквал»); null: no such row. */
+  deals?: readonly number[] | null
+  /** A cell opens its rows: the team, null the unassigned row, undefined the day's total. */
+  onCell?: (day: string, rop: string | null | undefined) => void
 }) {
   const max = Math.max(1, ...rows.flatMap((r) => r.week))
   const dayTotals = days.map((_, i) => rows.reduce((sum, r) => sum + (r.week[i] ?? 0), 0) + (unassigned[i] ?? 0))
@@ -538,7 +552,7 @@ function WeekGrid({
     const el = scroller.current
     if (el) el.scrollLeft = el.scrollWidth
   }, [resetKey])
-  const cell = (v: number, color: string, key: string) => (
+  const cell = (v: number, color: string, key: string, open?: () => void) => (
     <td
       key={key}
       className="tabular min-w-[3.25rem] rounded-md px-2 py-2 text-center"
@@ -547,7 +561,13 @@ function WeekGrid({
         color: v > 0 ? 'var(--ink-primary)' : 'var(--ink-muted)',
       }}
     >
-      {formatNumber(v)}
+      {open && v > 0 ? (
+        <button type="button" onClick={open} className="focusable tabular w-full rounded hover:underline">
+          {formatNumber(v)}
+        </button>
+      ) : (
+        formatNumber(v)
+      )}
     </td>
   )
   return (
@@ -568,7 +588,7 @@ function WeekGrid({
           {rows.map((r) => (
             <tr key={r.rop}>
               <RopCell row={r} className={pinL} />
-              {r.week.map((v, i) => cell(v, r.color, days[i]!))}
+              {r.week.map((v, i) => cell(v, r.color, days[i]!, onCell && (() => onCell(days[i]!, r.rop))))}
               <td className={`${tdR} ${pinR} font-semibold`} style={{ color: 'var(--ink-primary)' }}>
                 {formatNumber(r.week.reduce((a, b) => a + b, 0))}
               </td>
@@ -582,7 +602,7 @@ function WeekGrid({
                   {unassignedLabel}
                 </span>
               </th>
-              {unassigned.map((v, i) => cell(v, UNASSIGNED_COLOR, days[i]!))}
+              {unassigned.map((v, i) => cell(v, UNASSIGNED_COLOR, days[i]!, onCell && (() => onCell(days[i]!, null))))}
               <td className={`${tdR} ${pinR}`} style={muted}>
                 {formatNumber(unassigned.reduce((a, b) => a + b, 0))}
               </td>
@@ -592,17 +612,38 @@ function WeekGrid({
         <tfoot>
           <tr>
             <th scope="row" className={`${td} ${pinL} text-left font-semibold`} style={{ color: 'var(--ink-primary)' }}>
-              Jami
+              {totalLabel}
             </th>
             {dayTotals.map((v, i) => (
               <td key={days[i]} className="tabular px-2 py-2 text-center font-semibold" style={{ color: 'var(--ink-primary)' }}>
-                {formatNumber(v)}
+                {onCell && v > 0 ? (
+                  <button type="button" onClick={() => onCell(days[i]!, undefined)} className="focusable tabular w-full rounded hover:underline">
+                    {formatNumber(v)}
+                  </button>
+                ) : (
+                  formatNumber(v)
+                )}
               </td>
             ))}
             <td className={`${tdR} ${pinR} font-semibold`} style={{ color: 'var(--ink-primary)' }}>
               {formatNumber(dayTotals.reduce((a, b) => a + b, 0))}
             </td>
           </tr>
+          {deals && (
+            <tr>
+              <th scope="row" className={`${td} ${pinL} text-left font-normal`} style={muted}>
+                Jami lid (bitimlar)
+              </th>
+              {deals.map((v, i) => (
+                <td key={days[i]} className="tabular px-2 py-2 text-center" style={muted}>
+                  {formatNumber(v)}
+                </td>
+              ))}
+              <td className={`${tdR} ${pinR}`} style={muted}>
+                {formatNumber(deals.reduce((a, b) => a + b, 0))}
+              </td>
+            </tr>
+          )}
         </tfoot>
       </table>
     </div>
