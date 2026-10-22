@@ -899,7 +899,15 @@ async function main() {
   // of the cap is the managed database's 22-connection ceiling, which the web
   // service and the deploy jobs also draw on.
   const pool = new Pool(poolConfig(url, { caCert: caCertFromEnv(), max: 5 }))
-  const prisma = new PrismaClient({ adapter: new PrismaPg(pool) })
+  /*
+    A TRANSACTION WAITS FOR A CONNECTION UP TO 30 s, NOT PRISMA'S 2 (2026-10-22).
+    Since Meta runs beside the loop, its writes and the Bitrix24 tick's share
+    these five connections; the first live pass lost an account's ad rows to
+    «Unable to start a transaction in the given time» while the tick held the
+    pool for a moment. Waiting is right for both: neither is answering a
+    person.
+  */
+  const prisma = new PrismaClient({ adapter: new PrismaPg(pool), transactionOptions: { maxWait: 30_000 } })
 
   const lockClient = await acquireLock(pool)
 
