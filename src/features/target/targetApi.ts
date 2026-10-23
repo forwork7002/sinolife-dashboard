@@ -135,9 +135,10 @@ export interface MetaProductTotalsDto extends MetaMetricsDto {
   /** Conversations Meta counted on the DM campaigns. */
   readonly metaConversations: number
   /**
-   * Meta's form leads as Bitrix24 recorded them: every CRM-form fill
-   * ('fills' — a returning contact's too) or, for a window the fills do not
-   * cover, the Регистрация deals naming those forms ('deals').
+   * «Lidlar»'s «Ген лид» under the product's brand (2026-10-23): every CRM-form
+   * fill ('fills' — a returning contact's too, the website form's) and the
+   * «Ген лид» typed in by hand or, for a window the fills do not cover, the
+   * Регистрация deals ('deals').
    */
   readonly bitrixFormLeads: number
   readonly formLeadsBasis: 'fills' | 'deals'
@@ -173,6 +174,8 @@ export interface MetaBlockDto {
   readonly total: MetaProductTotalsDto
   /** The hero: the Collagen / Zextra columns drawn under it, summed — only those that spent. */
   readonly productsTotal: MetaProductTotalsDto
+  /** «Lidlar»'s «Brendsiz» «Ген лид» (typed in by hand); null unread, 0 under one product, absent from an older server. */
+  readonly brandlessLeads?: number | null
   readonly usdRate: number | null
 }
 

@@ -37,6 +37,7 @@ import {
 import { TARGET_PRODUCTS, type TargetProductFilter, type TargetScope } from '@/server/domain/types'
 
 import type { MarketingRepository } from '@/server/repositories/marketingRepository'
+import type { GeneratedLeadsByBrand } from './leadSourcesService'
 import { leadBrand } from './rnpService'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
@@ -240,12 +241,12 @@ export interface MetaProductTotalsDto extends MetaMetricsDto {
   /** Conversations Meta counted on the DM (message) campaigns. */
   readonly metaConversations: number
   /**
-   * Meta's form leads as Bitrix24 recorded them. On `formLeadsBasis` 'fills'
-   * (the rule since 2026-10-15): every CRM-form FILL of the product's forms
-   * in the window — a returning contact's too, though the portal opens no
-   * deal for it — plus the AI targetolog's leads, which arrive as deals and
-   * not as CRM forms. On 'deals': the Регистрация deals naming those forms,
-   * as before — for a window the fills do not cover yet.
+   * «Lidlar»'s «Ген лид» under the product's brand switch, since 2026-10-23
+   * (`generatedLeadsByBrand`): on `formLeadsBasis` 'fills' every CRM-form
+   * fill of the brand — the website form's too — the AI targetolog's deals
+   * and the «Ген лид» typed in by hand. Only when that read failed, the
+   * product's own form fills as before (2026-10-15), or on 'deals' the
+   * Регистрация deals naming its forms.
    */
   readonly bitrixFormLeads: number
   /** What `bitrixFormLeads` counts — see there. */
@@ -298,6 +299,12 @@ export interface MetaBlockDto {
    * the window has no column, so its pages are left out too; with none, zero.
    */
   readonly productsTotal: MetaProductTotalsDto
+  /**
+   * «Lidlar»'s «Brendsiz» «Ген лид» — typed in by hand, no form and no brand:
+   * the products' «Forma leadlari» and these are «Lidlar»'s «Ген лид». Null
+   * when «Lidlar» was not read; 0 under one product.
+   */
+  readonly brandlessLeads: number | null
   /** UZS per USD used for ROAS — the ad ledger's rate. */
   readonly usdRate: number | null
 }
@@ -459,6 +466,11 @@ export function metaBlock(input: {
    * and then the form deals are counted instead.
    */
   fills?: TargetFormFills['rows'] | null
+  /**
+   * «Lidlar»'s «Ген лид» per brand (`LeadSourcesService.generatedLeads`) —
+   * what «Forma leadlari» shows when read; null or absent, the fills above.
+   */
+  generated?: GeneratedLeadsByBrand | null
   /** Meta per campaign over the window (`TargetRepository.metaCampaigns`). */
   campaigns?: readonly MetaCampaignTotalRow[]
   usdRate: number | null
@@ -612,11 +624,23 @@ export function metaBlock(input: {
     const sum = (pick: (s: TargetCountersRow) => number) => signed.reduce((n, [s, k]) => n + k * pick(s), 0)
     const sumMinor = (pick: (s: TargetCountersRow) => bigint) =>
       signed.reduce((n, [s, k]) => n + BigInt(k) * pick(s), 0n)
+    /*
+      «LIDLAR» IS THE COUNT (2026-10-23, the client: «leadlar bo'limi eng
+      to'g'ri bo'lishi kerak umuman o'zgarmaydi … target tahlildagi leadlar bilan
+      bir xil bo'lishi kerak»). Collagen + Zextra read 601 here beside «Ген лид»
+      604 there: the website form no targetolog owns (its brand is the name's,
+      yet `formFillBrand` leaves the website out) and the «Ген лид» typed in by
+      hand. Each product is now «Ген лид» under its brand; the whole adds
+      «Brendsiz», as «Hammasi» there does.
+    */
+    const generated = input.generated ?? null
     const bitrixFormLeads =
-      fills === null
-        ? ownForms.reduce((n, s) => n + s.leads, 0)
-        : fills.filter((f) => inScope(f.product)).reduce((n, f) => n + f.fills, 0) +
-          aiForms.filter((f) => inScope(f.product)).reduce((n, f) => n + f.row.leads, 0)
+      generated !== null
+        ? TARGET_PRODUCTS.filter(inScope).reduce((n, p) => n + generated[p], 0) + (products === null ? generated.none : 0)
+        : fills === null
+          ? ownForms.reduce((n, s) => n + s.leads, 0)
+          : fills.filter((f) => inScope(f.product)).reduce((n, f) => n + f.fills, 0) +
+            aiForms.filter((f) => inScope(f.product)).reduce((n, f) => n + f.row.leads, 0)
     const bitrixPageLeads =
       sources.reduce((n, s) => n + s.leads, 0) - pageForms.reduce((n, s) => n + s.leads, 0)
     const bitrixLeads = bitrixPageLeads + bitrixFormLeads
@@ -722,6 +746,7 @@ export function metaBlock(input: {
     products,
     total: productTotals(null),
     productsTotal: productTotals(drawn),
+    brandlessLeads: input.generated?.none ?? null,
     usdRate: input.usdRate,
   }
 }
@@ -881,11 +906,13 @@ export class TargetService {
     return scope === 'target' ? TARGET_SOURCE_IDS : null
   }
 
+  /** `lidlar`: «Lidlar»'s «Ген лид» per brand, read beside this (`LeadSourcesService.generatedLeads`); null, the fills. */
   async overview(
     period: Period,
     scope: TargetScope,
     product: TargetProductFilter,
     timeZone: string,
+    lidlar: Promise<GeneratedLeadsByBrand | null> | null = null,
   ): Promise<TargetOverviewDto> {
     const sourceIds = this.sourceIds(scope, product)
     const key = [
@@ -901,7 +928,7 @@ export class TargetService {
     }
 
     const formKey = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
-    const [summary, formRows, formFills, targetSources, snapshot, metaRows, campaignRows, metaImportedAt] = await Promise.all([
+    const [summary, formRows, formFills, targetSources, snapshot, metaRows, campaignRows, metaImportedAt, generated] = await Promise.all([
       summaryCache.get(key, () => this.repository.summary({ period, sourceIds })),
       formCache.get(formKey, () => this.repository.formLeads(period)),
       fillCache.get(formKey, () => this.repository.formFills(period)),
@@ -910,6 +937,7 @@ export class TargetService {
       this.repository.metaSpend(window.from, window.to),
       this.repository.metaCampaigns(window.from, window.to),
       this.repository.metaImportedAt(),
+      lidlar,
     ])
 
     const group = (rows: readonly TargetGroupRow[]): TargetGroupDto[] =>
@@ -959,6 +987,11 @@ export class TargetService {
             ? formFills.rows
             : formFills.rows.filter((r) => fillProduct(r.subject) === product)
           : null,
+        // «Lidlar»'s «Ген лид», one product's when one is asked for — «Brendsiz» is no product's.
+        generated:
+          generated === null || product === 'all'
+            ? generated
+            : { Collagen: 0, Zextra: 0, none: 0, [product]: generated[product] },
         campaigns:
           product === 'all'
             ? campaignRows

@@ -44,8 +44,13 @@ export const GET = getHandler(ACCESS, targetOverviewQuerySchema, async (ctx) => 
       return null
     },
   )
+  // The products' «Forma leadlari» are «Lidlar»'s «Ген лид» (2026-10-23); a failed read leaves the fills, logged.
+  const lidlar = leadSourcesService.generatedLeads(period, ctx.timeZone).catch((error: unknown) => {
+    logger.warn({ err: error }, 'Target tahlili: «Lidlar» «Ген лид» read failed; «Forma leadlari» counts the fills')
+    return null
+  })
   const [overview, forms] = await Promise.all([
-    targetService.overview(period, ctx.query.scope, ctx.query.product, ctx.timeZone),
+    targetService.overview(period, ctx.query.scope, ctx.query.product, ctx.timeZone, lidlar),
     formsScan,
   ])
   return { data: withTargetologLeads(overview, forms, ctx.query.product), meta: { period: toPeriodDto(period) } }

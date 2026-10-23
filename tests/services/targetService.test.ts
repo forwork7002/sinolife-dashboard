@@ -182,6 +182,19 @@ describe('TargetService.overview', () => {
     expect(fillsCover(null, live, now)).toBe(false)
   })
 
+  it('reads the form leads off «Lidlar», one product\'s under that product, «Brendsiz» under neither', async () => {
+    const lidlar = () => Promise.resolve({ Collagen: 12, Zextra: 5, none: 2 })
+    const all = await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent', lidlar())
+    expect(all.meta.total.bitrixFormLeads).toBe(12 + 5 + 2)
+    expect(all.meta.brandlessLeads).toBe(2)
+    const one = await service.overview(PERIOD, 'target', 'Collagen', 'Asia/Tashkent', lidlar())
+    expect(one.meta.total.bitrixFormLeads).toBe(12)
+    expect(one.meta.brandlessLeads).toBe(0)
+    // Not read (it failed): the fills, as before.
+    const unread = await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent', Promise.resolve(null))
+    expect(unread.meta.brandlessLeads).toBeNull()
+  })
+
   it('says «never imported» for Meta rather than printing zero spend', async () => {
     const dto = await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')
     expect(dto.meta.importedAt).toBeNull()
@@ -434,6 +447,39 @@ describe('metaBlock — the «Лид база» sheet', () => {
         expect(col).toMatchObject({ bitrixPageLeads: 370, bitrixLeads: 370 + 1_026, bitrixLeadWon: 241, orders: 70 })
         expect(col.deliveredMoney.amountMinor).toBe('4000000000')
         expect(counted.productsTotal.bitrixLeads).toBe(370 + 1_026 + 100 + 78)
+      })
+
+      it('says no «Brendsiz» when «Lidlar» was not read', () => {
+        expect(counted.brandlessLeads).toBeNull()
+      })
+    })
+
+    describe('…AS «LIDLAR» COUNTS «Ген лид» (2026-10-23)', () => {
+      /*
+        «Bugun» 23.10: Collagen 385 + Zextra 216 = 601 here, «Ген лид» 604 on
+        «Lidlar» — the website form no targetolog owns (1) and two typed in by
+        hand. The client: «Lidlar» is right, this screen reads it.
+      */
+      const fill = (form: string, fills: number) => ({ subject: `Заполнена CRM-форма "${form}"`, fills })
+      const read = metaBlock({
+        ...pairedInput,
+        fills: [fill('Umar-collagen Collagen (UMAR)', 990), fill('Umar-zextra UMAR (zextra-1)', 78)],
+        generated: { Collagen: 1_000, Zextra: 80, none: 2 },
+      })
+      const col = read.products.find((p) => p.product === 'Collagen')!
+      const zex = read.products.find((p) => p.product === 'Zextra')!
+
+      it('takes each product\'s «Forma leadlari» off «Lidlar»\'s «Ген лид» under its brand, not the fills', () => {
+        expect(col).toMatchObject({ bitrixFormLeads: 1_000, bitrixPageLeads: 370, bitrixLeads: 1_370, formLeadsBasis: 'fills' })
+        expect(col.formReachPercent).toBeCloseTo(100, 6)
+        expect(col.costPerBitrixLeadUsd).toBeCloseTo(col.spendUsd / 1_370, 6)
+        expect(zex).toMatchObject({ bitrixFormLeads: 80, bitrixLeads: 180 })
+      })
+
+      it('keeps «Brendsiz» off both columns and their hero, says it beside them, and adds it to the whole', () => {
+        expect(read.productsTotal.bitrixFormLeads).toBe(1_080)
+        expect(read.brandlessLeads).toBe(2)
+        expect(read.total.bitrixFormLeads).toBe(1_082)
       })
     })
   })

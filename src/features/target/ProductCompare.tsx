@@ -128,6 +128,8 @@ export function ProductCompare({
         </p>
       )}
 
+      <BrandlessLeads products={products} brandless={meta.brandlessLeads ?? null} />
+
       {verdicts.length > 0 && (
         <div
           className="mt-5 rounded-[var(--radius-panel-sm)] border px-4 py-3"
@@ -154,6 +156,30 @@ export function ProductCompare({
         </div>
       )}
     </section>
+  )
+}
+
+/**
+ * «Ген лид» no brand names — typed in by hand in Bitrix24, no form — said
+ * under the columns, so their «Forma leadlari» and these add up to «Lidlar»'s
+ * «Ген лид» (2026-10-23: the client summed Collagen + Zextra against it).
+ */
+function BrandlessLeads({
+  products,
+  brandless,
+}: {
+  products: readonly MetaProductTotalsWithName[]
+  brandless: number | null
+}) {
+  if (brandless === null || brandless <= 0 || products.length === 0) return null
+  const forms = products.reduce((n, p) => n + p.bitrixFormLeads, 0)
+  return (
+    <p className="mt-3 text-[12.5px] tabular" style={{ color: 'var(--ink-muted)' }} data-testid="brandless-leads">
+      + {formatNumber(brandless)} ta brendsiz «Ген лид» — qoʻlda kiritilgan, formasiz.
+      {/* The sum only over both columns: a product with no Meta money that day has none, yet «Lidlar» counts its leads. */}
+      {products.length === 2 &&
+        ` ${products.map((p) => `${PRODUCT_LABEL[p.product]} ${formatNumber(p.bitrixFormLeads)}`).join(' + ')} + brendsiz ${formatNumber(brandless)} = ${formatNumber(forms + brandless)} — «Lidlar» dagi «Ген лид».`}
+    </p>
   )
 }
 
@@ -438,8 +464,8 @@ function ProductColumn({
                 <Tooltip
                   content={
                     product.formLeadsBasis === 'fills'
-                      ? 'Bitrix24 ga tushgan har bir forma toʻldirish — Facebook sanaganidek: eski mijoz qayta toʻldirsa ham, yangi bitim ochilmasa ham'
-                      : 'Bu davr uchun forma toʻldirishlari hali oʻqilmagan — Регистрация da ochilgan forma bitimlari'
+                      ? '«Lidlar» dagi «Ген лид» shu brend boʻyicha: Bitrix24 ga tushgan har bir forma toʻldirish (sayt formasi ham) — eski mijoz qayta toʻldirsa ham, yangi bitim ochilmasa ham — va qoʻlda kiritilgan «Ген лид»'
+                      : 'Bu davr uchun forma toʻldirishlari hali oʻqilmagan — «Lidlar» dagi «Ген лид» bitimlari'
                   }
                 >
                   <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">

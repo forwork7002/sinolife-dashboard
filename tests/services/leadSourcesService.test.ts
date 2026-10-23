@@ -14,7 +14,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-const { leadSourcesOverview } = await import('@/server/services/leadSourcesService')
+const { generatedLeadsByBrand, leadSourcesOverview } = await import('@/server/services/leadSourcesService')
 
 const WINDOW = { from: '2026-09-18', to: '2026-09-19' }
 const UMAR_FORM = 'Заполнение CRM-формы "Sinolife (UMAR) 777"'
@@ -1513,6 +1513,31 @@ describe('«Targetologlar» counts Meta\'s way — every CRM-form fill (2026-10-
     expect(view('none').tiles).toMatchObject({ generatedBasis: 'fills', generatedDeals: 4 })
     expect(generated('Collagen').leads + generated('Zextra').leads + generated('none').leads).toBe(generated().leads)
     expect(generated('Collagen').qualified + generated('Zextra').qualified + generated('none').qualified).toBe(generated().qualified)
+  })
+
+  it('hands «Target tahlili» «Ген лид» under each brand exactly as the tab prints it (2026-10-23)', () => {
+    const rows = {
+      ...input,
+      registration: [
+        ...input.registration,
+        reg({ targetolog: 'Элдор', leads: 3 }),
+        // Typed in by hand: no form, no «Таргетолог», no «Проект» — «Brendsiz».
+        reg({ stage: 'Недозвон', status: 'OPEN' }),
+      ],
+    }
+    const tile = (brand: 'Collagen' | 'Zextra' | 'none') =>
+      leadSourcesOverview({ ...rows, brand }).tiles.rows.find((r) => r.tile === 'generated')!.leads
+    const read = generatedLeadsByBrand({ window: rows.window, registration: rows.registration, formFills: rows.formFills })
+    expect(read).toEqual({ Collagen: tile('Collagen'), Zextra: tile('Zextra'), none: tile('none') })
+    // The website form's fills are Collagen's here — what «Target tahlili» left out.
+    expect(read).toEqual({ Collagen: 4 + 1 + 5 + 2, Zextra: 2, none: 1 })
+    const whole = leadSourcesOverview(rows).tiles.rows.find((r) => r.tile === 'generated')!.leads
+    expect(read.Collagen + read.Zextra + read.none).toBe(whole)
+    // A window the fills do not cover: the deals, as the tab shows them then.
+    const deals = generatedLeadsByBrand({ window: rows.window, registration: rows.registration, formFills: null })
+    expect(deals.Collagen + deals.Zextra + deals.none).toBe(
+      leadSourcesOverview({ ...rows, formFills: null }).tiles.rows.find((r) => r.tile === 'generated')!.leads,
+    )
   })
 
   it('«Ген лид» never prints more duplicates than leads while the fills trail the deals', () => {

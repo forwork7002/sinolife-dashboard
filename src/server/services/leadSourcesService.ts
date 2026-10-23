@@ -689,6 +689,38 @@ function fillBrand(subject: string): TargetProduct | null {
   return form === null || !isCustomerForm(form) ? null : leadBrand(null, subject)
 }
 
+/** «Ген лид»'s big number under Collagen, Zextra and «Brendsiz» — together, «Hammasi»'s. */
+export type GeneratedLeadsByBrand = Readonly<Record<TargetProduct | 'none', number>>
+
+/**
+ * «Ген лид» AS «LIDLAR» SHOWS IT, PER BRAND (2026-10-23, the client: «leadlar
+ * bo'limi eng to'g'ri bo'lishi kerak … target tahlildagi leadlar bilan bir xil
+ * bo'lishi kerak»). The tab's own tile, read through `leadSourcesOverview`
+ * under each switch, so no rule of «Lidlar» is restated here: «Target
+ * tahlili» showed 601 beside «Lidlar»'s 604 — the website form no targetolog
+ * owns and the «Ген лид» typed in by hand are in the tile, not in the form
+ * fills it counted. The tile reads only the Регистрация rows and the fills.
+ */
+export function generatedLeadsByBrand(input: {
+  window: { from: string; to: string }
+  registration: readonly RegistrationDayRow[]
+  formFills: readonly FormFillDayRow[] | null
+}): GeneratedLeadsByBrand {
+  const tile = (brand: TargetProduct | 'none') =>
+    leadSourcesOverview({
+      ...input,
+      triage: [],
+      campaigns: [],
+      fakt1: null,
+      qualified: [],
+      aiQualified: [],
+      sarafan: { leads: 0, qualified: 0 },
+      importedAt: null,
+      brand,
+    }).tiles.rows.find((row) => row.tile === 'generated')?.leads ?? 0
+  return { Collagen: tile('Collagen'), Zextra: tile('Zextra'), none: tile('none') }
+}
+
 /**
  * The whole tab from the three ledgers' rows. Exported for its test.
  */
@@ -1535,6 +1567,12 @@ export class LeadSourcesService {
     // The side table's money narrowed as `ofBrand` narrows Meta money: hiring is no brand's, so one brand has none.
     const side = sideColumnsOf(brand === 'all' ? campaigns : campaigns.filter((row) => brandMatches(brand, adBudgetProduct(row))), days)
     return { forms, importedAt: imported, manual: manualSpendBlocks(days, typed, brand, { telegram }), side }
+  }
+
+  /** «Ген лид» under each brand switch, from the rows «Lidlar» reads (`generatedLeadsByBrand`). */
+  async generatedLeads(period: Period, timeZone: string): Promise<GeneratedLeadsByBrand> {
+    const [registration, formFills] = await Promise.all([this.registrationDays(period), this.formFills(period)])
+    return generatedLeadsByBrand({ window: periodWindow(period, timeZone), registration, formFills })
   }
 
   /** Save the hand-typed ad money of «Targetologlar · kunlik» (`POST /reklama/manual-spend`). */
