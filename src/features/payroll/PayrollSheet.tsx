@@ -115,12 +115,12 @@ export function PayrollSheet({
 // Which rows, in which order
 // ---------------------------------------------------------------------------
 
-interface TeamBlock {
+export interface TeamBlock {
   readonly team: PayrollTeamDto
   readonly rows: readonly PayrollSellerDto[]
 }
 
-interface Block {
+export interface Block {
   readonly branch: PayrollBranchDto
   readonly teams: readonly TeamBlock[]
   /** The block's teams the sheet draws with no search on — not a team paid only last period. */
@@ -134,7 +134,7 @@ interface Block {
  * not drawn. A team the period paid nobody in (a label only a moved seller sold
  * under) still draws when its ROP is paid.
  */
-function layout(data: PayrollDto, needle: string): Block[] {
+export function layout(data: PayrollDto, needle: string): Block[] {
   const byRop = new Map<string | null, PayrollSellerDto[]>()
   for (const row of data.sellers) byRop.set(row.rop, [...(byRop.get(row.rop) ?? []), row])
   const teamOf = new Map(data.teams.map((team) => [team.rop, team]))
@@ -597,7 +597,7 @@ function Muted() {
 }
 
 /** The rate beside its money: on a week, on БАЗА and on a flat rate it IS the tier, so it is printed. */
-function RatePill({ rate }: { rate: number }) {
+export function RatePill({ rate }: { rate: number }) {
   return (
     <span
       className="rounded-full px-1.5 py-px text-[10px] font-semibold"
@@ -649,7 +649,7 @@ function FixedCell({ row }: { row: PayrollSellerDto }) {
 }
 
 /** The change and what it is off; nobody in the comparison window reads «yangi», never «+∞%». */
-function Growth({ delta, previous, team = false }: { delta: DeltaDto; previous: MoneyDto | null; team?: boolean }) {
+export function Growth({ delta, previous, team = false }: { delta: DeltaDto; previous: MoneyDto | null; team?: boolean }) {
   if (previous === null) return <NewChip team={team} />
   return (
     <span className="flex flex-col items-end gap-0.5">
@@ -665,7 +665,7 @@ function Growth({ delta, previous, team = false }: { delta: DeltaDto; previous: 
  * How far along the current rung a seller stands, 0–100 — measured from the
  * rung already cleared, so the bars do not all read nine-tenths full.
  */
-function tierProgress(row: PayrollSellerDto): number {
+export function tierProgress(row: PayrollSellerDto): number {
   const floor = row.tierFloor?.amount ?? 0
   const next = row.nextFloor?.amount ?? 0
   if (next <= floor) return 0
@@ -701,7 +701,7 @@ export function ropFormula(team: PayrollTeamDto): string {
 // ---------------------------------------------------------------------------
 
 /** Each block's hue. Not teal or amber: on this page those are «foiz» and «fiksa». */
-const BRANCH_HUE: Readonly<Record<PayrollBranch, string>> = {
+export const BRANCH_HUE: Readonly<Record<PayrollBranch, string>> = {
   toshkent: 'var(--series-1)',
   navoiy: 'var(--series-2)',
   baza: 'var(--series-6)',

@@ -1,12 +1,12 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import { EmptyState, ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
-import { SearchInput } from '@/components/ui/Controls'
+import { SearchInput, SegmentedControl } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { PageShell } from '@/features/shared/PageShell'
@@ -27,6 +27,7 @@ import {
   formatNumber,
 } from '@/lib/format'
 
+import { PayrollGridScreen } from './PayrollGrid'
 import { PayrollSheet, ropFormula, sellerFormula } from './PayrollSheet'
 import { NO_ROP, PayrollMovers, RopCompareChart } from './PayrollTeams'
 
@@ -82,7 +83,33 @@ import { NO_ROP, PayrollMovers, RopCompareChart } from './PayrollTeams'
  * table — in a week under 15 mln with a zero and the distance to 15 mln, in a
  * month with their 8% (the client: «ishdan ketmaydi… uni ham hisoblayver»).
  */
+/*
+  TWO TABS, as «KPI rejalari» and «RNP jadvali» have (the client, 2026-10-23:
+  «sotuvchilar oyligi boʻlimini ham … huddi shunday jadval usulida»).
+  «Maosh jadvali» — the page as one sheet with a column per day — opens
+  first; «Batafsil» keeps the page as it was: the hero, the sheet in its card,
+  the growth charts and the rule. Both read the same window and the same
+  payload; only the open tab draws.
+*/
+type Tab = 'sheet' | 'details'
+
 export function PayrollPage() {
+  const [tab, setTab] = useState<Tab>('sheet')
+  const tabs = (
+    <SegmentedControl<Tab>
+      ariaLabel="Qaysi koʻrinish"
+      value={tab}
+      onChange={setTab}
+      options={[
+        { value: 'sheet', label: 'Maosh jadvali' },
+        { value: 'details', label: 'Batafsil' },
+      ]}
+    />
+  )
+  return tab === 'sheet' ? <PayrollGridScreen tabs={tabs} /> : <PayrollDetails tabs={tabs} />
+}
+
+function PayrollDetails({ tabs }: { readonly tabs: ReactNode }) {
   /*
     THE DASHBOARD'S OWN WINDOW (2026-10-17, the client: «huddi savdo
     dinamikasidek»). The Haftalik / 15 kunlik / Oylik tabs went: PageShell
@@ -162,6 +189,7 @@ export function PayrollPage() {
       description="FAKT 2 — Savdo dinamikasidagi bilan bir xil. Jadval davr uzunligiga qarab: 7 kungacha haftalik, 16 kungacha 15 kunlik, undan uzun — oylik."
       accent="var(--series-3)"
       periodMaxDays={PAYROLL_MAX_DAYS}
+      actions={tabs}
       toolbar={
         <>
           <SearchInput value={search} onChange={setSearch} placeholder="Ism yoki ROP…" />

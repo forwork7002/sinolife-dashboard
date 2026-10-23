@@ -1,11 +1,25 @@
 'use client'
 
-import { type ReactNode, type UIEvent, memo, useLayoutEffect, useMemo, useRef } from 'react'
+import { type ReactNode, memo, useCallback, useMemo, useRef, useState } from 'react'
 
-import { ArrowDownGlyph, ArrowUpGlyph, TriangleGlyph } from '@/components/ui/Icons'
-import { dayMonth, dayMonthYear, isSunday, weekday } from '@/features/rnp/rnpDerive'
+import { ArrowDownGlyph, ArrowUpGlyph, CheckCircleGlyph, ChevronGlyph, TriangleGlyph } from '@/components/ui/Icons'
+import { dayMonthYear } from '@/features/rnp/rnpDerive'
 import { figureText } from '@/features/rnp/rnpFigures'
 import { useDragScroll } from '@/features/rnp/useDragScroll'
+import {
+  DayHead,
+  RULE,
+  SUMMARY_CELL,
+  SUMMARY_HEAD,
+  VRULE,
+  crosshairHandlers,
+  dayCellStyle,
+  inkOf,
+  layers,
+  markScrolledX,
+  mix,
+  usePinnedColumns,
+} from '@/features/shared/sheetGrid'
 import { PRODUCT_TONE } from '@/features/target/targetTheme'
 
 import { type KpiSheetBasis, type KpiSheetLine, type KpiSheetScope, type KpiSheetSide, type KpiSheetValueLine, groupDiffers } from './kpiSheetApi'
@@ -17,30 +31,37 @@ export interface KpiSheetDrill {
   readonly basis: KpiSheetBasis
 }
 
+const STYLE_ID = 'kpi-sheet-x'
+
 /**
  * «KPI jadvali» AS A SHEET — the RNP grid's shape (the client, 2026-10-23:
  * «rnp jadvali visualidagi jadval koʻrinishida … excel jadvaldek»): a row per
  * figure and system, a column per day, the month's «Jami» pinned beside the
  * label, one scroll box with the header frozen on top and the label frozen on
- * the left. It borrows the RNP sheet's whole frame — `[data-rnp-grid]` and
- * its `.rnp-label` / `.rnp-pin` / `.rnp-edge` rules in globals.css, the drag
- * to scroll, the today and Sunday columns — so the two sheets read alike.
+ * the left — the frame `sheetGrid.tsx` shares with «Maosh jadvali».
  *
  * A FIGURE IS THREE ROWS: Bitrix24, MoySklad, and «Farq» (MoySklad −
  * Bitrix24). The name is printed once, on the Bitrix24 row; each row says
  * which system it is with a chip at the label's right edge, so the chips
  * stand in one column like the sheet's column B. A figure whose «Farq» is not
- * nought somewhere in the month carries ⚠ beside its name — the label is the
- * one column always on screen.
+ * nought somewhere in the month carries ⚠ beside its name.
  *
  * A DIFFERENCE IS A MARK, NOT A SIGNED NUMBER — the KPI cards' rule
  * (`reconcile.tsx`): nought is a quiet «—», a gap a red pill with ▲ (more in
  * MoySklad) or ▼ (more in Bitrix24). An empty cell is a day not lived yet, or
  * one before MoySklad held orders.
  *
+ * «YANADA ANIQROQ» (the client, the same day, after seeing it):
+ *   - the column under the pointer lights up across the sheet (`crosshair`),
+ *     the row's own hover does the other arm;
+ *   - a block's heading sticks under the header while its rows scroll, so the
+ *     reader always knows whose figures these are, and says in one chip
+ *     whether everything in it agrees («✓ mos») or how many figures do not;
+ *   - a heading folds its block away and opens it again;
+ *   - a date that holds any difference carries a red dot.
+ *
  * EVERY DAY CELL OPENS THAT DAY'S ORDERS (`onOpen`): each order on both
- * systems with its products, the differences first — so any figure here is
- * checked against the deals it was counted from.
+ * systems with its products — so any figure here is checked against its deals.
  */
 export function KpiSheetTable({
   lines,
@@ -55,20 +76,28 @@ export function KpiSheetTable({
 }) {
   const box = useRef<HTMLDivElement>(null)
   const dragScroll = useDragScroll<HTMLDivElement>()
-  usePinnedTotal(box)
-  // Which group of sides each value line belongs to: its opener's index.
-  const marks = useMemo(() => {
-    const out = new Map<number, boolean>()
-    lines.forEach((line, i) => {
-      if (line.kind === 'value' && line.opens) out.set(i, groupDiffers(lines, i))
-    })
-    return out
-  }, [lines])
+  const crosshair = useMemo(() => crosshairHandlers(STYLE_ID), [])
+  usePinnedColumns(box, 2)
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  const toggle = useCallback(
+    (key: string) =>
+      setFolded((now) => {
+        const next = new Set(now)
+        if (next.has(key)) next.delete(key)
+        else next.add(key)
+        return next
+      }),
+    [],
+  )
+
+  const { marks, blockGaps, dayFlags } = useMemo(() => readSheet(lines, days.length), [lines, days.length])
+  const shown = useMemo(() => unfolded(lines, folded), [lines, folded])
   const span = days.length + 1
 
   return (
     <div
       ref={box}
+      id={`${STYLE_ID}-box`}
       data-rnp-grid=""
       role="region"
       aria-label="KPI jadvali"
@@ -76,27 +105,71 @@ export function KpiSheetTable({
       tabIndex={0}
       className="focusable relative h-full min-h-0 cursor-grab overflow-auto overscroll-contain data-[panning]:cursor-grabbing data-[panning]:select-none data-[panning]:[&_td]:cursor-grabbing"
       {...dragScroll}
+      {...crosshair}
       onScroll={markScrolledX}
     >
+      <style id={STYLE_ID} />
       <table className="border-separate border-spacing-0 text-sm">
         <caption className="sr-only">
           KPI jadvali, {days[0] ? dayMonthYear(days[0]) : ''} – {days.at(-1) ? dayMonthYear(days.at(-1)!) : ''}
         </caption>
-        <Head days={days} today={today} />
+        <thead>
+          <tr style={{ color: 'var(--ink-secondary)' }}>
+            <th
+              scope="col"
+              className={`thead-sticky tcol-sticky rnp-label ${LABEL_WIDTH} ${RULE} h-12 py-2 pr-3 pl-4 text-left text-[12px] leading-tight font-bold sm:pl-5`}
+              // `.tcol-sticky` paints the card; the corner belongs to the header band.
+              style={{ left: 0, background: 'var(--surface-sunken)', color: 'var(--ink-primary)' }}
+            >
+              <span className="sr-only">Koʻrsatkich, </span>
+              {days[0] && days.at(-1) ? `${dayMonthYear(days[0])} – ${dayMonthYear(days.at(-1)!)}` : 'Koʻrsatkich'}
+            </th>
+            <th
+              scope="col"
+              title="Oy boshidan bugungacha, bugun ham hisobda"
+              className={`thead-sticky ${TOTAL_PIN} ${RULE} min-w-[128px] px-3 py-2 text-right text-[12px] font-semibold whitespace-nowrap`}
+              style={{ background: SUMMARY_HEAD, color: 'var(--ink-primary)' }}
+            >
+              Jami
+            </th>
+            {days.map((d, i) => (
+              <DayHead
+                key={d}
+                day={d}
+                today={today}
+                column={i}
+                last={i === days.length - 1}
+                flagged={dayFlags[i] ?? false}
+                flagTitle="Shu kuni Bitrix24 va MoySklad farq qiladi"
+              />
+            ))}
+          </tr>
+        </thead>
         <tbody>
-          {lines.map((line, i) => {
-            const prev = i > 0 ? lines[i - 1] : undefined
-            const next = lines[i + 1]
-            const gap = line.kind === 'title' && prev ? (prev.scope !== line.scope ? 'scope' : 'block') : null
-            return line.kind === 'title' ? (
-              <TitleRow key={line.key} line={line} span={span} gap={gap} />
-            ) : (
+          {shown.map(({ line, at }, n) => {
+            const prev = n > 0 ? shown[n - 1]!.line : undefined
+            const next = shown[n + 1]?.line
+            if (line.kind === 'title') {
+              const gap = prev ? (prev.scope !== line.scope ? 'scope' : 'block') : null
+              return (
+                <TitleRow
+                  key={line.key}
+                  line={line}
+                  span={span}
+                  gap={gap}
+                  gaps={blockGaps.get(line.key) ?? 0}
+                  open={!folded.has(line.key)}
+                  onToggle={toggle}
+                />
+              )
+            }
+            return (
               <ValueRow
                 key={line.key}
                 line={line}
                 days={days}
                 today={today}
-                differs={line.opens ? (marks.get(i) ?? false) : false}
+                differs={line.opens ? (marks.get(at) ?? false) : false}
                 closes={next === undefined || next.kind === 'title' || next.opens}
                 onOpen={onOpen}
               />
@@ -108,114 +181,68 @@ export function KpiSheetTable({
   )
 }
 
-/**
- * The pinned block's divider deepens once the days have moved under it —
- * `[data-scrolled-x]` on the box, the RNP sheet's attribute and rules.
- */
-function markScrolledX(e: UIEvent<HTMLDivElement>) {
-  const el = e.currentTarget
-  const scrolled = el.scrollLeft > 0
-  if (scrolled !== el.hasAttribute('data-scrolled-x')) el.toggleAttribute('data-scrolled-x', scrolled)
+/** A heading's depth: a brand's block (1) holds its product blocks (2). */
+function levelOf(line: Extract<KpiSheetLine, { kind: 'title' }>): number {
+  return line.key.includes(':products:') ? 2 : 1
 }
 
-/** Room the pinned block must leave for days, about three of them; less and only the label pins. */
-const ROOM_FOR_DAYS = 260
-
-/**
- * Measures the label column and writes the «Jami» column's `left` on the box
- * (`--kpi-left-total`), and `data-pin-wide` when there is room to pin both —
- * on a phone only the label pins, as on the RNP sheet (`usePinnedSummary`).
- * The frozen parts are the box's scroll padding too, so «Bugun» brings
- * today's column clear of them.
- */
-function usePinnedTotal(ref: { readonly current: HTMLDivElement | null }) {
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const [label, total] = Array.from(el.querySelectorAll<HTMLElement>('thead th')).slice(0, 2)
-    if (!label || !total) return
-    const measure = () => {
-      const corner = label.getBoundingClientRect()
-      const totalWidth = total.getBoundingClientRect().width
-      const wide = corner.width + totalWidth + ROOM_FOR_DAYS <= el.clientWidth
-      const left = `${corner.width}px`
-      if (el.style.getPropertyValue('--kpi-left-total') !== left) el.style.setProperty('--kpi-left-total', left)
-      if (wide !== el.hasAttribute('data-pin-wide')) el.toggleAttribute('data-pin-wide', wide)
-      el.style.scrollPaddingLeft = `${wide ? corner.width + totalWidth : corner.width}px`
-      el.style.scrollPaddingTop = `${corner.height}px`
+/** The lines a fold leaves on screen, each with its place in `lines` (the marks are keyed by it). */
+function unfolded(lines: readonly KpiSheetLine[], folded: ReadonlySet<string>): { line: KpiSheetLine; at: number }[] {
+  const out: { line: KpiSheetLine; at: number }[] = []
+  let hiddenBelow: number | null = null
+  lines.forEach((line, at) => {
+    if (line.kind === 'title') {
+      const level = levelOf(line)
+      if (hiddenBelow !== null && level > hiddenBelow) return
+      hiddenBelow = folded.has(line.key) ? level : null
+      out.push({ line, at })
+      return
     }
-    measure()
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    observer.observe(label)
-    observer.observe(total)
-    return () => observer.disconnect()
-  }, [ref])
+    if (hiddenBelow === null) out.push({ line, at })
+  })
+  return out
 }
 
-// ---------------------------------------------------------------------------
-// Header
-// ---------------------------------------------------------------------------
-
-const LABEL_WIDTH = 'w-[184px] min-w-[184px] max-w-[184px] sm:w-[330px] sm:min-w-[330px] sm:max-w-[330px]'
-const TOTAL_PIN = 'tcol-sticky rnp-pin rnp-edge left-[var(--kpi-left-total)]'
-
-const Head = memo(function Head({ days, today }: { days: readonly string[]; today: string }) {
-  const first = days[0]
-  const last = days.at(-1)
-  return (
-    <thead>
-      <tr style={{ color: 'var(--ink-secondary)' }}>
-        <th
-          scope="col"
-          className={`thead-sticky tcol-sticky rnp-label ${LABEL_WIDTH} ${RULE} h-12 py-2 pr-3 pl-4 text-left text-[12px] leading-tight font-bold sm:pl-5`}
-          // `.tcol-sticky` paints the card; the corner belongs to the header band.
-          style={{ left: 0, background: 'var(--surface-sunken)', color: 'var(--ink-primary)' }}
-        >
-          <span className="sr-only">Koʻrsatkich, </span>
-          {first && last ? `${dayMonthYear(first)} – ${dayMonthYear(last)}` : 'Koʻrsatkich'}
-        </th>
-        <th
-          scope="col"
-          title="Oy boshidan bugungacha, bugun ham hisobda"
-          className={`thead-sticky ${TOTAL_PIN} ${RULE} min-w-[128px] px-3 py-2 text-right text-[12px] font-semibold whitespace-nowrap`}
-          style={{ background: SUMMARY_HEAD, color: 'var(--ink-primary)' }}
-        >
-          Jami
-        </th>
-        {days.map((d, i) => {
-          const isToday = d === today
-          const sunday = isSunday(d)
-          return (
-            <th
-              key={d}
-              scope="col"
-              aria-current={isToday ? 'date' : undefined}
-              title={isToday ? 'Bugun' : sunday ? 'Yakshanba' : undefined}
-              className={`thead-sticky tabular ${RULE} min-w-[84px] px-3 py-1.5 text-right whitespace-nowrap ${i === days.length - 1 ? 'pr-5' : ''}`}
-              style={
-                isToday
-                  ? { background: TODAY_HEAD, color: 'var(--accent-ink)', boxShadow: TODAY_HEAD_RULE }
-                  : sunday
-                    ? { background: SUNDAY_HEAD }
-                    : undefined
-              }
-            >
-              <span className={`block text-[13px] leading-tight ${isToday ? 'font-bold' : 'font-semibold'}`}>{dayMonth(d)}</span>
-              <span className="block text-[10px] leading-tight font-medium tracking-wide uppercase" style={isToday ? undefined : { color: 'var(--ink-muted)' }}>
-                {weekday(d)}
-              </span>
-            </th>
-          )
-        })}
-      </tr>
-    </thead>
-  )
-})
+/**
+ * What the sheet says about itself, read once per payload: which figures
+ * differ somewhere in the month (`marks`, by the figure's first row), how many
+ * do in each block — a brand's block counting its product blocks too
+ * (`blockGaps`) — and which days hold any difference (`dayFlags`).
+ */
+function readSheet(lines: readonly KpiSheetLine[], dayCount: number) {
+  const marks = new Map<number, boolean>()
+  const blockGaps = new Map<string, number>()
+  const dayFlags: boolean[] = Array.from({ length: dayCount }, () => false)
+  const open: string[] = []
+  lines.forEach((line, i) => {
+    if (line.kind === 'title') {
+      open.length = levelOf(line) - 1
+      open.push(line.key)
+      blockGaps.set(line.key, 0)
+      return
+    }
+    if (line.opens) {
+      const differs = groupDiffers(lines, i)
+      marks.set(i, differs)
+      if (differs) for (const key of open) blockGaps.set(key, (blockGaps.get(key) ?? 0) + 1)
+    }
+    if (line.side === 'diff' || line.side === 'mismatch') {
+      line.days.forEach((v, d) => {
+        if (v !== null && Math.round(v) !== 0) dayFlags[d] = true
+      })
+    }
+  })
+  return { marks, blockGaps, dayFlags }
+}
 
 // ---------------------------------------------------------------------------
 // Rows
 // ---------------------------------------------------------------------------
+
+const LABEL_WIDTH = 'w-[184px] min-w-[184px] max-w-[184px] sm:w-[330px] sm:min-w-[330px] sm:max-w-[330px]'
+const TOTAL_PIN = 'tcol-sticky rnp-pin rnp-edge left-[var(--sheet-left-1)]'
+/** A heading sticks under the header while its block scrolls — over the rows, under the header. */
+const STICK = { top: 'var(--sheet-head-h)' } as const
 
 type TitleLine = Extract<KpiSheetLine, { kind: 'title' }>
 
@@ -225,12 +252,29 @@ function hueOf(scope: KpiSheetScope): string {
 }
 
 /**
- * A heading band. A new brand opens with the RNP sheet's wide, sunken gap —
- * each brand reads as its own table inside the one grid — a block inside it
- * with a narrow one.
+ * A heading band — sticky under the header, a button that folds its block,
+ * and the block's verdict beside its name. A new brand opens with the RNP
+ * sheet's wide, sunken gap; a block inside it with a narrow one.
  */
-const TitleRow = memo(function TitleRow({ line, span, gap }: { line: TitleLine; span: number; gap: 'scope' | 'block' | null }) {
+const TitleRow = memo(function TitleRow({
+  line,
+  span,
+  gap,
+  gaps,
+  open,
+  onToggle,
+}: {
+  line: TitleLine
+  span: number
+  gap: 'scope' | 'block' | null
+  /** Figures in the block whose two systems disagree somewhere in the month. */
+  gaps: number
+  open: boolean
+  onToggle: (key: string) => void
+}) {
   const hue = hueOf(line.scope)
+  const ground = mix(hue, 18, 'var(--surface-raised)')
+  const band = mix(hue, 9, 'var(--surface-raised)')
   return (
     <>
       {gap === 'block' && (
@@ -246,19 +290,46 @@ const TitleRow = memo(function TitleRow({ line, span, gap }: { line: TitleLine; 
       <tr data-line="title">
         <th
           scope="row"
-          className={`tcol-sticky rnp-label ${LABEL_WIDTH} ${RULE} py-2 pr-3 pl-4 text-left leading-snug sm:pl-5`}
-          style={{ left: 0, background: mix(hue, 18, 'var(--surface-raised)'), color: inkOf(hue) }}
+          className={`tcol-sticky rnp-label ${LABEL_WIDTH} ${RULE} p-0 text-left leading-snug`}
+          style={{ ...STICK, left: 0, zIndex: 2, background: ground, color: inkOf(hue) }}
         >
           <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px]" style={{ background: hue }} />
-          <span className="text-[12.5px] font-bold tracking-wide uppercase">{line.label}</span>
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => onToggle(line.key)}
+            title={open ? 'Blokni yigʻish' : 'Blokni ochish'}
+            className="focusable flex w-full items-center gap-1.5 py-2 pr-3 pl-4 text-left sm:pl-5"
+          >
+            <ChevronGlyph direction={open ? 'down' : 'right'} size={12} className="shrink-0" />
+            <span className="min-w-0 flex-1 text-[12.5px] font-bold tracking-wide uppercase">{line.label}</span>
+            <BlockChip gaps={gaps} />
+          </button>
         </th>
         {/* The band under the pinned «Jami» pins with it, opaque, so the days pass beneath. */}
-        <td className={`${TOTAL_PIN} ${RULE}`} style={{ backgroundColor: 'var(--surface-raised)', backgroundImage: layers(mix(hue, 9)) }} />
-        <td colSpan={span - 1} className={RULE} style={{ background: mix(hue, 9) }} />
+        <td className={`${TOTAL_PIN} ${RULE}`} style={{ ...STICK, zIndex: 2, backgroundColor: band }} />
+        <td colSpan={span - 1} className={`sticky ${RULE}`} style={{ ...STICK, zIndex: 1, background: band }} />
       </tr>
     </>
   )
 })
+
+/** «✓ mos» or «⚠ N farq» — the block's verdict, so a folded block still says whether it needs a look. */
+function BlockChip({ gaps }: { gaps: number }) {
+  const matched = gaps === 0
+  const color = matched ? 'var(--status-good)' : 'var(--status-critical)'
+  const Glyph = matched ? CheckCircleGlyph : TriangleGlyph
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold tracking-normal whitespace-nowrap normal-case"
+      style={{ background: mix(color, 14, 'var(--surface-raised)'), color }}
+      title={matched ? 'Bu blokda Bitrix24 va MoySklad hamma kuni mos' : `Bu blokda ${gaps} ta koʻrsatkich farq qiladi`}
+    >
+      <Glyph size={10} className="shrink-0" />
+      {matched ? 'mos' : `${gaps} farq`}
+    </span>
+  )
+}
 
 const ValueRow = memo(function ValueRow({
   line,
@@ -314,19 +385,15 @@ const ValueRow = memo(function ValueRow({
       </td>
       {line.days.map((value, i) => {
         const day = days[i] ?? ''
-        const isToday = day === today
         const open = value !== null && day !== ''
         return (
           <td
             key={day || i}
+            data-c={i}
             title={open ? `${dayMonthYear(day)} — buyurtmalarni ochish` : undefined}
             onClick={open ? () => onOpen({ day, scope: line.scope, basis: line.basis }) : undefined}
-            className={`tabular ${rule} ${VRULE} h-9 px-3 py-1.5 text-right whitespace-nowrap ${open ? 'cursor-pointer hover:bg-[var(--glass-hover)]' : ''} ${i === days.length - 1 ? 'pr-5' : ''}`}
-            style={{
-              color: 'var(--ink-primary)',
-              background: isToday ? TODAY_CELL : isSunday(day) ? SUNDAY_CELL : undefined,
-              boxShadow: isToday ? TODAY_RULE : undefined,
-            }}
+            className={`tabular ${rule} ${VRULE} h-9 px-3 py-1.5 text-right whitespace-nowrap ${open ? 'cursor-pointer' : ''} ${i === days.length - 1 ? 'pr-5' : ''}`}
+            style={{ color: 'var(--ink-primary)', ...dayCellStyle(day, today) }}
           >
             <Figure line={line} value={value} />
           </td>
@@ -401,34 +468,5 @@ function Gap({ value, line }: { value: number; line: KpiSheetValueLine }) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// Colour — tokens only, mixed, so light and dark both carry it (the RNP sheet's)
-// ---------------------------------------------------------------------------
-
-function mix(color: string, pct: number, base = 'transparent'): string {
-  return `color-mix(in oklab, ${color} ${pct}%, ${base})`
-}
-
-function layers(...colors: (string | undefined)[]): string {
-  return colors
-    .filter((c): c is string => c !== undefined)
-    .map((c) => `linear-gradient(${c}, ${c})`)
-    .join(', ')
-}
-
-function inkOf(hue: string): string {
-  return mix(hue, 68, 'var(--ink-primary)')
-}
-
-const RULE = 'border-b border-[var(--border)]'
-const VRULE = 'border-r border-r-[var(--grid)]'
-const SUMMARY_HEAD = mix('var(--accent)', 12, 'var(--surface-sunken)')
-const SUMMARY_CELL = mix('var(--ink-muted)', 5)
 /** The «Farq» rows sit a shade down, so each figure's three rows read as one block. */
 const DIFF_BAND = mix('var(--ink-muted)', 5)
-const TODAY_HEAD = mix('var(--accent)', 24, 'var(--surface-sunken)')
-const TODAY_HEAD_RULE = 'inset 0 -2px 0 var(--accent)'
-const TODAY_CELL = mix('var(--accent)', 13)
-const TODAY_RULE = 'inset 1px 0 0 var(--accent-line), inset -1px 0 0 var(--accent-line)'
-const SUNDAY_HEAD = mix('var(--ink-muted)', 12, 'var(--surface-sunken)')
-const SUNDAY_CELL = mix('var(--ink-muted)', 6)

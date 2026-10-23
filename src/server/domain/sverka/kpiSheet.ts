@@ -204,12 +204,11 @@ export function kpiSheet(input: {
       const entries = byDay.get(d)
       return entries ? figuresOf(inScope(entries)) : EMPTY
     })
-    const name = scope === 'all' ? 'Collagen + Zextra' : scope
-
     out.push({
       kind: 'title',
       key: `${scope}:title`,
-      label: scope === 'all' ? 'Asosiy koʻrsatkichlar · Collagen + Zextra' : `${scope} · asosiy koʻrsatkichlar`,
+      // Short enough for one line beside the block's «mos» / «N farq» chip.
+      label: scope === 'all' ? 'Collagen + Zextra · jami' : scope,
       scope,
     })
     const pairs = (key: string, label: string, unit: KpiSheetUnit, basis: ProductBasis, read: (f: Figures) => Pair, diff = true) =>
@@ -254,7 +253,7 @@ export function kpiSheet(input: {
     for (const basis of BASES) {
       const products = month.productList[basis]
       if (products.length === 0) continue
-      out.push({ kind: 'title', key: `${scope}:products:${basis}:title`, label: `${name} · tovarlar · ${faktName(basis)}, dona`, scope })
+      out.push({ kind: 'title', key: `${scope}:products:${basis}:title`, label: `${scope} tovarlari · ${faktName(basis)} · dona`, scope })
       for (const product of products) {
         const read = (f: Figures): Pair => f.products[basis].get(product.key) ?? { bitrix: 0, moysklad: 0 }
         pairs(`product:${product.key}`, product.name, 'count', basis, read)

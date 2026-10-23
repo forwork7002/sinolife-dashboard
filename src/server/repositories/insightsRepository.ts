@@ -818,6 +818,17 @@ export interface ConfirmationSellerRatingFilters {
  * which is what makes inTransit ("out of the queue, still on the way") a
  * meaningful remainder.
  */
+/** One operator's FAKT 2 on one queue day under one team label (`confirmationSellerDays`). */
+export interface ConfirmationSellerDayRow {
+  readonly employeeId: string
+  /** The team label the orders were sold under — `ConfirmationSellerRatingRow.rop`. */
+  readonly rop: string | null
+  /** YYYY-MM-DD, the Tashkent day the orders arrived in the queue. */
+  readonly day: string
+  readonly deliveredOrders: number
+  readonly deliveredMinor: bigint
+}
+
 export interface ConfirmationSellerRatingRow {
   readonly employeeId: string
   readonly fullName: string
@@ -5295,6 +5306,45 @@ export class InsightsRepository {
         UNCONFIRMED_SHIPPED: money(r.state_unconfirmed_shipped_amount),
       },
     }))
+  }
+
+  /**
+   * «Sotuvchilar oyligi»'s day columns: each seller's FAKT 2 per Tashkent day
+   * of the queue arrival, one row per operator, team and day — the rating's
+   * own cohort, operator and delivery test (`ratingSql`) cut by
+   * `faktTrendSql`'s day, so a seller's days add up to the FAKT 2 the payroll
+   * pays them on, and a team label's days to its ROP's 2% basis.
+   */
+  async confirmationSellerDays(period: ScopedWindow): Promise<ConfirmationSellerDayRow[]> {
+    const params: unknown[] = [period.start, period.end, InsightsRepository.scopeValue(period)]
+    const rows = await this.prisma.$queryRawUnsafe<
+      { employee_id: string; rop: string | null; day: string; delivered_orders: bigint; delivered: MoneyText }[]
+    >(`${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.sellerDaysSql()}`, ...params)
+    return rows.map((r) => ({
+      employeeId: r.employee_id,
+      rop: r.rop,
+      day: r.day,
+      deliveredOrders: int(r.delivered_orders),
+      deliveredMinor: money(r.delivered),
+    }))
+  }
+
+  /** Isolated, like `ratingSql`, so it is pinned against the rating's predicates without a database. */
+  private static sellerDaysSql(): string {
+    const delivered = InsightsRepository.faktDeliveredSql('ds."logisticsRole"')
+    return `
+       SELECT
+         e."id" AS employee_id,
+         c.rop AS rop,
+         (c.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date::text AS day,
+         count(*) FILTER (WHERE ${delivered})::bigint AS delivered_orders,
+         sum(d."amountMinor") FILTER (WHERE ${delivered})::text AS delivered
+       FROM scoped c
+       JOIN "deal" d ON d."id" = c.deal_id
+       JOIN "employee" e ON e."id" = COALESCE(d."operatorEmployeeId", d."employeeId")
+       LEFT JOIN "deal_stage" ds ON ds."id" = d."stageId"
+       GROUP BY 1, 2, 3
+       HAVING count(*) FILTER (WHERE ${delivered}) > 0`
   }
 
   /**

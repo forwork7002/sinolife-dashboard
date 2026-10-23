@@ -51,6 +51,7 @@ import {
 } from '@/server/domain/payroll/sellerPayroll'
 import { isBaseTeam } from '@/server/domain/rnp/rnpSheet'
 import type {
+  ConfirmationSellerDayRow,
   ConfirmationSellerRatingRow,
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
@@ -254,6 +255,41 @@ export interface PayrollDto {
 }
 
 /**
+ * «Maosh jadvali»'s day columns (the client, 2026-10-23: «sotuvchilar oyligi
+ * … huddi shunday jadval usulida»): FAKT 2 per Tashkent day of the window,
+ * per seller and per team label, off the payroll's own cohort
+ * (`confirmationSellerDays`). A seller's days add up to the FAKT 2 they are
+ * paid on; a label's days to its ROP's 2% basis. Pay is not split by day — a
+ * tier is reached over the period, not on a Tuesday — so only FAKT 2 is.
+ */
+export interface PayrollDaysDto {
+  /** Every Tashkent day of the window, oldest first, `YYYY-MM-DD`. */
+  readonly days: readonly string[]
+  /** The Tashkent day it is now. */
+  readonly today: string
+  /** Per employee id: FAKT 2 soʻm per day, in `days`' order — every team slice of theirs together. */
+  readonly sellers: Readonly<Record<string, readonly number[]>>
+  /** Per team label as sold under ('' for none): FAKT 2 soʻm per day — the ROP's basis. */
+  readonly rops: Readonly<Record<string, readonly number[]>>
+}
+
+/** The Tashkent days a window covers, oldest first: its first day to the day of its last instant. */
+export function windowDays(period: Period): string[] {
+  const first = zonedDateKey(period.start, period.timeZone)
+  const last = zonedDateKey(new Date(period.end.getTime() - 1), period.timeZone)
+  const out: string[] = []
+  for (let d = new Date(`${first}T00:00:00Z`); out.length < 400; d = new Date(d.getTime() + 86_400_000)) {
+    const key = d.toISOString().slice(0, 10)
+    if (key > last) break
+    out.push(key)
+  }
+  return out
+}
+
+/** The day rows of one window — the rows memo's clock and key, a scan of its own. */
+const daysCache = ttlCache<ConfirmationSellerDayRow[]>(120_000, LIVE_CACHE)
+
+/**
  * Two minutes, the same as every other live memo here and the sync worker's tick.
  *
  * Keyed on the whole question — scheme, window and currency. There is no scope in
@@ -318,6 +354,7 @@ export function resetPayrollCache(): void {
   ancestorsCache.clear()
   flatCache.clear()
   leadsCache.clear()
+  daysCache.clear()
 }
 
 /** The leads reader — «ROP otchet»'s, so «Лид сони» is one number on both screens. */
@@ -342,6 +379,34 @@ export class PayrollService {
    */
   async payroll(period: Period, previous: Period, currency: string, now: Date): Promise<PayrollDto> {
     return this.cached(payrollSchemeOf(period), period, previous, currency, now)
+  }
+
+  /** FAKT 2 per day of the window, per seller and per team label — see `PayrollDaysDto`. */
+  async days(period: Period, now: Date): Promise<PayrollDaysDto> {
+    const days = windowDays(period)
+    const at = new Map(days.map((d, i) => [d, i]))
+    const rows = await daysCache.get(`${period.start.toISOString()}|${period.end.toISOString()}`, () =>
+      this.insights.confirmationSellerDays({ ...period, restrictToEmployeeIds: null }),
+    )
+    const sellers = new Map<string, bigint[]>()
+    const rops = new Map<string, bigint[]>()
+    const add = (into: Map<string, bigint[]>, key: string, i: number, minor: bigint) => {
+      let list = into.get(key)
+      if (!list) {
+        list = days.map(() => 0n)
+        into.set(key, list)
+      }
+      list[i] = (list[i] ?? 0n) + minor
+    }
+    for (const row of rows) {
+      const i = at.get(row.day)
+      if (i === undefined) continue
+      add(sellers, row.employeeId, i, row.deliveredMinor)
+      add(rops, row.rop ?? '', i, row.deliveredMinor)
+    }
+    const soms = (map: Map<string, bigint[]>) =>
+      Object.fromEntries([...map].map(([key, list]) => [key, list.map((minor) => Number(minor) / 100)]))
+    return { days, today: zonedDateKey(now, period.timeZone), sellers: soms(sellers), rops: soms(rops) }
   }
 
   private cached(

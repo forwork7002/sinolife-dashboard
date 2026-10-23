@@ -91,6 +91,42 @@ describe('KpiSheetTable', () => {
   })
 })
 
+describe('KpiSheetTable — reading it at a glance', () => {
+  it('says in each block’s heading whether everything in it agrees', () => {
+    render(<KpiSheetTable lines={LINES} days={DAYS} today={TODAY} onOpen={() => {}} />)
+    const all = screen.getByRole('button', { name: /Asosiy koʻrsatkichlar/ })
+    // «Buyurtmalar» differs on 02.10; «Summa» agrees.
+    expect(all.textContent).toContain('1 farq')
+    expect(screen.getByRole('button', { name: /^Zextra · asosiy/ }).textContent).toContain('mos')
+  })
+
+  it('folds a block away and opens it again', () => {
+    render(<KpiSheetTable lines={LINES} days={DAYS} today={TODAY} onOpen={() => {}} />)
+    const all = screen.getByRole('button', { name: /Asosiy koʻrsatkichlar/ })
+    expect(all.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(all)
+    expect(all.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryAllByRole('row').some((r) => r.textContent?.includes('Summa · FAKT 1'))).toBe(false)
+    // The other brand's block is untouched.
+    expect(screen.getAllByRole('row').some((r) => r.getAttribute('data-side') === 'bitrix' && r.textContent?.includes('5'))).toBe(true)
+    fireEvent.click(all)
+    expect(screen.getAllByRole('row').some((r) => r.textContent?.includes('Summa · FAKT 1'))).toBe(true)
+  })
+
+  it('marks the date that holds a difference', () => {
+    render(<KpiSheetTable lines={LINES} days={DAYS} today={TODAY} onOpen={() => {}} />)
+    const heads = screen.getAllByRole('columnheader')
+    const flagged = heads.filter((h) => h.querySelector('[aria-label="Shu kuni Bitrix24 va MoySklad farq qiladi"]'))
+    expect(flagged.map((h) => h.textContent)).toEqual([expect.stringContaining('02.10')])
+  })
+
+  it('marks every day cell with its column, for the crosshair', () => {
+    const { container } = render(<KpiSheetTable lines={LINES} days={DAYS} today={TODAY} onOpen={() => {}} />)
+    expect(container.querySelectorAll('thead [data-c="1"]')).toHaveLength(1)
+    expect(container.querySelectorAll('tbody [data-c="1"]').length).toBe(LINES.filter((l) => l.kind === 'value').length)
+  })
+})
+
 describe('kpiSheetApi', () => {
   it('cuts the sheet to one brand, and keeps it whole on «Hammasi»', () => {
     expect(scopeLines(LINES, 'all')).toBe(LINES)
