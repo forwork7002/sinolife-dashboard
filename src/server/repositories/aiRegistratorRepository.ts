@@ -62,6 +62,7 @@ export class AiRegistratorRepository {
       callId: r.callId,
       dealExternalId: r.dealExternalId,
       phone: r.phone,
+      attempt: r.attempt,
       startedAt: r.startedAt,
       answeredAt: r.answeredAt,
       durationSec: r.durationSec,

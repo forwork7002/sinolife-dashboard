@@ -160,3 +160,54 @@ describe('AiRegistratorService.report', () => {
     expect(dto.classic.orderedRateBp).toBeNull()
   })
 })
+
+describe('AiRegistratorService.calls', () => {
+  // Its own window: the report and the calls are memoised per window, module-wide.
+  const window: Period = { ...period, start: new Date('2026-10-20T19:00:00Z'), preset: 'custom' }
+
+  it('lists the calls behind a number with the extensions’ sellers, the agent’s notes and the lead’s verdict', async () => {
+    const svc = service({
+      calls: [
+        call({
+          callId: 'a',
+          attempt: 2,
+          transferAttempts: [
+            { ext: '112', result: 'busy', at: null },
+            { ext: '115', result: 'answered', at: null },
+          ],
+          result: { for_whom: 'Oʻzi', problem: 'Teri', summary: '', extra: { a: 1 } },
+        }),
+        call({ callId: 'b', dealExternalId: '5', outcome: 'no_answer', answeredAt: null, transferredTo: null, startedAt: at(HOUR), result: null }),
+      ],
+      leads: [lead('1', 'cu1'), lead('5', null)],
+      classic: [],
+      sales: [sale({ externalId: 'c1', role: 'CONFIRMATION', amountMinor: 50_000_000n, createdAt: at(2 * HOUR), operatorId: 'e115' })],
+    })
+    const all = await svc.calls(window, { kind: 'all', limit: 100 }, at(5 * HOUR))
+    expect(all.total).toBe(2)
+    expect(all.rows.map((r) => r.callId)).toEqual(['b', 'a'])
+
+    const put = all.rows[1]!
+    expect(put).toMatchObject({ dealId: '1', title: 'Lid 1', attempt: 2, seller: 'Sirojov 115 Davlatbek', verdict: 'ordered' })
+    expect(put.attempts.map((x) => [x.ext, x.name, x.result])).toEqual([
+      ['112', 'Karimova 112 Malika', 'busy'],
+      ['115', 'Sirojov 115 Davlatbek', 'answered'],
+    ])
+    // Empty fields left out; a nested one as its JSON.
+    expect(put.notes).toEqual([
+      { key: 'for_whom', value: 'Oʻzi' },
+      { key: 'problem', value: 'Teri' },
+      { key: 'extra', value: '{"a":1}' },
+    ])
+    expect(put.sales.map((x) => x.dealId)).toEqual(['c1'])
+
+    // A call the report does not follow carries no verdict.
+    expect(all.rows[0]).toMatchObject({ verdict: null, seller: null, lead: { pipeline: 'Регистрация' } })
+
+    const ordered = await svc.calls(window, { kind: 'ordered', limit: 100 }, at(5 * HOUR))
+    expect(ordered.rows.map((r) => r.callId)).toEqual(['a'])
+    const capped = await svc.calls(window, { kind: 'all', limit: 1 }, at(5 * HOUR))
+    expect(capped).toMatchObject({ total: 2 })
+    expect(capped.rows).toHaveLength(1)
+  })
+})

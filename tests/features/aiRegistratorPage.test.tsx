@@ -52,7 +52,50 @@ vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return {
     ...actual,
-    apiGet: async () => ({
+    apiGet: async (path: string, params: Record<string, unknown>) => {
+      if (path === '/leads/ai-registrator/calls') {
+        asked.push(params)
+        return { data: CALLS, meta: {} }
+      }
+      return REPORT
+    },
+  }
+})
+
+const asked = vi.hoisted(() => [] as Record<string, unknown>[])
+
+const CALLS = {
+  total: 1,
+  rows: [
+    {
+      callId: 'call-1',
+      dealId: '1001',
+      title: 'Aziza',
+      phone: '998901234567',
+      at: '2026-10-22T07:00:00.000Z',
+      answeredAt: '2026-10-22T07:00:05.000Z',
+      durationSec: 84,
+      attempt: 2,
+      outcome: 'interested_transferred',
+      transferredTo: '115',
+      seller: 'Sirojov 115 Davlatbek',
+      attempts: [
+        { ext: '112', name: 'Karimova 112 Malika', result: 'busy', at: null },
+        { ext: '115', name: 'Sirojov 115 Davlatbek', result: 'answered', at: null },
+      ],
+      notes: [
+        { key: 'problem', value: 'Boʻgʻim' },
+        { key: 'region', value: 'Samarqand' },
+      ],
+      lead: { pipeline: 'Регистрация', stage: 'Обработка', status: 'OPEN' },
+      verdict: 'ordered',
+      sales: [],
+      soldBy: null,
+    },
+  ],
+}
+
+const REPORT = {
       data: {
         funnel: { calls: 12, deals: 10, answered: 8, tests: 2, byOutcome: { interested_transferred: 3, transfer_failed: 1, no_answer: 4, not_interested: 4 } },
         ai: group(3, 2, 1),
@@ -105,9 +148,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
         slackMinutes: 10,
       },
       meta: {},
-    }),
-  }
-})
+    }
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -137,5 +178,42 @@ describe('AiRegistratorPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ulanmaganlar' }))
     expect(within(deals).queryByText('Aziza')).toBeNull()
     expect(within(deals).getByText('Bekzod')).toBeTruthy()
+  })
+})
+
+describe('AiRegistratorPage — every number opens its calls', () => {
+  it('opens a tile’s calls with each phone, the extensions tried and whose they are, and what the agent wrote', async () => {
+    asked.length = 0
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Sotuvchiga ulandi — qoʻngʻiroqlar roʻyxatini ochish' }))
+    const drawer = await screen.findByRole('dialog')
+    expect(await within(drawer).findByText('+998 90 123 45 67')).toBeTruthy()
+    expect(within(drawer).getByText('Karimova 112 Malika')).toBeTruthy()
+    expect(within(drawer).getByText('— band')).toBeTruthy()
+    expect(within(drawer).getByText('Samarqand')).toBeTruthy()
+    expect(within(drawer).getByText('Hudud:')).toBeTruthy()
+    expect(within(drawer).getByText('Natija: Buyurtma bor')).toBeTruthy()
+    expect(within(drawer).getByText(/gaplashdi 1:24 · 2-urinish/)).toBeTruthy()
+    expect(asked.at(-1)).toMatchObject({ preset: 'today', kind: 'outcome', outcome: 'interested_transferred' })
+  })
+
+  it('opens a result row, a seller’s AI leads and an extension’s tries with their own filters', async () => {
+    asked.length = 0
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Koʻtarmadi' }))
+    await screen.findByRole('dialog')
+    expect(asked.at(-1)).toMatchObject({ kind: 'outcome', outcome: 'no_answer' })
+    fireEvent.click(screen.getByRole('button', { name: 'Yopish' }))
+
+    const sellers = screen.getByRole('table', { name: 'Sotuvchilar boʻyicha' })
+    fireEvent.click(within(within(sellers).getByRole('rowheader', { name: /Sirojov/ }).closest('tr')!).getByRole('button', { name: '2' }))
+    await screen.findByRole('dialog')
+    expect(asked.at(-1)).toMatchObject({ kind: 'seller', seller: 'e115' })
+    fireEvent.click(screen.getByRole('button', { name: 'Yopish' }))
+
+    const tries = screen.getByRole('table', { name: 'Ulash urinishlari' })
+    fireEvent.click(within(tries).getByRole('button', { name: '4' }))
+    await screen.findByRole('dialog')
+    expect(asked.at(-1)).toMatchObject({ kind: 'ext', ext: '115' })
   })
 })

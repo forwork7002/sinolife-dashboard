@@ -1,6 +1,7 @@
 import { rateBp } from '@/server/domain/analytics/rates'
 import {
   type AiCall,
+  type AiCallKind,
   type CallFunnel,
   type ExtensionAttempts,
   type GroupStats,
@@ -18,6 +19,7 @@ import {
   callFunnel,
   groupStats,
   leadOutcome,
+  selectCalls,
 } from '@/server/domain/aiRegistrator/aiRegistrator'
 import { floorNumberOf, indexByFloorNumber } from '@/server/domain/employees/floorNumber'
 import { type MoneyDto, money, toMoneyDto } from '@/server/domain/money/money'
@@ -104,7 +106,53 @@ export interface AiRegistratorDto {
   readonly slackMinutes: number
 }
 
+/** One AI call as the drawer behind a number lists it — see `selectCalls`. */
+export interface AiCallRowDto {
+  readonly callId: string
+  readonly dealId: string
+  /** The Регистрация deal's title; null until the sync has read it. */
+  readonly title: string | null
+  readonly phone: string
+  readonly at: string
+  readonly answeredAt: string | null
+  readonly durationSec: number
+  /** Which attempt on the lead the agent counted it as; null when it did not say. */
+  readonly attempt: number | null
+  readonly outcome: string
+  readonly transferredTo: string | null
+  /** The seller the answering extension resolves to by its floor number. */
+  readonly seller: string | null
+  /** Every extension tried, in order, each with the seller it resolves to. */
+  readonly attempts: readonly { readonly ext: string; readonly name: string | null; readonly result: string; readonly at: string | null }[]
+  /** What the agent wrote down, field by field, as given. */
+  readonly notes: readonly { readonly key: string; readonly value: string }[]
+  /** The Регистрация deal now; null until the sync has read it. */
+  readonly lead: { readonly pipeline: string | null; readonly stage: string | null; readonly status: string } | null
+  /** What came of the lead — the report's own verdict, for a lead it follows; null for any other call. */
+  readonly verdict: AiDealRowDto['verdict'] | null
+  readonly sales: readonly AiSaleDto[]
+  readonly soldBy: string | null
+}
+
+export interface AiCallsDto {
+  /** Every call the filter picks; `rows` is the first `limit` of them. */
+  readonly total: number
+  readonly rows: readonly AiCallRowDto[]
+}
+
+export interface AiCallsQuery {
+  readonly kind: AiCallKind | 'ordered'
+  readonly outcome?: string | null
+  readonly ext?: string | null
+  readonly seller?: string | null
+  readonly q?: string | null
+  readonly limit: number
+}
+
 const cache = ttlCache<AiRegistratorDto>(60_000, LIVE_CACHE)
+/** The window's stored calls, for the drawers — the report's own clock. */
+const callsCache = ttlCache<AiCall[]>(60_000, LIVE_CACHE)
+
 
 const textOf = (result: Readonly<Record<string, unknown>> | null, key: string): string | null => {
   const value = result?.[key]
@@ -125,6 +173,65 @@ export class AiRegistratorService {
   report(period: Period, now: Date): Promise<AiRegistratorDto> {
     const key = `ai|${period.preset}|${period.start.toISOString()}|${period.end.toISOString()}`
     return cache.get(key, () => this.build(period, now))
+  }
+
+  /**
+   * The calls behind one number on the screen (`selectCalls`), newest first,
+   * the first `limit` of them in full: the phone, the deal, what the agent
+   * did and wrote, every extension it tried and whose it is, the lead now,
+   * and — for a lead the report follows — what came of it, in the report's
+   * own words (`deals`), so a row here and the row there cannot disagree.
+   * «ordered» is «Buyurtma (AI lidlari)»: the report's leads with an order.
+   */
+  async calls(period: Period, query: AiCallsQuery, now: Date): Promise<AiCallsDto> {
+    const key = `${period.start.toISOString()}|${period.end.toISOString()}`
+    const [calls, roster, report] = await Promise.all([
+      callsCache.get(key, () => this.repository.calls(period.start, period.end)),
+      this.repository.roster(),
+      this.report(period, now),
+    ])
+    const { nameOf, employeeOfExt } = extensionNames(roster)
+    const sellerKeyOf = (ext: string | null) => (ext ? (employeeOfExt(ext) ?? `ext:${ext}`) : null)
+    const followed = new Map(report.deals.map((d) => [d.dealId, d]))
+    const picked = selectCalls(
+      calls,
+      query.kind === 'ordered'
+        ? { kind: 'deals', deals: new Set(report.deals.filter((d) => d.verdict === 'ordered' || d.verdict === 'sold').map((d) => d.dealId)), q: query.q }
+        : { kind: query.kind, outcome: query.outcome, ext: query.ext, seller: query.seller, q: query.q },
+      sellerKeyOf,
+    )
+    const page = picked.slice(0, query.limit)
+    const leads = await this.repository.leadDeals([...new Set(page.map((c) => c.dealExternalId))])
+    const sellerOf = (ext: string | null) => {
+      const id = ext ? employeeOfExt(ext) : null
+      return id ? (nameOf.get(id) ?? null) : null
+    }
+    return {
+      total: picked.length,
+      rows: page.map((call) => {
+        const lead = leads.get(call.dealExternalId)
+        const deal = followed.get(call.dealExternalId)
+        return {
+          callId: call.callId,
+          dealId: call.dealExternalId,
+          title: lead?.title ?? null,
+          phone: call.phone,
+          at: call.startedAt.toISOString(),
+          answeredAt: call.answeredAt?.toISOString() ?? null,
+          durationSec: call.durationSec,
+          attempt: call.attempt ?? null,
+          outcome: call.outcome,
+          transferredTo: call.transferredTo,
+          seller: sellerOf(call.transferredTo),
+          attempts: attemptsOf(call).map((a) => ({ ext: a.ext, name: sellerOf(a.ext), result: a.result, at: a.at?.toISOString() ?? null })),
+          notes: notesOf(call.result),
+          lead: lead ? { pipeline: lead.pipeline, stage: lead.stage, status: lead.status } : null,
+          verdict: deal?.verdict ?? null,
+          sales: deal?.sales ?? [],
+          soldBy: deal?.soldBy ?? null,
+        }
+      }),
+    }
   }
 
   private async build(period: Period, now: Date): Promise<AiRegistratorDto> {
@@ -162,12 +269,7 @@ export class AiRegistratorService {
     const outcomeOf = (leadKey: string): LeadOutcome => leadOutcome(byLead.get(leadKey) ?? [])
 
     // Names: the AI side by the extension's floor number, the classic side by the employee the sale credits.
-    const badge = indexByFloorNumber(roster, (p) => p)
-    const nameOf = new Map(roster.map((p) => [p.id, p.fullName]))
-    const employeeOfExt = (ext: string | null): string | null => {
-      const n = ext ? floorNumberOf(ext) : null
-      return n === null ? null : (badge.get(n) ?? null)
-    }
+    const { nameOf, employeeOfExt } = extensionNames(roster)
 
     const aiRows = aiCohort.map((t) => ({ t, outcome: outcomeOf(t.dealExternalId), handoffAt: t.call.startedAt }))
     const classicRows = classicLeads.map((l) => ({ l, outcome: outcomeOf(l.externalId), handoffAt: l.closedAt }))
@@ -286,4 +388,31 @@ function latestFailed(calls: readonly AiCall[], transferred: ReadonlySet<string>
     if (!held || call.startedAt > held.startedAt) out.set(call.dealExternalId, call)
   }
   return out
+}
+
+/** Who an extension is — the employee whose name carries its floor number — and every employee's name. */
+function extensionNames(roster: readonly { id: string; fullName: string }[]) {
+  const badge = indexByFloorNumber(roster, (p) => p)
+  const nameOf = new Map(roster.map((p) => [p.id, p.fullName]))
+  const employeeOfExt = (ext: string | null): string | null => {
+    const n = ext ? floorNumberOf(ext) : null
+    return n === null ? null : (badge.get(n) ?? null)
+  }
+  return { nameOf, employeeOfExt }
+}
+
+/**
+ * What the agent wrote down, field by field and as given: a text, a number or
+ * a yes / no is printed; anything nested is shown as its JSON, cut at 300
+ * characters. Empty fields are left out.
+ */
+export function notesOf(result: Readonly<Record<string, unknown>> | null): { key: string; value: string }[] {
+  if (!result) return []
+  return Object.entries(result).flatMap(([key, value]) => {
+    if (value === null || value === undefined) return []
+    if (typeof value === 'string') return value.trim() === '' ? [] : [{ key, value: value.trim() }]
+    if (typeof value === 'number' || typeof value === 'boolean') return [{ key, value: String(value) }]
+    const json = JSON.stringify(value)
+    return json === '[]' || json === '{}' ? [] : [{ key, value: json.length > 300 ? `${json.slice(0, 300)}…` : json }]
+  })
 }

@@ -12,6 +12,7 @@ import {
   groupStats,
   leadOutcome,
   readTransferAttempts,
+  selectCalls,
 } from '@/server/domain/aiRegistrator/aiRegistrator'
 
 const DAY = 86_400_000
@@ -227,5 +228,48 @@ describe('groupStats', () => {
       medianHoursToOrder: 3,
     })
     expect(groupStats([]).medianHoursToOrder).toBeNull()
+  })
+})
+
+describe('selectCalls — the calls behind a number', () => {
+  const calls: AiCall[] = [
+    call({ callId: 'a', dealExternalId: '1', startedAt: at(0), outcome: 'no_answer', answeredAt: null, transferredTo: null }),
+    call({ callId: 'b', dealExternalId: '1', startedAt: at(HOUR), outcome: 'interested_transferred', transferredTo: '115', transferAttempts: [
+      { ext: '112', result: 'busy', at: null },
+      { ext: '115', result: 'answered', at: null },
+    ] }),
+    call({ callId: 'c', dealExternalId: '2', phone: '+998 90 777 66 55', startedAt: at(2 * HOUR), outcome: 'transfer_failed', transferredTo: null, transferAttempts: [
+      { ext: '112', result: 'no_answer', at: null },
+    ] }),
+    call({ callId: 'd', dealExternalId: '1', startedAt: at(3 * HOUR), outcome: 'interested_transferred', transferredTo: '112' }),
+    call({ callId: 't', dealExternalId: '9', isTest: true }),
+  ]
+  const keyOf = (ext: string | null) => (ext === '115' ? 'e115' : ext ? `ext:${ext}` : null)
+  const ids = (picked: AiCall[]) => picked.map((c) => c.callId)
+
+  it('lists every real call, newest first, never a test call', () => {
+    expect(ids(selectCalls(calls, { kind: 'all' }, keyOf))).toEqual(['d', 'c', 'b', 'a'])
+  })
+
+  it('takes each deal’s latest call for «Xil lid»', () => {
+    expect(ids(selectCalls(calls, { kind: 'unique' }, keyOf))).toEqual(['d', 'c'])
+  })
+
+  it('picks by pick-up, by outcome and by every extension tried', () => {
+    expect(ids(selectCalls(calls, { kind: 'answered' }, keyOf))).toEqual(['d', 'c', 'b'])
+    expect(ids(selectCalls(calls, { kind: 'outcome', outcome: 'transfer_failed' }, keyOf))).toEqual(['c'])
+    expect(ids(selectCalls(calls, { kind: 'ext', ext: '112' }, keyOf))).toEqual(['d', 'c', 'b'])
+  })
+
+  it('gives a seller the leads put through to them at their FIRST transfer, as the seller rows count', () => {
+    // Deal 1 went to 115 first, then to 112: it is 115's lead, and not 112's.
+    expect(ids(selectCalls(calls, { kind: 'seller', seller: 'e115' }, keyOf))).toEqual(['b'])
+    expect(ids(selectCalls(calls, { kind: 'seller', seller: 'ext:112' }, keyOf))).toEqual([])
+    expect(ids(selectCalls(calls, { kind: 'deals', deals: new Set(['1']) }, keyOf))).toEqual(['b'])
+  })
+
+  it('narrows by a phone’s digits or a deal id', () => {
+    expect(ids(selectCalls(calls, { kind: 'all', q: '777 66' }, keyOf))).toEqual(['c'])
+    expect(ids(selectCalls(calls, { kind: 'all', q: '2' }, keyOf))).toEqual(['c'])
   })
 })

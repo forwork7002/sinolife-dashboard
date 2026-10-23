@@ -1,7 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import { ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
@@ -11,7 +11,9 @@ import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { bitrixDealUrl } from '@/features/target/targetApi'
 import { ApiClientError, apiGet } from '@/lib/api'
-import { formatCompactUzs, formatDateTime, formatNumber, formatPercent, formatUzs } from '@/lib/format'
+import { formatCompactUzs, formatDateShort, formatDateTime, formatNumber, formatPercent, formatUzs } from '@/lib/format'
+
+import { type AiDrill, AiCallsDrawer, OUTCOME_LABEL, phoneText } from './AiCallsDrawer'
 
 /* Mirrors `AiRegistratorDto` in `src/server/services/aiRegistratorService.ts` — nothing checks the mirror. */
 interface Money {
@@ -97,21 +99,6 @@ interface ReportDto {
 
 type Status = 'loading' | 'error' | 'ready'
 
-/** The agent's outcomes in the words its own Bitrix24 comment uses (`deal_sync.py` OUTCOME_LABELS). */
-const OUTCOME_LABEL: Readonly<Record<string, string>> = {
-  interested_transferred: 'Qiziqdi, sotuvchiga ulandi',
-  transfer_failed: 'Qiziqdi, sotuvchi javob bermadi',
-  interested_callback: 'Qiziqdi, qayta qoʻngʻiroq kelishildi',
-  not_interested: 'Qiziqmadi',
-  no_answer: 'Koʻtarmadi',
-  busy: 'Band',
-  unreachable: 'Aloqa yoʻq / oʻchiq',
-  wrong_number: 'Notoʻgʻri raqam',
-  voicemail: 'Avtojavobchi',
-  hung_up_early: 'Gaplashmay qoʻydi',
-  error: 'Texnik xato',
-}
-
 const ATTEMPT_LABEL: Readonly<Record<string, string>> = {
   answered: 'javob berdi',
   busy: 'band',
@@ -158,6 +145,10 @@ export function AiRegistratorPage() {
   })
   const status = statusOf(report)
   const data = report.data?.data
+  // The number opened — every figure on the page opens the calls behind it (`AiCallsDrawer`).
+  const [drill, setDrill] = useState<AiDrill | null>(null)
+  const period = report.data?.meta.period
+  const windowText = period ? spanText(period.start, period.end) : ''
 
   return (
     <PageShell
@@ -175,34 +166,92 @@ export function AiRegistratorPage() {
           />
         ) : (
           <>
-            <Funnel data={data} status={status} />
+            <Funnel data={data} status={status} onDrill={setDrill} />
             <Comparison data={data} status={status} />
-            <Sellers data={data} status={status} />
-            <Extensions data={data} status={status} />
+            <Sellers data={data} status={status} onDrill={setDrill} />
+            <Extensions data={data} status={status} onDrill={setDrill} />
             <Deals data={data} status={status} />
             {data && <Definitions data={data} />}
           </>
         )}
       </div>
+      {drill && <AiCallsDrawer drill={drill} windowParams={windowParams} windowText={windowText} onClose={() => setDrill(null)} />}
     </PageShell>
   )
 }
 
-function Funnel({ data, status }: { readonly data: ReportDto | undefined; readonly status: Status }) {
+/** «22.10 – 23.10»; the end is exclusive, so the last day named is the one before it. */
+function spanText(start: string, end: string): string {
+  const first = formatDateShort(start)
+  const last = formatDateShort(new Date(new Date(end).getTime() - 1).toISOString())
+  return first === last ? first : `${first} – ${last}`
+}
+
+/**
+ * A number that opens the calls behind it. A real button around the tile — a
+ * keyboard reaches it — lifting a little under the pointer, with «roʻyxat →»
+ * under the figure so it reads as something to press.
+ */
+function DrillTile({ label, onOpen, children }: { readonly label: string; readonly onOpen: () => void; readonly children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${label} — qoʻngʻiroqlar roʻyxatini ochish`}
+      className="focusable group block h-full w-full cursor-pointer rounded-[var(--radius-panel)] text-left transition-transform duration-150 hover:-translate-y-0.5 [&>div]:h-full [&>div]:transition-shadow hover:[&>div]:shadow-[0_0_0_1px_var(--accent-line)]"
+    >
+      {children}
+    </button>
+  )
+}
+
+const OPEN_CUE = (
+  <span className="text-[11px] font-medium opacity-70 transition-opacity group-hover:opacity-100" style={{ color: 'var(--accent-ink)' }}>
+    roʻyxat →
+  </span>
+)
+
+/** A figure in a table that opens the calls behind it — underlined on hover, a button to the keyboard. */
+function DrillLink({ onOpen, title, children }: { readonly onOpen: () => void; readonly title: string; readonly children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={title}
+      className="focusable cursor-pointer rounded-[4px] underline decoration-dotted underline-offset-2 transition-colors hover:text-[var(--accent-ink)] hover:decoration-solid"
+    >
+      {children}
+    </button>
+  )
+}
+
+function Funnel({ data, status, onDrill }: { readonly data: ReportDto | undefined; readonly status: Status; readonly onDrill: (drill: AiDrill) => void }) {
   const f = data?.funnel
   const transferred = f?.byOutcome.interested_transferred ?? 0
   const failed = f?.byOutcome.transfer_failed ?? 0
   return (
     <section className="flex flex-col gap-3" aria-label="AI qoʻngʻiroqlari">
       <div className="stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <StatTile status={status} label="AI qoʻngʻiroqlari" value={f?.calls ?? null} unit="count" hint={f && f.tests > 0 ? `+${f.tests} sinov qoʻngʻirogʻi hisobga kirmaydi` : 'sinov qoʻngʻiroqlarisiz'} />
-        <StatTile status={status} label="Xil lid" value={f?.deals ?? null} unit="count" hint="bir bitim bir marta" />
-        <StatTile status={status} label="Mijoz koʻtardi" value={f?.answered ?? null} unit="count" />
-        <StatTile status={status} label="Sotuvchiga ulandi" value={f ? transferred : null} unit="count" tone="good" hint="qoʻngʻiroq soni" />
-        <StatTile status={status} label="Ulanmadi" value={f ? failed : null} unit="count" tone={failed > 0 ? 'critical' : 'neutral'} hint="qiziqdi, lekin sotuvchilar javob bermadi" />
-        <StatTile status={status} label="Buyurtma (AI lidlari)" value={data?.ai.ordered ?? null} unit="count" hint={data ? `${data.ai.leads} ta ulangan liddan` : undefined} />
+        <DrillTile label="AI qoʻngʻiroqlari" onOpen={() => onDrill({ title: 'AI qoʻngʻiroqlari', kind: 'all' })}>
+          <StatTile status={status} label="AI qoʻngʻiroqlari" value={f?.calls ?? null} unit="count" hint={f && f.tests > 0 ? `+${f.tests} sinov qoʻngʻirogʻi hisobga kirmaydi` : 'sinov qoʻngʻiroqlarisiz'} context={OPEN_CUE} />
+        </DrillTile>
+        <DrillTile label="Xil lid" onOpen={() => onDrill({ title: 'Xil lidlar — har bitimning oxirgi qoʻngʻirogʻi', kind: 'unique' })}>
+          <StatTile status={status} label="Xil lid" value={f?.deals ?? null} unit="count" hint="bir bitim bir marta" context={OPEN_CUE} />
+        </DrillTile>
+        <DrillTile label="Mijoz koʻtardi" onOpen={() => onDrill({ title: 'Mijoz koʻtargan qoʻngʻiroqlar', kind: 'answered' })}>
+          <StatTile status={status} label="Mijoz koʻtardi" value={f?.answered ?? null} unit="count" context={OPEN_CUE} />
+        </DrillTile>
+        <DrillTile label="Sotuvchiga ulandi" onOpen={() => onDrill({ title: 'Sotuvchiga ulangan qoʻngʻiroqlar', kind: 'outcome', outcome: 'interested_transferred' })}>
+          <StatTile status={status} label="Sotuvchiga ulandi" value={f ? transferred : null} unit="count" tone="good" hint="qoʻngʻiroq soni" context={OPEN_CUE} />
+        </DrillTile>
+        <DrillTile label="Ulanmadi" onOpen={() => onDrill({ title: 'Ulanmadi — qiziqdi, sotuvchi javob bermadi', kind: 'outcome', outcome: 'transfer_failed' })}>
+          <StatTile status={status} label="Ulanmadi" value={f ? failed : null} unit="count" tone={failed > 0 ? 'critical' : 'neutral'} hint="qiziqdi, lekin sotuvchilar javob bermadi" context={OPEN_CUE} />
+        </DrillTile>
+        <DrillTile label="Buyurtma (AI lidlari)" onOpen={() => onDrill({ title: 'Buyurtma boʻlgan AI lidlari', kind: 'ordered' })}>
+          <StatTile status={status} label="Buyurtma (AI lidlari)" value={data?.ai.ordered ?? null} unit="count" hint={data ? `${data.ai.leads} ta ulangan liddan` : undefined} context={OPEN_CUE} />
+        </DrillTile>
       </div>
-      <ChartCard title="Qoʻngʻiroqlar natijasi" hint="Davrdagi har bir AI qoʻngʻirogʻi, agent yozgan natija boʻyicha">
+      <ChartCard title="Qoʻngʻiroqlar natijasi" hint="Davrdagi har bir AI qoʻngʻirogʻi, agent yozgan natija boʻyicha · qatorni bosing — oʻsha qoʻngʻiroqlar raqamlari bilan">
         {status === 'loading' || !data ? (
           <LoadingSkeleton rows={3} />
         ) : Object.keys(data.funnel.byOutcome).length === 0 ? (
@@ -217,7 +266,12 @@ function Funnel({ data, status }: { readonly data: ReportDto | undefined; readon
                 .map(([outcome, n]) => (
                   <tr key={outcome} className="border-t" style={{ borderColor: 'var(--grid)' }}>
                     <th scope="row" className="py-1 pr-3 text-left font-medium" style={{ color: 'var(--ink-primary)' }}>
-                      {OUTCOME_LABEL[outcome] ?? outcome}
+                      <DrillLink
+                        title="Shu natijali qoʻngʻiroqlarni ochish"
+                        onOpen={() => onDrill({ title: OUTCOME_LABEL[outcome] ?? outcome, kind: 'outcome', outcome })}
+                      >
+                        {OUTCOME_LABEL[outcome] ?? outcome}
+                      </DrillLink>
                     </th>
                     <td className="py-1 text-right">{share(n, data.funnel.calls)}</td>
                   </tr>
@@ -319,11 +373,11 @@ function VerdictLine({ data }: { readonly data: ReportDto }) {
   )
 }
 
-function Sellers({ data, status }: { readonly data: ReportDto | undefined; readonly status: Status }) {
+function Sellers({ data, status, onDrill }: { readonly data: ReportDto | undefined; readonly status: Status; readonly onDrill: (drill: AiDrill) => void }) {
   return (
     <ChartCard
       title="Sotuvchilar boʻyicha"
-      hint="Har bir sotuvchi: AI unga ulab bergan lidlar va xuddi shu davrda unga oddiy registrator orqali kelgan lidlar · sotuvchi ichki raqami boʻyicha aniqlanadi"
+      hint="Har bir sotuvchi: AI unga ulab bergan lidlar va xuddi shu davrda unga oddiy registrator orqali kelgan lidlar · sotuvchi ichki raqami boʻyicha aniqlanadi · AI «lid» sonini bosing — qaysi raqamlar ulangan"
     >
       {status === 'loading' || !data ? (
         <LoadingSkeleton rows={3} />
@@ -355,7 +409,18 @@ function Sellers({ data, status }: { readonly data: ReportDto | undefined; reado
                     {s.name ?? 'Aniqlanmagan'}
                     {s.ext ? <span style={{ color: 'var(--ink-muted)' }}> · {s.ext}</span> : null}
                   </th>
-                  <td className="py-1.5 pr-3 text-right font-semibold">{formatNumber(s.ai.leads)}</td>
+                  <td className="py-1.5 pr-3 text-right font-semibold">
+                    {s.ai.leads > 0 ? (
+                      <DrillLink
+                        title="AI shu sotuvchiga ulagan lidlarni ochish"
+                        onOpen={() => onDrill({ title: `AI ulab bergan lidlar · ${s.name ?? 'Aniqlanmagan'}${s.ext ? ` · ${s.ext}` : ''}`, kind: 'seller', seller: s.key })}
+                      >
+                        {formatNumber(s.ai.leads)}
+                      </DrillLink>
+                    ) : (
+                      formatNumber(s.ai.leads)
+                    )}
+                  </td>
                   <td className="py-1.5 pr-3 text-right">{share(s.ai.ordered, s.ai.leads)}</td>
                   <td className="py-1.5 pr-3 text-right">{share(s.ai.sold, s.ai.leads)}</td>
                   <td className="py-1.5 pr-3 text-right">{uzs(s.ai.soldSum)}</td>
@@ -373,9 +438,9 @@ function Sellers({ data, status }: { readonly data: ReportDto | undefined; reado
   )
 }
 
-function Extensions({ data, status }: { readonly data: ReportDto | undefined; readonly status: Status }) {
+function Extensions({ data, status, onDrill }: { readonly data: ReportDto | undefined; readonly status: Status; readonly onDrill: (drill: AiDrill) => void }) {
   return (
-    <ChartCard title="Ulash urinishlari" hint="AI navbat bilan teradi: band yoki javob bermasa — keyingi raqamga oʻtadi · har bir urinish alohida">
+    <ChartCard title="Ulash urinishlari" hint="AI navbat bilan teradi: band yoki javob bermasa — keyingi raqamga oʻtadi · har bir urinish alohida · sonini bosing — shu raqamga urinilgan qoʻngʻiroqlar">
       {status === 'loading' || !data ? (
         <LoadingSkeleton rows={3} />
       ) : data.extensions.length === 0 ? (
@@ -402,7 +467,14 @@ function Extensions({ data, status }: { readonly data: ReportDto | undefined; re
                     {e.ext}
                     {e.name ? <span style={{ color: 'var(--ink-muted)' }}> · {e.name}</span> : null}
                   </th>
-                  <td className="py-1.5 pr-3 text-right font-semibold">{formatNumber(e.tried)}</td>
+                  <td className="py-1.5 pr-3 text-right font-semibold">
+                    <DrillLink
+                      title="Shu ichki raqamga urinilgan qoʻngʻiroqlarni ochish"
+                      onOpen={() => onDrill({ title: `Ichki raqam ${e.ext}${e.name ? ` · ${e.name}` : ''} — urinishlar`, kind: 'ext', ext: e.ext })}
+                    >
+                      {formatNumber(e.tried)}
+                    </DrillLink>
+                  </td>
                   <td className="py-1.5 pr-3 text-right" style={{ color: 'var(--status-good)' }}>
                     {share(e.answered, e.tried)}
                   </td>
@@ -484,7 +556,7 @@ function DealLine({ d }: { readonly d: DealRow }) {
         <a href={bitrixDealUrl(d.dealId)} target="_blank" rel="noreferrer" className="font-medium underline underline-offset-2" style={{ color: 'var(--ink-primary)' }}>
           {d.title ?? `#${d.dealId}`}
         </a>
-        <div style={{ color: 'var(--ink-muted)' }}>{d.phone}</div>
+        <div className="tabular" style={{ color: 'var(--ink-muted)' }}>{phoneText(d.phone)}</div>
       </td>
       <td className="py-1.5 pr-3">
         {d.transferredTo ? (

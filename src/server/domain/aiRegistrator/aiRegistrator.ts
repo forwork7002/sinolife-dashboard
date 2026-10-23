@@ -75,6 +75,8 @@ export interface AiCall {
   readonly callId: string
   readonly dealExternalId: string
   readonly phone: string
+  /** Which attempt on this lead the agent counted it as, from 1; absent on a hand-built call. */
+  readonly attempt?: number
   readonly startedAt: Date
   readonly answeredAt: Date | null
   readonly durationSec: number
@@ -337,3 +339,81 @@ function median(sorted: readonly number[]): number | null {
  * order moves the rate by more than five points.
  */
 export const MIN_LEADS_TO_COMPARE = 20
+
+/**
+ * WHICH CALLS A NUMBER ON THE SCREEN STANDS FOR (the owner, 2026-10-23: «AI
+ * qoʻngʻiroq degan joylarda ustiga bossa qaysi nomerlar … kim ulaganini, kim
+ * nima qilgani koʻrilib turilishi kerak»). Every figure on «AI registrator»
+ * opens the calls behind it, picked by the very rule that counted it:
+ *
+ *   all       every call — «AI qoʻngʻiroqlari» (`callFunnel.calls`)
+ *   unique    each deal's latest call — «Xil lid» (`callFunnel.deals`)
+ *   answered  the client picked up — «Mijoz koʻtardi»
+ *   outcome   one outcome — «Sotuvchiga ulandi», «Ulanmadi», each result row
+ *   ext       every call that tried this extension — «Ulash urinishlari»
+ *   seller    the leads put through to this seller, at their FIRST transfer
+ *             (`aiTransfers`) — the «AI ulab bergan · lid» column
+ *   deals     the given leads at their first transfer — «Buyurtma (AI lidlari)»
+ *
+ * Test calls are never listed, as they are never counted. `q` narrows to a
+ * phone (by its digits) or a deal id. Newest first.
+ */
+export type AiCallKind = 'all' | 'unique' | 'answered' | 'outcome' | 'ext' | 'seller' | 'deals'
+
+export interface AiCallFilter {
+  readonly kind: AiCallKind
+  readonly outcome?: string | null
+  readonly ext?: string | null
+  /** A seller's key as the screen's seller rows carry it: the employee id, or `ext:<n>` for an unnamed extension. */
+  readonly seller?: string | null
+  readonly deals?: ReadonlySet<string> | null
+  readonly q?: string | null
+}
+
+export function selectCalls(
+  calls: readonly AiCall[],
+  filter: AiCallFilter,
+  sellerKeyOf: (ext: string | null) => string | null,
+): AiCall[] {
+  const real = calls.filter((c) => !c.isTest)
+  let picked: AiCall[]
+  switch (filter.kind) {
+    case 'all':
+      picked = real
+      break
+    case 'unique': {
+      const latest = new Map<string, AiCall>()
+      for (const c of real) {
+        const held = latest.get(c.dealExternalId)
+        if (!held || c.startedAt > held.startedAt) latest.set(c.dealExternalId, c)
+      }
+      picked = [...latest.values()]
+      break
+    }
+    case 'answered':
+      picked = real.filter((c) => c.answeredAt !== null)
+      break
+    case 'outcome':
+      picked = real.filter((c) => c.outcome === filter.outcome)
+      break
+    case 'ext':
+      picked = real.filter((c) => attemptsOf(c).some((a) => a.ext === filter.ext))
+      break
+    case 'seller':
+      picked = aiTransfers(real)
+        .filter((t) => sellerKeyOf(t.call.transferredTo) === filter.seller)
+        .map((t) => t.call)
+      break
+    case 'deals':
+      picked = aiTransfers(real)
+        .filter((t) => filter.deals?.has(t.dealExternalId) ?? false)
+        .map((t) => t.call)
+      break
+  }
+  const needle = (filter.q ?? '').trim()
+  if (needle !== '') {
+    const digits = needle.replace(/\D/g, '')
+    picked = picked.filter((c) => c.dealExternalId === needle || (digits.length >= 3 && c.phone.replace(/\D/g, '').includes(digits)))
+  }
+  return [...picked].sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())
+}
