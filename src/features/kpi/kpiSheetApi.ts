@@ -53,22 +53,6 @@ export function scopeLines(lines: readonly KpiSheetLine[], scope: KpiSheetScope)
   return scope === 'all' ? lines : lines.filter((l) => l.scope === scope)
 }
 
-/**
- * Whether a figure's group shows a difference anywhere in the month — the
- * mark its label carries. Read off the group's «Farq» row (a difference row
- * of its own for «Farqli buyurtmalar»); a group with neither has none.
- */
-export function groupDiffers(lines: readonly KpiSheetLine[], at: number): boolean {
-  for (let i = at; i < lines.length; i++) {
-    const line = lines[i]!
-    if (line.kind !== 'value' || (i > at && line.opens)) return false
-    if (line.side === 'diff' || line.side === 'mismatch') {
-      return line.days.some((v) => v !== null && Math.round(v) !== 0)
-    }
-  }
-  return false
-}
-
 const SIDE_NAME: Record<KpiSheetSide, string> = {
   bitrix: 'Bitrix24',
   moysklad: 'MoySklad',
@@ -100,4 +84,104 @@ export function kpiSheetCsv(data: KpiSheetDto, lines: readonly KpiSheetLine[]): 
     )
   }
   return `﻿${out.join('\r\n')}`
+}
+
+// ---------------------------------------------------------------------------
+// The sheet as the screen draws it: a figure is a PAIR, not three rows
+// ---------------------------------------------------------------------------
+
+type TitleLine = Extract<KpiSheetLine, { kind: 'title' }>
+
+/**
+ * One figure on screen: its Bitrix24 row and its MoySklad row, the
+ * difference read off the two (the server's «Farq» row stays in the payload
+ * and in the CSV). `match` is how much of the month agrees — see `matchOf`.
+ */
+export interface KpiPair {
+  readonly kind: 'pair'
+  readonly key: string
+  readonly label: string
+  readonly unit: KpiSheetUnit
+  readonly scope: KpiSheetScope
+  readonly basis: KpiSheetBasis
+  readonly bitrix: KpiSheetValueLine
+  readonly moysklad: KpiSheetValueLine
+  /** MoySklad − Bitrix24 per day; null where either side has no figure. */
+  readonly gaps: readonly (number | null)[]
+  /** The month's: the server's «Farq» total when there is one, else the two totals' gap. */
+  readonly gapTotal: number | null
+  readonly differs: boolean
+  /** Per cent, 0–100; null when Bitrix24 holds nothing to agree with. */
+  readonly match: number | null
+}
+
+export type KpiGroup =
+  | { readonly kind: 'title'; readonly line: TitleLine }
+  | KpiPair
+  | { readonly kind: 'single'; readonly line: KpiSheetValueLine; readonly differs: boolean }
+
+/** A gap under one whole piece or soʻm (a cent for dollars) is float or tiyin noise — the cards' rule. */
+export function wholeGap(value: number, unit: KpiSheetUnit): number {
+  return unit === 'usd' ? Math.round(value * 100) / 100 : Math.round(value)
+}
+
+/**
+ * How much of the month the two systems agree on, per cent: one less the
+ * days' absolute gaps over Bitrix24's figure on those days — so a −3 on one
+ * day and a +3 on another is not «100%», as their sum would say.
+ */
+export function matchOf(bitrix: readonly (number | null)[], gaps: readonly (number | null)[], unit: KpiSheetUnit): number | null {
+  let base = 0
+  let off = 0
+  gaps.forEach((gap, i) => {
+    const b = bitrix[i]
+    if (gap === null || b === null || b === undefined) return
+    base += Math.abs(b)
+    off += Math.abs(wholeGap(gap, unit))
+  })
+  if (base === 0) return off === 0 ? null : 0
+  return Math.max(0, (1 - off / base) * 100)
+}
+
+/** The lines folded into what the screen draws: headings, pairs and the single «Farqli buyurtmalar» rows. */
+export function sheetGroups(lines: readonly KpiSheetLine[]): KpiGroup[] {
+  const out: KpiGroup[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!
+    if (line.kind === 'title') {
+      out.push({ kind: 'title', line })
+      continue
+    }
+    const next = lines[i + 1]
+    if (line.side === 'bitrix' && next?.kind === 'value' && next.side === 'moysklad') {
+      const after = lines[i + 2]
+      const diff = after?.kind === 'value' && after.side === 'diff' ? after : null
+      const gaps = line.days.map((b, d) => {
+        const m = next.days[d]
+        return b === null || m === null || m === undefined ? null : m - b
+      })
+      const gapTotal = diff ? diff.total : line.total === null || next.total === null ? null : next.total - line.total
+      const differs = gaps.some((g) => g !== null && wholeGap(g, line.unit) !== 0) || (gapTotal !== null && wholeGap(gapTotal, line.unit) !== 0)
+      out.push({
+        kind: 'pair',
+        key: line.key.replace(/:bitrix$/, ''),
+        label: line.label,
+        unit: line.unit,
+        scope: line.scope,
+        basis: line.basis,
+        bitrix: line,
+        moysklad: next,
+        gaps,
+        gapTotal,
+        differs,
+        match: matchOf(line.days, gaps, line.unit),
+      })
+      i += diff ? 2 : 1
+      continue
+    }
+    if (line.side === 'mismatch') {
+      out.push({ kind: 'single', line, differs: line.days.some((v) => v !== null && v > 0) })
+    }
+  }
+  return out
 }

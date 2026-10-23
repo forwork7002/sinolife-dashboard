@@ -30,6 +30,7 @@ import { t } from '@/lib/messages'
 
 import { type KpiSheetDto, type KpiSheetScope, KPI_SHEET_FIRST_MONTH, kpiMonthIn, kpiSheetCsv, scopeLines } from './kpiSheetApi'
 import { type KpiSheetDrill, KpiSheetTable } from './KpiSheetTable'
+import { KpiSummary } from './KpiSummary'
 
 const SCOPE_OPTIONS: readonly { readonly value: KpiSheetScope; readonly label: string; readonly swatch?: string }[] = [
   { value: 'all', label: 'Hammasi' },
@@ -124,7 +125,8 @@ export function KpiSheetScreen({ tabs }: { readonly tabs: ReactNode }) {
         </>
       }
     >
-      <div ref={scopeRef} className="flex h-full min-h-0 flex-col">
+      <div ref={scopeRef} className="flex h-full min-h-0 flex-col gap-3">
+        {data && !forbidden && <KpiSummary lines={data.lines} scope={scope} />}
         {forbidden ? (
           <Card className="p-5">
             <EmptyState
