@@ -281,8 +281,11 @@ function DayCells({ day, strong = false, tint }: { readonly day: DayDto; readonl
   )
 }
 
-/** One day's orders, read when the day is opened — the same window, brand and FAKT figure, plus the day. */
-function DayOrders({ params, day, basis }: { readonly params: Record<string, string | number>; readonly day: string; readonly basis: Basis }) {
+/**
+ * One day's orders, read when the day is opened — the same window, brand and
+ * FAKT figure, plus the day. «KPI jadvali»'s day cells open it too, in a drawer.
+ */
+export function DayOrders({ params, day, basis }: { readonly params: Record<string, string | number>; readonly day: string; readonly basis: Basis }) {
   const dayParams = useMemo(() => ({ ...params, day }), [params, day])
   const query = useQuery({
     queryKey: ['kpi-day-orders', dayParams],

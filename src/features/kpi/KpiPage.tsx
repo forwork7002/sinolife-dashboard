@@ -1,12 +1,14 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { type ReactNode, useState } from 'react'
 
 import { ErrorState, statusOf } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
 import { Card, ChartCard } from '@/components/ui/Card'
-import { StatusBadge } from '@/components/ui/Controls'
+import { SegmentedControl, StatusBadge } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
+import { KpiSheetScreen } from '@/features/kpi/KpiSheetScreen'
 import { NutritionistCard } from '@/features/kpi/NutritionistCard'
 import { ProductCompareCard } from '@/features/kpi/ProductCompareCard'
 import { SverkaDaysCard } from '@/features/kpi/SverkaDaysCard'
@@ -82,7 +84,32 @@ const METRIC_LABELS: Record<string, string> = {
   CONVERSION_RATE: 'Konversiya',
 }
 
+/*
+  TWO TABS, as «RNP jadvali» has (the client, 2026-10-23: «kpi natijalari
+  boʻlimini yaxshilash kerak … jadval usulida … rnp jadvali vizualidagi»).
+  «KPI jadvali» — the cards' figures as one month sheet, a column per day —
+  opens first; «Kartalar» keeps every card as it was, on the dashboard window.
+  Only the open tab asks the server: each is its own page under the switch.
+*/
+type Tab = 'sheet' | 'cards'
+
 export function KpiPage() {
+  const [tab, setTab] = useState<Tab>('sheet')
+  const tabs = (
+    <SegmentedControl<Tab>
+      ariaLabel="Qaysi koʻrinish"
+      value={tab}
+      onChange={setTab}
+      options={[
+        { value: 'sheet', label: 'KPI jadvali' },
+        { value: 'cards', label: 'Kartalar' },
+      ]}
+    />
+  )
+  return tab === 'sheet' ? <KpiSheetScreen tabs={tabs} /> : <KpiCards tabs={tabs} />
+}
+
+function KpiCards({ tabs }: { readonly tabs: ReactNode }) {
   const { apiParams } = useDashboardFilters()
 
   const query = useQuery({
@@ -234,6 +261,7 @@ export function KpiPage() {
       meta={query.data?.meta}
       stale={query.isPlaceholderData}
       filters={{ employees: true, departments: true }}
+      actions={tabs}
     >
       {/*
         The lead instrument — the page's one hero, the only panel wearing the

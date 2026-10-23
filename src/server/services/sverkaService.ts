@@ -44,8 +44,10 @@ import {
   type NutritionistBrand,
   type NutritionistPay,
   NUTRITIONIST_BRANDS,
+  NUTRITIONIST_USD_PER_ORDER,
   nutritionistPay,
 } from '@/server/domain/sverka/nutritionist'
+import { type KpiSheetLine, kpiSheet, sheetMonthDays } from '@/server/domain/sverka/kpiSheet'
 import {
   type BrandLine,
   type DayOrder,
@@ -54,7 +56,7 @@ import {
   dayOrders,
   sverkaDays,
 } from '@/server/domain/sverka/sverkaDays'
-import type { Period } from '@/server/domain/period/period'
+import { type Period, resolvePeriod, zonedDateKey } from '@/server/domain/period/period'
 import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { InsightsRepository, type SverkaDealRow } from '@/server/repositories/insightsRepository'
 import type { MoyskladOrderRow, SverkaRepository } from '@/server/repositories/sverkaRepository'
@@ -247,6 +249,24 @@ export interface KpiDaysDto {
   readonly total: KpiDayDto
   /** The `day` asked for, its orders; null when no day was asked. */
   readonly orders: readonly KpiDayOrderDto[] | null
+}
+
+/** «KPI jadvali» — one calendar month of the cards above, a column per day (`kpiSheet`). */
+export interface KpiSheetDto {
+  /** `YYYY-MM`. */
+  readonly month: string
+  /** Every day of the month, `YYYY-MM-DD`. */
+  readonly days: readonly string[]
+  /** The Tashkent day it is now — the days after it have no figures. */
+  readonly today: string
+  readonly usdPerOrder: number
+  readonly moysklad: {
+    /** `MOYSKLAD_DATA_FLOOR` — MoySklad's cells before it are empty. */
+    readonly since: string
+    /** The MoySklad import's last successful run; null before the first. */
+    readonly lastSuccessAt: string | null
+  }
+  readonly lines: readonly KpiSheetLine[]
 }
 
 export interface SverkaTeamDto {
@@ -560,6 +580,36 @@ export class SverkaService {
       days: days.map(dayDto),
       total: dayDto(total),
       orders: day === null ? null : dayOrders(tagged, basis, timeZone, day).map(dayOrderDto),
+    }
+  }
+
+  /**
+   * «KPI jadvali» on «KPI rejalari»: the cards' figures for one calendar
+   * month, a column per day (`kpiSheet`), over the SAME cached brand lines —
+   * the month as a custom window, so `/kpi/days` asked for the same month
+   * (a day cell's orders) reads this very cache entry.
+   */
+  async sheet(month: string, timeZone: string, now: Date): Promise<KpiSheetDto> {
+    const days = sheetMonthDays(month)
+    const period = resolvePeriod('custom', {
+      timeZone,
+      now,
+      customStart: new Date(`${days[0]}T00:00:00Z`),
+      customEnd: new Date(`${days[days.length - 1]}T00:00:00Z`),
+    })
+    const today = zonedDateKey(now, timeZone)
+    const [lines, freshness] = await Promise.all([this.brandLines(period), this.repository.freshness()])
+    const tagged: BrandLine[] = NUTRITIONIST_BRANDS.flatMap((brand) => lines[brand].map((line) => ({ brand, line })))
+    return {
+      month,
+      days,
+      today,
+      usdPerOrder: NUTRITIONIST_USD_PER_ORDER,
+      moysklad: {
+        since: MOYSKLAD_DATA_FLOOR.toISOString(),
+        lastSuccessAt: freshness.lastSuccessAt?.toISOString() ?? null,
+      },
+      lines: kpiSheet({ lines: tagged, days, today, timeZone }),
     }
   }
 
