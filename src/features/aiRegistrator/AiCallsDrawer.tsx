@@ -111,6 +111,24 @@ const NOTE_LABEL: Readonly<Record<string, string>> = {
   callback_time: 'Qayta qoʻngʻiroq',
   language: 'Til',
   gender: 'Jinsi',
+  location: 'Manzil',
+  city: 'Shahar',
+  district: 'Tuman',
+}
+
+/** The agent's enumerated answers, in the floor's words; a free text prints as written. */
+const NOTE_VALUE: Readonly<Record<string, string>> = {
+  self: 'oʻzi uchun',
+  relative: 'qarindoshi uchun',
+  other: 'boshqa',
+  yes: 'ha',
+  no: 'yoʻq',
+  true: 'ha',
+  false: 'yoʻq',
+  uz: 'oʻzbekcha',
+  ru: 'ruscha',
+  male: 'erkak',
+  female: 'ayol',
 }
 
 const PAGE = 100
@@ -372,7 +390,7 @@ function CallCard({ row }: { row: CallRow }) {
                     ochish
                   </a>
                 ) : (
-                  n.value
+                  (NOTE_VALUE[n.value.toLowerCase()] ?? n.value)
                 )}
               </dd>
             </div>

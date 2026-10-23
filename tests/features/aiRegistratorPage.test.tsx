@@ -86,6 +86,7 @@ const CALLS = {
       notes: [
         { key: 'problem', value: 'Boʻgʻim' },
         { key: 'region', value: 'Samarqand' },
+        { key: 'for_whom', value: 'relative' },
       ],
       lead: { pipeline: 'Регистрация', stage: 'Обработка', status: 'OPEN' },
       verdict: 'ordered',
@@ -192,6 +193,8 @@ describe('AiRegistratorPage — every number opens its calls', () => {
     expect(within(drawer).getByText('— band')).toBeTruthy()
     expect(within(drawer).getByText('Samarqand')).toBeTruthy()
     expect(within(drawer).getByText('Hudud:')).toBeTruthy()
+    // The agent's English enumerations read in the floor's words.
+    expect(within(drawer).getByText('qarindoshi uchun')).toBeTruthy()
     expect(within(drawer).getByText('Natija: Buyurtma bor')).toBeTruthy()
     expect(within(drawer).getByText(/gaplashdi 1:24 · 2-urinish/)).toBeTruthy()
     expect(asked.at(-1)).toMatchObject({ preset: 'today', kind: 'outcome', outcome: 'interested_transferred' })
