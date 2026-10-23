@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 
-import { ArrowDownGlyph, ArrowUpGlyph, CheckCircleGlyph, TriangleGlyph } from '@/components/ui/Icons'
+import { ArrowDownGlyph, ArrowUpGlyph, CheckCircleGlyph } from '@/components/ui/Icons'
 import { figureText, rnpPercent } from '@/features/rnp/rnpFigures'
 import { inkOf, mix } from '@/features/shared/sheetGrid'
 
@@ -187,7 +187,6 @@ function Verdict({ gap, unit }: { gap: number; unit: KpiPair['unit'] }) {
       style={{ background: mix('var(--status-critical)', 16), color: 'var(--status-critical)' }}
       title={gap > 0 ? 'MoySkladʼda koʻp' : 'Bitrix24ʼda koʻp'}
     >
-      <TriangleGlyph size={9} className="shrink-0" />
       <Arrow size={9} className="shrink-0" />
       {figureText(Math.abs(gap), unit)}
     </span>
