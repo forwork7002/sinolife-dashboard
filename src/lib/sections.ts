@@ -54,6 +54,13 @@ export const SECTIONS = [
   { id: 'payroll', route: '/payroll', label: 'Sotuvchilar oyligi', group: 'Jamoa' },
   { id: 'marketing', route: '/marketing', label: 'Reklama samarasi', group: 'Marketing' },
   { id: 'leads', route: '/leads', label: 'Lidlar', group: 'Marketing' },
+  /*
+    «AI registrator» (2026-10-23, the owner: «AI registrator boʻlimini … faqat
+    Umida akkauntiga»): its own grant since that day, no longer riding
+    «Lidlar»'s — an account can hold one without the other. The route stays
+    under /leads; the grant is this id.
+  */
+  { id: 'airegistrator', route: '/leads/ai-registrator', label: 'AI registrator', group: 'Marketing' },
   { id: 'target', route: '/target', label: 'Target tahlili', group: 'Marketing' },
   { id: 'roistat', route: '/roistat', label: 'Roistat', group: 'Marketing' },
 ] as const satisfies readonly {
@@ -139,6 +146,8 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
     purpose. Its endpoints ask for `analytics:read:all`.
   */
   'leads',
+  // The agent's calls and every seller's leads beside them: one company-wide set, like «Lidlar».
+  'airegistrator',
   /*
     «RNP JADVALI» (2026-09-28) FOR THE SAME REASON: the client's «СентябрРНП»
     sheet sets every ROP team, the registration desk and the Meta spend side

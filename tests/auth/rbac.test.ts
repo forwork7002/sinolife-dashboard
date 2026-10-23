@@ -14,7 +14,7 @@ import {
   wideSectionsFor,
   widenForSection,
 } from '@/server/auth/rbac'
-import { defaultSectionsFor, wideSectionsToStore } from '@/lib/sections'
+import { type SectionValue, defaultSectionsFor, wideSectionsToStore } from '@/lib/sections'
 import type { DataScopeValue, RoleValue } from '@/server/domain/types'
 
 /** Every permission an account with this role and scope would hold. */
@@ -353,5 +353,35 @@ describe('every permission is asked for somewhere', () => {
 
   it.each(PERMISSIONS.map((p) => [p]))('%s is checked by a route, a guard or the viewer', (permission) => {
     expect(askers).toContain(`'${permission}'`)
+  })
+})
+
+describe('«AI registrator» is its own grant (2026-10-23)', () => {
+  const account = (sections: SectionValue[]): Principal => ({
+    userId: 'u',
+    role: 'SALES',
+    isActive: true,
+    employeeId: null,
+    dataScope: 'ALL',
+    sections,
+  })
+
+  it('does not ride «Lidlar» any more: holding leads is not holding the AI registrator', () => {
+    expect(canSeeSection(account(['leads', 'marketing']), 'airegistrator')).toBe(false)
+    expect(canSeeSection(account(['leads', 'sellers', 'airegistrator']), 'airegistrator')).toBe(true)
+    // …and the other way round: the AI registrator alone opens no «Lidlar».
+    expect(canSeeSection(account(['airegistrator']), 'leads')).toBe(false)
+  })
+
+  it('reaches an administrator by default, and a salesperson only when ticked', () => {
+    expect(defaultSectionsFor('ADMIN')).toContain('airegistrator')
+    expect(defaultSectionsFor('SALES')).not.toContain('airegistrator')
+  })
+
+  it('is gated on its own section by its page and both its endpoints', () => {
+    const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
+    expect(read('src/app/(app)/leads/ai-registrator/page.tsx')).toContain("requireSection('airegistrator')")
+    expect(read('src/app/api/v1/leads/ai-registrator/route.ts')).toContain("section: 'airegistrator'")
+    expect(read('src/app/api/v1/leads/ai-registrator/calls/route.ts')).toContain("section: 'airegistrator'")
   })
 })

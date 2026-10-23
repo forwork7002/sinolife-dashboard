@@ -102,8 +102,8 @@ interface NavItem {
   readonly href: string
   /**
    * The section route whose grant opens this entry, when it is not `href`
-   * itself — a screen under another's section (`/leads/ai-registrator` rides
-   * `/leads`), so no new grant has to be ticked on every account.
+   * itself — a screen under another's section. None does today: «AI
+   * registrator» rode `/leads` until it became its own grant (2026-10-23).
    */
   readonly gate?: string
   /**
@@ -157,8 +157,8 @@ const NAV_GROUPS: readonly { readonly label: string | null; readonly items: read
     items: [
       { href: '/marketing', label: t.nav.marketing, icon: MegaphoneIcon },
       { href: '/leads', label: t.nav.leads, icon: InboxIcon },
-      // The owner's «AI registrator» (2026-10-22): the voice agent's leads, on «Lidlar»'s grant.
-      { href: '/leads/ai-registrator', gate: '/leads', label: t.nav.aiRegistrator, icon: BotIcon },
+      // The owner's «AI registrator» (2026-10-22): the voice agent's leads — its own grant since 2026-10-23.
+      { href: '/leads/ai-registrator', label: t.nav.aiRegistrator, icon: BotIcon },
       { href: '/target', label: t.nav.target, icon: FunnelIcon },
       { href: '/roistat', label: t.nav.roistat, icon: ChartIcon },
     ],

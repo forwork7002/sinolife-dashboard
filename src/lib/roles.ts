@@ -57,6 +57,9 @@ const ALL_ROUTES = [
   // only by default, and the endpoints refuse any account that is not
   // company-wide.
   '/leads',
+  // The AI registrator's calls and leads — its own grant since 2026-10-23. ADMIN
+  // and MANAGER by default; every other account only when ticked.
+  '/leads/ai-registrator',
   // The client's «РНП» sheet, day by day, every team. ADMIN and MANAGER only
   // by default; the endpoints refuse any account that is not company-wide.
   '/rnp',

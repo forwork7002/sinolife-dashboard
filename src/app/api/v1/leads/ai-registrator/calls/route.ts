@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic'
  * The same as `/leads/ai-registrator`, whose numbers these calls are: the
  * AI's calls belong to no sales team, so a narrowed account is refused.
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'airegistrator' } as const
 
 const text = (max: number) =>
   z

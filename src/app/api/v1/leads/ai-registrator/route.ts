@@ -8,10 +8,12 @@ export const dynamic = 'force-dynamic'
 /**
  * Who reaches this endpoint: the capability, then the screen it feeds.
  *
- * COMPANY-WIDE, like the rest of «Lidlar»: the AI's calls belong to no sales
- * team, and the comparison sets every seller side by side on purpose.
+ * COMPANY-WIDE, like «Lidlar»: the AI's calls belong to no sales team, and
+ * the comparison sets every seller side by side on purpose. Its own section
+ * since 2026-10-23, so it reaches the accounts granted «AI registrator» and
+ * not every account holding «Lidlar».
  */
-const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
+const ACCESS = { permission: 'analytics:read:all', section: 'airegistrator' } as const
 
 /**
  * «AI registrator» — the agent's calls in the window, the leads it put through

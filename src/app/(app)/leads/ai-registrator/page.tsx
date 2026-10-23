@@ -6,9 +6,9 @@ import { requireSection } from '@/server/auth/pageGuard'
 // Authenticated and URL-filtered: never statically prerendered.
 export const dynamic = 'force-dynamic'
 
-/** «AI registrator» — under «Lidlar», on its section: the AI's leads are Регистрация leads. */
+/** «AI registrator» — under /leads in the URL, on its own section since 2026-10-23 (the owner: «faqat Umida akkauntiga»). */
 export default async function Page() {
-  await requireSection('leads')
+  await requireSection('airegistrator')
 
   return (
     // URL filtrlari klientda oʻqiladi; Suspense prerender paytida qobiqni chiqaradi.
