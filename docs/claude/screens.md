@@ -641,9 +641,12 @@ Per-screen traps worth knowing before you touch one:
   by union-find; no number → the deal's «Телефон ракам» → `c:<contact>` →
   `d:<deal>`. One client a day = one безквал. Its ROP = the first ROP its
   deals of the day were handed to, by time — «ROP KVAL LID», else «РОП
-  (Первичка)», the person's team if they head one, else their name (the
+  (Первичка)», the person's team if they head one, else the ROP team they
+  sit in (since 2026-10-24 — not their own name, which made rows of
+  «Дониёр Рустамов», «201 Ruxshona»), else that deal names no ROP (the
   user's reading of «birinchi berilgan ROP», 2026-10-22); none →
-  «Tarqatilmagan». The owner / seller / hand-over guesses are gone. Live
+  «Tarqatilmagan». A change to these rules bumps `BEZKVAL_RULES` and the
+  worker counts every stored day again. The owner / seller / hand-over guesses are gone. Live
   check 21.10 on the portal: 2 816 deals in Регистрация by DATE_CREATE, 2 372
   numbers (the spec's own measure, exact); the new rule 2 922 leads → 2 398
   clients, 873 «Tarqatilmagan», 11 with two ROPs; new in 30 days 1 791, new

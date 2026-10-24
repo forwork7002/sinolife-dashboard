@@ -206,13 +206,13 @@ export class RegistrationRepository {
     return { computedAt: mark?.computedAt ?? null, clients }
   }
 
-  /** When each day of `from`…`to` was computed; a day missing has never been. */
-  async bezkvalComputedDays(from: string, to: string): Promise<Map<string, Date>> {
+  /** When each day of `from`…`to` was computed, and by which rules; a day missing has never been. */
+  async bezkvalComputedDays(from: string, to: string): Promise<Map<string, { at: Date; rules: string | null }>> {
     const rows = await this.prisma.bezkvalDay.findMany({
       where: { day: { gte: dateOf(from), lte: dateOf(to) } },
-      select: { day: true, computedAt: true },
+      select: { day: true, computedAt: true, rules: true },
     })
-    return new Map(rows.map((r) => [r.day.toISOString().slice(0, 10), r.computedAt]))
+    return new Map(rows.map((r) => [r.day.toISOString().slice(0, 10), { at: r.computedAt, rules: r.rules }]))
   }
 
   /**
@@ -235,7 +235,7 @@ export class RegistrationRepository {
   }
 
   /** Replace one day's stored clients — in one transaction, so a reader sees the day before or after, never half. */
-  async storeBezkvalDay(day: string, rows: readonly { key: string; client: BezkvalClientDto }[], at: Date): Promise<void> {
+  async storeBezkvalDay(day: string, rows: readonly { key: string; client: BezkvalClientDto }[], at: Date, rules: string): Promise<void> {
     const date = dateOf(day)
     await this.prisma.$transaction(
       async (tx) => {
@@ -262,8 +262,8 @@ export class RegistrationRepository {
         const deals = rows.reduce((n, r) => n + r.client.deals.length, 0)
         await tx.bezkvalDay.upsert({
           where: { day: date },
-          create: { day: date, computedAt: at, deals, clients: rows.length },
-          update: { computedAt: at, deals, clients: rows.length },
+          create: { day: date, computedAt: at, deals, clients: rows.length, rules },
+          update: { computedAt: at, deals, clients: rows.length, rules },
         })
       },
       { maxWait: 30_000, timeout: 60_000 },
@@ -329,9 +329,11 @@ export class RegistrationRepository {
    * linked it yet — two such deals are still one contact.
    *
    * ITS ROP: «ROP KVAL LID» and «РОП (Первичка)», each as the team that person
-   * heads (or a «… rop» registrar's unit, `bezkvalOwnerRopSql`), else the
-   * person's own name — the spec takes the name from the portal's user list,
-   * never a list typed here, so a name the field holds is never lost.
+   * heads (or a «… rop» registrar's unit, `bezkvalOwnerRopSql`), else the ROP
+   * team they sit in — the hand-out rule of `leadRopSql` — else nobody's: a
+   * registrar or the desk's head in the field is not a ROP, and the client
+   * goes on to its next deal's ROP or to «Tarqatilmagan» (2026-10-24: the
+   * person's own name made rows of «Дониёр Рустамов», «201 Ruxshona»).
    */
   static bezkvalLeadsSql(detail = false): string {
     const lo = `(($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`
@@ -392,7 +394,13 @@ export class RegistrationRepository {
          WHERE born."categoryId" IN (0, 12) OR w.pipeline IN ('0', '12')
       ),
       names AS MATERIALIZED (
-        SELECT o."id", COALESCE(${RegistrationRepository.bezkvalOwnerRopSql('o')}, o."fullName") AS name
+        SELECT o."id",
+               COALESCE(
+                 ${RegistrationRepository.bezkvalOwnerRopSql('o')},
+                 (SELECT ${InsightsRepository.ropNameSql('dep."name"')}
+                    FROM "department" dep
+                   WHERE dep."id" = o."departmentId" AND dep."isActive")
+               ) AS name
           FROM "employee" o
          WHERE o."id" IN (SELECT rop_id FROM lead UNION SELECT rop_primary_id FROM lead)
       )

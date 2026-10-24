@@ -98,7 +98,9 @@ describe('bezkvalLeadsSql', () => {
     expect(sql).toContain(`d."leadRopEmployeeId" AS rop_primary_id`)
     expect(sql).toContain(`WHERE h."headId" = o."id" AND h."isActive"`)
     expect(sql).toContain(`AND o."fullName" ~* '(^|[^[:alpha:]])rop([^[:alpha:]]|$)'`)
-    expect(sql).toContain(`o."fullName") AS name`)
+    // A person who heads no ROP team counts for the ROP team they sit in, else for nobody — never by name.
+    expect(sql).toContain(`WHERE dep."id" = o."departmentId" AND dep."isActive")`)
+    expect(sql).not.toContain(`o."fullName") AS name`)
     expect(sql).toContain(`WHERE o."id" IN (SELECT rop_id FROM lead UNION SELECT rop_primary_id FROM lead)`)
     expect(sql).toContain(`LEFT JOIN names k ON k."id" = w.rop_id`)
     expect(sql).toContain(`LEFT JOIN names lr ON lr."id" = w.rop_primary_id`)

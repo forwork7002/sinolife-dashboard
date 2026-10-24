@@ -4,7 +4,9 @@ import type { BezkvalClientDto } from '@/server/domain/registration/bezkval'
 import {
   BEZKVAL_DAYS_PER_PASS,
   BEZKVAL_LIVE_MS,
+  BEZKVAL_RULES,
   BEZKVAL_WEEK_MS,
+  type BezkvalCounted,
   type BezkvalStore,
   bezkvalDaysDue,
   refreshBezkval,
@@ -17,7 +19,7 @@ import {
  */
 
 const NOW = new Date('2026-10-24T05:00:00.000Z')
-const ago = (ms: number) => new Date(NOW.getTime() - ms)
+const ago = (ms: number): BezkvalCounted => ({ at: new Date(NOW.getTime() - ms), rules: BEZKVAL_RULES })
 
 describe('bezkvalDaysDue', () => {
   it('a first run: today first, then back day by day, a few a pass', () => {
@@ -33,7 +35,7 @@ describe('bezkvalDaysDue', () => {
   })
 
   it('today and yesterday again after ten minutes, the week after three hours, an older day never again', () => {
-    const computed = new Map<string, Date>()
+    const computed = new Map<string, BezkvalCounted>()
     for (let d = 1; d <= 24; d++) computed.set(`2026-10-${String(d).padStart(2, '0')}`, ago(BEZKVAL_LIVE_MS - 1))
     for (let d = 1; d <= 30; d++) computed.set(`2026-09-${String(d).padStart(2, '0')}`, ago(30 * BEZKVAL_WEEK_MS))
     expect(bezkvalDaysDue({ today: '2026-10-24', computed, now: NOW })).toEqual([])
@@ -45,6 +47,15 @@ describe('bezkvalDaysDue', () => {
     computed.set('2026-10-15', ago(BEZKVAL_WEEK_MS)) // nine: counted, so never again
     computed.delete('2026-09-12')
     expect(bezkvalDaysDue({ today: '2026-10-24', computed, now: NOW })).toEqual(['2026-10-24', '2026-10-23', '2026-10-20', '2026-10-16', '2026-09-12'])
+  })
+
+  it('a day counted by other rules is counted again, as a never-counted one', () => {
+    const computed = new Map<string, BezkvalCounted>()
+    for (let d = 1; d <= 24; d++) computed.set(`2026-10-${String(d).padStart(2, '0')}`, ago(0))
+    for (let d = 1; d <= 30; d++) computed.set(`2026-09-${String(d).padStart(2, '0')}`, ago(0))
+    computed.set('2026-09-03', { at: NOW, rules: null })
+    computed.set('2026-10-02', { at: NOW, rules: 'older' })
+    expect(bezkvalDaysDue({ today: '2026-10-24', computed, now: NOW })).toEqual(['2026-10-02', '2026-09-03'])
   })
 
   it('never reaches before the first day', () => {
@@ -76,7 +87,8 @@ describe('refreshBezkval', () => {
         clock += 2_000
         return [{ key: `p:${day}`, client: client('Sevinch') }]
       },
-      storeBezkvalDay: async (day, rows, at) => {
+      storeBezkvalDay: async (day, rows, at, rules) => {
+        expect(rules).toBe(BEZKVAL_RULES)
         stored.push(`${day}:${rows.length}:${at.toISOString()}`)
         if (stored.length === 2) stop = true
       },

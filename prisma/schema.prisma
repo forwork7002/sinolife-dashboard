@@ -2175,6 +2175,8 @@ model BezkvalDay {
   /// The day's lead deals and clients when computed — the grid's footer reads them without a scan.
   deals      Int
   clients    Int
+  /// `BEZKVAL_RULES` of the code that counted it — a day counted by older rules is counted again.
+  rules      String?
 
   @@map("bezkval_day")
 }

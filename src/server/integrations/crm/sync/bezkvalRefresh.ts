@@ -20,6 +20,15 @@ import type { BezkvalClientDto } from '@/server/domain/registration/bezkval'
  * newest first, so a first run spreads over a few ticks.
  */
 
+/**
+ * The counting rules' version, stored on each day (`bezkval_day.rules`). Change
+ * it with any change to how a day is counted: every day counted by other rules
+ * is then due again, newest first, as a never-counted day is.
+ * 2026-10-24b: a person in the ROP fields who heads no ROP team counts for the
+ * ROP team they sit in, else for nobody (was: their own name).
+ */
+export const BEZKVAL_RULES = '2026-10-24b'
+
 /** The first day counted — «Guruhlar» and /rnp read whole months, the grid a month back. */
 export const BEZKVAL_FROM = '2026-09-01'
 export const BEZKVAL_LIVE_MS = 10 * 60_000
@@ -36,16 +45,20 @@ const shift = (day: string, n: number) => {
 /** The days a pass should count, in order: today, yesterday, the week before, then never-counted days, newest first. */
 export function bezkvalDaysDue(input: {
   today: string
-  /** When each day was last counted. */
-  computed: ReadonlyMap<string, Date>
+  /** When each day was last counted, and by which rules. */
+  computed: ReadonlyMap<string, BezkvalCounted>
   now: Date
   from?: string
   limit?: number
 }): string[] {
   const from = input.from ?? BEZKVAL_FROM
+  const fresh = (day: string) => {
+    const c = input.computed.get(day)
+    return c !== undefined && c.rules === BEZKVAL_RULES ? c : undefined
+  }
   const stale = (day: string, ageMs: number) => {
-    const at = input.computed.get(day)
-    return at === undefined || input.now.getTime() - at.getTime() >= ageMs
+    const c = fresh(day)
+    return c === undefined || input.now.getTime() - c.at.getTime() >= ageMs
   }
   const due: string[] = []
   for (let i = 0; i <= 1 + BEZKVAL_WEEK_DAYS; i++) {
@@ -54,16 +67,22 @@ export function bezkvalDaysDue(input: {
     if (stale(day, i <= 1 ? BEZKVAL_LIVE_MS : BEZKVAL_WEEK_MS)) due.push(day)
   }
   for (let day = shift(input.today, -(2 + BEZKVAL_WEEK_DAYS)); day >= from; day = shift(day, -1)) {
-    if (!input.computed.has(day)) due.push(day)
+    if (fresh(day) === undefined) due.push(day)
   }
   return due.slice(0, input.limit ?? BEZKVAL_DAYS_PER_PASS)
 }
 
+/** When a day was counted, and by which rules (null: before rules were stored). */
+export interface BezkvalCounted {
+  readonly at: Date
+  readonly rules: string | null
+}
+
 /** What a pass needs of the repository — a seam, so the pass is tested without a database. */
 export interface BezkvalStore {
-  bezkvalComputedDays(from: string, to: string): Promise<Map<string, Date>>
+  bezkvalComputedDays(from: string, to: string): Promise<Map<string, BezkvalCounted>>
   computeBezkvalDay(day: string, timeZone: string): Promise<{ key: string; client: BezkvalClientDto }[]>
-  storeBezkvalDay(day: string, rows: readonly { key: string; client: BezkvalClientDto }[], at: Date): Promise<void>
+  storeBezkvalDay(day: string, rows: readonly { key: string; client: BezkvalClientDto }[], at: Date, rules: string): Promise<void>
 }
 
 /**
@@ -85,7 +104,7 @@ export async function refreshBezkval(deps: {
     if (deps.stopping?.()) break
     const started = deps.now()
     const rows = await deps.store.computeBezkvalDay(day, deps.timeZone)
-    await deps.store.storeBezkvalDay(day, rows, started)
+    await deps.store.storeBezkvalDay(day, rows, started, BEZKVAL_RULES)
     days.push({ day, clients: rows.length, ms: deps.now().getTime() - started.getTime() })
   }
   return { days }
