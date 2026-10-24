@@ -35,8 +35,9 @@ vi.mock('@/server/auth/auth', () => ({
   },
 }))
 
-vi.mock('@/server/db/prisma', () => ({
-  prisma: {
+vi.mock('@/server/db/prisma', () => {
+  // `authPrisma` is the auth lane (`db/prisma.ts`); the same double serves both.
+  const prisma = {
     user: {
       findUnique: async () => ({
         role: 'SALES',
@@ -47,8 +48,9 @@ vi.mock('@/server/db/prisma', () => ({
         wideSections: [],
       }),
     },
-  },
-}))
+  }
+  return { prisma, authPrisma: prisma }
+})
 
 const { requirePrincipal } = await import('@/server/auth/session')
 

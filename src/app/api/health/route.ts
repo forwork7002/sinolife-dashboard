@@ -20,7 +20,7 @@
 
 import { NextResponse } from 'next/server'
 
-import { poolStats, prisma } from '@/server/db/prisma'
+import { authPoolStats, authPrisma, poolStats } from '@/server/db/prisma'
 import { SLOW_REQUEST_MS, readSafely } from '@/server/http/slowRequest'
 import { logger } from '@/server/logging/logger'
 import { firstWarmPending } from '@/server/services/rnpWarmer'
@@ -51,7 +51,10 @@ function noteIfSlow(started: number, poolAtStart: ReturnType<typeof poolStats>):
   const ms = performance.now() - started
   if (ms < SLOW_REQUEST_MS) return
   try {
-    logger.warn({ ms: Math.round(ms), poolAtStart, pool: readSafely(() => poolStats()) }, 'slow health check')
+    logger.warn(
+      { ms: Math.round(ms), poolAtStart, pool: readSafely(() => poolStats()), authPool: readSafely(() => authPoolStats()) },
+      'slow health check',
+    )
   } catch {
     // One lost line, never a failed probe.
   }
@@ -61,7 +64,13 @@ export async function GET(): Promise<NextResponse> {
   try {
     const started = performance.now()
     const poolAtStart = readSafely(() => poolStats())
-    await prisma.$queryRaw`SELECT 1`
+    /*
+      ON THE AUTH LANE (2026-10-24): the probe asks whether the database
+      answers, and a pool full of reports is not a database that is down —
+      at 17:36 that day the probe waited 16 s behind them against the
+      platform's 10 s, and three misses restart a container that was serving.
+    */
+    await authPrisma.$queryRaw`SELECT 1`
     noteIfSlow(started, poolAtStart)
     if (firstWarmPending() && process.uptime() < WARMING_GRACE_S) {
       return NextResponse.json({ status: 'warming' }, { status: 503, headers: { 'cache-control': 'no-store' } })

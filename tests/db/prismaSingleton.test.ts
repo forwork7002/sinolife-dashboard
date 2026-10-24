@@ -38,10 +38,10 @@ vi.mock('@/server/config/env', () => ({
   env: { NODE_ENV: 'production', DATABASE_URL: 'postgresql://u:p@localhost:5432/db' },
 }))
 
-const KEY = '__sinolifePrisma'
+const KEYS = ['__sinolifePrisma', '__sinolifeAuthPrisma']
 
 afterEach(() => {
-  delete (globalThis as Record<string, unknown>)[KEY]
+  for (const key of KEYS) delete (globalThis as Record<string, unknown>)[key]
   poolCtor.mockClear()
   clientCtor.mockClear()
   vi.resetModules()
@@ -57,14 +57,21 @@ describe('prisma singleton', () => {
 
     expect(second).toBe(first)
     expect(third).toBe(first)
-    expect(poolCtor).toHaveBeenCalledTimes(1)
-    expect(clientCtor).toHaveBeenCalledTimes(1)
+    // Two lanes — the main pool and the auth lane — each opened once.
+    expect(poolCtor).toHaveBeenCalledTimes(2)
+    expect(clientCtor).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps the long-lived pool size and timeouts', async () => {
-    await import('@/server/db/prisma')
-    expect(poolCtor).toHaveBeenCalledWith(
-      expect.objectContaining({ max: 8, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 20_000 }),
+  it('splits the long-lived eight into six for the screens and two for the auth lane', async () => {
+    const { prisma, authPrisma } = await import('@/server/db/prisma')
+    expect(authPrisma).not.toBe(prisma)
+    expect(poolCtor).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ max: 6, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 20_000, statement_timeout: 20_000 }),
+    )
+    expect(poolCtor).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ max: 2, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 20_000, statement_timeout: 5_000 }),
     )
   })
 })

@@ -5,7 +5,7 @@ process.env.BETTER_AUTH_SECRET ??= '0'.repeat(64)
 process.env.BETTER_AUTH_URL ??= 'http://localhost:3000'
 process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 
-vi.mock('@/server/db/prisma', () => ({ prisma: { $queryRaw: async () => [{ '?column?': 1 }] } }))
+vi.mock('@/server/db/prisma', () => ({ authPrisma: { $queryRaw: async () => [{ '?column?': 1 }] } }))
 
 const { GET } = await import('@/app/api/health/route')
 

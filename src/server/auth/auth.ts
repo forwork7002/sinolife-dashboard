@@ -30,7 +30,7 @@ import { twoFactor } from 'better-auth/plugins/two-factor'
 import { username } from 'better-auth/plugins/username'
 
 import { env } from '@/server/config/env'
-import { prisma } from '@/server/db/prisma'
+import { authPrisma } from '@/server/db/prisma'
 import { AUTH_COOKIE_PREFIX } from './cookiePrefix'
 import {
   MAX_PASSWORD_LENGTH,
@@ -91,7 +91,7 @@ const signInRule = signInThrottle({
   // every session ever written — nothing deletes expired rows.
   usersSignedInFrom: async (ip, since, enough) =>
     (
-      await prisma.session.groupBy({
+      await authPrisma.session.groupBy({
         by: ['userId'],
         where: { ipAddress: ip, createdAt: { gte: since }, expiresAt: { gt: since } },
         orderBy: { userId: 'asc' },
@@ -200,13 +200,14 @@ const TOTP_ISSUER = 'SinoLife'
  */
 const accountLookup: AccountLookup = {
   byLogin: (login) =>
-    prisma.user.findUnique({ where: { username: login }, select: { email: true } }),
+    authPrisma.user.findUnique({ where: { username: login }, select: { email: true } }),
   byEmail: (email) =>
-    prisma.user.findUnique({ where: { email }, select: { username: true } }),
+    authPrisma.user.findUnique({ where: { email }, select: { username: true } }),
 }
 
 export const auth = betterAuth({
-  database: prismaAdapter(prisma, { provider: 'postgresql' }),
+  // The auth lane (`db/prisma.ts`): a session lookup never queues behind a report.
+  database: prismaAdapter(authPrisma, { provider: 'postgresql' }),
 
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,

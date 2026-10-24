@@ -20,8 +20,9 @@ vi.mock('@/server/config/env', () => ({
 }))
 
 const touched = vi.hoisted(() => ({ count: 0 }))
-vi.mock('@/server/db/prisma', () => ({
-  prisma: new Proxy(
+vi.mock('@/server/db/prisma', () => {
+  // `authPrisma` is the auth lane (`db/prisma.ts`); the same double serves both.
+  const prisma = new Proxy(
     {},
     {
       get(_target, prop) {
@@ -30,8 +31,9 @@ vi.mock('@/server/db/prisma', () => ({
         throw new Error(`database touched: prisma.${String(prop)}`)
       },
     },
-  ),
-}))
+  )
+  return { prisma, authPrisma: prisma }
+})
 
 const { auth } = await import('@/server/auth/auth')
 

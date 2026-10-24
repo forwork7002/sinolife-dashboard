@@ -34,7 +34,7 @@ import {
   isCompanyWideSection,
   readsCompanyWide,
 } from '@/lib/sections'
-import { poolStats } from '@/server/db/prisma'
+import { authPoolStats, poolStats } from '@/server/db/prisma'
 import { SLOW_REQUEST_MS, readSafely } from '@/server/http/slowRequest'
 import { childLogger } from '@/server/logging/logger'
 import { optionalPrincipal } from './session'
@@ -121,7 +121,13 @@ export const pagePrincipal = cache(async (): Promise<Principal | null> => {
   const ms = performance.now() - started
   if (ms >= SLOW_REQUEST_MS) {
     log.warn(
-      { ms: Math.round(ms), resolved: principal !== null, poolAtStart, pool: readSafely(() => poolStats()) },
+      {
+        ms: Math.round(ms),
+        resolved: principal !== null,
+        poolAtStart,
+        pool: readSafely(() => poolStats()),
+        authPool: readSafely(() => authPoolStats()),
+      },
       'slow page guard',
     )
   }

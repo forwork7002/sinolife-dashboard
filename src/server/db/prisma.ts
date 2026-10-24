@@ -10,7 +10,7 @@
  * `CHANGE_ME` placeholder, so a half-configured .env fails at startup with a
  * clear message rather than as an obscure connection error later.
  *
- * ONE POOL PER PROCESS
+ * ONE POOL PER PROCESS (one per lane since 2026-10-24 — see THE AUTH LANE)
  * The client is cached on `globalThis` in EVERY environment, production
  * included. Two reasons, one mechanism:
  *  - development: Next.js re-evaluates modules on every edit; without the
@@ -39,7 +39,10 @@ if (typeof window !== 'undefined') {
   )
 }
 
-function createPrismaClient(): PrismaClient {
+/** Which of the process's two pools a client sits on — see THE AUTH LANE below. */
+type Lane = 'main' | 'auth'
+
+function createPrismaClient(lane: Lane): PrismaClient {
   /**
    * Pool size depends on where this runs.
    *
@@ -73,17 +76,36 @@ function createPrismaClient(): PrismaClient {
    */
   const isServerless = Boolean(process.env.NETLIFY || process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
 
+  /*
+    THE AUTH LANE (2026-10-24, «bo'limlardan bo'limlarga o'tishda sekin»).
+    The eight are now SIX + TWO, so the arithmetic above is unchanged
+    (2 × 8 + 6 + 2 = 24). Every click on the rail renders the next page on
+    the server, and that render waits for the page guard's session lookup —
+    two index reads, a few milliseconds of database work. On the one pool
+    they queued behind whatever held all eight: on production at 17:36 that
+    day eight analytics statements had the pool and 43 requests waited
+    behind them, the guard took 7–33 s for navigations that needed 5 ms, three
+    of them ran into the connect timeout and sent signed-in readers to /login
+    (`resolved: false`), and the health probe waited 16 s against the
+    platform's 10 s limit. The session, the caller's user row and the health
+    probe now have two connections nothing else can take (`authPrisma`), so a
+    click is never queued behind a report. Analytics keep six; on one core
+    the seventh and eighth concurrent scan only slowed the other six.
+  */
+  const main = lane === 'main'
   const pool = new Pool(
     poolConfig(env.DATABASE_URL, {
       caCert: caCertFromEnv(),
-      max: isServerless ? 3 : 8,
+      max: main ? (isServerless ? 3 : 6) : isServerless ? 1 : 2,
       idleTimeoutMillis: isServerless ? 10_000 : 30_000,
       connectionTimeoutMillis: 20_000,
-      statementTimeoutMs: 20_000,
+      // An index read that is still going after five seconds is not going to answer a click.
+      statementTimeoutMs: main ? 20_000 : 5_000,
     }),
   )
 
-  globalForPrisma.__sinolifePool = pool
+  if (main) globalForPrisma.__sinolifePool = pool
+  else globalForPrisma.__sinolifeAuthPool = pool
   const adapter = new PrismaPg(pool)
 
   return new PrismaClient({
@@ -98,24 +120,45 @@ function createPrismaClient(): PrismaClient {
 const globalForPrisma = globalThis as unknown as {
   __sinolifePrisma?: PrismaClient
   __sinolifePool?: Pool
+  __sinolifeAuthPrisma?: PrismaClient
+  __sinolifeAuthPool?: Pool
 }
 
 // Written in every environment — see ONE POOL PER PROCESS above. Gating this
 // on NODE_ENV !== 'production' is what used to give each bundle its own pool.
-globalForPrisma.__sinolifePrisma ??= createPrismaClient()
+globalForPrisma.__sinolifePrisma ??= createPrismaClient('main')
 
 export const prisma: PrismaClient = globalForPrisma.__sinolifePrisma
+
+/*
+  The auth lane's client — the session, the caller's row, the health probe;
+  see THE AUTH LANE above. Nothing else may use it: a report on these two
+  connections would bring back the queue they exist to skip. A `pg` Pool
+  opens no connection until it is asked, so the sync worker, which never
+  resolves a session, never holds one.
+*/
+globalForPrisma.__sinolifeAuthPrisma ??= createPrismaClient('auth')
+
+export const authPrisma: PrismaClient = globalForPrisma.__sinolifeAuthPrisma
 
 /**
  * The pool's state at this instant — for the slow-request log (`handler.ts`).
  *
  * `waiting` is the number that separates the two kinds of slow: requests
- * queued for one of the eight connections (the warmers and the heavy scans
+ * queued for one of the six connections (the warmers and the heavy scans
  * have them all) against a database that is simply slow to answer. Null
  * before the pool exists.
  */
 export function poolStats(): { total: number; idle: number; waiting: number } | null {
-  const pool = globalForPrisma.__sinolifePool
+  return statsOf(globalForPrisma.__sinolifePool)
+}
+
+/** The auth lane's state, for the page guard's and the health probe's slow lines. */
+export function authPoolStats(): { total: number; idle: number; waiting: number } | null {
+  return statsOf(globalForPrisma.__sinolifeAuthPool)
+}
+
+function statsOf(pool: Pool | undefined): { total: number; idle: number; waiting: number } | null {
   if (!pool) return null
   return { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount }
 }

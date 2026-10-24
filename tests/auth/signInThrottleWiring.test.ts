@@ -28,15 +28,17 @@ const groupBy = vi.hoisted(() =>
     where.ipAddress === '203.0.113.9' ? [{ userId: 'a' }, { userId: 'b' }, { userId: 'c' }] : [],
   ),
 )
-vi.mock('@/server/db/prisma', () => ({
-  prisma: new Proxy({ session: { groupBy } } as Record<string, unknown>, {
+vi.mock('@/server/db/prisma', () => {
+  // `authPrisma` is the auth lane (`db/prisma.ts`); the same double serves both.
+  const prisma = new Proxy({ session: { groupBy } } as Record<string, unknown>, {
     get(target, prop) {
       if (prop in target) return target[prop as string]
       if (prop === 'then') return undefined
       throw new Error(`database touched: prisma.${String(prop)}`)
     },
-  }),
-}))
+  })
+  return { prisma, authPrisma: prisma }
+})
 
 const { auth } = await import('@/server/auth/auth')
 

@@ -5,7 +5,7 @@
  * Route handlers never inspect cookies or roles themselves.
  */
 
-import { prisma } from '@/server/db/prisma'
+import { authPrisma } from '@/server/db/prisma'
 import { DATA_SCOPES, ROLES, type DataScopeValue, type RoleValue } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
 import { auth } from './auth'
@@ -64,7 +64,7 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
     deletion failing to happen. Caught by the deletion test: the account was
     gone, sign-in returned 401, and the old tab carried on regardless.
   */
-  const live = await prisma.user.findUnique({
+  const live = await authPrisma.user.findUnique({
     where: { id: user.id },
     select: {
       role: true,

@@ -116,8 +116,9 @@ function client(state: State) {
   }
 }
 
-vi.mock('@/server/db/prisma', () => ({
-  prisma: new Proxy(
+vi.mock('@/server/db/prisma', () => {
+  // `authPrisma` is the auth lane (`db/prisma.ts`); the same double serves both.
+  const prisma = new Proxy(
     {},
     {
       get(_t, prop) {
@@ -132,8 +133,9 @@ vi.mock('@/server/db/prisma', () => ({
         return (client(db.state) as Record<string, unknown>)[prop as string]
       },
     },
-  ),
-}))
+  )
+  return { prisma, authPrisma: prisma }
+})
 
 vi.mock('@/server/auth/provisioning', () => ({
   provisionUser: async () => {
