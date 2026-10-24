@@ -155,6 +155,19 @@ function toMatrixRow(row: CohortDto): CohortMatrixRow {
 }
 
 /**
+ * ONE `import()` OF THE CHART, SHARED BY `dynamic` AND THE WARM-UP — 2026-10-24.
+ *
+ * They were two `import()` expressions, and Turbopack built each into a
+ * chunk of its own: the production build carried the chart in two
+ * near-identical files (22.7 KB each, 7.5 KB gzipped, recharts' `Line` with
+ * it), so the warm-up downloaded one and the render then downloaded the
+ * other — only the shared recharts chunk was ever warmed. One loader, one
+ * chunk. `dynamic` no longer sees the `import()` itself, so it gets no
+ * generated `modules` list; with `ssr: false` Next never reads that list.
+ */
+const loadFlowChart = () => import('@/components/charts/CustomerFlowChart')
+
+/**
  * The new-vs-returning chart is loaded on its own, not with the page.
  *
  * It is the only Recharts on this screen, and a static import put the library
@@ -172,7 +185,7 @@ function toMatrixRow(row: CohortDto): CohortMatrixRow {
  * it moves.
  */
 const CustomerFlowChart = dynamic(
-  () => import('@/components/charts/CustomerFlowChart').then((m) => m.CustomerFlowChart),
+  () => loadFlowChart().then((m) => m.CustomerFlowChart),
   { ssr: false, loading: () => <ChartSkeleton height={280} /> },
 )
 
@@ -186,7 +199,7 @@ const CustomerFlowChart = dynamic(
  */
 function useWarmFlowChart() {
   useEffect(() => {
-    void import('@/components/charts/CustomerFlowChart')
+    void loadFlowChart()
   }, [])
 }
 

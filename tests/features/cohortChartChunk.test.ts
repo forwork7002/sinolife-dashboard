@@ -31,8 +31,22 @@ describe('the cohort page’s chart chunk', () => {
     /* The fallback is the slot's own loading skeleton, so a late chunk adds
        no second visible state and nothing under the card moves. */
     expect(PAGE).toMatch(
-      /dynamic\(\s*\(\) => import\('@\/components\/charts\/CustomerFlowChart'\)\.then\(\(m\) => m\.CustomerFlowChart\),\s*\{ ssr: false, loading: \(\) => <ChartSkeleton height=\{280\} \/> \},?\s*\)/,
+      /dynamic\(\s*\(\) => loadFlowChart\(\)\.then\(\(m\) => m\.CustomerFlowChart\),\s*\{ ssr: false, loading: \(\) => <ChartSkeleton height=\{280\} \/> \},?\s*\)/,
     )
     expect(PAGE).toMatch(/<CustomerFlowChart data=\{f\.series\} height=\{280\} \/>/)
+  })
+
+  it('names the chart in ONE import(), shared by dynamic and the warm-up', () => {
+    /*
+      Two `import()` expressions of the same module were two chunks in the
+      Turbopack build (2026-10-24): the warm-up downloaded one, the render the
+      other, and the chart crossed the wire twice. One loader is one chunk.
+    */
+    const imports = PAGE.match(/import\('@\/components\/charts\/CustomerFlowChart'\)/g) ?? []
+    expect(imports).toHaveLength(1)
+    expect(PAGE).toMatch(
+      /^const loadFlowChart = \(\) => import\('@\/components\/charts\/CustomerFlowChart'\)$/m,
+    )
+    expect(PAGE).toMatch(/void loadFlowChart\(\)/)
   })
 })

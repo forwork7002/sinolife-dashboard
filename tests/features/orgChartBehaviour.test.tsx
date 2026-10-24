@@ -446,4 +446,36 @@ describe('org chart behaviour', () => {
     expect(onSelect).not.toHaveBeenCalled()
     expect(ids(container)).toContain('me')
   })
+
+  /**
+   * THE READOUT FOLLOWS THE ZOOM, AND ONLY THE READOUT RE-RENDERS FOR IT.
+   *
+   * Since 2026-10-24 the percentage lives in a store of its own rather than in
+   * the chart's state, so a wheel turn stops redrawing every card. What that
+   * must not change: the number, its rounding, and the − / + limits.
+   */
+  it('keeps the zoom readout and its limits in step with the wheel and the buttons', () => {
+    const { container } = render(
+      <OrgChart roots={TREE} selectedId={null} onSelect={() => {}} viewerDepartmentId={null} />,
+    )
+    // The search count wears the same class; the zoom is the one that is not announced.
+    const readout = container.querySelector('.org-zoom-value[aria-live="off"]')!
+    const stage = container.querySelector('.org-stage') as HTMLElement
+    const out = screen.getByRole('button', { name: 'Kichraytirish' }) as HTMLButtonElement
+    const into = screen.getByRole('button', { name: 'Kattalashtirish' }) as HTMLButtonElement
+
+    for (let i = 0; i < 10 && !out.disabled; i += 1) fireEvent.click(out)
+    expect(readout.textContent).toBe('35 %')
+    expect(out.disabled).toBe(true)
+    expect(stage.style.transform).toContain('scale(0.35)')
+
+    fireEvent.click(into)
+    expect(readout.textContent).toBe('45 %')
+    expect(out.disabled).toBe(false)
+
+    const before = readout.textContent
+    fireEvent.wheel(container.querySelector('.org-canvas')!, { deltaY: -120 })
+    expect(readout.textContent).not.toBe(before)
+    expect(Number.parseInt(readout.textContent ?? '', 10)).toBeGreaterThan(45)
+  })
 })

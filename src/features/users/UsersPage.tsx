@@ -400,12 +400,18 @@ function UserDialog({
     `staleTime` is what makes reopening the form instant: the roster changes
     when Bitrix24 names a new head, which reaches us through the sync worker's
     reference-data pass, not while the administrator is typing a password.
+
+    `refetchInterval: false` IS WHAT MAKES «NOTHING POLLS IT» TRUE (2026-10-24).
+    The sentence above was written with only the `staleTime` under it, so the
+    global interval in `providers.tsx` went on re-asking — the ~19 recursive
+    scope queries again every two minutes for as long as the form stayed open.
   */
   const headsQuery = useQuery({
     queryKey: ['users', 'heads'],
     queryFn: ({ signal }) => apiGet<UsersPageDto>('/users', { include: 'heads' }, signal),
     enabled: isRop,
     staleTime: 300_000,
+    refetchInterval: false,
   })
   const heads = headsQuery.data?.data.heads ?? []
   const headlessUnits = headsQuery.data?.data.headlessUnits ?? []

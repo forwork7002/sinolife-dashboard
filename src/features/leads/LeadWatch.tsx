@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useState, type ReactNode } from 'react'
+import { memo, useState, type ReactNode } from 'react'
 
 import { ChartSkeleton, statusOf } from '@/components/states/States'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
@@ -64,10 +64,20 @@ import { useLeadWatch } from './leadWatchQueries'
 
 const CHART_HEIGHT = 180
 
-const LeadFlowChart = dynamic(() => import('./LeadFlowChart').then((m) => m.LeadFlowChart), {
-  ssr: false,
-  loading: () => <ChartSkeleton height={CHART_HEIGHT + 24} />,
-})
+/*
+  `memo` (2026-10-24): `useMinuteNow` re-renders this block every thirty
+  seconds for the clocks on the cards, and the chart went with it — a whole
+  recharts redraw with the same hours. Its props are already stable: `flow` is
+  the cached answer (structural sharing keeps it by reference until it
+  changes) and the height is a constant, so the chart now redraws only when
+  the hours do.
+*/
+const LeadFlowChart = memo(
+  dynamic(() => import('./LeadFlowChart').then((m) => m.LeadFlowChart), {
+    ssr: false,
+    loading: () => <ChartSkeleton height={CHART_HEIGHT + 24} />,
+  }),
+)
 
 const ICON: Readonly<Record<WatchIssueKind, (props: GlyphProps) => ReactNode>> = {
   unassigned: UserXGlyph,

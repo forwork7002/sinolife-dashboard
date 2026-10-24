@@ -12,6 +12,7 @@ import { CheckCircleGlyph, CrossCircleGlyph, MultiplyGlyph } from '@/components/
 import { StatusChip } from '@/components/ui/Stat'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { PageShell } from '@/features/shared/PageShell'
+import { tsvCell } from '@/features/shared/tsv'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { bitrixDealUrl } from '@/features/target/targetApi'
 import { apiGet } from '@/lib/api'
@@ -106,6 +107,27 @@ export function SverkaBody({
   const [search, setSearch] = useState('')
   const [openDeal, setOpenDeal] = useState<string | null>(null)
 
+  /*
+    THE LIST IS DERIVED ONCE PER ANSWER, NOT ONCE PER RENDER — 2026-10-24.
+    Every render — a row clicked open, the drawer closed, the poll's own
+    in-flight flag going up and coming down — folded up to 3 000 lines
+    (`SVERKA_LINE_LIMIT`) through `lineText` while a search was typed, and
+    filtered them again, for the same answer and the same filter. The folded
+    texts follow the answer, the issue cut follows the chip, the search the
+    box. Above the early returns because they are hooks.
+  */
+  const lines = data?.lines ?? NO_LINES
+  const texts = useMemo(() => new Map(lines.map((l) => [l, lineText(l)])), [lines])
+  const byIssue = useMemo(
+    () => (issue === 'ALL' ? lines : lines.filter((l) => l.issues.includes(issue))),
+    [lines, issue],
+  )
+  const needle = search.trim().toLocaleLowerCase('ru')
+  const visible = useMemo(
+    () => (needle ? byIssue.filter((l) => (texts.get(l) ?? '').includes(needle)) : byIssue),
+    [byIssue, needle, texts],
+  )
+
   if (status === 'error') {
     return (
       <Card className="p-5">
@@ -127,10 +149,6 @@ export function SverkaBody({
 
   const totals = data?.totals
   const fakt1Orders = totals?.fakt1.bitrix.orders ?? 0
-  const lines = data?.lines ?? []
-  const byIssue = issue === 'ALL' ? lines : lines.filter((l) => l.issues.includes(issue))
-  const needle = search.trim().toLocaleLowerCase('ru')
-  const visible = needle ? byIssue.filter((l) => lineText(l).includes(needle)) : byIssue
   const flaggedTotal = data?.flaggedCount ?? 0
   const opened = openDeal ? lines.find((l) => lineKey(l) === openDeal) : undefined
 
@@ -277,6 +295,9 @@ export function SverkaBody({
 
 const lineKey = (l: SverkaLineDto): string => l.dealId ?? `ms:${l.moysklad?.orderId ?? ''}`
 
+/** No answer yet: one empty list, so the memos above do not see a new one every render. */
+const NO_LINES: readonly SverkaLineDto[] = []
+
 /** Everything the search box matches a line by, folded once. */
 function lineText(l: SverkaLineDto): string {
   return [
@@ -370,16 +391,6 @@ function CopyLinesButton({ lines }: { lines: readonly SverkaLineDto[] }) {
       {state === 'done' ? 'Nusxa olindi' : state === 'failed' ? 'Nusxa olinmadi' : 'Nusxa olish (Excel)'}
     </Button>
   )
-}
-
-/**
- * A text cell a spreadsheet takes as TEXT: a name opening with = + - @ would
- * run as a formula on paste, and a tab or line break inside one shifts every
- * column after it. The payroll page's rule.
- */
-function tsvCell(value: string): string {
-  const flat = value.replace(/[\t\r\n]+/g, ' ')
-  return /^[=+\-@]/.test(flat) ? `'${flat}` : flat
 }
 
 function FreshLine({ data }: { data: SverkaOverviewDto | undefined }) {

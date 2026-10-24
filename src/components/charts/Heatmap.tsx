@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type MouseEvent } from 'react'
+import { memo, useCallback, useMemo, useState, type MouseEvent } from 'react'
 
 import { ChartTooltipPanel, type ChartTooltipRow } from '@/components/charts/chartTooltip'
 import {
@@ -538,6 +538,14 @@ function bandOf(view: CohortView, value: number): number {
 /** The two money columns, hovered. Not a month, so it is off the offset scale. */
 const MONEY_COL = -2
 
+/**
+ * A cell reporting that the pointer reached it: its row (`-1` the summary row),
+ * its column in `Hot`'s terms, and the element to anchor the panel to. ONE
+ * stable function for every cell, so a `memo` cell is skipped on a hover that
+ * did not move its own crosshair.
+ */
+type OnHover = (row: number, col: number, cell: HTMLElement) => void
+
 /** Which fact the hover panel is currently describing. */
 interface Hot {
   /** Row index; `-1` is the summary row. */
@@ -624,55 +632,126 @@ export function CohortHeatmap({
 }) {
   const [hot, setHot] = useState<Hot | null>(null)
 
+  /*
+    A HOVER REDRAWS THE CROSS, NOT THE GRID — 2026-10-24.
+
+    Every cell the pointer crossed set `hot`, and every cell was a fresh element
+    holding a fresh `enter(r, i)` closure, so all ~300 of them rendered again —
+    and the money reading re-walked `moneyPointsOf` once PER CELL — to move a
+    crosshair that touches one row and one column. The cells are `memo` now and
+    everything they are handed survives a hover: what is derived from the rows
+    is computed here once per answer, the money points included, and the one
+    hover handler is stable (`onHover`). A crossing re-renders the rows and
+    columns whose lit state moved and nothing else. This project has no React
+    Compiler; nothing memoises for us.
+  */
+  const grid = useMemo(() => {
+    const span = Math.min(
+      maxColumns,
+      rows.reduce((max, r) => Math.max(max, r.retention.length), 0),
+    )
+    /*
+      THE CUMULATIVE READING HAS NO `0` COLUMN.
+
+      Offset 0 is the month the cohort is defined by. Monthly, that is 100% by
+      construction and worth printing as the anchor every other cell is read
+      against; cumulatively it is 0% for every row there has ever been — a column
+      of zeros beside a «Yangi mijoz» count, which reads as a finding and is not
+      one. Dropping it also takes the reader straight to the first month that
+      measures anything.
+    */
+    /* The money reading keeps its `0` column for the opposite reason the
+       cumulative one drops it: there it is a zero for every row there has ever
+       been, here it is the denominator every other cell divides by. */
+    const offsets = Array.from({ length: span }, (_, i) => i).filter(
+      (i) => (view !== 'cumulative' || i > 0) && (months === null || i <= months),
+    )
+    const bounds = widthsFor(view)
+
+    /*
+      TWO SUMMARY MAPS, AND ONLY THE ONE THIS READING USES IS BUILT.
+
+      `columnAverage` reads `retention`/`cumulative` and would answer the money
+      view with the cumulative share — a real number, of the wrong fact, printed
+      under a money heading. The branch is here rather than inside that function
+      so the share readings' own helper keeps taking a `CohortView` it can
+      actually satisfy, and so `ReturnAnswer`, which calls it from outside this
+      file, cannot be handed a view it has no milestone for.
+    */
+    const averages = isShareView(view)
+      ? new Map(offsets.map((i) => [i, columnAverage(rows, i, view)]))
+      : new Map<number, ColumnAverage>()
+    const moneyAverages =
+      view === 'money'
+        ? new Map(offsets.map((i) => [i, columnMoneyAverage(rows, i)]))
+        : new Map<number, MoneyColumnAverage>()
+    /* The summary row's money point, built once so its cell sees the same
+       object on every hover rather than a new literal that defeats `memo`. */
+    const summaryPoints = new Map<number, MoneyPoint | null>(
+      [...moneyAverages].map(([i, avg]) => [
+        i,
+        avg.perCustomer === null ? null : { perCustomer: avg.perCustomer, multiple: avg.multiple },
+      ]),
+    )
+
+    return {
+      span,
+      offsets,
+      width: PINNED_WIDTH + offsets.length * bounds.min,
+      maxWidth: PINNED_WIDTH + offsets.length * bounds.max,
+      averages,
+      moneyAverages,
+      summaryPoints,
+      moneyPoints: view === 'money' ? rows.map(moneyPointsOf) : [],
+    }
+  }, [rows, view, maxColumns, months])
+
+  /*
+    The anchor is taken from the CELL, not from the cursor.
+
+    `offsetLeft`/`offsetTop` are measured against the positioned wrapper, which
+    is also the element that scrolls — so the panel keeps its place when the
+    matrix is scrolled sideways, and a cell that is hovered by keyboard-driven
+    scrolling gets the same treatment as one under a mouse. A cursor-following
+    panel would also have to un-follow itself at the container's edges.
+
+    Every read comes before the one write (`setHot`), and nothing on the page
+    is written between them, so the measurement never thrashes: at worst it
+    pulls forward the layout the frame was about to run anyway.
+  */
+  const fallbackWidth = grid.width
+  const onHover = useCallback<OnHover>(
+    (row, col, el) => {
+      const below = row <= 1
+      /* The table flexes between `width` and `maxWidth`, so the clamp has to ask
+         it how wide it actually came out; the constant it used to clamp against
+         was the MINIMUM, and on a wide card it pulled the right-hand columns'
+         panels away from the cells they describe. */
+      const tableWidth = el.closest('table')?.offsetWidth ?? fallbackWidth
+      setHot({
+        row,
+        col,
+        // Clamped to half a panel from either edge, so the first and last
+        // columns do not open a tip that is cut off by the scroll box.
+        x: Math.min(Math.max(el.offsetLeft + el.offsetWidth / 2, 120), tableWidth - 120),
+        y: below ? el.offsetTop + el.offsetHeight + 6 : el.offsetTop - 6,
+        below,
+      })
+    },
+    [fallbackWidth],
+  )
+
   if (rows.length === 0) return null
 
-  const span = Math.min(
-    maxColumns,
-    rows.reduce((max, r) => Math.max(max, r.retention.length), 0),
-  )
-  /*
-    THE CUMULATIVE READING HAS NO `0` COLUMN.
-
-    Offset 0 is the month the cohort is defined by. Monthly, that is 100% by
-    construction and worth printing as the anchor every other cell is read
-    against; cumulatively it is 0% for every row there has ever been — a column
-    of zeros beside a «Yangi mijoz» count, which reads as a finding and is not
-    one. Dropping it also takes the reader straight to the first month that
-    measures anything.
-  */
-  /* The money reading keeps its `0` column for the opposite reason the
-     cumulative one drops it: there it is a zero for every row there has ever
-     been, here it is the denominator every other cell divides by. */
-  const offsets = Array.from({ length: span }, (_, i) => i).filter(
-    (i) => (view !== 'cumulative' || i > 0) && (months === null || i <= months),
-  )
+  const { span, offsets, width, maxWidth, averages, moneyAverages, summaryPoints, moneyPoints } =
+    grid
   const columns = offsets.length
-  const bounds = widthsFor(view)
-  const width = PINNED_WIDTH + columns * bounds.min
-  const maxWidth = PINNED_WIDTH + columns * bounds.max
 
   /** The array this reading draws from. One place decides, everything follows. */
   const valuesOf = (row: CohortMatrixRow) => (view === 'monthly' ? row.retention : row.cumulative)
   const countsOf = (row: CohortMatrixRow) =>
     view === 'monthly' ? row.customers : row.cumulativeCustomers
 
-  /*
-    TWO SUMMARY MAPS, AND ONLY THE ONE THIS READING USES IS BUILT.
-
-    `columnAverage` reads `retention`/`cumulative` and would answer the money
-    view with the cumulative share — a real number, of the wrong fact, printed
-    under a money heading. The branch is here rather than inside that function
-    so the share readings' own helper keeps taking a `CohortView` it can
-    actually satisfy, and so `ReturnAnswer`, which calls it from outside this
-    file, cannot be handed a view it has no milestone for.
-  */
-  const averages = isShareView(view)
-    ? new Map(offsets.map((i) => [i, columnAverage(rows, i, view)]))
-    : new Map<number, ColumnAverage>()
-  const moneyAverages =
-    view === 'money'
-      ? new Map(offsets.map((i) => [i, columnMoneyAverage(rows, i)]))
-      : new Map<number, MoneyColumnAverage>()
   const totalSize = rows.reduce((sum, r) => sum + r.size, 0)
   const totalReturned = rows.reduce((sum, r) => sum + r.returned, 0)
   const totalShare = totalSize > 0 ? (totalReturned / totalSize) * 100 : null
@@ -688,34 +767,6 @@ export function CohortHeatmap({
     finds the table contradicting itself.
   */
   const truncated = view === 'cumulative' && months !== null && span - 1 > months
-
-  /*
-    The anchor is taken from the CELL, not from the cursor.
-
-    `offsetLeft`/`offsetTop` are measured against the positioned wrapper, which
-    is also the element that scrolls — so the panel keeps its place when the
-    matrix is scrolled sideways, and a cell that is hovered by keyboard-driven
-    scrolling gets the same treatment as one under a mouse. A cursor-following
-    panel would also have to un-follow itself at the container's edges.
-  */
-  const enter = (row: number, col: number) => (event: MouseEvent<HTMLElement>) => {
-    const el = event.currentTarget
-    const below = row <= 1
-    /* The table flexes between `width` and `maxWidth`, so the clamp has to ask
-       it how wide it actually came out; the constant it used to clamp against
-       was the MINIMUM, and on a wide card it pulled the right-hand columns'
-       panels away from the cells they describe. */
-    const tableWidth = el.closest('table')?.offsetWidth ?? width
-    setHot({
-      row,
-      col,
-      // Clamped to half a panel from either edge, so the first and last
-      // columns do not open a tip that is cut off by the scroll box.
-      x: Math.min(Math.max(el.offsetLeft + el.offsetWidth / 2, 120), tableWidth - 120),
-      y: below ? el.offsetTop + el.offsetHeight + 6 : el.offsetTop - 6,
-      below,
-    })
-  }
 
   const panel = hot ? panelFor(hot, rows, averages, moneyAverages, view) : null
 
@@ -852,13 +903,22 @@ export function CohortHeatmap({
                     left={LEFT.cohort}
                     lit={lit}
                     align="left"
-                    onMouseEnter={enter(r, -1)}
+                    row={r}
+                    col={-1}
+                    onHover={onHover}
                     label={`${formatMonth(row.cohort)} kogortasi`}
                   >
                     {formatMonth(row.cohort)}
                   </PinnedCell>
 
-                  <PinnedCell left={LEFT.size} lit={lit} align="right" onMouseEnter={enter(r, -1)}>
+                  <PinnedCell
+                    left={LEFT.size}
+                    lit={lit}
+                    align="right"
+                    row={r}
+                    col={-1}
+                    onHover={onHover}
+                  >
                     {formatNumber(row.size)}
                   </PinnedCell>
 
@@ -876,7 +936,9 @@ export function CohortHeatmap({
                     left={LEFT.returned}
                     lit={lit}
                     align="right"
-                    onMouseEnter={enter(r, -1)}
+                    row={r}
+                    col={-1}
+                    onHover={onHover}
                     ariaLabel={`${formatMonth(row.cohort)} kogortasi: ${formatNumber(
                       row.size,
                     )} mijozdan ${formatNumber(row.returned)} tasi qaytgan${
@@ -900,7 +962,9 @@ export function CohortHeatmap({
                     left={LEFT.revenueTotal}
                     lit={lit}
                     align="right"
-                    onMouseEnter={enter(r, MONEY_COL)}
+                    row={r}
+                    col={MONEY_COL}
+                    onHover={onHover}
                     ariaLabel={`${formatMonth(row.cohort)} kogortasi: kogorta tushumi hozirgacha ${
                       row.revenueTotalExact
                     }`}
@@ -914,7 +978,9 @@ export function CohortHeatmap({
                     align="right"
                     edge
                     young={young}
-                    onMouseEnter={enter(r, MONEY_COL)}
+                    row={r}
+                    col={MONEY_COL}
+                    onHover={onHover}
                     ariaLabel={
                       young
                         ? `1 mijozga hozirgacha ${
@@ -934,13 +1000,14 @@ export function CohortHeatmap({
                     view === 'money' ? (
                       <MoneyCell
                         key={i}
-                        point={moneyPointsOf(row)[i] ?? null}
+                        point={moneyPoints[r]?.[i] ?? null}
                         base={row.size}
                         cohort={row.cohort}
                         offset={i}
                         litRow={lit}
                         litCol={hot?.col === i}
-                        onMouseEnter={enter(r, i)}
+                        row={r}
+                        onHover={onHover}
                       />
                     ) : (
                       <HeatCell
@@ -953,7 +1020,8 @@ export function CohortHeatmap({
                         offset={i}
                         litRow={lit}
                         litCol={hot?.col === i}
-                        onMouseEnter={enter(r, i)}
+                        row={r}
+                        onHover={onHover}
                       />
                     ),
                   )}
@@ -980,7 +1048,9 @@ export function CohortHeatmap({
                 lit={hot?.row === -1}
                 align="left"
                 summary
-                onMouseEnter={enter(-1, -1)}
+                row={-1}
+                col={-1}
+                onHover={onHover}
                 label="Jami va oʻrtacha"
               >
                 Jami · oʻrtacha
@@ -991,7 +1061,9 @@ export function CohortHeatmap({
                 lit={hot?.row === -1}
                 align="right"
                 summary
-                onMouseEnter={enter(-1, -1)}
+                row={-1}
+                col={-1}
+                onHover={onHover}
               >
                 {formatNumber(totalSize)}
               </PinnedCell>
@@ -1001,7 +1073,9 @@ export function CohortHeatmap({
                 lit={hot?.row === -1}
                 align="right"
                 summary
-                onMouseEnter={enter(-1, -1)}
+                row={-1}
+                col={-1}
+                onHover={onHover}
                 ariaLabel={`Jami: ${formatNumber(totalSize)} mijozdan ${formatNumber(
                   totalReturned,
                 )} tasi qaytgan${totalShare === null ? '' : ` — ${Math.round(totalShare)}%`}`}
@@ -1033,7 +1107,9 @@ export function CohortHeatmap({
                 lit={hot?.row === -1}
                 align="right"
                 summary
-                onMouseEnter={enter(-1, -1)}
+                row={-1}
+                col={-1}
+                onHover={onHover}
                 label={totalRevenue ? totalRevenue.exact : MONEY_NOT_SUMMED}
                 ariaLabel={
                   totalRevenue ? `Kogorta tushumi jami: ${totalRevenue.exact}` : undefined
@@ -1048,7 +1124,9 @@ export function CohortHeatmap({
                 align="right"
                 summary
                 edge
-                onMouseEnter={enter(-1, -1)}
+                row={-1}
+                col={-1}
+                onHover={onHover}
                 label={MONEY_NOT_SUMMED}
                 /* THE SAME SENTENCE, OUT LOUD. `label` is a `title` — hover
                    text, and hovering is the one thing a screen-reader user is
@@ -1068,18 +1146,15 @@ export function CohortHeatmap({
                     <MoneyCell
                       key={i}
                       summary
-                      point={
-                        avg && avg.perCustomer !== null
-                          ? { perCustomer: avg.perCustomer, multiple: avg.multiple }
-                          : null
-                      }
+                      point={summaryPoints.get(i) ?? null}
                       base={avg?.base ?? 0}
                       cohorts={avg?.cohorts ?? 0}
                       cohort={null}
                       offset={i}
                       litRow={hot?.row === -1}
                       litCol={hot?.col === i}
-                      onMouseEnter={enter(-1, i)}
+                      row={-1}
+                      onHover={onHover}
                     />
                   )
                 }
@@ -1097,7 +1172,8 @@ export function CohortHeatmap({
                     offset={i}
                     litRow={hot?.row === -1}
                     litCol={hot?.col === i}
-                    onMouseEnter={enter(-1, i)}
+                    row={-1}
+                    onHover={onHover}
                   />
                 )
               })}
@@ -1192,7 +1268,7 @@ function HeadCell({
  * the scrolling cells pass underneath them — so the highlight has to be painted
  * here rather than on the `<tr>`.
  */
-function PinnedCell({
+const PinnedCell = memo(function PinnedCell({
   children,
   left,
   lit,
@@ -1201,7 +1277,9 @@ function PinnedCell({
   summary = false,
   edge = false,
   young,
-  onMouseEnter,
+  row,
+  col,
+  onHover,
   label,
   ariaLabel,
 }: {
@@ -1222,7 +1300,10 @@ function PinnedCell({
    * claim the rule applies there and happens not to bite.
    */
   readonly young?: boolean
-  readonly onMouseEnter?: (event: MouseEvent<HTMLElement>) => void
+  /** Where this cell sits in `Hot`'s terms; handed back through `onHover`. */
+  readonly row: number
+  readonly col: number
+  readonly onHover: OnHover
   /** Hover text. On a `<td>` it is the only place a blank cell can say why. */
   readonly label?: string
   /**
@@ -1271,14 +1352,20 @@ function PinnedCell({
   } ${summary || header ? 'font-medium' : ''}`
 
   return header ? (
-    <th scope="row" className={className} style={style} onMouseEnter={onMouseEnter} title={label}>
+    <th
+      scope="row"
+      className={className}
+      style={style}
+      onMouseEnter={(event) => onHover(row, col, event.currentTarget)}
+      title={label}
+    >
       {children}
     </th>
   ) : (
     <td
       className={className}
       style={style}
-      onMouseEnter={onMouseEnter}
+      onMouseEnter={(event) => onHover(row, col, event.currentTarget)}
       title={label}
       aria-label={ariaLabel}
       data-young={young === undefined ? undefined : String(young)}
@@ -1286,7 +1373,7 @@ function PinnedCell({
       {children}
     </td>
   )
-}
+})
 
 /**
  * One cell — a share, its heat, and the arithmetic behind it in words.
@@ -1295,7 +1382,7 @@ function PinnedCell({
  * screen reader gets the same fraction the hover panel shows, from the one
  * place both are derived.
  */
-function HeatCell({
+const HeatCell = memo(function HeatCell({
   view,
   value,
   customers,
@@ -1306,7 +1393,8 @@ function HeatCell({
   summary = false,
   litRow = false,
   litCol = false,
-  onMouseEnter,
+  row,
+  onHover,
 }: {
   readonly view: CohortView
   readonly value: number | null
@@ -1325,8 +1413,13 @@ function HeatCell({
   /** The two halves of the crosshair. See `crosshair`. */
   readonly litRow?: boolean
   readonly litCol?: boolean
-  readonly onMouseEnter: (event: MouseEvent<HTMLElement>) => void
+  /** The row in `Hot`'s terms; the column is `offset`. */
+  readonly row: number
+  readonly onHover: OnHover
 }) {
+  const onMouseEnter = (event: MouseEvent<HTMLElement>) =>
+    onHover(row, offset, event.currentTarget)
+
   if (value === null) {
     return (
       <td
@@ -1473,7 +1566,7 @@ function HeatCell({
       </div>
     </td>
   )
-}
+})
 
 /**
  * One cell of the money reading.
@@ -1495,7 +1588,7 @@ function HeatCell({
  * defences discouraging is the one this grid is built to allow, which is why
  * the young-cohort greying is deliberately NOT applied here.
  */
-function MoneyCell({
+const MoneyCell = memo(function MoneyCell({
   point,
   cohorts = 0,
   cohort,
@@ -1504,7 +1597,8 @@ function MoneyCell({
   summary = false,
   litRow = false,
   litCol = false,
-  onMouseEnter,
+  row,
+  onHover,
 }: {
   readonly point: MoneyPoint | null
   /** Summary cells only — see `HeatCell`'s prop of the same name. */
@@ -1516,8 +1610,13 @@ function MoneyCell({
   readonly summary?: boolean
   readonly litRow?: boolean
   readonly litCol?: boolean
-  readonly onMouseEnter: (event: MouseEvent<HTMLElement>) => void
+  /** The row in `Hot`'s terms; the column is `offset`. */
+  readonly row: number
+  readonly onHover: OnHover
 }) {
+  const onMouseEnter = (event: MouseEvent<HTMLElement>) =>
+    onHover(row, offset, event.currentTarget)
+
   if (point === null) {
     return (
       <td
@@ -1585,7 +1684,7 @@ function MoneyCell({
       </div>
     </td>
   )
-}
+})
 
 /** The whole claim of a money cell, for a reader who cannot hover. */
 function moneyCellSentence({

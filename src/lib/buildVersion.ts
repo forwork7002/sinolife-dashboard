@@ -28,6 +28,17 @@ import { useEffect, useState } from 'react'
  * file was never written, a proxy returning HTML — all leave the flag false.
  * A reload prompt that appears because the network blinked would train the
  * reader to ignore the one that matters.
+ *
+ * ASKED ONLY WHILE SOMEBODY CAN SEE THE ANSWER — 2026-10-24. The minute read
+ * ran in hidden tabs too, and went on running after it had found a new
+ * version: a dashboard left open for a week behind Bitrix24 asked ten thousand
+ * times for a flag nobody was looking at, or that was already up. Now a tick
+ * that lands on a hidden tab is skipped, a return to the tab reads at once
+ * (that is the moment the reader looks), and the timer stops for good the
+ * moment the flag is up — it never goes down again in this tab. The read on
+ * mount still happens whatever the visibility: it is what THIS tab is running,
+ * and a tab opened in the background that took its first read only when shown
+ * would take a deploy in between for its own build.
  */
 export function useNewBuildAvailable(pollMs = 60_000): boolean {
   const [available, setAvailable] = useState(false)
@@ -35,6 +46,13 @@ export function useNewBuildAvailable(pollMs = 60_000): boolean {
   useEffect(() => {
     let mine = true
     let running: string | null = null
+    let timer: ReturnType<typeof setInterval> | null = null
+
+    const stop = () => {
+      if (timer !== null) clearInterval(timer)
+      timer = null
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
 
     const read = async () => {
       try {
@@ -48,17 +66,35 @@ export function useNewBuildAvailable(pollMs = 60_000): boolean {
           running = id
           return
         }
-        if (id !== running) setAvailable(true)
+        if (id !== running) {
+          setAvailable(true)
+          stop()
+        }
       } catch {
         // Offline, or something that is not JSON. Say nothing.
       }
     }
 
+    const tick = () => {
+      if (document.visibilityState !== 'hidden') void read()
+    }
+    const start = () => {
+      if (timer !== null) clearInterval(timer)
+      timer = setInterval(tick, pollMs)
+    }
+    function onVisibility() {
+      if (document.visibilityState !== 'visible') return
+      void read()
+      // A full period from this read, not a tick a few seconds after it.
+      start()
+    }
+
     void read()
-    const timer = setInterval(() => void read(), pollMs)
+    start()
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       mine = false
-      clearInterval(timer)
+      stop()
     }
   }, [pollMs])
 

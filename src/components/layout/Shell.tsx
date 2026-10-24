@@ -6,6 +6,7 @@ import Link, { useLinkStatus } from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -334,9 +335,10 @@ export function Shell({
     screen by `openedOn` below.
   */
   const [menuOpen, setMenuOpen] = useState(false)
-  // A plain function: the React Compiler memoizes it, and a hand-written
-  // useCallback with `[]` disagreed with the dependency it infers.
-  const closeMenu = () => setMenuOpen(false)
+  /* Stable, because the drawer's `RailBody` is `memo` and takes it twice.
+     (This was a plain function «the React Compiler memoizes» — there is no
+     React Compiler in this build, so nothing did; corrected 2026-10-24.) */
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -415,6 +417,10 @@ export function Shell({
     enabled: paletteOpen && searchable,
     placeholderData: (previous) => previous,
     staleTime: 5 * 60_000,
+    /* Never on the clock (2026-10-24): the global two-minute interval re-asked
+       the term on screen for as long as the palette stayed open — a lookup
+       nobody had repeated, on a one-core database. A new term asks anew. */
+    refetchInterval: false,
   })
   const typedTerm = classifySearchTerm(typed)
   const answered = searchable && lookup === typed.trim() && !results.isPlaceholderData
@@ -545,12 +551,16 @@ export function Shell({
     happens at the endpoint either way. What it removes is a menu that promises
     something the account cannot have.
   */
-  const grantedRoutes = viewer
-    ? viewer.sections
-        .filter((id: SectionValue) => readsCompanyWide(viewer, id) || !isCompanyWideSection(id, viewer.dataScope))
-        .map((id: SectionValue) => sectionSpec(id)?.route)
-        .filter((route): route is string => route !== undefined)
-    : undefined
+  const grantedRoutes = useMemo(
+    () =>
+      viewer
+        ? viewer.sections
+            .filter((id: SectionValue) => readsCompanyWide(viewer, id) || !isCompanyWideSection(id, viewer.dataScope))
+            .map((id: SectionValue) => sectionSpec(id)?.route)
+            .filter((route): route is string => route !== undefined)
+        : undefined,
+    [viewer],
+  )
 
   /**
    * Hide destinations this ACCOUNT was not given.
@@ -565,11 +575,14 @@ export function Shell({
    * server does not know the answer, so a viewer this code cannot see is a
    * signed-out one, and a signed-out reader is on their way to /login.
    */
-  const canOpen = (item: NavItem) => {
-    if (item.adminOnly) return viewer?.canManageUsers === true
-    if (!role) return false
-    return canSeeHref(role, grantedRoutes, item.gate ?? item.href)
-  }
+  const canOpen = useCallback(
+    (item: NavItem) => {
+      if (item.adminOnly) return viewer?.canManageUsers === true
+      if (!role) return false
+      return canSeeHref(role, grantedRoutes, item.gate ?? item.href)
+    },
+    [viewer, role, grantedRoutes],
+  )
 
   const visibleNav = NAV.filter(canOpen)
 
@@ -585,20 +598,40 @@ export function Shell({
     The menu, resolved: which groups this account may see, where each entry
     goes, and which one is the current screen. Computed here once so the rail
     and the drawer render the same list from the same facts.
+
+    MEMOISED, AND SO IS EVERYTHING ELSE `RailBody` IS HANDED (2026-10-24).
+    The shell renders again every time the count of queries in flight moves
+    (`useIsFetching`, twice — the refresh glyph and the sync line), which on a
+    busy screen is several times a second, and each time it redrew the whole
+    rail: every link, icon and tooltip. `RailBody` is `memo` now, so it is
+    drawn again only when the menu itself changes — a navigation, the badge,
+    the account, the fold.
   */
-  const railGroups: readonly RailGroup[] = NAV_GROUPS.map((group) => ({
-    label: group.label,
-    items: group.items
-      .filter((item) => canOpen(item))
-      .map((item) => ({
-        key: item.href,
-        label: item.label,
-        icon: item.icon,
-        href: hrefFor(item.href),
-        active: item.href === currentHref(pathname),
-        badge: item.href === '/leads' ? criticalLeads : 0,
-      })),
-  })).filter((group) => group.items.length > 0)
+  const railGroups: readonly RailGroup[] = useMemo(
+    () =>
+      NAV_GROUPS.map((group) => ({
+        label: group.label,
+        items: group.items
+          .filter((item) => canOpen(item))
+          .map((item) => ({
+            key: item.href,
+            label: item.label,
+            icon: item.icon,
+            href: hrefFor(item.href),
+            active: item.href === currentHref(pathname),
+            badge: item.href === '/leads' ? criticalLeads : 0,
+          })),
+      })).filter((group) => group.items.length > 0),
+    [canOpen, hrefFor, pathname, criticalLeads],
+  )
+  /* `sessionUser` builds a new object on every render; the rail reads two strings of it. */
+  const userName = user?.name
+  const userRole = user?.role
+  const railUser = useMemo(
+    () => (userName !== undefined && userRole !== undefined ? { name: userName, role: userRole } : null),
+    [userName, userRole],
+  )
+  const toggleCollapsed = useCallback(() => setSidebarCollapsed(!collapsed), [collapsed])
 
   const handleSignOut = useCallback(() => {
     void signOut().then(() => {
@@ -622,9 +655,10 @@ export function Shell({
    * setPeriod writes the window of whatever route is current. The palette adds
    * no third semantics of its own.
    *
-   * Built plainly, no useMemo: the React Compiler memoizes it (a manual memo
-   * here is flagged by react-hooks/preserve-manual-memoization), and twenty
-   * rows would be cheap even if it did not.
+   * Built plainly, no useMemo, and nothing memoizes it for us: there is no
+   * React Compiler in this build (this said there was until 2026-10-24).
+   * Twenty rows are cheap to rebuild, and the palette that reads them is
+   * unmounted while closed.
    */
   const paletteGroups: readonly CommandGroup[] = [
     {
@@ -739,9 +773,9 @@ export function Shell({
         <RailBody
           variant="rail"
           collapsed={collapsed}
-          onToggleCollapse={() => setSidebarCollapsed(!collapsed)}
+          onToggleCollapse={toggleCollapsed}
           groups={railGroups}
-          user={user}
+          user={railUser}
           onSignOut={handleSignOut}
         />
       </aside>
@@ -787,8 +821,8 @@ export function Shell({
               onClose={closeMenu}
               onNavigate={closeMenu}
               groups={railGroups}
-              user={user}
-                  onSignOut={handleSignOut}
+              user={railUser}
+              onSignOut={handleSignOut}
             />
           </div>
         </div>
@@ -1178,8 +1212,11 @@ interface RailGroup {
  * reach. `variant` decides only the corner control — fold on the rail, close
  * on the drawer — and whether choosing a section should also dismiss the
  * container it was chosen from.
+ *
+ * `memo`, and `Shell` holds every prop stable — see `railGroups` for why. A
+ * new prop handed in as an inline closure or object would quietly undo it.
  */
-function RailBody({
+const RailBody = memo(function RailBody({
   variant,
   collapsed,
   onToggleCollapse,
@@ -1523,7 +1560,7 @@ function RailBody({
       </div>
     </>
   )
-}
+})
 
 /**
  * THE CLICK WAS TAKEN — said on the entry itself while its screen is on the

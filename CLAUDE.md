@@ -240,12 +240,14 @@ its first frame reads it through `useHydrated()` (`src/lib/useHydrated.ts`),
 or it hydrates on data the server never had — React #418 on «Hisob», a
 never-patched `disabled` on the filter pickers.
 
-`src/app/providers.tsx` sets the cadence **globally**: `refetchInterval: 60_000`
-with `staleTime: 55_000`, matched to the sync worker's one-minute tick.
+`src/app/providers.tsx` sets the cadence **globally**: `refetchInterval: 120_000`
+with `staleTime: 115_000`, matched to the sync worker's 120 s production tick
+(`SYNC_INTERVAL_SEC`; it was 60 s / 55 s until 2026-10-05).
 Per-page `refetchInterval` overrides were deliberately removed. Three
 exceptions, each with a reason in place: `/meta/alerts` (one request a minute
 for the whole app, keyed constantly), `/meta/filters` (5 min — reference data
-changes on sync), and the ⌘K search.
+changes on sync), and two that never poll (`refetchInterval: false`, 2026-10-24):
+the ⌘K search and the «ROP» heads list in «+ Yangi hisob».
 
 **THE REFRESH BUTTON REPORTS, AND A DEPLOY NOW REACHES AN OPEN TAB.** Both
 added 2026-09-14, after the client reported «yangilash ishlamayapti» four times
@@ -262,8 +264,10 @@ to name the moment or it reads as a status that was always true.
 *And a single-page app does not notice a deploy* — five landed under that same
 open tab. `scripts/writeBuildId.mjs` stamps `public/build-id.json` before every
 `next build`; `useNewBuildAvailable` reads it on mount (that is what THIS tab is
-running) and every minute after (that is what the server is serving now), and a
-difference offers «Yangi versiya · yangilash». A BUTTON, never an automatic
+running), then every minute while the tab is visible and once each time it is
+shown again (that is what the server is serving now — since 2026-10-24 a hidden
+tab does not poll); a difference offers «Yangi versiya · yangilash» and the
+polling stops. A BUTTON, never an automatic
 reload: this dashboard is read in the middle of work and a page that reloads
 itself loses the reader's scroll, filters and place in a table. A failed read —
 offline, 404 in dev, HTML from a proxy — is never a new version. The file is

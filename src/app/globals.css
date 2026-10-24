@@ -5867,6 +5867,15 @@ button.watch-card:hover {
   .sync-line::before {
     width: 38%;
     opacity: 1;
+    /* Parked off the left edge, where every lap starts, while nothing is in
+       flight — so a line fading out does not leave a still segment behind. */
+    transform: translateX(-100%);
+  }
+  /* ONLY WHILE SOMETHING IS IN FLIGHT — 2026-10-24. The lap used to run on
+     the bare `::before`, so it ran on every screen all day under the parent's
+     `opacity: 0`: an infinite animation nobody could see, a compositor frame
+     on every refresh of the display, on an idle tab, all day. */
+  .sync-line[data-active]::before {
     /* Symmetric, not --ease-out: a decelerating curve parks the segment at
        the far edge, off the line, for most of every lap. */
     animation: sync-slide 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite;

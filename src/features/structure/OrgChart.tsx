@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react'
 
@@ -162,7 +163,9 @@ export function OrgChart({
 
   /** The live viewport. Written during a drag; never a render trigger. */
   const view = useRef({ x: 0, y: 0, scale: 1 })
-  const [scalePct, setScalePct] = useState(100)
+  /* The zoom readout — see `ZoomReadout`. Its own store, read by the − / % / +
+     controls alone, so a wheel turn redraws three buttons and not the chart. */
+  const [zoom] = useState(createZoomReadout)
   const [query, setQuery] = useState('')
 
   /*
@@ -473,10 +476,10 @@ export function OrgChart({
       if (!canvas) return
       const { width: vw, height: vh } = canvas.getBoundingClientRect()
       view.current = { x: vw / 2 - cx * scale, y: vh / 2 - cy * scale, scale }
-      setScalePct(Math.round(scale * 100))
+      zoom.set(Math.round(scale * 100))
       applyTransform()
     },
-    [applyTransform],
+    [applyTransform, zoom],
   )
 
   /**
@@ -509,13 +512,13 @@ export function OrgChart({
       const root = layout.nodes[0]
       const cx = root ? root.x + DEFAULT_LAYOUT.cardWidth / 2 : layout.width / 2
       view.current = { x: vw / 2 - cx * scale, y: clearance(), scale }
-      setScalePct(Math.round(scale * 100))
+      zoom.set(Math.round(scale * 100))
       applyTransform()
       return
     }
 
     centreOn(layout.width / 2, layout.height / 2, scale)
-  }, [layout.width, layout.height, layout.nodes, centreOn, applyTransform, clearance])
+  }, [layout.width, layout.height, layout.nodes, centreOn, applyTransform, clearance, zoom])
 
   const fitted = useRef(false)
 
@@ -627,10 +630,10 @@ export function OrgChart({
         x: px - ((px - x) / old) * scale,
         y: py - ((py - y) / old) * scale,
       }
-      setScalePct(Math.round(scale * 100))
+      zoom.set(Math.round(scale * 100))
       applyTransform()
     },
-    [applyTransform],
+    [applyTransform, zoom],
   )
 
   const step = (delta: number) => {
@@ -869,7 +872,7 @@ export function OrgChart({
         y: Math.min(top, vh - 24 - bottom * scale),
         scale,
       }
-      setScalePct(Math.round(scale * 100))
+      zoom.set(Math.round(scale * 100))
       applyTransform()
     } else {
       fit()
@@ -1301,27 +1304,7 @@ export function OrgChart({
             <p><strong>Sigʻdirish</strong> — butun kompaniyani ekranga sigʻdirish.</p>
           </div>
         )}
-        <button
-          type="button"
-          onClick={() => step(-SCALE_STEP)}
-          disabled={scalePct <= MIN_SCALE * 100}
-          aria-label="Kichraytirish"
-          className="focusable org-float-btn"
-        >
-          −
-        </button>
-        <span className="org-zoom-value" aria-live="off">
-          {scalePct} %
-        </span>
-        <button
-          type="button"
-          onClick={() => step(SCALE_STEP)}
-          disabled={scalePct >= MAX_SCALE * 100}
-          aria-label="Kattalashtirish"
-          className="focusable org-float-btn"
-        >
-          +
-        </button>
+        <ZoomReadout zoom={zoom} onStep={step} />
       </div>
 
       <div ref={stageRef} className="org-stage">
@@ -1450,6 +1433,72 @@ export function OrgChart({
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * THE ZOOM PERCENTAGE LIVES OUTSIDE THE CHART'S STATE — 2026-10-24.
+ *
+ * It was a `useState` on `OrgChart`, set on every wheel event and every step
+ * of a pinch, and each set re-rendered the whole chart: every visible card
+ * and connector, a few dozen times a second, for one number in the corner.
+ * The transform itself was never React's (`applyTransform` writes the stage
+ * directly), so the readout was the only thing a wheel turn asked React for.
+ * Now the chart writes the number here and only `ZoomReadout` subscribes.
+ * Same values, same rounding, same limits on − and +.
+ */
+interface ZoomStore {
+  readonly get: () => number
+  readonly set: (pct: number) => void
+  readonly subscribe: (listener: () => void) => () => void
+}
+
+function createZoomReadout(): ZoomStore {
+  let pct = 100
+  const listeners = new Set<() => void>()
+  return {
+    get: () => pct,
+    set: (next) => {
+      if (next === pct) return
+      pct = next
+      for (const listener of listeners) listener()
+    },
+    subscribe: (listener) => {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
+  }
+}
+
+/** The − / «N %» / + trio — the one part of the chart that redraws on a zoom. */
+function ZoomReadout({ zoom, onStep }: { zoom: ZoomStore; onStep: (delta: number) => void }) {
+  const scalePct = useSyncExternalStore(zoom.subscribe, zoom.get, zoom.get)
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => onStep(-SCALE_STEP)}
+        disabled={scalePct <= MIN_SCALE * 100}
+        aria-label="Kichraytirish"
+        className="focusable org-float-btn"
+      >
+        −
+      </button>
+      <span className="org-zoom-value" aria-live="off">
+        {scalePct} %
+      </span>
+      <button
+        type="button"
+        onClick={() => onStep(SCALE_STEP)}
+        disabled={scalePct >= MAX_SCALE * 100}
+        aria-label="Kattalashtirish"
+        className="focusable org-float-btn"
+      >
+        +
+      </button>
+    </>
   )
 }
 
