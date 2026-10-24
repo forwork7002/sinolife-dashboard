@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { calendarDay } from '@/app/api/v1/rnp/costs/schema'
+import { realDay } from '@/app/api/v1/registration/schema'
 import { MANUAL_SPEND_CHANNELS, MANUAL_SPEND_PROJECTS } from '@/server/domain/reklama/manualSpend'
 
 /*
@@ -20,7 +20,7 @@ export const manualSpendBodySchema = z.object({
     .array(
       z.object({
         // Bounded as RNP's typed cells are: a day in 1990 is a script's slip, not a cost.
-        day: calendarDay.refine((d) => d >= '2025-01-01', 'Day out of range'),
+        day: realDay.refine((d) => d >= '2025-01-01', 'Day out of range'),
         project: z.enum(MANUAL_SPEND_PROJECTS),
         channel: z.enum(MANUAL_SPEND_CHANNELS),
         /** Dollars; null clears the cell. */
@@ -30,5 +30,3 @@ export const manualSpendBodySchema = z.object({
     .min(1)
     .max(500),
 })
-
-export type ManualSpendBody = z.infer<typeof manualSpendBodySchema>

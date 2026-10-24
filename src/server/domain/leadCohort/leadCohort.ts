@@ -26,6 +26,7 @@
  */
 
 import { zonedDateKey } from '@/server/domain/period/period'
+import { daysBetween } from '@/server/domain/roistat/roistatCuts'
 
 /** The portal started filling «Лид тушган сана» on 2026-09-14. Nothing earlier is a cohort. */
 export const LEAD_COHORT_START = '2026-09-14'
@@ -130,15 +131,6 @@ export interface LeadCohortOverviewDto {
 /** Whole days from `a` to `b`, both `YYYY-MM-DD`. */
 function dayDiff(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000)
-}
-
-/** Every day from `from` to `to` inclusive. */
-function daysBetween(from: string, to: string): string[] {
-  const out: string[] = []
-  for (let t = Date.parse(`${from}T00:00:00Z`), end = Date.parse(`${to}T00:00:00Z`); t <= end; t += 86_400_000) {
-    out.push(new Date(t).toISOString().slice(0, 10))
-  }
-  return out
 }
 
 const REPEAT_RANK: Record<RepeatKind, number> = { BOUGHT: 3, PROCESSING: 2, OTHER: 1 }

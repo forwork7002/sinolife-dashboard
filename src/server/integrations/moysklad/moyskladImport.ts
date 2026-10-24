@@ -34,6 +34,7 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
+import { sleep } from '@/server/integrations/crm/bitrix24/rateLimiter'
 
 const API = 'https://api.moysklad.ru/api/remap/1.2'
 /** MoySklad caps a page at 100 rows whenever `expand` is used. */
@@ -233,10 +234,6 @@ async function get<T>(path: string, token: string, missingIsNull = false): Promi
     return body
   }
   throw new Error(`MoySklad javob bermadi (${MAX_ATTEMPTS} urinish): ${lastError?.message ?? ''}`)
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 export interface MoyskladImportResult {

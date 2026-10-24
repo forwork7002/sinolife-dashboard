@@ -40,9 +40,9 @@ kept, in `HeadPicker`.
   for a minute has nothing to learn from a second answer. `staleTime` stays at
   five minutes — the roster changes when the sync worker's reference-data pass
   names a new head, not while an administrator types a password — and that is
-  what makes reopening the form instant. `refetchInterval` was DELETED rather
-  than lowered: it never consults staleness, so leaving it would have restored
-  the polling the enable flag exists to stop.
+  what makes reopening the form instant. The per-query `refetchInterval` was
+  deleted rather than lowered (it never consults staleness), but that let the
+  global two-minute one apply; since 2026-10-24 it is `refetchInterval: false`.
 - **The selected head is derived from `employeeId`, never stored beside it.**
   Two pieces of state for one choice is how a form sends a scope anchored to
   one person while showing another's team size — and that number is the only

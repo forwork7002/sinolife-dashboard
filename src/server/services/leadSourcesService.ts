@@ -75,6 +75,7 @@ import type {
   TriageDayRow,
 } from '@/server/repositories/leadSourcesRepository'
 import type { CampaignDayRow, ReklamaRepository } from '@/server/repositories/reklamaRepository'
+import { processWide } from '@/server/processWide'
 
 import { type SideColumnDto, calendarDays, sideColumnsOf } from './reklamaService'
 import { leadBrand } from './rnpService'
@@ -1294,13 +1295,9 @@ export function leadSourcesOverview(all: {
   warmer's builds filled memos no route read, and «Lidlar» stayed cold for
   its readers all the same. The warmers' first-build flag in `rnpWarmer.ts`
   is held this way for the same reason; `Symbol.for` hands both copies the
-  one key, `sinolife.leads.<memo>`. Under `next dev` a reloaded module finds
-  them too, so a TTL edited there needs a server restart.
+  one key, `sinolife.leads.<memo>` (`@/server/processWide`). Under `next dev` a
+  reloaded module finds them too, so a TTL edited there needs a server restart.
 */
-function processWide<T>(key: string, make: () => T): T {
-  const g = globalThis as Record<symbol, unknown>
-  return (g[Symbol.for(key)] ??= make()) as T
-}
 
 /*
   The Регистрация scan alone: «Targetologlar · kunlik» needs nothing else,

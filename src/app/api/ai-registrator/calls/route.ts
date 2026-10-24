@@ -23,7 +23,8 @@
 import { NextResponse } from 'next/server'
 
 import { env } from '@/server/config/env'
-import { aiCallSchema, bearerToken, tokenMatches } from '@/server/integrations/aiRegistrator/ingest'
+import { tokenMatches } from '@/server/http/token'
+import { aiCallSchema, bearerToken } from '@/server/integrations/aiRegistrator/ingest'
 import { childLogger } from '@/server/logging/logger'
 import { aiRegistratorRepository } from '@/server/services/container'
 

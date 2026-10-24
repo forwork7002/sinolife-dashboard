@@ -1,5 +1,3 @@
-import { timingSafeEqual } from 'node:crypto'
-
 /**
  * THE PORTAL'S OWN WORD, THE MOMENT IT HAPPENS — a Bitrix24 OUTGOING webhook.
  *
@@ -67,16 +65,6 @@ export function parseOutgoingDealEvent(body: string): OutgoingDealEvent | null {
     applicationToken,
     domain: params.get('auth[domain]') ?? '',
   }
-}
-
-/**
- * Whether the token the portal sent is the one configured — in constant time,
- * so a wrong token's reply says nothing about how wrong it was.
- */
-export function tokenMatches(sent: string, expected: string): boolean {
-  const a = Buffer.from(sent, 'utf8')
-  const b = Buffer.from(expected, 'utf8')
-  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b)
 }
 
 /**

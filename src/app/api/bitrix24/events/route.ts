@@ -24,11 +24,8 @@
 import { NextResponse } from 'next/server'
 
 import { env } from '@/server/config/env'
-import {
-  parseOutgoingDealEvent,
-  portalHost,
-  tokenMatches,
-} from '@/server/integrations/crm/bitrix24/outgoingEvent'
+import { tokenMatches } from '@/server/http/token'
+import { parseOutgoingDealEvent, portalHost } from '@/server/integrations/crm/bitrix24/outgoingEvent'
 import { childLogger } from '@/server/logging/logger'
 import { crmEventRepository } from '@/server/services/container'
 

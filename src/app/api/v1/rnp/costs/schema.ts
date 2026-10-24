@@ -1,21 +1,12 @@
 import { z } from 'zod'
 
+import { realDay } from '@/app/api/v1/registration/schema'
 import { RNP_COST_LINES, RNP_COST_PROJECTS } from '@/server/domain/rnp/rnpSheet'
 
 /*
   The body of `POST /api/v1/rnp/costs`, kept beside the route (a route file
   may export only its handlers) so its rules can be tested.
 */
-
-/** A real calendar day of `month`, `YYYY-MM-DD` — «2026-02-30» is refused, not rolled over. */
-export const calendarDay = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected YYYY-MM-DD')
-  .refine((d) => {
-    const t = new Date(`${d}T00:00:00Z`)
-    // «2026-99-99» is an Invalid Date, and toISOString would throw — a 400, not a 500.
-    return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d
-  }, 'Not a calendar day')
 
 export const costsBodySchema = z
   .object({
@@ -27,7 +18,8 @@ export const costsBodySchema = z
     cells: z
       .array(
         z.object({
-          day: calendarDay,
+          // A real calendar day of `month` — the month is checked below.
+          day: realDay,
           project: z.enum(RNP_COST_PROJECTS),
           line: z.enum(RNP_COST_LINES),
           /** Whole soʻm; null clears the cell. A trillion is far beyond any one day's cost. */

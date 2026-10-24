@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { Bitrix24CrmProvider } from '@/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
-import { OPEN_LINE_BOT_USER_ID, OPEN_LINE_PROVIDER_ID, openLineName, openLineSubject } from '@/server/integrations/crm/bitrix24/mapping'
+import { OPEN_LINE_BOT_USER_ID, OPEN_LINE_PROVIDER_ID, openLineSubject } from '@/server/integrations/crm/bitrix24/mapping'
 import type { FetchOptions, Page, RawCall, RawOpenLineChat } from '@/server/integrations/crm/CrmProvider'
 import {
   type ChatStore,
@@ -137,19 +137,19 @@ const activity = (ID: string, over: Record<string, unknown> = {}) => ({
 // The portal's vocabulary
 // ---------------------------------------------------------------------------
 
-describe('openLineName', () => {
+describe('openLineSubject', () => {
   it('reads the line after the user’s name', () => {
-    expect(openLineName('Чат открытой линии - "Madina - sinolifeuz instagram" (NEXTBOT)')).toBe('sinolifeuz instagram')
-    expect(openLineName('Чат открытой линии - "Ali - collagen.marine" (NEXTBOT)')).toBe('collagen.marine')
+    expect(openLineSubject('Чат открытой линии - "Madina - sinolifeuz instagram" (NEXTBOT)').line).toBe('sinolifeuz instagram')
+    expect(openLineSubject('Чат открытой линии - "Ali - collagen.marine" (NEXTBOT)').line).toBe('collagen.marine')
   })
 
   it('takes the LAST dash: a name can carry one of its own', () => {
-    expect(openLineName('Чат открытой линии - "Abdu - Rahmon - zextra.sinolife" (NEXTBOT)')).toBe('zextra.sinolife')
+    expect(openLineSubject('Чат открытой линии - "Abdu - Rahmon - zextra.sinolife" (NEXTBOT)').line).toBe('zextra.sinolife')
   })
 
   it('reads the other quote spellings, and a subject cut before its closing quote', () => {
-    expect(openLineName('Чат открытой линии - «Madina - sinolif_tg» (NEXTBOT)')).toBe('sinolif_tg')
-    expect(openLineName('Чат открытой линии - "Madina - sinolifeuz instagram')).toBe('sinolifeuz instagram')
+    expect(openLineSubject('Чат открытой линии - «Madina - sinolif_tg» (NEXTBOT)').line).toBe('sinolif_tg')
+    expect(openLineSubject('Чат открытой линии - "Madina - sinolifeuz instagram').line).toBe('sinolifeuz instagram')
   })
 
   it('names who wrote, too', () => {
@@ -159,9 +159,9 @@ describe('openLineName', () => {
   })
 
   it('is null for anything that is not the portal’s shape', () => {
-    expect(openLineName(null)).toBeNull()
-    expect(openLineName('')).toBeNull()
-    expect(openLineName('Звонок клиенту')).toBeNull()
+    expect(openLineSubject(null).line).toBeNull()
+    expect(openLineSubject('').line).toBeNull()
+    expect(openLineSubject('Звонок клиенту').line).toBeNull()
   })
 })
 

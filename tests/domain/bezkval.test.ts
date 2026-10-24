@@ -3,9 +3,8 @@ import { describe, expect, it } from 'vitest'
 import {
   type BezkvalHistoryRow,
   type BezkvalLeadRow,
-  bezkvalClientList,
+  bezkvalClientRows,
   bezkvalClients,
-  bezkvalDayRows,
   bezkvalDayTotals,
   bezkvalInvariantProblems,
   buildBezkvalDay,
@@ -122,16 +121,15 @@ describe('bezkvalClients', () => {
   })
 })
 
-describe('bezkvalDayRows', () => {
-  it('counts clients per day × ROP, and the deals behind them', () => {
-    const rows = bezkvalDayRows(
-      bezkvalClients([lead({ phones: ['901234567'], rop: 'Sevinch' }), lead({ phones: ['901234567'] }), lead({ phones: ['931112233'] })]),
-    )
-    expect(rows).toEqual([
-      { day: '2026-10-21', rop: 'Sevinch', leads: 1, deals: 2 },
-      { day: '2026-10-21', rop: null, leads: 1, deals: 1 },
+describe('bezkvalDayTotals', () => {
+  it('sums the day × ROP rows into a day\'s lead deals and clients', () => {
+    const totals = bezkvalDayTotals([
+      { day: '2026-10-21', leads: 1, deals: 2 },
+      { day: '2026-10-21', leads: 1, deals: 1 },
+      { day: '2026-10-22', leads: 3, deals: 4 },
     ])
-    expect(bezkvalDayTotals(rows).get('2026-10-21')).toEqual({ total: 3, bezkval: 2 })
+    expect(totals.get('2026-10-21')).toEqual({ total: 3, bezkval: 2 })
+    expect(totals.get('2026-10-22')).toEqual({ total: 4, bezkval: 3 })
   })
 })
 
@@ -177,13 +175,14 @@ describe('the day card', () => {
     ['p:931112233', { key: 'p:931112233', lastLeadAt: new Date('2026-10-10T05:00:00Z'), lastDeal: { externalId: '7', at: new Date('2026-10-10T05:00:00Z'), pipeline: 'Регистрация' } }],
     ['p:941112233', { key: 'p:941112233', lastLeadAt: null, lastDeal: { externalId: '8', at: new Date('2026-03-10T05:00:00Z'), pipeline: 'Доставка' } }],
   ])
-  const list = bezkvalClientList(day, clients, hist)
+  const list = bezkvalClientRows(day, clients, hist).map((r) => r.client)
   const dto = buildBezkvalDay({
     day,
     clients: list,
     computedAt: '2026-10-21T13:00:00.000Z',
     trendDays: ['2026-10-20', day],
-    totals: bezkvalDayTotals(bezkvalDayRows(clients)),
+    // The day × ROP rows are counted in SQL (`bezkvalDays`); one row for the whole day sums the same.
+    totals: bezkvalDayTotals([{ day, leads: clients.length, deals: rows.length }]),
     order: (rops) => [...rops].sort(),
   })
 

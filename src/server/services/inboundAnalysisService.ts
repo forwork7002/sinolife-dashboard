@@ -15,6 +15,7 @@ import { phoneKey, telTarget } from '@/server/domain/calls/inboundCalls'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import type { InboundAnalysisRepository } from '@/server/repositories/inboundAnalysisRepository'
 import type { InboundCallsRepository } from '@/server/repositories/inboundCallsRepository'
+import { windowDays } from './inboundCallsService'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 export interface AnalysisDayDto extends AnalysisDay {
@@ -71,16 +72,6 @@ interface Snapshot {
 
 const reportCache = ttlCache<Snapshot>(120_000, LIVE_CACHE)
 const numbersCache = ttlCache<AnalysisNumbersDto>(120_000, LIVE_CACHE)
-
-/** Every Tashkent day the window touches, in order. Tashkent has no DST, so a day is 24 h. */
-function windowDays(start: Date, end: Date, timeZone: string): string[] {
-  const days: string[] = []
-  for (let t = start.getTime(); t < end.getTime(); t += 86_400_000) {
-    const key = zonedDateKey(new Date(t), timeZone)
-    if (days[days.length - 1] !== key) days.push(key)
-  }
-  return days
-}
 
 /**
  * «Kiruvchi tahlil» — see `domain/calls/inboundAnalysis.ts` for every

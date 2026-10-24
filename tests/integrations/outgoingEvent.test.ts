@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  parseOutgoingDealEvent,
-  portalHost,
-  tokenMatches,
-} from '@/server/integrations/crm/bitrix24/outgoingEvent'
+import { tokenMatches } from '@/server/http/token'
+import { parseOutgoingDealEvent, portalHost } from '@/server/integrations/crm/bitrix24/outgoingEvent'
 
 /**
  * A Bitrix24 outgoing webhook, as the portal POSTs it — form-encoded, with

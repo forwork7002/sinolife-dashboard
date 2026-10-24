@@ -20,8 +20,10 @@ import { SegmentedControl } from '@/components/ui/Controls'
 import { MultiplyGlyph } from '@/components/ui/Icons'
 import { DayOrders } from '@/features/kpi/SverkaDaysCard'
 import { muted } from '@/features/reklama/reklamaUi'
-import { dayMonthYear, rnpMonthOf } from '@/features/rnp/rnpDerive'
+import { dayMonthYear } from '@/features/rnp/rnpDerive'
 import { scrollToToday } from '@/features/rnp/RnpSheetTable'
+import { useCurrentMonth } from '@/features/rnp/useCurrentMonth'
+import { downloadCsvText } from '@/features/shared/download'
 import { PageShell } from '@/features/shared/PageShell'
 import { PRODUCT_TONE } from '@/features/target/targetTheme'
 import { ApiClientError, apiGet } from '@/lib/api'
@@ -117,7 +119,7 @@ export function KpiSheetScreen({ tabs }: { readonly tabs: ReactNode }) {
               size="sm"
               className="h-11 sm:h-8"
               aria-label="Ekrandagi jadvalni Excel ochadigan CSV fayl qilib yuklab olish"
-              onClick={() => download(`kpi-jadvali-${data.month}${scope === 'all' ? '' : `-${scope.toLowerCase()}`}.csv`, kpiSheetCsv(data, lines))}
+              onClick={() => downloadCsvText(`kpi-jadvali-${data.month}${scope === 'all' ? '' : `-${scope.toLowerCase()}`}.csv`, kpiSheetCsv(data, lines))}
             >
               Excel
             </Button>
@@ -199,25 +201,6 @@ function Fact({ term, title, children }: { term: string; title?: string; childre
       </dd>
     </div>
   )
-}
-
-function download(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-/** The month it is now in Tashkent, re-read every minute — a page left open over the 1st moves on. */
-function useCurrentMonth(): string {
-  const [month, setMonth] = useState(() => rnpMonthOf(new Date()))
-  useEffect(() => {
-    const timer = window.setInterval(() => setMonth(rnpMonthOf(new Date())), 60_000)
-    return () => window.clearInterval(timer)
-  }, [])
-  return month
 }
 
 // ---------------------------------------------------------------------------

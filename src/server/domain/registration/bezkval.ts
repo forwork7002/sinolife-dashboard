@@ -204,23 +204,6 @@ export function bezkvalClients(rows: readonly BezkvalLeadRow[]): BezkvalClient[]
   return out
 }
 
-/**
- * «Безквал» per day × ROP — the month grid's, «Guruhlar»'s and /rnp's rows:
- * `leads` the clients, `deals` the lead deals they opened («Jami lid»).
- */
-export function bezkvalDayRows(clients: readonly BezkvalClient[]): { day: string; rop: string | null; leads: number; deals: number }[] {
-  const counts = new Map<string, { day: string; rop: string | null; leads: number; deals: number }>()
-  for (const c of clients) {
-    const id = `${c.day}\u0000${c.rop ?? ''}`
-    const hit = counts.get(id)
-    if (hit) {
-      hit.leads++
-      hit.deals += c.deals.length
-    } else counts.set(id, { day: c.day, rop: c.rop, leads: 1, deals: c.deals.length })
-  }
-  return [...counts.values()]
-}
-
 /** What the history read found for one key (`p:<nine>` or `c:<contact>`) before the day. */
 export interface BezkvalHistoryRow {
   readonly key: string
@@ -367,16 +350,7 @@ export interface BezkvalClientsDto {
 
 const LEAD_CATEGORIES: ReadonlySet<number> = new Set([0, 12])
 
-/** One day's clients, each with what came before it. */
-export function bezkvalClientList(
-  day: string,
-  clients: readonly BezkvalClient[],
-  history: ReadonlyMap<string, BezkvalHistoryRow>,
-): BezkvalClientDto[] {
-  return bezkvalClientRows(day, clients, history).map((r) => r.client)
-}
-
-/** `bezkvalClientList` with each client's key — the stored row's id; the key holds a whole number, so it never goes out on the wire. */
+/** One day's clients, each with what came before it, and its key — the stored row's id; the key holds a whole number, so it never goes out on the wire. */
 export function bezkvalClientRows(
   day: string,
   clients: readonly BezkvalClient[],
@@ -424,7 +398,7 @@ export function bezkvalDayTotals(rows: readonly { day: string; leads: number; de
   return out
 }
 
-/** The day card from the day's client list (`bezkvalClientList`, as stored) and the trend's days. */
+/** The day card from the day's client list (`bezkvalClientRows`' clients, as stored) and the trend's days. */
 export function buildBezkvalDay(input: {
   day: string
   clients: readonly BezkvalClientDto[]

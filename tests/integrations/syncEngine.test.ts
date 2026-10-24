@@ -7,7 +7,6 @@ import {
   type EntitySyncHandler,
   type SyncStore,
   SyncEngine,
-  isCleanRun,
   nextWatermark,
 } from '@/server/integrations/crm/sync/SyncEngine'
 import { isPassDue, isResolvePassDue, planTick } from '@/server/integrations/crm/sync/schedule'
@@ -576,7 +575,7 @@ describe('runAll', () => {
 
     expect(order).toEqual(['EMPLOYEES', 'DEALS'])
     expect(results).toHaveLength(2)
-    expect(isCleanRun(results)).toBe(true)
+    expect(results.every((r) => r.status === 'SUCCESS')).toBe(true)
   })
 
   it('continues past a failing entity', async () => {
@@ -592,7 +591,7 @@ describe('runAll', () => {
 
     expect(results[0]!.status).toBe('FAILED')
     expect(results[1]!.status).toBe('SUCCESS')
-    expect(isCleanRun(results)).toBe(false)
+    expect(results.every((r) => r.status === 'SUCCESS')).toBe(false)
   })
 })
 

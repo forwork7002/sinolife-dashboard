@@ -2118,7 +2118,7 @@ model OpenLineChat {
   /// RESPONSIBLE_ID — the portal user answering the chat. Never the bot.
   responsibleExternalId String?
   /// SUBJECT as the portal wrote it: «Чат открытой линии - "<user> - <line>" (NEXTBOT)».
-  /// Kept whole; the line's name is parsed at read time (`openLineName`).
+  /// Kept whole; the line's name is parsed at read time (`openLineSubject(…).line`).
   subject        String
   /// CREATED — when the session's activity was opened.
   openedAt       DateTime

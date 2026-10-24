@@ -1,7 +1,7 @@
 'use client'
 
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { type ReactNode, useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import { EmptyState, ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
@@ -20,8 +20,9 @@ import { t } from '@/lib/messages'
 import { RnpColumnScope } from './RnpColumnResizer'
 import { RnpSheetTable, scrollToToday } from './RnpSheetTable'
 import type { RnpOverviewDto } from './rnpApi'
-import { RNP_FIRST_MONTH, brandLines, dayMonth, dayMonthYear, rnpMonthIn, rnpMonthOf, ropLines } from './rnpDerive'
+import { RNP_FIRST_MONTH, brandLines, dayMonth, dayMonthYear, rnpMonthIn, ropLines } from './rnpDerive'
 import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
+import { useCurrentMonth } from './useCurrentMonth'
 
 /**
  * «RNP jadvali» — the client's «СентябрРНП» sheet and nothing else, one
@@ -321,24 +322,6 @@ function Fact({ term, title, children }: { term: string; title?: string; childre
 }
 
 // ---------------------------------------------------------------------------
-
-/**
- * The month it is now in Tashkent, kept current: re-read every minute, so a
- * page left open over midnight on the 1st moves to the new month by itself.
- */
-function useCurrentMonth(): string {
-  const [month, setMonth] = useState(thisMonth)
-  useEffect(() => {
-    const timer = window.setInterval(() => setMonth(thisMonth()), 60_000)
-    return () => window.clearInterval(timer)
-  }, [])
-  return month
-}
-
-function thisMonth(): string {
-  // The reader's calendar month in Tashkent, where the floor works.
-  return rnpMonthOf(new Date())
-}
 
 /**
  * The month on screen: `?month=` when it is one the sheet can show

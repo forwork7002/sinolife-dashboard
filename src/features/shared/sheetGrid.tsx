@@ -4,6 +4,8 @@ import { type UIEvent, useLayoutEffect } from 'react'
 
 import { dayMonth, isSunday, weekday } from '@/features/rnp/rnpDerive'
 
+import { downloadCsvText } from './download'
+
 /**
  * THE MONTH SHEETS' SHARED FRAME — «KPI jadvali» and «Maosh jadvali» (the
  * client, 2026-10-23: «huddi shunday jadval usulida»), both drawn in the RNP
@@ -11,7 +13,8 @@ import { dayMonth, isSunday, weekday } from '@/features/rnp/rnpDerive'
  * `.rnp-pin` and `.rnp-edge` (globals.css) pin the label and the summary
  * columns beside it, `[data-scrolled-x]` deepens the divider. What is here is
  * what the two sheets would otherwise each carry a copy of: the pinned
- * offsets, the column under the pointer, the day header, the colours.
+ * offsets, the column under the pointer, the day header, the colours. The
+ * RNP sheet reads its colours, rules and DOM writes from here too.
  *
  * A sheet marks every cell of a figure column with `data-c` (its column
  * index, the header's too) — that is all the crosshair reads.
@@ -64,7 +67,8 @@ export function usePinnedColumns(ref: { readonly current: HTMLDivElement | null 
   }, [ref, pinned])
 }
 
-function setVar(box: HTMLElement, name: string, value: string): void {
+/** Writes a custom property only when it changes: an unchanged write still restyles every cell under the box. */
+export function setVar(box: HTMLElement, name: string, value: string): void {
   if (box.style.getPropertyValue(name) !== value) box.style.setProperty(name, value)
 }
 
@@ -153,13 +157,7 @@ export function dayCellStyle(day: string, today: string): { background?: string;
 /** A CSV in the browser's downloads — `;`-separated with a BOM, so Excel opens it into columns. */
 export function downloadCsv(name: string, rows: readonly (readonly string[])[]): void {
   const cell = (text: string) => (/[";\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text)
-  const text = `﻿${rows.map((r) => r.map(cell).join(';')).join('\r\n')}`
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadCsvText(name, `﻿${rows.map((r) => r.map(cell).join(';')).join('\r\n')}`)
 }
 
 // ---------------------------------------------------------------------------
@@ -188,12 +186,15 @@ export const RULE = 'border-b border-[var(--border)]'
 export const RULE_STRONG = 'border-b border-[var(--border-strong)]'
 /** The faint column rule between figures, for reading down a day. */
 export const VRULE = 'border-r border-r-[var(--grid)]'
-/** The pinned summary columns' header band and cells. */
+/** The pinned summary columns' header band: the page accent over the header's own recess, opaque. */
 export const SUMMARY_HEAD = mix('var(--accent)', 12, 'var(--surface-sunken)')
+/** …and their cells: a whisper of ink, so the pinned panel reads as one block beside the scrolling columns. */
 export const SUMMARY_CELL = mix('var(--ink-muted)', 5)
+/** Today's column: the accent, opaque in the header so rows cannot show through, ruled down both sides. */
 export const TODAY_HEAD = mix('var(--accent)', 24, 'var(--surface-sunken)')
 export const TODAY_HEAD_RULE = 'inset 0 -2px 0 var(--accent)'
 export const TODAY_CELL = mix('var(--accent)', 13)
 export const TODAY_RULE = 'inset 1px 0 0 var(--accent-line), inset -1px 0 0 var(--accent-line)'
+/** Sunday: a whisper of ink, opaque in the header for the same reason as today's. */
 export const SUNDAY_HEAD = mix('var(--ink-muted)', 12, 'var(--surface-sunken)')
 export const SUNDAY_CELL = mix('var(--ink-muted)', 6)

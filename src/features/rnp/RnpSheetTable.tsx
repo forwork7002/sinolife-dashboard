@@ -1,8 +1,25 @@
 'use client'
 
-import { type ReactNode, type UIEvent, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { type ReactNode, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import { InfoTip, Tooltip } from '@/components/ui/Tooltip'
+import {
+  RULE,
+  SUMMARY_CELL,
+  SUMMARY_HEAD,
+  SUNDAY_CELL,
+  SUNDAY_HEAD,
+  TODAY_CELL,
+  TODAY_HEAD,
+  TODAY_HEAD_RULE,
+  TODAY_RULE,
+  VRULE,
+  inkOf,
+  layers,
+  markScrolledX,
+  mix,
+  setVar,
+} from '@/features/shared/sheetGrid'
 
 import {
   RNP_ADDED_TEAM_NOTE,
@@ -218,17 +235,6 @@ function useLinesDrawn(total: number): number {
 }
 
 /**
- * The pinned block's divider deepens once the days have moved under it —
- * `[data-scrolled-x]` on the box, read by `.rnp-edge` / `.rnp-label` in
- * globals.css. An attribute and not state: state would redraw every line.
- */
-function markScrolledX(e: UIEvent<HTMLDivElement>) {
-  const box = e.currentTarget
-  const scrolled = box.scrollLeft > 0
-  if (scrolled !== box.hasAttribute('data-scrolled-x')) box.toggleAttribute('data-scrolled-x', scrolled)
-}
-
-/**
  * The summary columns that pin beside the label, and the CSS that places them:
  * each `left` is a custom property `usePinnedSummary` writes on the box. Class
  * strings in full, so Tailwind sees them.
@@ -320,11 +326,6 @@ function usePinnedSummary(ref: { readonly current: HTMLDivElement | null }) {
 
 /** The pinned offsets the last grid measured, written onto the next one before it is first styled. */
 let lastPin: { readonly lefts: Readonly<Record<PinnedKey, string>>; readonly wide: boolean } | null = null
-
-/** Writes a custom property only when it changes: an unchanged write still restyles every cell under the box. */
-function setVar(box: HTMLElement, name: string, value: string): void {
-  if (box.style.getPropertyValue(name) !== value) box.style.setProperty(name, value)
-}
 
 /**
  * Scrolls the grid so today's column sits just right of the frozen block —
@@ -853,23 +854,6 @@ function ManualChip({ kind }: { kind: RnpManual['kind'] }) {
 // Colour — tokens only, mixed, so light and dark both carry it
 // ---------------------------------------------------------------------------
 
-function mix(color: string, pct: number, base = 'transparent'): string {
-  return `color-mix(in oklab, ${color} ${pct}%, ${base})`
-}
-
-/** Colours stacked as background layers, the first on top — over a pinned cell's own card colour. */
-function layers(...colors: (string | undefined)[]): string {
-  return colors
-    .filter((c): c is string => c !== undefined)
-    .map((c) => `linear-gradient(${c}, ${c})`)
-    .join(', ')
-}
-
-/** Text in a tone's hue, pulled towards the ink so it reads on its own tint in either theme. */
-function inkOf(hue: string): string {
-  return mix(hue, 68, 'var(--ink-primary)')
-}
-
 const HUE: Record<Exclude<RnpLabelTone, 'plain'>, string> = {
   section: 'var(--series-2)',
   team: 'var(--series-1)',
@@ -925,27 +909,8 @@ function labelStyle(hue: string | null): { background?: string; color: string } 
   return { background: mix(hue, 16, 'var(--surface-raised)'), color: inkOf(hue) }
 }
 
-/** Every cell's rule: separate borders travel with a sticky cell, collapsed ones do not. */
-const RULE = 'border-b border-[var(--border)]'
-/** The faint column rule between figures, for reading down a day. */
-const VRULE = 'border-r border-r-[var(--grid)]'
-
-/** The pinned summary columns' header band: the page accent over the header's own recess, opaque. */
-const SUMMARY_HEAD = mix('var(--accent)', 12, 'var(--surface-sunken)')
-/** …and their cells: a whisper of ink, so the pinned panel (B…D) reads as one block beside the scrolling columns. */
-const SUMMARY_CELL = mix('var(--ink-muted)', 5)
 /** The rule between the summary block and the days. A shadow, not a border: see `.tcol-sticky`. */
 const DIVIDER_RIGHT = 'inset -1px 0 0 var(--border-strong)'
-
-/** Today's column: the accent, opaque in the header so rows cannot show through, ruled down both sides. */
-const TODAY_HEAD = mix('var(--accent)', 24, 'var(--surface-sunken)')
-const TODAY_HEAD_RULE = 'inset 0 -2px 0 var(--accent)'
-const TODAY_CELL = mix('var(--accent)', 13)
-const TODAY_RULE = 'inset 1px 0 0 var(--accent-line), inset -1px 0 0 var(--accent-line)'
-
-/** Sunday: a whisper of ink, opaque in the header for the same reason as today's. */
-const SUNDAY_HEAD = mix('var(--ink-muted)', 12, 'var(--surface-sunken)')
-const SUNDAY_CELL = mix('var(--ink-muted)', 6)
 
 /** A row nobody fills: a faint diagonal hatch, so «empty» reads as «not available», not as zero. */
 const HATCH = `repeating-linear-gradient(135deg, transparent 0 7px, ${mix('var(--ink-muted)', 14)} 7px 8px)`

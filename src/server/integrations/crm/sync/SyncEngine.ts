@@ -622,8 +622,3 @@ export class SyncEngine {
     }
   }
 }
-
-/** Convenience: did every entity in a run come back clean? */
-export function isCleanRun(results: readonly SyncResult[]): boolean {
-  return results.every((r) => r.status === 'SUCCESS')
-}

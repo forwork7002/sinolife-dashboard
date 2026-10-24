@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { calendarDay } from '../costs/schema'
+import { realDay } from '../../registration/schema'
 
 /*
   The body of `POST /api/v1/rnp/headcount`, kept beside the route (a route
@@ -17,7 +17,7 @@ export const headcountBodySchema = z
     cells: z
       .array(
         z.object({
-          day: calendarDay,
+          day: realDay,
           /** The team as the sheet's ROP block names it (`team:<rop>`). */
           rop: z.string().trim().min(1).max(100),
           /** Whole people; null clears the day. A thousand is far beyond any one team. */

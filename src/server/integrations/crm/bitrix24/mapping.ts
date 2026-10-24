@@ -709,11 +709,6 @@ export function openLineSubject(subject: string | null | undefined): { readonly 
   return cut < 0 ? { user: null, line: clean(quoted) } : { user: clean(quoted.slice(0, cut)), line: clean(quoted.slice(cut + 3)) }
 }
 
-/** The open line's name from a chat activity's SUBJECT — «sinolifeuz instagram», «collagen.marine» — or null. */
-export function openLineName(subject: string | null | undefined): string | null {
-  return openLineSubject(subject).line
-}
-
 /**
  * Confirmation outcome, from the label rather than the item id.
  *

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
 import { MultiplyGlyph } from '@/components/ui/Icons'
+import { downloadCsvText } from '@/features/shared/download'
 import { ApiClientError, apiGet } from '@/lib/api'
 import { formatDateTime, formatNumber } from '@/lib/format'
 
@@ -77,15 +78,6 @@ export function returningCsv(rows: readonly AnalysisNumberRow[]): string {
   return `﻿${[head.join(';'), ...lines].join('\r\n')}`
 }
 
-function download(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
-  const a = document.createElement('a')
-  a.href = url
-  a.download = name
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
 /**
  * «Қайта мурожат» opened up — the CLAUDE.md's list of the returning callers,
  * each followed to the end (answered, rung back, talked at all), lost ones
@@ -131,7 +123,7 @@ export function ReturningCallersCard({
               onChange={setOutcome}
               ariaLabel="Natija"
             />
-            <Button variant="ghost" size="sm" disabled={rows.length === 0} onClick={() => download(`qayta-murojat-${outcome}.csv`, returningCsv(rows))}>
+            <Button variant="ghost" size="sm" disabled={rows.length === 0} onClick={() => downloadCsvText(`qayta-murojat-${outcome}.csv`, returningCsv(rows))}>
               CSV
             </Button>
             <Button variant="ghost" size="sm" icon={<MultiplyGlyph />} onClick={onClose} aria-label="Roʻyxatni yopish">

@@ -523,14 +523,6 @@ export class RegistrationRepository {
     }))
   }
 
-  /** Where the births feed is whole from (`lead_watch_sync` row 'births'), or null before its first pass. */
-  async dealBirthsFrom(): Promise<Date | null> {
-    const row = await this.prisma.leadWatchSync.findUnique({ where: { id: 'births' }, select: { state: true, lastSuccessAt: true } })
-    if (!row?.lastSuccessAt) return null
-    const from = (row.state as { from?: unknown } | null)?.from
-    return typeof from === 'string' && !Number.isNaN(new Date(from).getTime()) ? new Date(from) : null
-  }
-
   /**
    * The ROP an owner (the `employee` row aliased `o`) stands for in «Безквал»:
    * the team they head — of two, the one they sit in, as `leadRopSql` reads a

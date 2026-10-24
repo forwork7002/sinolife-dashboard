@@ -15,8 +15,6 @@
  * bounded by the route's body cap.
  */
 
-import { timingSafeEqual } from 'node:crypto'
-
 import { z } from 'zod'
 
 import { TRANSFER_RESULTS } from '@/server/domain/aiRegistrator/aiRegistrator'
@@ -54,11 +52,4 @@ export type AiCallPush = z.infer<typeof aiCallSchema>
 export function bearerToken(header: string | null): string {
   const match = /^Bearer\s+(\S+)\s*$/i.exec(header ?? '')
   return match?.[1] ?? ''
-}
-
-/** Constant-time comparison of two tokens; an empty one never matches. */
-export function tokenMatches(sent: string, expected: string): boolean {
-  const a = Buffer.from(sent, 'utf8')
-  const b = Buffer.from(expected, 'utf8')
-  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b)
 }

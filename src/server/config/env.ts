@@ -116,9 +116,6 @@ const schema = z
         }, 'APP_TIMEZONE is not a valid IANA timezone identifier'),
     ),
 
-    APP_DEFAULT_LOCALE: blankAsUndefined(
-      z.enum(['uz', 'ru', 'en']).default('uz'),
-    ),
     APP_DEFAULT_CURRENCY: blankAsUndefined(
       z
         .string()

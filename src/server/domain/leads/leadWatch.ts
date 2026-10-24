@@ -51,7 +51,6 @@ export type LeadWatchSettings = Loose<SettingsFile>
 
 /** The four channels the client filters by; everything else is `other`. «Исход» is never here. */
 export type WatchChannel = 'generated' | 'smm' | 'inbound' | 'telegram' | 'other'
-export const WATCH_CHANNELS: readonly WatchChannel[] = Object.freeze(['generated', 'smm', 'inbound', 'telegram', 'other'])
 
 export type WatchSeverity = 'ok' | 'warn' | 'critical'
 

@@ -132,8 +132,8 @@ function percent(part: number, whole: number): number | null {
   return whole === 0 ? null : Math.round((part / whole) * 1000) / 10
 }
 
-/** Every Tashkent day the window touches, in order. Tashkent has no DST, so a day is 24 h. */
-function windowDays(start: Date, end: Date, timeZone: string): string[] {
+/** Every Tashkent day the window touches, in order. Tashkent has no DST, so a day is 24 h. Also «Kiruvchi tahlil»'s. */
+export function windowDays(start: Date, end: Date, timeZone: string): string[] {
   const days: string[] = []
   for (let t = start.getTime(); t < end.getTime(); t += 86_400_000) {
     const key = zonedDateKey(new Date(t), timeZone)
