@@ -300,6 +300,8 @@ export interface BezkvalRopLineDto {
 
 export interface BezkvalDayDto {
   readonly day: string
+  /** When the sync worker last computed the day (ISO); null: not yet — every count is then zero. */
+  readonly computedAt: string | null
   /** «Jami lid» — the lead deals. */
   readonly total: number
   /** The distinct clients. */
@@ -339,6 +341,8 @@ export interface BezkvalClientDealDto {
   /** The lead's instant, ISO. */
   readonly at: string
   readonly leadGuard: boolean
+  /** CATEGORY_ID it was born in; null when no birth row was held. */
+  readonly born: number | null
 }
 
 export interface BezkvalClientDto {
@@ -369,12 +373,21 @@ export function bezkvalClientList(
   clients: readonly BezkvalClient[],
   history: ReadonlyMap<string, BezkvalHistoryRow>,
 ): BezkvalClientDto[] {
+  return bezkvalClientRows(day, clients, history).map((r) => r.client)
+}
+
+/** `bezkvalClientList` with each client's key — the stored row's id; the key holds a whole number, so it never goes out on the wire. */
+export function bezkvalClientRows(
+  day: string,
+  clients: readonly BezkvalClient[],
+  history: ReadonlyMap<string, BezkvalHistoryRow>,
+): { key: string; client: BezkvalClientDto }[] {
   return clients
     .filter((c) => c.day === day)
     .map((c) => {
       const n = novelty(c, history)
       const first = c.deals[0]!
-      return {
+      return { key: c.key, client: {
         phone: c.phones.length > 0 ? maskPhone(c.phones[0]!) : null,
         kind: c.kind,
         rop: c.rop,
@@ -392,10 +405,11 @@ export function bezkvalClientList(
           rop: dealRop(d),
           at: d.at.toISOString(),
           leadGuard: d.leadGuard,
+          born: d.bornCategory,
         })),
-      }
+      } }
     })
-    .sort((a, b) => (a.deals[0]!.at < b.deals[0]!.at ? -1 : a.deals[0]!.at > b.deals[0]!.at ? 1 : 0))
+    .sort((a, b) => (a.client.deals[0]!.at < b.client.deals[0]!.at ? -1 : a.client.deals[0]!.at > b.client.deals[0]!.at ? 1 : 0))
 }
 
 /** Lead deals and clients per day — the trend under the day card. */
@@ -410,12 +424,12 @@ export function bezkvalDayTotals(rows: readonly { day: string; leads: number; de
   return out
 }
 
-/** The day card from the day's client list (`bezkvalClientList`) and the trend's days. */
+/** The day card from the day's client list (`bezkvalClientList`, as stored) and the trend's days. */
 export function buildBezkvalDay(input: {
   day: string
   clients: readonly BezkvalClientDto[]
-  /** The day's lead deals as read, for the birth counts. */
-  deals: readonly Pick<BezkvalLeadRow, 'bornCategory' | 'pipeline'>[]
+  /** When the worker computed the day; null: not yet. */
+  computedAt: string | null
   trendDays: readonly string[]
   totals: ReadonlyMap<string, { total: number; bezkval: number }>
   /** The team order of the month grid. */
@@ -453,11 +467,13 @@ export function buildBezkvalDay(input: {
   const rops = [...named.map(line), line(null)]
   const unassigned = byRop.get(null)?.bezkval ?? 0
 
-  const movedIn = input.deals.filter((d) => d.bornCategory !== null && !LEAD_CATEGORIES.has(d.bornCategory)).length
-  const noBirth = input.deals.filter((d) => d.bornCategory === null).length
+  const deals = clients.flatMap((c) => c.deals)
+  const movedIn = deals.filter((d) => d.born !== null && !LEAD_CATEGORIES.has(d.born)).length
+  const noBirth = deals.filter((d) => d.born === null).length
 
   const dto: Omit<BezkvalDayDto, 'problems'> = {
     day: input.day,
+    computedAt: input.computedAt,
     total,
     bezkval,
     new30,

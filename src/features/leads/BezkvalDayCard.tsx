@@ -64,8 +64,17 @@ export function BezkvalDayCard({ day }: { day: string }) {
         <ErrorState message={query.error instanceof Error ? query.error.message : undefined} onRetry={() => void query.refetch()} />
       ) : !data ? (
         <LoadingSkeleton rows={4} />
+      ) : data.computedAt === null ? (
+        <p className="text-sm" style={{ color: 'var(--ink-secondary)' }}>
+          Bu kun hali hisoblanmagan — sinxronizatsiya bir necha daqiqada hisoblab chiqadi.
+        </p>
       ) : (
-        <DayBody data={data} open={open} />
+        <>
+          <p className="mb-3 text-[11px]" style={muted}>
+            Hisoblangan: {formatDateTime(data.computedAt)} (bugun va kecha har 10 daqiqada qayta hisoblanadi)
+          </p>
+          <DayBody data={data} open={open} />
+        </>
       )}
       {drill && <BezkvalDrawer drill={drill} onClose={() => setDrill(null)} />}
     </ChartCard>

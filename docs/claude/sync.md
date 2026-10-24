@@ -217,6 +217,13 @@
   arrive are dropped after a week.
 - `crm_form_fill` deliberately never deletes — see `formFillFeed.ts`: a fill
   Meta counted stays counted.
+- **«Безквал» is counted by the worker and stored (2026-10-24, `bezkvalRefresh.ts`,
+  `bezkval_client` + `bezkval_day`)**: today and yesterday every 10 min, the 7
+  days before every 3 h, every older day from 2026-09-01 once, ≤ 6 days a pass
+  (`RegistrationRepository.computeBezkvalDay` → `storeBezkvalDay`, one
+  transaction a day). The grid, the day card, «Guruhlar» and /rnp read the
+  stored rows; computing the month per request ran past the web pool's 20 s
+  statement timeout on production (22–24.10, «Lidlar» 500).
 - **Where each deal was born (2026-10-22, `crm_deal_birth`, `dealBirthFeed.ts`)**:
   `crm.stagehistory.list` TYPE_ID 1 rows, every pipeline, read in id order
   every 5 min (`DEAL_BIRTHS_MS`, one chained batch, up to 2 500 rows; the

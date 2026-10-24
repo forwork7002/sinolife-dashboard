@@ -5,9 +5,6 @@ import {
   type BezkvalClientDto,
   type BezkvalClientsDto,
   type BezkvalDayDto,
-  type BezkvalLeadRow,
-  bezkvalClientList,
-  bezkvalClients,
   bezkvalDayTotals,
   buildBezkvalDay,
 } from '@/server/domain/registration/bezkval'
@@ -15,7 +12,6 @@ import {
   addDays,
   type BezkvalDayRow,
   buildLeadSplit,
-  canonicalRop,
   type DistributedDayRow,
   type LeadSplitDto,
   type SplitShare,
@@ -58,6 +54,8 @@ const faktCache = ttlCache<SellerFaktDayRow[]>(120_000, LIVE_CACHE)
   Регистрация and «Безквал» days the same way, without even that bound. The
   price: those days may trail «Guruhlar», which reads the month on the live
   clock, by that long.
+  «Безквал» is a stored read since 2026-10-24 (`bezkval_client`, counted by
+  the worker), so only the hand-outs cost a scan here now.
   Both statements bucket by day and are bounded to their own days (a
   duplicate is a contact's — for «Безквал» a phone number's — later deal THAT
   day), so the two reads never overlap and their rows simply add up.
@@ -72,12 +70,12 @@ const NO_DAYS: Promise<SplitDays> = Promise.resolve({ rows: [], bezkval: [] })
 export function resetRegistrationCaches(): void {
   splitDaysCache.clear()
   settledDaysCache.clear()
-  dayDetailCache.clear()
+  storedDayCache.clear()
 }
 
-/* «Bezkval lidlar»: one day's clients and their history, on the live days' clock. */
-type DayDetail = { readonly deals: readonly BezkvalLeadRow[]; readonly clients: readonly BezkvalClientDto[] }
-const dayDetailCache = ttlCache<DayDetail>(120_000, LIVE_CACHE)
+/* «Bezkval lidlar»: one stored day — the worker recomputes today every ten minutes, so a minute's memo costs nothing. */
+type StoredDay = { readonly computedAt: Date | null; readonly clients: readonly BezkvalClientDto[] }
+const storedDayCache = ttlCache<StoredDay>(60_000, LIVE_CACHE)
 /** The trend under the day card: the spec's 30 days. */
 const BEZKVAL_TREND_DAYS = 30
 
@@ -113,7 +111,7 @@ export class RegistrationService {
     const settledTo = day < yesterday ? day : addDays(yesterday, -1)
     const liveFrom = from > yesterday ? from : yesterday
     const days = (lo: string, hi: string) => async (): Promise<SplitDays> => {
-      const [rows, bezkval] = await Promise.all([this.repository.distributedDays(lo, hi), this.repository.bezkvalDays(lo, hi, timeZone)])
+      const [rows, bezkval] = await Promise.all([this.repository.distributedDays(lo, hi), this.repository.bezkvalDays(lo, hi)])
       return { rows, bezkval }
     }
     const [settled, live] = await Promise.all([
@@ -132,14 +130,12 @@ export class RegistrationService {
    */
   async bezkvalDay(input: { day: string; timeZone: string; now: Date; brand?: BrandFilter }): Promise<BezkvalDayDto> {
     const brand = input.brand ?? 'all'
-    const [detail, days] = await Promise.all([this.dayDetail(input.day, input.timeZone), this.monthDays(input.day, input.timeZone, input.now)])
+    const [stored, days] = await Promise.all([this.storedDay(input.day), this.monthDays(input.day, input.timeZone, input.now)])
     const keep = (rop: string | null) => brand === 'all' || brandMatches(brand, teamBrand(rop))
-    const clients = detail.clients.filter((c) => keep(c.rop))
-    const kept = new Set(clients.flatMap((c) => c.deals.map((d) => d.id)))
     return buildBezkvalDay({
       day: input.day,
-      clients,
-      deals: brand === 'all' ? detail.deals : detail.deals.filter((d) => kept.has(d.externalId)),
+      clients: stored.clients.filter((c) => keep(c.rop)),
+      computedAt: stored.computedAt?.toISOString() ?? null,
       trendDays: Array.from({ length: BEZKVAL_TREND_DAYS }, (_, i) => addDays(input.day, i - (BEZKVAL_TREND_DAYS - 1))),
       totals: bezkvalDayTotals(days.bezkval.filter((r) => keep(r.rop)).map((r) => ({ day: r.day, leads: r.leads, deals: r.deals ?? r.leads }))),
       order: (rops) => teamOrder(rops),
@@ -149,25 +145,13 @@ export class RegistrationService {
   /** The day's clients, each with its deals and what came before it — every drill-down of «Bezkval lidlar». */
   async bezkvalClients(input: { day: string; timeZone: string; brand?: BrandFilter }): Promise<BezkvalClientsDto> {
     const brand = input.brand ?? 'all'
-    const detail = await this.dayDetail(input.day, input.timeZone)
-    return { day: input.day, clients: brand === 'all' ? detail.clients : detail.clients.filter((c) => brandMatches(brand, teamBrand(c.rop))) }
+    const stored = await this.storedDay(input.day)
+    return { day: input.day, clients: brand === 'all' ? stored.clients : stored.clients.filter((c) => brandMatches(brand, teamBrand(c.rop))) }
   }
 
-  /** One day's leads with their names, grouped, and their numbers' history — memoised as the grid's live days. */
-  private dayDetail(day: string, timeZone: string): Promise<DayDetail> {
-    return dayDetailCache.get(`${day}:${timeZone}`, async () => {
-      const deals = await this.repository.bezkvalLeads(day, day, timeZone, true)
-      const clients = bezkvalClients(deals)
-      const phones = [...new Set(clients.flatMap((c) => c.phones))]
-      const contacts = [...new Set(clients.filter((c) => c.phones.length === 0).flatMap((c) => c.contactIds))]
-      const history = await this.repository.bezkvalHistory(day, timeZone, phones, contacts)
-      const list = bezkvalClientList(day, clients, new Map(history.map((h) => [h.key, h])))
-      const canon = (rop: string | null) => (rop === null ? null : canonicalRop(rop))
-      return {
-        deals,
-        clients: list.map((c) => ({ ...c, rop: canon(c.rop), deals: c.deals.map((d) => ({ ...d, rop: canon(d.rop) })) })),
-      }
-    })
+  /** The day as the sync worker stored it (`bezkvalRefresh.ts`) — the card and its drill-downs read one memo. */
+  private storedDay(day: string): Promise<StoredDay> {
+    return storedDayCache.get(day, () => this.repository.storedBezkvalDay(day))
   }
 
   async saveSplit(day: string, rows: readonly SplitShare[], by: string): Promise<void> {
@@ -185,7 +169,7 @@ export class RegistrationService {
     const brand = input.brand ?? 'all'
     const [report, bezkval] = await Promise.all([
       this.sellerSheet({ from, to: input.day, timeZone: input.timeZone, now: input.now, calls: false, brand }),
-      monthBezkvalCache.get(`${from}:${input.day}:${input.timeZone}`, () => this.repository.bezkvalDays(from, input.day, input.timeZone)),
+      monthBezkvalCache.get(`${from}:${input.day}`, () => this.repository.bezkvalDays(from, input.day)),
     ])
     // The report keeps its groups by `teamBrand`; the без квал rows go the same way.
     const kept = brand === 'all' ? bezkval : bezkval.filter((r) => brandMatches(brand, teamBrand(r.rop)))

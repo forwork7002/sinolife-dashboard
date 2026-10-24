@@ -2130,6 +2130,55 @@ model OpenLineChat {
   @@map("open_line_chat")
 }
 
+/// «БЕЗКВАЛ», COMPUTED BY THE WORKER (2026-10-24): one row per client per
+/// Tashkent day, as `domain/registration/bezkval.ts` groups the day's leads —
+/// the spec's own shape («Ma'lumot PostgreSQL'ga sinxronlanadi … har 15–30
+/// daqiqada bugungi kun, kuniga 1 marta oxirgi 7 kun»). Reading the month on
+/// every request ran past the web pool's 20 s statement timeout on the
+/// one-core database (22–24.10: «Lidlar» answered 500); now the grid, the
+/// day card, «Guruhlar» and /rnp read these rows. A day is replaced whole
+/// (`bezkvalStore.ts`), in one transaction, so a reader sees it before or
+/// after, never half. Numbers are stored masked; the deals as the drill-down
+/// prints them.
+model BezkvalClient {
+  day        DateTime @db.Date
+  /// The client's key: `p:<nine digits>`, `c:<contact>` or `d:<deal>`.
+  key        String
+  /// The team (canonical), or the person's name; null «Tarqatilmagan».
+  rop        String?
+  /// phone | dealPhone | contact | deal — what keyed the client.
+  kind       String
+  /// The first number, masked (+998 90 ***-45-67); null without one.
+  phone      String?
+  /// The Tashkent hour of its first deal.
+  hour       Int
+  /// Its first deal's source.
+  source     String?
+  new30      Boolean
+  newEver    Boolean
+  multiRop   Boolean
+  /// The latest earlier deal: { id, at, pipeline }.
+  previous   Json?
+  /// Its deals that day: [{ id, pipeline, stage, source, rop, at, leadGuard, born }].
+  deals      Json
+  dealCount  Int
+
+  @@id([day, key])
+  @@map("bezkval_client")
+}
+
+/// When each «Безквал» day was last computed — a day with no clients is still
+/// a computed day, and the card prints how fresh it is.
+model BezkvalDay {
+  day        DateTime @id @db.Date
+  computedAt DateTime
+  /// The day's lead deals and clients when computed — the grid's footer reads them without a scan.
+  deals      Int
+  clients    Int
+
+  @@map("bezkval_day")
+}
+
 /// WHERE A DEAL WAS BORN (2026-10-22, «Безквал»): the deal's `crm.stagehistory`
 /// row of TYPE_ID 1 — the portal writes one when the deal is created, with the
 /// pipeline (CATEGORY_ID) and stage it opened in. `deal.pipelineId` is only

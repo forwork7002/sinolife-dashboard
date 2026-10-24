@@ -3,12 +3,15 @@
  * administrator's daily split of them. See `domain/registration/leadSplit.ts`.
  */
 
-import type { PrismaClient } from '@/generated/prisma/client'
+import { Prisma, type PrismaClient } from '@/generated/prisma/client'
 import {
+  type BezkvalClientDealDto,
+  type BezkvalClientDto,
   type BezkvalHistoryRow,
+  type BezkvalKeyKind,
   type BezkvalLeadRow,
+  bezkvalClientRows,
   bezkvalClients,
-  bezkvalDayRows,
 } from '@/server/domain/registration/bezkval'
 import { type BezkvalDayRow, canonicalRop, type DistributedDayRow, type SavedSplit, type SplitShare } from '@/server/domain/registration/leadSplit'
 import type { RosterMember, SellerCallRow, SellerLeadRow } from '@/server/domain/registration/ropReport'
@@ -154,9 +157,117 @@ export class RegistrationRepository {
           AND (p."role" IS DISTINCT FROM 'LEAD' OR d."leadRopEmployeeId" IS NOT NULL)`
   }
 
-  /** «Безквал» per day × ROP: `from` / `to` are inclusive `YYYY-MM-DD` in `timeZone`. See `domain/registration/bezkval.ts`. */
-  async bezkvalDays(from: string, to: string, timeZone: string): Promise<BezkvalDayRow[]> {
-    return bezkvalDayRows(bezkvalClients(await this.bezkvalLeads(from, to, timeZone)))
+  /**
+   * «Безквал» per day × ROP, `from` / `to` inclusive — READ FROM WHAT THE
+   * WORKER STORED (`bezkval_client`, 2026-10-24), never computed here: the
+   * month computed per request ran past the web pool's 20 s statement timeout
+   * on production. See `computeBezkvalDay` for how a day is counted.
+   */
+  async bezkvalDays(from: string, to: string): Promise<BezkvalDayRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ day: string; rop: string | null; leads: bigint; deals: bigint }[]>(
+      RegistrationRepository.storedBezkvalDaysSql(),
+      from,
+      to,
+    )
+    return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads), deals: Number(r.deals) }))
+  }
+
+  /** `bezkvalDays`'s statement — shared with `RnpRepository.bezkvalDays`. ::text: a bare DATE is built at LOCAL midnight by node-postgres. */
+  static storedBezkvalDaysSql(): string {
+    return `
+      SELECT c."day"::text AS day, c."rop", count(*)::bigint AS leads, sum(c."dealCount")::bigint AS deals
+        FROM "bezkval_client" c
+       WHERE c."day" BETWEEN $1::date AND $2::date
+       GROUP BY 1, 2`
+  }
+
+  /** The stored clients of one day, and when the worker computed it (null: not yet). */
+  async storedBezkvalDay(day: string): Promise<{ computedAt: Date | null; clients: BezkvalClientDto[] }> {
+    const [mark, rows] = await Promise.all([
+      this.prisma.bezkvalDay.findUnique({ where: { day: dateOf(day) }, select: { computedAt: true } }),
+      this.prisma.bezkvalClient.findMany({ where: { day: dateOf(day) } }),
+    ])
+    const clients = rows
+      .map(
+        (r): BezkvalClientDto => ({
+          phone: r.phone,
+          kind: r.kind as BezkvalKeyKind,
+          rop: r.rop,
+          source: r.source,
+          hour: r.hour,
+          new30: r.new30,
+          newEver: r.newEver,
+          multiRop: r.multiRop,
+          previous: (r.previous as BezkvalClientDto['previous'] | null) ?? null,
+          deals: r.deals as unknown as BezkvalClientDealDto[],
+        }),
+      )
+      .sort((a, b) => (a.deals[0]?.at ?? '').localeCompare(b.deals[0]?.at ?? ''))
+    return { computedAt: mark?.computedAt ?? null, clients }
+  }
+
+  /** When each day of `from`…`to` was computed; a day missing has never been. */
+  async bezkvalComputedDays(from: string, to: string): Promise<Map<string, Date>> {
+    const rows = await this.prisma.bezkvalDay.findMany({
+      where: { day: { gte: dateOf(from), lte: dateOf(to) } },
+      select: { day: true, computedAt: true },
+    })
+    return new Map(rows.map((r) => [r.day.toISOString().slice(0, 10), r.computedAt]))
+  }
+
+  /**
+   * ONE DAY OF «БЕЗКВАЛ», COUNTED — the sync worker's job (`bezkvalRefresh.ts`):
+   * the day's leads (`bezkvalLeadsSql`), grouped into clients by union-find,
+   * each client's numbers looked up before the day (`bezkvalHistorySql`), the
+   * ROP names folded to today's teams («RNP jadvali»'s `canonicalRop`).
+   */
+  async computeBezkvalDay(day: string, timeZone: string): Promise<{ key: string; client: BezkvalClientDto }[]> {
+    const deals = await this.bezkvalLeads(day, day, timeZone, true)
+    const clients = bezkvalClients(deals)
+    const phones = [...new Set(clients.flatMap((c) => c.phones))]
+    const contacts = [...new Set(clients.filter((c) => c.phones.length === 0).flatMap((c) => c.contactIds))]
+    const history = await this.bezkvalHistory(day, timeZone, phones, contacts)
+    const canon = (rop: string | null) => (rop === null ? null : canonicalRop(rop))
+    return bezkvalClientRows(day, clients, new Map(history.map((h) => [h.key, h]))).map(({ key, client }) => ({
+      key,
+      client: { ...client, rop: canon(client.rop), deals: client.deals.map((d) => ({ ...d, rop: canon(d.rop) })) },
+    }))
+  }
+
+  /** Replace one day's stored clients — in one transaction, so a reader sees the day before or after, never half. */
+  async storeBezkvalDay(day: string, rows: readonly { key: string; client: BezkvalClientDto }[], at: Date): Promise<void> {
+    const date = dateOf(day)
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.bezkvalClient.deleteMany({ where: { day: date } })
+        for (let i = 0; i < rows.length; i += 1_000) {
+          await tx.bezkvalClient.createMany({
+            data: rows.slice(i, i + 1_000).map(({ key, client: c }) => ({
+              day: date,
+              key,
+              rop: c.rop,
+              kind: c.kind,
+              phone: c.phone,
+              hour: c.hour,
+              source: c.source,
+              new30: c.new30,
+              newEver: c.newEver,
+              multiRop: c.multiRop,
+              previous: c.previous === null ? Prisma.DbNull : (c.previous as Prisma.InputJsonValue),
+              deals: c.deals as unknown as Prisma.InputJsonValue,
+              dealCount: c.deals.length,
+            })),
+          })
+        }
+        const deals = rows.reduce((n, r) => n + r.client.deals.length, 0)
+        await tx.bezkvalDay.upsert({
+          where: { day: date },
+          create: { day: date, computedAt: at, deals, clients: rows.length },
+          update: { computedAt: at, deals, clients: rows.length },
+        })
+      },
+      { maxWait: 30_000, timeout: 60_000 },
+    )
   }
 
   /**

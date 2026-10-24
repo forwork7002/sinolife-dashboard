@@ -14,7 +14,6 @@ process.env.NEXT_PUBLIC_APP_URL ??= 'http://localhost:3000'
 const { InsightsRepository } = await import('@/server/repositories/insightsRepository')
 const { RnpRepository } = await import('@/server/repositories/rnpRepository')
 const { RegistrationRepository } = await import('@/server/repositories/registrationRepository')
-const { env } = await import('@/server/config/env')
 
 /** Comments name the very tokens some assertions forbid. */
 const bare = (sql: string) => sql.replace(/\/\*[\s\S]*?\*\//g, '').replace(/--[^\n]*/g, '')
@@ -225,56 +224,24 @@ describe('registrationDays — the history scan gets its own statement timeout',
   })
 })
 
-describe('bezkvalDays — «Lidlar»\'s «Безквал» statement, for the sheet\'s «без квал» rows', () => {
-  function fakePrisma() {
+describe('bezkvalDays — «Lidlar»\'s stored «Безквал» rows, for the sheet\'s «без квал» rows', () => {
+  it('reads what the worker stored, by day and ROP — no month computed on a request', async () => {
     const calls: unknown[][] = []
     const client = {
       $queryRawUnsafe: async (sql: string, ...params: unknown[]) => {
-        calls.push([sql === RegistrationRepository.bezkvalLeadsSql() ? 'bezkval' : sql, ...params])
-        const lead = (id: string, phone: string, rop: string | null) => ({
-          deal_id: id,
-          external_id: id,
-          at: new Date('2026-10-02T06:00:00Z'),
-          day: '2026-10-02',
-          hour: 11,
-          lead_guard: false,
-          born_category: 0,
-          pipeline: '0',
-          contact_id: `c${phone}`,
-          phones: [phone],
-          deal_phone: null,
-          rop,
-          rop_primary: null,
-        })
-        // Two deals of one number: one client, Sevinch's; another number with no ROP.
-        return [lead('1', '901234567', 'Sevinch'), lead('2', '901234567', null), lead('3', '931112233', null)]
-      },
-      $executeRawUnsafe: async (sql: string) => {
-        calls.push([sql])
-        return 0
-      },
-      $transaction: async (fn: (tx: unknown) => Promise<unknown>, options: { timeout: number }) => {
-        calls.push([`tx:${options.timeout}`])
-        return fn(client)
+        calls.push([sql === RegistrationRepository.storedBezkvalDaysSql() ? 'stored' : sql, ...params])
+        return [
+          { day: '2026-10-02', rop: 'Sevinch', leads: 24n, deals: 30n },
+          { day: '2026-10-02', rop: null, leads: 7n, deals: 9n },
+        ]
       },
     }
-    return { client, calls }
-  }
-
-  it('runs the one statement over the days, in the app\'s time zone', async () => {
-    const { client, calls } = fakePrisma()
     const rows = await new RnpRepository(client as never).bezkvalDays('2026-10-01', '2026-10-08')
-    expect(calls).toEqual([['bezkval', '2026-10-01', '2026-10-08', env.APP_TIMEZONE]])
+    expect(calls).toEqual([['stored', '2026-10-01', '2026-10-08']])
     expect(rows).toEqual([
-      { day: '2026-10-02', rop: 'Sevinch', leads: 1, deals: 2 },
-      { day: '2026-10-02', rop: null, leads: 1, deals: 1 },
+      { day: '2026-10-02', rop: 'Sevinch', leads: 24 },
+      { day: '2026-10-02', rop: null, leads: 7 },
     ])
-  })
-
-  it('lifts the limit for a month\'s closed days, as the registration scan does', async () => {
-    const { client, calls } = fakePrisma()
-    await new RnpRepository(client as never).bezkvalDays('2026-10-01', '2026-10-08', 60_000)
-    expect(calls.map((c) => c[0])).toEqual(['tx:65000', 'SET LOCAL statement_timeout = 60000', 'bezkval'])
   })
 })
 

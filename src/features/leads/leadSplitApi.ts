@@ -62,6 +62,8 @@ export interface BezkvalRopLineDto {
 
 export interface BezkvalDayDto {
   readonly day: string
+  /** When the sync worker last counted the day; null: not yet. */
+  readonly computedAt: string | null
   readonly total: number
   readonly bezkval: number
   readonly new30: number
@@ -88,6 +90,7 @@ export interface BezkvalClientDealDto {
   readonly rop: string | null
   readonly at: string
   readonly leadGuard: boolean
+  readonly born: number | null
 }
 
 export interface BezkvalClientDto {

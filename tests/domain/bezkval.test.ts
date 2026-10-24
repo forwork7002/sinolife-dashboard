@@ -181,7 +181,7 @@ describe('the day card', () => {
   const dto = buildBezkvalDay({
     day,
     clients: list,
-    deals: rows,
+    computedAt: '2026-10-21T13:00:00.000Z',
     trendDays: ['2026-10-20', day],
     totals: bezkvalDayTotals(bezkvalDayRows(clients)),
     order: (rops) => [...rops].sort(),

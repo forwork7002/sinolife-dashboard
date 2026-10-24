@@ -625,6 +625,9 @@ Per-screen traps worth knowing before you touch one:
   as «Qoʻngʻiroqlar» counts them, on the person's roster row (off-roster: the
   group where they earned most), a dash before `CALL_DATA_FLOOR`. Roster = team heads +
   PRIMARY department members; leads/orders naming no team form «Jamoasiz».
+  «БЕЗКВАЛ» IS STORED SINCE 2026-10-24: the sync worker counts each day
+  (`bezkvalRefresh.ts`, today every 10 min) into `bezkval_client`, and every
+  screen below reads those rows — the card prints «Hisoblangan: …».
   «БЕЗКВАЛ» SINCE 2026-10-22 — THE CLIENT'S WRITTEN SPEC
   (`~/Downloads/bezkval-lid-spec.md`), `domain/registration/bezkval.ts`;
   everything below in this paragraph is its history. A lead = a deal born

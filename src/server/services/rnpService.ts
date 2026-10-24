@@ -392,7 +392,7 @@ export class RnpService {
   private async bezkval(from: string, to: string, today: string, closedTo: string): Promise<RnpLeadDayRow[]> {
     const [closed, live] = await Promise.all([
       closedTo >= from
-        ? bezkvalHistory.get(`${from}|${closedTo}`, () => this.repository.bezkvalDays(from, closedTo, REGISTRATION_HISTORY_TIMEOUT_MS))
+        ? bezkvalHistory.get(`${from}|${closedTo}`, () => this.repository.bezkvalDays(from, closedTo))
         : Promise.resolve([]),
       today >= from && today <= to ? this.repository.bezkvalDays(today, today) : Promise.resolve([]),
     ])

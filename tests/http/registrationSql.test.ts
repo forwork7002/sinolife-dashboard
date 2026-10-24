@@ -114,6 +114,16 @@ describe('bezkvalLeadsSql', () => {
   })
 })
 
+describe('storedBezkvalDaysSql — every screen reads what the worker stored', () => {
+  const sql = bare(RegistrationRepository.storedBezkvalDaysSql())
+  it('counts stored clients and their deals by day and ROP, inclusive bounds', () => {
+    expect(sql).toContain(`FROM "bezkval_client" c`)
+    expect(sql).toContain(`WHERE c."day" BETWEEN $1::date AND $2::date`)
+    expect(sql).toContain(`count(*)::bigint AS leads, sum(c."dealCount")::bigint AS deals`)
+    expect(sql).toContain(`c."day"::text AS day`)
+  })
+})
+
 describe('dayChunks — a month read a week at a time', () => {
   it('covers every day once, in order, the last run short', async () => {
     const { dayChunks } = await import('@/server/repositories/registrationRepository')

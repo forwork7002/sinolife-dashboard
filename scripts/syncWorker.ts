@@ -93,6 +93,8 @@ import {
   prismaDealBirthStore,
   refreshDealBirths,
 } from '../src/server/integrations/crm/sync/dealBirthFeed'
+import { refreshBezkval } from '../src/server/integrations/crm/sync/bezkvalRefresh'
+import { RegistrationRepository } from '../src/server/repositories/registrationRepository'
 import { META_DEEP_REFRESH_DAYS, importMetaSpend } from '../src/server/integrations/meta/metaImport'
 import { importMetaAdForms } from '../src/server/integrations/meta/metaAdFormImport'
 import { applyLabelRenames } from '../src/server/integrations/crm/sync/labelRenames'
@@ -420,6 +422,14 @@ const FORM_FILLS_MS = 5 * 60_000
  * that stopped at its cap (the first backfill) runs again on the next tick.
  */
 const DEAL_BIRTHS_MS = 5 * 60_000
+
+/**
+ * How often «Безквал» looks for a day to count (`bezkvalRefresh.ts`): every
+ * pass asks which days are due — today and yesterday every ten minutes, the
+ * week before every three hours, a never-counted day once — and counts at
+ * most a few. Database only: no portal call, so no gate or calm applies.
+ */
+const BEZKVAL_PASS_MS = 2 * 60_000
 
 /**
  * How far back the stage history is re-read once, at startup. Default: 45 days.
@@ -1125,6 +1135,8 @@ async function main() {
   const formFillStore = prismaFormFillStore(prisma, 'BITRIX24')
   const dealBirthStore = prismaDealBirthStore(prisma, 'BITRIX24')
   let lastDealBirthsAt: Date | null = null
+  const bezkvalStore = new RegistrationRepository(prisma)
+  let lastBezkvalAt: Date | null = null
   /** Null while a backfill is behind: the next tick reads on at once. */
   let lastFormFillsAt: Date | null = null
   const triageRereadAt = new Map<string, Date>()
@@ -1788,6 +1800,29 @@ async function main() {
         const message = describeFeedError(error)
         console.warn(`  ${stamp()} bitim tugʻilishlari muvaffaqiyatsiz: ${message}`)
         await leadWatchClock.failed('births', message, new Date()).catch(() => undefined)
+      }
+    }
+
+    /*
+      «БЕЗКВАЛ», COUNTED AND STORED — see `BEZKVAL_PASS_MS` and
+      `bezkvalRefresh.ts`. Its own try: a failed day costs this pass only.
+    */
+    const bezkvalNow = new Date()
+    if (isPassDue(lastBezkvalAt, bezkvalNow, BEZKVAL_PASS_MS - LEAD_WATCH_SLACK_MS) && !stopping) {
+      lastBezkvalAt = bezkvalNow
+      try {
+        const r = await refreshBezkval({
+          store: bezkvalStore,
+          today: zonedDateKey(bezkvalNow, WORKER_TIME_ZONE),
+          timeZone: WORKER_TIME_ZONE,
+          now: () => new Date(),
+          stopping: () => stopping,
+        })
+        if (r.days.length > 0) {
+          console.log(`  ${stamp()} bezkval: ${r.days.map((d) => `${d.day} ${d.clients} mijoz ${Math.round(d.ms / 100) / 10} s`).join(' · ')}`)
+        }
+      } catch (error) {
+        console.warn(`  ${stamp()} bezkval hisobi muvaffaqiyatsiz: ${describeFeedError(error)}`)
       }
     }
 

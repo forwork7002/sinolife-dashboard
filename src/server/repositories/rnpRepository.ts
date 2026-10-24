@@ -34,10 +34,9 @@ import { env } from '@/server/config/env'
 import { NOT_PACKED_STAGES } from '@/server/integrations/crm/bitrix24/mapping'
 
 import { InsightsRepository } from './insightsRepository'
-import { type BezkvalLeadSqlRow, RegistrationRepository } from './registrationRepository'
+import { RegistrationRepository } from './registrationRepository'
 import { dealFormTitleSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 import { type RnpCostLine, type RnpCostProject, SETTING_LEAD_VALUE } from '@/server/domain/rnp/rnpSheet'
-import { bezkvalClients, bezkvalDayRows } from '@/server/domain/registration/bezkval'
 
 /** Deals handed to one ROP on one day. `rop` null: not handed to a ROP team. */
 export interface RnpLeadDayRow {
@@ -244,25 +243,19 @@ export class RnpRepository {
   }
 
   /**
-   * «Безквал» per day × ROP team — `RegistrationRepository.bezkvalLeadsSql`
-   * grouped by `registration/bezkval.ts`, the very reading behind «Kimga qancha
-   * lid kelayapti» on «Lidlar», so a
-   * group's «без квал» here and a ROP's «Безквал» there never disagree.
-   * `statementTimeoutMs`: as `registrationDays`, for a month's closed days.
+   * «Безквал» per day × ROP team — the rows the sync worker stores
+   * (`bezkval_client`, `RegistrationRepository.storedBezkvalDaysSql`), the very
+   * reading behind «Kimga qancha lid kelayapti» on «Lidlar», so a group's
+   * «без квал» here and a ROP's «Безквал» there never disagree. A stored read:
+   * no month is computed on a request any more (2026-10-24).
    */
-  async bezkvalDays(from: string, to: string, statementTimeoutMs?: number): Promise<RnpLeadDayRow[]> {
-    type Row = BezkvalLeadSqlRow
-    const sql = RegistrationRepository.bezkvalLeadsSql()
-    const rows = statementTimeoutMs
-      ? await this.prisma.$transaction(
-          async (tx) => {
-            await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${Math.trunc(statementTimeoutMs)}`)
-            return tx.$queryRawUnsafe<Row[]>(sql, from, to, this.tz)
-          },
-          { maxWait: CONNECTION_WAIT_MS, timeout: statementTimeoutMs + 5_000 },
-        )
-      : await this.prisma.$queryRawUnsafe<Row[]>(sql, from, to, this.tz)
-    return bezkvalDayRows(bezkvalClients(rows.map(RegistrationRepository.bezkvalLeadOf)))
+  async bezkvalDays(from: string, to: string): Promise<RnpLeadDayRow[]> {
+    const rows = await this.prisma.$queryRawUnsafe<{ day: string; rop: string | null; leads: bigint }[]>(
+      RegistrationRepository.storedBezkvalDaysSql(),
+      from,
+      to,
+    )
+    return rows.map((r) => ({ day: r.day, rop: r.rop, leads: Number(r.leads) }))
   }
 
   /**
