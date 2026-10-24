@@ -599,16 +599,28 @@ describe('the queue history on a row', () => {
    * bare chip this whole column exists to replace, which is deal 834920's
    * failure wearing a different clock.
    *
-   * Two close arrivals are not always the same state twice either: refused at
-   * 09:00, back at 12:00, waiting now is three hours, no mark, and the chain
-   * is the only place that refusal is still readable.
+   * WHAT IT IS CUT ON INSTEAD, SINCE 2026-10-24, IS THE TASHKENT DAY. The
+   * client, over deal 1058348 (refused on its 10:21 arrival on 03.10, back at
+   * 10:26 and confirmed, the cell showing both): the day's last result, then
+   * the next day's. So a visit followed by another arrival on the same day is
+   * left out — and only out of the list: entries, returns and 🔁 still read
+   * every visit.
    */
-  it('carries every visit, not only the ones the mark counts', () => {
-    // No forward-gap anywhere, and no FILTER between json_agg and its alias —
-    // the inner min()/max() FILTERs that build a visit are a different thing.
+  it('carries each Tashkent day\'s last visit, not only the ones the mark counts', () => {
+    // No forward-gap anywhere — the list is not gated on REPEAT_GAP_HOURS.
     expect(REPEAT).not.toContain('next_gap')
+    // The one FILTER on the list is the day cut; the inner min()/max()
+    // FILTERs that build a visit are a different thing.
     const aggregate = REPEAT.slice(REPEAT.indexOf('json_agg('), REPEAT.indexOf('AS visits'))
-    expect(aggregate).not.toContain('FILTER')
+    expect(aggregate.match(/FILTER/g) ?? []).toHaveLength(1)
+    expect(aggregate).toContain('FILTER (WHERE day_last)')
+    // The day is the board's own: the arrival's Tashkent date against the
+    // NEXT arrival's — the same `lead` that decides is_last.
+    expect(REPEAT).toMatch(
+      /\(lead\(v\.queued_at\) OVER \(ORDER BY v\.visit_no\) AT TIME ZONE 'UTC' AT TIME ZONE '[^']+'\)::date\s+IS DISTINCT FROM \(v\.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '[^']+'\)::date AS day_last/,
+    )
+    // The counts stay unfiltered.
+    expect(REPEAT).toContain('count(*)::int AS entries,')
   })
 
   it('is selected by both row queries and by nothing else', () => {

@@ -2234,7 +2234,10 @@ function mask(phone: string): string {
  * their bot and their board both keep one entry per deal, and a board that
  * counted visits would let «тасдиқланиш %» exceed the orders it divides. So
  * the row stays one and reads as a chain — the state now, then an arrow up
- * from where it came, one step per visit.
+ * from where it came, one step per Tashkent day: the day's last word. Since
+ * 2026-10-24 the repository leaves out a visit that another arrival followed
+ * on the same day (deal 1058348, 03.10: refused at 10:21, back and confirmed
+ * at 10:26, the cell drew both) — so this cell renders the list as it comes.
  *
  * ONLY THE LAST STATE IS LIT. The chip, with its tint and its ring, is the
  * order's answer; every state above which it arrived is plain text. That is

@@ -4538,8 +4538,8 @@ export class InsightsRepository {
   private static readonly REPEAT_GAP_HOURS = 6
 
   /**
-   * The order's life in the queue — every visit up to the row's own, and how
-   * each one ended.
+   * The order's life in the queue — each day's last visit up to the row's own,
+   * and how each one ended (one step per Tashkent day since 2026-10-24).
    *
    * SINCE 2026-10-09 THE TASDIQLASH BOARD FILES AN ORDER UNDER EVERY DAY IT
    * ARRIVED ON (queueSql's unit = day), so what follows describes the
@@ -4597,28 +4597,32 @@ export class InsightsRepository {
              to reverse it — and so visits[0] is the state the row is filed
              under everywhere else on the screen.
 
-             EVERY VISIT, NOT ONLY THE ONES 🔁 CALLS RETURNS. That filter was
-             written and reverted, and the reason is worth keeping.
+             ONE STEP PER TASHKENT DAY — THE DAY'S LAST VISIT — SINCE
+             2026-10-24. The client, over deal 1058348 on 03.10 (refused on
+             an arrival at 10:21, back at 10:26 and confirmed, and the cell
+             showing both): «bitta zakazning bugungi oxirgi natijasi nima
+             boʻldi, keyingi kun esa nima boʻldi». It is the board's own rule
+             from 2026-10-09 — a day keeps the order in the state that day
+             left it in — applied to the chain: an earlier visit on the same
+             day as a later one is not shown. That retires the case this list
+             used to keep on purpose (refused at 09:00, back at 12:00 — the
+             refusal readable only here); the day's word is now the later one.
 
-             The tempting rule is «show only what the mark counts», so the two
-             surfaces on one row can never say different things. It is wrong,
-             because REPEAT_GAP_HOURS measures ELAPSED TIME while this board is
-             cut into Tashkent days. An order that arrives at 22:00, is
-             confirmed at 23:00 and comes back at 01:00 has a two-hour gap and
-             no mark — and its row still leaves yesterday for today, because
-             the cohort dates it by the last arrival. Filtering on the gap
-             hands that operator the bare chip this column exists to replace.
-
-             Nor are two close arrivals always the same state twice. Refused at
-             09:00, back at 12:00, waiting now: three hours, no mark, and the
-             chain is the only place that refusal — the one the ROP's Telegram
-             channel announced that morning — is still readable.
+             STILL NOT GATED ON WHAT 🔁 COUNTS. That filter was written and
+             reverted, and the reason holds: REPEAT_GAP_HOURS measures ELAPSED
+             TIME while this board is cut into Tashkent days. An order that
+             arrives at 22:00, is confirmed at 23:00 and comes back at 01:00
+             has a two-hour gap and no mark — and its row still leaves
+             yesterday for today, because the cohort dates it by the last
+             arrival. The day cut keeps that step, as two days; the gap would
+             hand that operator the bare chip this column exists to replace.
 
              The mark and the list answer different questions. 🔁 asks whether a
              customer had to be reached twice, which a misclick corrected in
-             fifteen minutes did not. The list says where the order stood.
-             RepeatMark's own tooltip already prints the raw entry count beside
-             the returns-gated mark, so the board has always shown both.
+             fifteen minutes did not. The list says where the order stood at
+             the end of each day. RepeatMark's own tooltip prints the raw entry
+             count, so 🔁, entries and returns still read every visit — the
+             FILTER below narrows the list and nothing else.
            */
            json_agg(
              json_build_object(
@@ -4640,7 +4644,7 @@ export class InsightsRepository {
                END,
                'decidedAt', decided_at
              ) ORDER BY visit_no DESC
-           ) AS visits
+           ) FILTER (WHERE day_last) AS visits
          FROM (
            SELECT
              v.visit_no, v.queued_at, v.outcome, v.decided_at,
@@ -4650,7 +4654,13 @@ export class InsightsRepository {
              v.queued_at - lag(v.queued_at) OVER (ORDER BY v.visit_no) AS gap,
              -- Nothing came after it, so it is the visit the deal's own
              -- «Тастиклаш анализ» is allowed to refine.
-             lead(v.queued_at) OVER (ORDER BY v.visit_no) IS NULL AS is_last
+             lead(v.queued_at) OVER (ORDER BY v.visit_no) IS NULL AS is_last,
+             -- The next arrival lands on another Tashkent day, or there is
+             -- none: this visit is its day's last word. The day row's own
+             -- visit is always one — queueSql dates it by the day's LAST
+             -- arrival — so visits[0] is never filtered away.
+             (lead(v.queued_at) OVER (ORDER BY v.visit_no) AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date
+               IS DISTINCT FROM (v.queued_at AT TIME ZONE 'UTC' AT TIME ZONE '${env.APP_TIMEZONE}')::date AS day_last
            FROM (
              /*
                The same exit rule queueSql applies to the row, bounded by the

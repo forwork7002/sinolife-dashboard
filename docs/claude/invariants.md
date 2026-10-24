@@ -153,6 +153,15 @@ filter and the header bell all read the single `classified.outcome`, and
 `queueHistory[0]` IS that outcome, which is why the UNCONFIRMED_SHIPPED
 refinement is confined to the last visit. Production holds at most three
 visits per order. Pinned by `tests/features/confirmationHistory.test.tsx`.
+**ONE STEP PER TASHKENT DAY SINCE 2026-10-24** — the client, over deal 1058348
+(03.10: refused on its 10:21 arrival, back at 10:26 and confirmed, the cell
+showing both): «bitta zakazning bugungi oxirgi natijasi nima boʻldi, keyingi
+kun esa nima boʻldi». `json_agg(…) FILTER (WHERE day_last)` keeps a visit only
+when the next arrival falls on another Tashkent day (or there is none); the
+day row's own visit always qualifies, because the board dates it by the day's
+LAST arrival. Only the list is cut — `entries`, `returns` and 🔁 still read
+every visit, and the list is still not gated on `REPEAT_GAP_HOURS`. Pinned by
+«carries each Tashkent day's last visit» in `confirmationQueueSql.test.ts`.
 
 **The header bell counts the BACKLOG, so its link must carry `queue=backlog`.**
 One SQL definition answers two questions: `window` — what arrived in the
