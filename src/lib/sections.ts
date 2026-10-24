@@ -149,11 +149,11 @@ const COMPANY_WIDE: ReadonlySet<string> = new Set<SectionValue>([
   // The agent's calls and every seller's leads beside them: one company-wide set, like «Lidlar».
   'airegistrator',
   /*
-    «RNP JADVALI» (2026-09-28) FOR THE SAME REASON: the client's «СентябрРНП»
-    sheet sets every ROP team, the registration desk and the Meta spend side
-    by side, and its plans are every team's. `analytics:read:all`.
+    «RNP JADVALI» LEFT THE SET ON 2026-10-24 (the user, for Malika's account:
+    «faqat … oʻzini ichidagi xodimlari chiqsin»): a TEAM account given it as
+    «Oʻz boʻlimi» reads its own teams' blocks and logistics, and «ROP otchet»
+    its own people. It narrows by TEAM only — see `TEAM_NARROWS` below.
   */
-  'rnp',
   /*
     «TARGET TAHLILI» FOR THE SAME REASON, TWICE OVER. Its leads sit in
     Регистрация with whichever registrar picked them up — nobody's sales team —
@@ -201,14 +201,24 @@ export function sectionSpec(id: SectionValue): SectionSpec | undefined {
   return BY_ID.get(id)
 }
 
-/** The sections a narrowed account (OWN or TEAM) cannot be served. */
-export function companyWideSections(ids: readonly string[]): readonly SectionSpec[] {
-  return SECTIONS.filter((spec) => COMPANY_WIDE.has(spec.id) && ids.includes(spec.id))
+/*
+  THE SCREENS THAT NARROW TO A TEAM AND NO FURTHER (2026-10-24). «RNP
+  jadvali» has no row smaller than a ROP team — a team's block is twelve
+  people's money — so an OWN account still only reads it company-wide. A TEAM
+  account given it as «Oʻz boʻlimi» reads its own teams (`narrowRnpSheet`,
+  `buildRopReport`'s `keepsSeller`). Without a scope to judge by, the old
+  answer: company-wide only.
+*/
+const TEAM_NARROWS: ReadonlySet<string> = new Set<SectionValue>(['rnp'])
+
+/** The sections a narrowed account (OWN or TEAM — `dataScope`) cannot be served. */
+export function companyWideSections(ids: readonly string[], dataScope?: string): readonly SectionSpec[] {
+  return SECTIONS.filter((spec) => isCompanyWideSection(spec.id, dataScope) && ids.includes(spec.id))
 }
 
-/** True when this screen's endpoint refuses an account that is not company-wide. */
-export function isCompanyWideSection(id: string): boolean {
-  return COMPANY_WIDE.has(id)
+/** True when this screen's endpoint refuses an account of `dataScope` that is not company-wide. */
+export function isCompanyWideSection(id: string, dataScope?: string): boolean {
+  return COMPANY_WIDE.has(id) || (TEAM_NARROWS.has(id) && dataScope !== 'TEAM')
 }
 
 /**

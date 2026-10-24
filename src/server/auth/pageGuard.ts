@@ -73,7 +73,7 @@ function firstServableSection(
 ): SectionSpec | undefined {
   const servable = (spec: SectionSpec) =>
     canSeeSection(principal, spec.id) &&
-    (readsCompanyWide(principal, spec.id) || !isCompanyWideSection(spec.id))
+    (readsCompanyWide(principal, spec.id) || !isCompanyWideSection(spec.id, principal.dataScope))
 
   const preferred = prefer
     ? SECTIONS.find((spec) => spec.route === prefer && servable(spec))

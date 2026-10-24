@@ -472,6 +472,22 @@ export class RnpRepository {
     return rows.map((r) => r.rop)
   }
 
+  /** The ROP teams these people are filed in — their PRIMARY unit, as the scope reads it (`ScopeRepository`). */
+  async teamsOfEmployees(employeeIds: readonly string[]): Promise<string[]> {
+    if (employeeIds.length === 0) return []
+    const rows = await this.prisma.$queryRawUnsafe<{ rop: string }[]>(RnpRepository.teamsOfEmployeesSql(), [...employeeIds])
+    return rows.map((r) => r.rop)
+  }
+
+  static teamsOfEmployeesSql(): string {
+    return `
+      SELECT DISTINCT t.rop
+        FROM "employee" e
+        JOIN "department" dep ON dep."id" = e."departmentId"
+        CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"')} AS rop) t
+       WHERE e."id" = ANY($1::text[]) AND dep."isActive" AND t.rop IS NOT NULL`
+  }
+
   /** Every active ROP department, with its head. */
   async teams(): Promise<RnpTeam[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string; head: string | null }[]>(`

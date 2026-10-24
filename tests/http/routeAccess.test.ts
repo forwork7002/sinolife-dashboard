@@ -153,6 +153,10 @@ describe('what a TEAM- or OWN-scoped caller can reach', () => {
     'insights/structure': 'nothing on it to narrow: who reports to whom, and no figures',
     'insights/structure/roster': 'same as the tree above',
     kpi: 'spreads scope; plans and roster both narrowed',
+    'registration/report':
+      '«ROP otchet» keeps the TEAM scope\'s people alone (keepsSeller), the totals theirs; OWN refused',
+    'rnp/overview':
+      'the finished sheet is cut to the TEAM scope\'s own teams (narrowRnpSheet); OWN refused',
     'rnp/headcount':
       'a WRITE judged per cell on headship — a ROP types only the teams they head (see WRITES_BY_HEADSHIP below)',
     'meta/alerts': 'the bell counts the caller\'s own backlog',

@@ -168,6 +168,8 @@ export interface RnpOverviewDto {
   readonly canEditPlans: boolean
   /** The teams whose «Ходим сони» this viewer types though not an editor — the ROP's own. */
   readonly headcountTeams?: readonly string[]
+  /** A TEAM account's own teams (2026-10-24): the sheet carries only theirs. Absent = the whole company. */
+  readonly narrowedTo?: readonly string[]
 }
 
 /**

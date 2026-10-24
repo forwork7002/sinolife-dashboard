@@ -105,6 +105,23 @@ several were added by earlier migrations, not by a decision — waits for an
 administrator to re-save the account. `/meta/filters` hands an account with ANY wide
 screen the whole roster (names only).
 
+**«RNP JADVALI» NARROWS TO A TEAM — 2026-10-24** (the user, for Malika's
+account: «faqat … oʻzini ichidagi xodimlari chiqsin»; every ROP account then
+held RNP wide, so all of them read every team). `rnp` left `COMPANY_WIDE` for
+`TEAM_NARROWS` in `sections.ts`: on a TEAM account the form offers
+«Oʻz boʻlimi | Butun kompaniya» for it (an existing wide tick stays wide — no
+other account changed); on OWN it is still company-wide only, because the
+sheet has no row smaller than a team. Narrowed, `/rnp/overview` cuts the
+FINISHED sheet to the teams the scope's people are filed in
+(`RnpRepository.teamsOfEmployees` → `TEAM_ALIASES`, so «Malika(ROP)» reads
+the «Charos» block) — their blocks and logistics and no company line
+(`narrowRnpSheet`, the month's memo untouched) — and `/registration/report`
+keeps the scope's people alone, the totals theirs (`buildRopReport`'s
+`keepsSeller`; «192 Charos», on her roster but out of her scope, goes). Both
+refuse OWN; a narrowed MANAGER is no editor there (the plan / cost POSTs judge
+the stored scope). `isCompanyWideSection(id, dataScope)` takes the scope —
+without one it answers the old way.
+
 **Which endpoints admit a narrowed account is pinned by
 `tests/http/routeAccess.test.ts`.** Declaring `permission: 'analytics:read:all'`
 is how an endpoint says *"I cannot narrow my rows — refuse a ROP rather than

@@ -345,6 +345,16 @@ export class RnpService {
   }
 
   /**
+   * The sheet's teams a TEAM scope covers (2026-10-24, `narrowRnpSheet`): the
+   * ROP team of every unit its people are filed in, under the sheet's
+   * canonical names — «Malika(ROP)»'s people read the «Charos» block.
+   */
+  async teamsOf(employeeIds: readonly string[]): Promise<ReadonlySet<string>> {
+    const teams = await this.repository.teamsOfEmployees(employeeIds)
+    return new Set(teams.map((rop) => TEAM_ALIASES[rop] ?? rop))
+  }
+
+  /**
    * The teams whose «Ходим сони» the month's sheet draws — the only names a
    * typed headcount may carry. Canonical names only: a row saved under an
    * alias would sit beside the canonical one, and either could show.

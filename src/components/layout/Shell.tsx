@@ -547,7 +547,7 @@ export function Shell({
   */
   const grantedRoutes = viewer
     ? viewer.sections
-        .filter((id: SectionValue) => readsCompanyWide(viewer, id) || !isCompanyWideSection(id))
+        .filter((id: SectionValue) => readsCompanyWide(viewer, id) || !isCompanyWideSection(id, viewer.dataScope))
         .map((id: SectionValue) => sectionSpec(id)?.route)
         .filter((route): route is string => route !== undefined)
     : undefined

@@ -57,6 +57,10 @@ import { canvasMeasure, contentMinWidths, rnpNumber } from './rnpFigures'
  * «Brendsiz» 2026-10-06) the same way, in the browser (`brandLines`):
  * `?brand=`, and the ROP list offers only that slice's teams.
  *
+ * A TEAM ACCOUNT HOLDING IT AS «Oʻz boʻlimi» (2026-10-24) is sent its own
+ * teams' lines only (`narrowRnpSheet`, `narrowedTo`): «ROP» offers just those,
+ * «Oʻz jamoangiz» in place of «Barchasi» draws each under its headings.
+ *
  * «ROP otchet» IS THE SECOND TAB (2026-10-07, moved here from «Lidlar» — the
  * user: «rnp jadvaliga ROP otchetni koʻchiramiz … shu boʻlimchani ham olib»):
  * the client's group sheet for one day, a month or a range (`RopReport`, its own window), under
@@ -115,7 +119,15 @@ export function RnpPage() {
     return [...order].map(([rop, label]) => ({ rop, label: label ?? rop }))
   }, [data, branded])
   const chosen = teams.find((t) => t.rop === rop) ?? null
-  const lines = useMemo(() => ropLines(branded, chosen?.rop ?? null, chosen?.label ?? ''), [branded, chosen])
+  // A TEAM account's sheet is its own teams alone (`narrowedTo`): each under its two headings, as «ROP» cuts one.
+  const narrowed = data?.narrowedTo !== undefined
+  const lines = useMemo(
+    () =>
+      chosen === null && narrowed
+        ? teams.flatMap((t) => ropLines(branded, t.rop, t.label))
+        : ropLines(branded, chosen?.rop ?? null, chosen?.label ?? ''),
+    [branded, chosen, narrowed, teams],
+  )
   // A ROP types their own team's «Ходим сони»; one object per payload, so the rows' memos hold.
   const editHeadcount = useMemo(
     () => (data?.headcountTeams?.length ? { month: data.month, teams: data.headcountTeams } : null),
@@ -177,7 +189,7 @@ export function RnpPage() {
                 height="touch"
                 className="max-w-[14rem]"
               >
-                <option value="">Barchasi</option>
+                <option value="">{narrowed ? 'Oʻz jamoangiz' : 'Barchasi'}</option>
                 {teams.map((t) => (
                   <option key={t.rop} value={t.rop}>
                     {t.label}
@@ -216,7 +228,14 @@ export function RnpPage() {
             </Card>
           ) : data.blocks.length === 0 ? (
             <Card className="p-5">
-              <EmptyState title="Bu oy uchun jadval yoʻq" body="Bu oy uchun jadval hali yigʻilmagan — boshqa oyni tanlang." />
+              {narrowed ? (
+                <EmptyState
+                  title="Jamoangiz bu oy jadvalida yoʻq"
+                  body="Hisobingiz «Oʻz boʻlimi» boʻyicha: jadvalda faqat oʻz ROP jamoangiz koʻrinadi, bu oyda esa uning bloki yoʻq."
+                />
+              ) : (
+                <EmptyState title="Bu oy uchun jadval yoʻq" body="Bu oy uchun jadval hali yigʻilmagan — boshqa oyni tanlang." />
+              )}
             </Card>
           ) : (
             // On a phone the header strip wraps to four lines and would leave the grid a

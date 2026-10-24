@@ -264,6 +264,36 @@ describe('RnpPage — the sheet', () => {
     expect(window.location.search).toBe('')
   })
 
+  /*
+    A TEAM ACCOUNT HOLDING RNP AS «Oʻz boʻlimi» (2026-10-24, for Malika): the
+    server sends its own teams' lines only (`narrowedTo`). The page draws each
+    under its headings, as «ROP» cuts one, and does not call that «Barchasi».
+  */
+  it('draws a narrowed sheet as the account\'s own team, under «Oʻz jamoangiz»', async () => {
+    fixture = {
+      ...FIXTURE,
+      teams: FIXTURE.teams.filter((t) => t.rop === 'Sevinch'),
+      blocks: FIXTURE.blocks.filter((b) => b.team === 'Sevinch'),
+      lines: FIXTURE.lines.filter((l) => l.team === 'Sevinch'),
+      narrowedTo: ['Sevinch'],
+    }
+    await draw()
+    const select = within(screen.getByTestId('page-toolbar')).getByLabelText('ROP') as HTMLSelectElement
+    expect([...select.options].map((o) => o.textContent)).toEqual(['Oʻz jamoangiz', 'Sevinch'])
+    expect(labels()).toHaveLength(3)
+    expect(labels()[0]).toContain('Sevinch — ROP bloki')
+  })
+
+  it('says a narrowed account\'s team is not on the month, rather than that the month has no sheet', async () => {
+    fixture = { ...FIXTURE, teams: [], blocks: [], lines: [], narrowedTo: [] }
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } })}>
+        <RnpPage />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(screen.getByText('Jamoangiz bu oy jadvalida yoʻq')).toBeTruthy())
+  })
+
   it('says so when the month has no sheet, and offers a retry when the request fails', async () => {
     fixture = { ...FIXTURE, blocks: [], lines: [] }
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: false } } })

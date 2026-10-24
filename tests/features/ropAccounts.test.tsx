@@ -248,7 +248,7 @@ describe('opening a ROP account', () => {
       within(logistics).getByRole('button', { name: 'Oʻz boʻlimi' }).getAttribute('aria-pressed'),
     ).toBe('true')
     fireEvent.click(within(logistics).getByRole('button', { name: 'Butun kompaniya' }))
-    fireEvent.click(screen.getByLabelText('RNP jadvali'))
+    fireEvent.click(screen.getByLabelText('Lidlar'))
     fireEvent.click(screen.getByLabelText('Kadrlar tuzilmasi'))
 
     fireEvent.change(screen.getByLabelText('Parol'), { target: { value: 'Salom-Dunyo-42' } })
@@ -260,13 +260,37 @@ describe('opening a ROP account', () => {
     await waitFor(() => expect(api.writes).toHaveLength(1))
     const body = api.writes[0].body
 
-    expect(body.sections).toEqual(['confirmation', 'logistics', 'sellers', 'rnp', 'structure'])
-    expect(body.wideSections).toEqual(['logistics', 'rnp'])
+    expect(body.sections).toEqual(['confirmation', 'logistics', 'sellers', 'leads', 'structure'])
+    expect(body.wideSections).toEqual(['logistics', 'leads'])
+  })
+
+  /*
+    «RNP JADVALI» IS A CHOICE ON A TEAM ACCOUNT (2026-10-24, the user, for
+    Malika: «faqat … oʻzini ichidagi xodimlari chiqsin»). It opens on «Oʻz
+    boʻlimi» — the ROP's own teams — and «Butun kompaniya» is one click.
+  */
+  it('offers RNP as «Oʻz boʻlimi» or «Butun kompaniya», opening on its own team', async () => {
+    await openRopForm()
+    chooseHead('emp-rop')
+    fireEvent.click(screen.getByLabelText('RNP jadvali'))
+
+    const rnp = screen.getByRole('group', { name: 'RNP jadvali: maʼlumot doirasi' })
+    expect(within(rnp).getByRole('button', { name: 'Oʻz boʻlimi' }).getAttribute('aria-pressed')).toBe('true')
+
+    fireEvent.change(screen.getByLabelText('Parol'), { target: { value: 'Salom-Dunyo-42' } })
+    fireEvent.change(screen.getByLabelText('Parolni takrorlang'), {
+      target: { value: 'Salom-Dunyo-42' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Yaratish' }))
+
+    await waitFor(() => expect(api.writes).toHaveLength(1))
+    expect(api.writes[0].body.sections).toContain('rnp')
+    expect(api.writes[0].body.wideSections).toEqual([])
   })
 
   it('no longer warns that a ticked company-wide screen will not open', async () => {
     await openRopForm()
-    fireEvent.click(screen.getByLabelText('RNP jadvali'))
+    fireEvent.click(screen.getByLabelText('Lidlar'))
 
     expect(screen.queryByText(/doirasida ochilmaydi/)).toBeNull()
     expect(screen.getAllByText('Butun kompaniya').length).toBeGreaterThan(0)

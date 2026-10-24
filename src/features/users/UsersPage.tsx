@@ -468,7 +468,7 @@ function UserDialog({
       : sections.filter(
           (id) =>
             !isOpenToEveryoneSection(id) &&
-            (isCompanyWideSection(id) || wideSections.includes(id)),
+            (isCompanyWideSection(id, dataScope) || wideSections.includes(id)),
         )
 
   const save = useMutation({
@@ -532,7 +532,7 @@ function UserDialog({
     open: a ticked company-only screen is company-wide now (`wideToSave`), but
     the role's defaults carry no scope choice at all.
   */
-  const blockedByScope = sections.length > 0 ? [] : companyWideSections(roleDefaults)
+  const blockedByScope = sections.length > 0 ? [] : companyWideSections(roleDefaults, dataScope)
   const setWide = (id: string, wide: boolean) =>
     setWideSections((current) =>
       wide ? [...new Set([...current, id])] : current.filter((s) => s !== id),
@@ -907,6 +907,7 @@ function UserDialog({
                         <SectionScope
                           label={spec.label}
                           id={spec.id}
+                          dataScope={dataScope}
                           wide={wideSections.includes(spec.id)}
                           onChange={(wide) => setWide(spec.id, wide)}
                         />
@@ -1023,23 +1024,25 @@ function UserDialog({
  * Three cases, because the screens are not alike. «Sotuvchilar reytingi» and
  * «Kadrlar tuzilmasi» answer every account with the company's rows already, so
  * there is nothing to choose and the line says so. The screens with no
- * employee to cut on (RNP, Lidlar, Oylik, …) only exist company-wide, so a tick
+ * employee to cut on (Lidlar, Oylik, …) only exist company-wide, so a tick
  * IS «Butun kompaniya» — stated, not offered. Everything else (Tasdiqlash,
- * Logistika, Savdo dinamikasi, KPI) is the administrator's choice, opening on
- * «Oʻz boʻlimi».
+ * Logistika, Savdo dinamikasi, KPI — and RNP on a TEAM account, 2026-10-24)
+ * is the administrator's choice, opening on «Oʻz boʻlimi».
  */
 function SectionScope({
   id,
   label,
+  dataScope,
   wide,
   onChange,
 }: {
   id: string
   label: string
+  dataScope: DataScopeValue
   wide: boolean
   onChange: (wide: boolean) => void
 }) {
-  if (isOpenToEveryoneSection(id) || isCompanyWideSection(id)) {
+  if (isOpenToEveryoneSection(id) || isCompanyWideSection(id, dataScope)) {
     return (
       <span
         className="rounded-md px-2 py-0.5 text-[11px]"

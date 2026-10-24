@@ -170,8 +170,24 @@ export class RegistrationService {
   }
 
   /** «ROP otchet» — one day, a month or a range (`from`…`to`, inclusive; 2026-10-14). See ropReport.ts. */
-  async report(input: { from: string; to: string; timeZone: string; now: Date; brand?: BrandFilter }): Promise<RopReportDto> {
-    return this.sellerSheet({ from: input.from, to: input.to, timeZone: input.timeZone, now: input.now, calls: true, brand: input.brand })
+  async report(input: {
+    from: string
+    to: string
+    timeZone: string
+    now: Date
+    brand?: BrandFilter
+    /** A TEAM scope's people (2026-10-24): only their rows, the totals theirs. Null/absent = everybody. */
+    employeeIds?: readonly string[] | null
+  }): Promise<RopReportDto> {
+    return this.sellerSheet({
+      from: input.from,
+      to: input.to,
+      timeZone: input.timeZone,
+      now: input.now,
+      calls: true,
+      brand: input.brand,
+      employeeIds: input.employeeIds ?? null,
+    })
   }
 
   /** «Guruhlar» — the first of the day's month to the day, one row per ROP. See groupPlan.ts. */
@@ -200,6 +216,7 @@ export class RegistrationService {
     now: Date
     calls: boolean
     brand?: BrandFilter
+    employeeIds?: readonly string[] | null
   }): Promise<RopReportDto> {
     const period = resolvePeriod('custom', {
       timeZone: input.timeZone,
@@ -208,6 +225,7 @@ export class RegistrationService {
       customEnd: new Date(`${input.to}T00:00:00Z`),
     })
     const brand = input.brand ?? 'all'
+    const scoped = input.employeeIds ? new Set(input.employeeIds) : null
     const [allFakt, allLeads, allRoster, calls] = await Promise.all([
       faktCache.get(`${input.from}:${input.to}`, () => this.insights.sellerFaktDays(period)),
       this.repository.sellerLeads(input.from, input.to),
@@ -226,6 +244,7 @@ export class RegistrationService {
       names,
       calls,
       keepsGroup: brand === 'all' ? undefined : (rop) => brandMatches(brand, teamBrand(rop)),
+      keepsSeller: scoped ? (id) => scoped.has(id) : undefined,
     })
   }
 }

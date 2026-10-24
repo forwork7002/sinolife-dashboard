@@ -152,6 +152,12 @@ export interface RnpOverviewDto {
   }
   /** May type the hand-typed cells (P&L costs, «Ходим сони») — `kpi:manage`. */
   readonly canEditPlans: boolean
+  /**
+   * A TEAM account's own teams (2026-10-24, `narrowRnpSheet`): the sheet
+   * carries their blocks and logistics and nothing else. Absent = the whole
+   * company's sheet.
+   */
+  readonly narrowedTo?: readonly string[]
 }
 
 // ---------------------------------------------------------------------------

@@ -184,6 +184,14 @@ export function buildRopReport(input: {
    * calls land on a row in two slices. The total sums the kept groups.
    */
   keepsGroup?: (rop: string | null) => boolean
+  /**
+   * A TEAM scope (2026-10-24): which people the sheet keeps, wherever they
+   * are a row. Applied to the FINISHED rows for the reason `keepsGroup` is —
+   * each call already sits on its person's one row — and before the totals,
+   * so a group's «Umumiy» and the foot are the kept people's. The row of a
+   * deal with nobody on it is nobody's, and goes.
+   */
+  keepsSeller?: (employeeId: string) => boolean
 }): RopReportDto {
   const callsKnown = input.calls !== null
   const rosterOf = new Map(input.roster.map((m) => [m.employeeId, { ...m, rop: canonicalRop(m.rop) }]))
@@ -235,6 +243,7 @@ export function buildRopReport(input: {
 
   const total = zero()
   const keepsGroup = input.keepsGroup ?? (() => true)
+  const keepsSeller = input.keepsSeller ?? (() => true)
   const groups: RopReportGroupDto[] = [...grid.entries()]
     .filter(([rop]) => keepsGroup(rop))
     .map(([rop, people]) => {
@@ -245,7 +254,7 @@ export function buildRopReport(input: {
           const onRoster = member !== undefined && member.rop === rop
           return { id, a, onRoster, isHead: onRoster && member.isHead }
         })
-        .filter((s) => s.onRoster || credited(s.a))
+        .filter((s) => (s.onRoster || credited(s.a)) && keepsSeller(s.id))
         .map((s): RopReportSellerDto => {
           add(groupTotal, s.a)
           return {

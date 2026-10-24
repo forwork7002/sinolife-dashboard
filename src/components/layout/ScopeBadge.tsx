@@ -69,7 +69,7 @@ export function ScopeBadge({
   const screens = SECTIONS.filter(
     (spec) =>
       viewer.sections.includes(spec.id) &&
-      (readsCompanyWide(viewer, spec.id) || !isCompanyWideSection(spec.id)),
+      (readsCompanyWide(viewer, spec.id) || !isCompanyWideSection(spec.id, viewer.dataScope)),
   ).map((spec) => ({
     id: spec.id,
     label: spec.label,
