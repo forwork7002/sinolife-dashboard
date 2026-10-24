@@ -71,11 +71,13 @@ export function resetRegistrationCaches(): void {
   splitDaysCache.clear()
   settledDaysCache.clear()
   storedDayCache.clear()
+  trendCache.clear()
 }
 
 /* «Bezkval lidlar»: one stored day — the worker recomputes today every ten minutes, so a minute's memo costs nothing. */
 type StoredDay = { readonly computedAt: Date | null; readonly clients: readonly BezkvalClientDto[] }
 const storedDayCache = ttlCache<StoredDay>(60_000, LIVE_CACHE)
+const trendCache = ttlCache<BezkvalDayRow[]>(60_000, LIVE_CACHE)
 /** The trend under the day card: the spec's 30 days. */
 const BEZKVAL_TREND_DAYS = 30
 
@@ -130,14 +132,19 @@ export class RegistrationService {
    */
   async bezkvalDay(input: { day: string; timeZone: string; now: Date; brand?: BrandFilter }): Promise<BezkvalDayDto> {
     const brand = input.brand ?? 'all'
-    const [stored, days] = await Promise.all([this.storedDay(input.day), this.monthDays(input.day, input.timeZone, input.now)])
+    const trendDays = Array.from({ length: BEZKVAL_TREND_DAYS }, (_, i) => addDays(input.day, i - (BEZKVAL_TREND_DAYS - 1)))
+    // The trend from the stored rows alone — never `monthDays`, whose hand-out scan is the slow read here.
+    const [stored, trend] = await Promise.all([
+      this.storedDay(input.day),
+      trendCache.get(`${trendDays[0]}:${input.day}`, () => this.repository.bezkvalDays(trendDays[0]!, input.day)),
+    ])
     const keep = (rop: string | null) => brand === 'all' || brandMatches(brand, teamBrand(rop))
     return buildBezkvalDay({
       day: input.day,
       clients: stored.clients.filter((c) => keep(c.rop)),
       computedAt: stored.computedAt?.toISOString() ?? null,
-      trendDays: Array.from({ length: BEZKVAL_TREND_DAYS }, (_, i) => addDays(input.day, i - (BEZKVAL_TREND_DAYS - 1))),
-      totals: bezkvalDayTotals(days.bezkval.filter((r) => keep(r.rop)).map((r) => ({ day: r.day, leads: r.leads, deals: r.deals ?? r.leads }))),
+      trendDays,
+      totals: bezkvalDayTotals(trend.filter((r) => keep(r.rop)).map((r) => ({ day: r.day, leads: r.leads, deals: r.deals ?? r.leads }))),
       order: (rops) => teamOrder(rops),
     })
   }
