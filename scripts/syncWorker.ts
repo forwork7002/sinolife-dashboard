@@ -191,6 +191,14 @@ const ROISTAT_EVERY = Number(process.env.SYNC_ROISTAT_EVERY ?? 60)
 const ROISTAT_MS = ROISTAT_EVERY > 0 ? Number(process.env.SYNC_ROISTAT_MIN ?? 60) * 60_000 : 0
 
 /**
+ * «Mijoz qaytishi», built and stored beside the loop (2026-10-24) — every
+ * half hour of the working day, every three hours outside it; see
+ * `src/server/services/cohortSnapshotRefresh.ts`. `SYNC_COHORTS=0` switches
+ * it off, and the screen then builds every question live, as before.
+ */
+const COHORTS_ON = process.env.SYNC_COHORTS !== '0'
+
+/**
  * Meta Ads spend, lead-form leads and ad→form links, every `SYNC_META_MIN`
  * minutes. Off without `META_ACCESS_TOKEN`. In-process, unlike Roistat:
  * fourteen accounts' daily rows are a few hundred small objects, not a
@@ -892,7 +900,10 @@ async function runRoistatImport(): Promise<void> {
           // Only the snapshot's rate is written since 2026-10-07 (see
           // scripts/roistatSnapshot.ts), so the verdict is the rate it wrote.
           const rate = /\(= ([\d.]+) soʻm\/\$\)/.exec(tail)
-          console.log(`  ${stamp()} roistat: kurs ${rate ? `${rate[1]} soʻm/$` : 'yozildi'}`)
+          // Which rate it is: the blob's, the bank's (the blob carried a reserve), or the one kept (roistatSnapshot.ts).
+          const source = /kurs manbai\s*:\s*(\S+)/.exec(tail)?.[1]
+          const from = source === 'cbu' ? ' (CBU — manbada zaxira kurs)' : source === 'previous' ? ' (oldingi kurs qoldi — manbada zaxira kurs, CBU javob bermadi)' : ''
+          console.log(`  ${stamp()} roistat: ok, kurs ${rate ? `${rate[1]} soʻm/$` : 'yozildi'}${from}`)
         } else if (code === null) {
           /*
             Killed by a signal — and WHICH signal is the whole diagnosis.
@@ -911,10 +922,16 @@ async function runRoistatImport(): Promise<void> {
               ' — keyingi tsiklda qaytadan uriniladi',
           )
         } else {
-          const reason = /✗ IMPORT TOʻXTADI\s*\n\s*\n\s*(.+)/.exec(tail)
+          /*
+            THE WHOLE REASON, NOT ITS FIRST LINE (2026-10-24). A validation
+            failure is a heading and one line per issue; the heading alone —
+            «The blob failed validation (1 issue(s)):» — was all this log
+            held for a day the source sent «резерв» where a date belonged.
+          */
+          const reason = /✗ IMPORT TOʻXTADI\s*\n\s*\n([\s\S]+)/.exec(tail)
+          const lines = reason ? reason[1].split('\n').map((l) => l.trim()).filter(Boolean) : []
           console.warn(
-            `  ${stamp()} roistat: muvaffaqiyatsiz (kod ${code})` +
-              (reason ? ` — ${reason[1].trim().slice(0, 160)}` : ''),
+            `  ${stamp()} roistat: muvaffaqiyatsiz (kod ${code})` + (lines.length > 0 ? ` — ${lines.join(' ').slice(0, 400)}` : ''),
           )
         }
         resolve()
@@ -1151,6 +1168,9 @@ async function main() {
    * first. One at a time — a slow pass is never doubled.
    */
   let metaInFlight: Promise<void> | null = null
+  /** «Mijoz qaytishi»'s pass in flight (`runCohortPass`), and when the stored answers were last built. */
+  let cohortInFlight: Promise<void> | null = null
+  let lastCohortAt: Date | null = null
   // In memory only: a restart costs one near and one wide check, ~150 invocations.
   const recentSweepAt = new Map<string, Date>()
   // In memory only: a restart costs one pass of the feeds, two requests.
@@ -1227,6 +1247,12 @@ async function main() {
       .catch(() => null)
     lastRoistatAt = roistat?._max.importedAt ?? null
   }
+  if (COHORTS_ON) {
+    // Loaded here, not at the top: it reads the validated environment, and a failure must cost this pass, not the worker.
+    lastCohortAt = await import('../src/server/services/cohortSnapshotRefresh')
+      .then((m) => m.storedCohortsBuiltAt(prisma))
+      .catch(() => null)
+  }
   if (META_TOKEN && META_MS > 0) {
     try {
       const meta = await prisma.metaAdDaily.aggregate({ _max: { importedAt: true } })
@@ -1280,6 +1306,26 @@ async function main() {
       oneOffSettled.set(read.label, done !== null)
     } catch (error) {
       console.warn(`  ${stamp()} ! ${read.label} qayta oʻqish holati oʻqilmadi:`, error)
+    }
+  }
+
+  /*
+    «MIJOZ QAYTISHI», BUILT AND STORED — see `COHORTS_ON`. Never throws: like
+    Roistat, a passenger. The clock is stamped when the pass starts, so a
+    failing pass is retried once per period, never every tick.
+  */
+  const runCohortPass = async (): Promise<void> => {
+    try {
+      const m = await import('../src/server/services/cohortSnapshotRefresh')
+      const now = new Date()
+      if (!isPassDue(lastCohortAt, now, m.cohortRefreshEvery(now, WORKER_TIME_ZONE))) return
+      lastCohortAt = now
+      const r = await m.refreshStoredCohorts({ prisma, stopping: () => stopping })
+      const built = r.built.map((b) => `${b.key.replace(/^v\d+:/, '')} ${(b.ms / 1000).toFixed(1)} s`).join(' · ')
+      if (built) console.log(`  ${stamp()} kohort: ${built}`)
+      for (const f of r.failed) console.warn(`  ${stamp()} kohort muvaffaqiyatsiz: ${f.key} — ${f.error.slice(0, 200)}`)
+    } catch (error) {
+      console.warn(`  ${stamp()} kohort hisobi muvaffaqiyatsiz: ${describeFeedError(error)}`)
     }
   }
 
@@ -2254,6 +2300,18 @@ async function main() {
     }
 
     /*
+      «Mijoz qaytishi», beside the loop like Meta, but never STARTED while a
+      Meta pass or the hour's Roistat import runs — its four whole-history
+      scans are the heaviest thing this worker asks of the one core — and
+      never on tick 0 (`runCohortPass` decides whether it is due).
+    */
+    if (COHORTS_ON && tick > 0 && cohortInFlight === null && metaInFlight === null && !roistatDue && !stopping) {
+      cohortInFlight = runCohortPass().finally(() => {
+        cohortInFlight = null
+      })
+    }
+
+    /*
       MoySklad for «Sverka», on the same «never tick 0» rule, offset by one
       tick from the hour's Meta and Roistat passes. A failure is logged and
       retried on the next turn — MoySklad being down must never cost a
@@ -2435,6 +2493,8 @@ async function main() {
   // A Meta pass in flight finishes its account — each grain is its own
   // transaction, so one cut short leaves the last pass's rows, never a hole.
   if (metaInFlight) await Promise.race([metaInFlight, sleep(15_000)])
+  // A cohort build cut short keeps its old row: each question is written only once it is built.
+  if (cohortInFlight) await Promise.race([cohortInFlight, sleep(15_000)])
 
   // Releasing the lock explicitly lets a replacement worker start at once
   // instead of waiting out the connection's own timeout.

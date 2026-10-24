@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
 
-import { SNAPSHOT_ID, saveSnapshot, snapshotOf } from '../../scripts/roistatSnapshot'
+import { SNAPSHOT_ID, bankRateOf, isDatedRate, saveSnapshot, snapshotOf } from '../../scripts/roistatSnapshot'
 
 /**
  * THE HOURLY ROISTAT RUN WRITES THE RATE AND NOTHING ELSE.
@@ -97,6 +97,85 @@ describe('saveSnapshot', () => {
     await saveSnapshot(db as never, { ...BLOB, rate: 11_900.5 }, 'x', 24_100, { force: false, now: NOW })
     expect(db.row?.usdRateMicro).toBe(11_900_500_000n)
     expect(db.row?.rowCount).toBe(24_100)
+  })
+})
+
+/**
+ * «РЕЗЕРВ» IS NOT A RATE (2026-10-24). The source publishes its typed reserve
+ * — 12 650.0 that day, the bank's rate 11 838.92 — with `rateDate: "резерв"`
+ * when it cannot reach the Central Bank. The importer refused every such run;
+ * now it writes the blob and takes the bank's rate, else keeps the stored one.
+ */
+describe('a blob whose rate is the source\u2019s reserve', () => {
+  const RESERVE = { ...BLOB, rate: 12_650, rateDate: 'резерв', today: '2026-10-24' }
+  const BANK = [{ Ccy: 'USD', Rate: '11838.92', Date: '24.10.2026' }]
+
+  it('is told apart from a dated rate', () => {
+    expect(isDatedRate('06.10.2026')).toBe(true)
+    expect(isDatedRate('резерв')).toBe(false)
+  })
+
+  it('reads the bank\u2019s rate and its own date, and nothing that is not one', () => {
+    expect(bankRateOf(BANK)).toEqual({ rate: 11_838.92, date: '24.10.2026' })
+    expect(bankRateOf([{ Ccy: 'USD', Rate: '11838.92', Date: 'bugun' }])).toBeNull()
+    expect(bankRateOf([{ Ccy: 'EUR', Rate: '13000', Date: '24.10.2026' }])).toBeNull()
+    expect(bankRateOf({})).toBeNull()
+  })
+
+  it('stores the bank\u2019s rate, never the reserve, and writes the rest of the blob', async () => {
+    const db = fakeDb({ id: SNAPSHOT_ID, ...snapshotOf(BLOB, 'x', 24_000, new Date(0)) } as unknown as Row)
+    const saved = await saveSnapshot(db as never, RESERVE, 'x', 55_899, {
+      force: false,
+      now: NOW,
+      bankRate: async () => bankRateOf(BANK),
+    })
+
+    expect(saved.rateSource).toBe('cbu')
+    expect(db.row?.usdRateMicro).toBe(11_838_920_000n)
+    expect(db.row?.rateDate).toEqual(new Date(Date.UTC(2026, 9, 24)))
+    expect(db.row?.today).toEqual(new Date(Date.UTC(2026, 9, 24)))
+    expect(db.row?.rowCount).toBe(55_899)
+    expect(db.row?.importedAt).toEqual(NOW)
+  })
+
+  it('keeps the stored rate when the bank does not answer either', async () => {
+    const db = fakeDb({ id: SNAPSHOT_ID, ...snapshotOf(BLOB, 'x', 24_000, new Date(0)) } as unknown as Row)
+    const saved = await saveSnapshot(db as never, RESERVE, 'x', 55_899, {
+      force: false,
+      now: NOW,
+      bankRate: async () => {
+        throw new Error('cbu.uz timed out')
+      },
+    })
+
+    expect(saved.rateSource).toBe('previous')
+    expect(db.row?.usdRateMicro).toBe(11_823_690_000n)
+    expect(db.row?.rateDate).toEqual(new Date(Date.UTC(2026, 9, 6)))
+    expect(db.row?.importedAt).toEqual(NOW)
+  })
+
+  it('refuses when there is neither a bank answer nor an earlier rate', async () => {
+    const db = fakeDb()
+    await expect(
+      saveSnapshot(db as never, RESERVE, 'x', 55_899, { force: false, now: NOW, bankRate: async () => null }),
+    ).rejects.toThrow(/reserve/)
+    expect(db.row).toBeNull()
+  })
+
+  it('takes a dated blob\u2019s own rate without asking the bank', async () => {
+    const db = fakeDb()
+    let asked = 0
+    const saved = await saveSnapshot(db as never, BLOB, 'x', 24_000, {
+      force: false,
+      now: NOW,
+      bankRate: async () => {
+        asked += 1
+        return bankRateOf(BANK)
+      },
+    })
+    expect(saved.rateSource).toBe('source')
+    expect(asked).toBe(0)
+    expect(db.row?.usdRateMicro).toBe(11_823_690_000n)
   })
 })
 

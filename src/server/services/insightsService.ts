@@ -33,6 +33,7 @@ import type {
   ConfirmationOutcomeTotals,
   ConfirmationRopRow,
   CallActivityRow,
+  CohortMatrix,
   InsightsRepository,
   LogisticsCut,
   MarginSummary,
@@ -45,6 +46,11 @@ import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { callFloorApplied } from '@/lib/callQuality'
 import { CUSTOMER_STATES } from '@/lib/customerStates'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
+import {
+  type CohortSnapshotReader,
+  type StoredCohortAnswer,
+  decodeCohortPayload,
+} from '@/server/repositories/cohortSnapshotRepository'
 
 /**
  * One build of the confirmation board's ROP breakdown per cohort per minute.
@@ -152,10 +158,58 @@ const retentionStagesCache = ttlCache<
 */
 const COHORT_STATEMENT_TIMEOUT_MS = 60_000
 
-/** Test seam for the two memos above, same hazard as `resetConfirmationRopCache`. */
+/*
+  THE PAGE'S STANDING QUESTIONS ARE ANSWERED FROM THE WORKER'S STORE
+  (2026-10-24). The minute above was not enough to make the screen usable:
+  after 8b7b51b6 the matrix answered 200, but cold in 13 s, the Collagen cut
+  in 48 s and Zextra's in 16 s — each holding one of the six screen
+  connections that long, after every deploy and every quiet ten minutes. So
+  the three matrices the page opens on (18 months; the company, Collagen,
+  Zextra) and the База card are built by the sync worker every half hour
+  (`cohortSnapshotRefresh.ts`) and stored in `cohort_snapshot`; a reader is
+  handed the stored answer. A question nobody stores (a team cut, the
+  picker's list) is built live, exactly as before.
+
+  A STORED ANSWER IS SERVED ONLY WHILE IT IS TRUE: built in this Tashkent
+  month (the matrix's horizon is the month it was built in — `currentMonth`)
+  and under `COHORT_SNAPSHOT_MAX_AGE_MS` old. Past either, or missing, the
+  live build answers — a stalled worker costs speed, never a wrong grid.
+*/
+export const STORED_COHORT_MONTHS = 18
+export const STORED_COHORT_BRANDS: readonly (TargetProduct | null)[] = [null, 'Collagen', 'Zextra']
+/** Bumped with any change to the shape of a stored answer: an older row is then not read. */
+const COHORT_SNAPSHOT_VERSION = 'v1'
+export const COHORT_SNAPSHOT_MAX_AGE_MS = 6 * 3_600_000
+/** The База card's stored question. */
+export const STORED_STAGES_KEY = `${COHORT_SNAPSHOT_VERSION}:stages`
+
+/** The matrix memo's key — JSON, for the reason given in `cohorts`. */
+function cohortMatrixKey(months: number, rop: string | null, includeRops: boolean, brand: TargetProduct | null): string {
+  return JSON.stringify([months, rop, includeRops, brand])
+}
+
+/** A matrix question's stored key — the memo key behind the version. */
+export function storedCohortKey(brand: TargetProduct | null): string {
+  return `${COHORT_SNAPSHOT_VERSION}:matrix:${cohortMatrixKey(STORED_COHORT_MONTHS, null, false, brand)}`
+}
+
+/** Every key the worker writes, the matrices first. */
+export const STORED_COHORT_KEYS: readonly string[] = [...STORED_COHORT_BRANDS.map(storedCohortKey), STORED_STAGES_KEY]
+
+/** The stored rows, a minute at a time: a primary-key read, shared by every reader of the minute. */
+const storedCohortCache = ttlCache<StoredCohortAnswer | null>(60_000)
+
+/** Where the stored answers are read, and the zone their month is told in. */
+export interface StoredCohorts {
+  readonly reader: CohortSnapshotReader
+  readonly timeZone: string
+}
+
+/** Test seam for the memos above, same hazard as `resetConfirmationRopCache`. */
 export function resetCohortCaches(): void {
   cohortMatrixCache.clear()
   retentionStagesCache.clear()
+  storedCohortCache.clear()
 }
 
 /**
@@ -1127,7 +1181,11 @@ export interface StructureOptions {
 }
 
 export class InsightsService {
-  constructor(private readonly repository: InsightsRepository) {}
+  constructor(
+    private readonly repository: InsightsRepository,
+    /** The worker's stored answers for «Mijoz qaytishi»; without it every question is built live. */
+    private readonly stored: StoredCohorts | null = null,
+  ) {}
 
   /**
    * Fold the scope into the window every query already takes.
@@ -1171,6 +1229,63 @@ export class InsightsService {
    * «did this seller's customers come back» asks about customers that seller
    * no longer owns. There is no honest branch answer to give.
    */
+  /** The repository's options for one matrix question — one place, so the live build and the stored one ask the same. */
+  private cohortQuestion(
+    months: number,
+    rop: string | null | undefined,
+    includeRops: boolean | undefined,
+    brand: TargetProduct | null,
+    statementTimeoutMs: number,
+  ): Parameters<InsightsRepository['cohorts']>[0] {
+    return {
+      months,
+      rop,
+      includeRops,
+      statementTimeoutMs,
+      brand:
+        brand === null
+          ? null
+          : { slice: brand, collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') },
+    }
+  }
+
+  /**
+   * The worker's stored answer to `key` while it is fresh — and, for a
+   * matrix (`sameMonth`), built in this Tashkent month, since its horizon is
+   * the month it was built in — else `live()`. A read that fails is a missing
+   * answer, never an error: the live build is what this screen did before
+   * the store existed.
+   */
+  private async storedOr<T>(key: string | null, sameMonth: boolean, now: Date, live: () => Promise<T>): Promise<T> {
+    const stored = this.stored
+    if (key === null || stored === null) return live()
+    const row = await storedCohortCache.get(key, () => stored.reader.read(key)).catch(() => null)
+    const month = (at: Date) => zonedDateKey(at, stored.timeZone).slice(0, 7)
+    if (
+      row !== null &&
+      now.getTime() - row.builtAt.getTime() < COHORT_SNAPSHOT_MAX_AGE_MS &&
+      (!sameMonth || month(row.builtAt) === month(now))
+    ) {
+      return decodeCohortPayload<T>(row.payload)
+    }
+    return live()
+  }
+
+  /**
+   * The questions the sync worker answers and stores, each with its build —
+   * the same options the live path asks (`cohortQuestion`), under the
+   * worker's own statement limit. See `STORED_COHORT_KEYS`.
+   */
+  standingCohortBuilds(statementTimeoutMs: number): { key: string; build: () => Promise<unknown> }[] {
+    return [
+      ...STORED_COHORT_BRANDS.map((brand) => ({
+        key: storedCohortKey(brand),
+        build: () => this.repository.cohorts(this.cohortQuestion(STORED_COHORT_MONTHS, null, undefined, brand, statementTimeoutMs)),
+      })),
+      { key: STORED_STAGES_KEY, build: () => this.repository.retentionStages() },
+    ]
+  }
+
   async cohorts(
     currency: string,
     months = 18,
@@ -1202,21 +1317,24 @@ export class InsightsService {
     // THE BRAND IS IN THE KEY TOO, for the same reason `rop` is: a brand's
     // matrix is a different cohort with a different denominator.
     const brand = options.brand ?? null
-    const matrixKey = JSON.stringify([months, options.rop ?? null, options.includeRops === true, brand])
+    const matrixKey = cohortMatrixKey(months, options.rop ?? null, options.includeRops === true, brand)
+    /* The worker stores the page's three standing matrices (see `STORED_COHORT_KEYS`); any other cut is built live. */
+    const standing =
+      months === STORED_COHORT_MONTHS && (options.rop ?? null) === null && options.includeRops !== true && STORED_COHORT_BRANDS.includes(brand)
+    const now = new Date()
     const [matrix, base] = await Promise.all([
-      cohortMatrixCache.get(matrixKey, () =>
-        this.repository.cohorts({
-          months,
-          rop: options.rop,
-          includeRops: options.includeRops,
-          statementTimeoutMs: COHORT_STATEMENT_TIMEOUT_MS,
-          brand:
-            brand === null
-              ? null
-              : { slice: brand, collagenTeams: brandTeams('Collagen'), zextraTeams: brandTeams('Zextra') },
-        }),
+      this.storedOr<CohortMatrix>(
+        standing ? storedCohortKey(brand) : null,
+        true,
+        now,
+        () =>
+          cohortMatrixCache.get(matrixKey, () =>
+            this.repository.cohorts(this.cohortQuestion(months, options.rop, options.includeRops, brand, COHORT_STATEMENT_TIMEOUT_MS)),
+          ),
       ),
-      retentionStagesCache.get('stages', () => this.repository.retentionStages()),
+      this.storedOr<Awaited<ReturnType<InsightsRepository['retentionStages']>>>(STORED_STAGES_KEY, false, now, () =>
+        retentionStagesCache.get('stages', () => this.repository.retentionStages()),
+      ),
     ])
 
     const rows = matrix.rows

@@ -574,7 +574,12 @@ Per-screen traps worth knowing before you touch one:
     September read in October waited a cold ~17 s after every ten quiet
     minutes. The warmer's tick is a real rebuild, waited for (`refresh`), so
     «rnp warmed {ms}» is the build's time; in a month's first week it also
-    builds the month that ended, once. A rebuild that fails behind a reader
+    builds the month that ended, once. **Since 2026-10-24 the three warmers (RNP,
+    «Lidlar», «Лид назорати») share ONE lane** (`inWarmLane`, rnpWarmer.ts):
+    a tick that finds another warmer building waits for it, and `{ms}` is
+    its own build — after the 18:29 deploy that day they met on their own
+    clocks, failed ×12 on the 20 s timeout and left readers queueing for
+    the six screen connections. A rebuild that fails behind a reader
     is logged («rnp rebuild failed; serving the previous answer») — it used
     to vanish while the old rows were served.
   · **«Баҳо» (2026-10-03, the client's scales)**: every ROP block has a grade
@@ -1379,6 +1384,34 @@ Per-screen traps worth knowing before you touch one:
   biggest thing available. And the 1587 ms recorded for this endpoint is an
   END-TO-END p50 from 2026-09-11, **not** a server-side execution time — do
   not compare it to any figure above. It should be re-timed on the deploy.
+  **THE PAGE'S STANDING QUESTIONS ARE BUILT BY THE WORKER AND STORED —
+  2026-10-24.** That day every cold build ran into the web pool's 20 s
+  statement timeout (500 at 18:13, 18:43, 18:44, 18:46), and with the limit
+  lifted to 60 s (8b7b51b6) the screen answered, but cold in 13.1 s for the
+  company, **48.1 s for Collagen** and 15.6 s for Zextra — each holding one of
+  the six screen connections that long, after every deploy and every quiet
+  ten minutes (the memo is 5 min + 5 stale). The deal history (~2 GB) no
+  longer fits the one-gigabyte database's memory. So `cohortSnapshotRefresh.ts`
+  in the sync worker builds the three matrices the page opens on (18 months:
+  company / Collagen / Zextra) and the База card, one at a time, every 30 min
+  in `WARM_HOURS` and every 3 h outside, into `cohort_snapshot` (the
+  repository's own answer as JSON, BigInt as `{"$bigint": …}`), and
+  `InsightsService.cohorts` hands that out — a primary-key read behind a
+  60 s memo. **The statement and the fold are unchanged**: the stored value
+  IS `InsightsRepository.cohorts`'s answer, so every number is the live one.
+  A stored answer is served only while it is under 6 h old AND built in this
+  Tashkent month (the horizon is the month it was built in); otherwise — and
+  for any question nobody stores: a team cut, the picker's `include=rops`,
+  another span — the live build runs as before. `SYNC_COHORTS=0` on the worker
+  turns the store off. `tests/services/cohortSnapshot.test.ts`.
+  Measured in PGlite over every migration and 440 000 deals (180 000 won
+  revenue, 150 000 customers, 240 000 line items): the worker's builds
+  1.2 s (company) / 6.8 s (Collagen) / 6.5 s (Zextra); the screen's read
+  `Execution Time` 0.03–0.12 ms, the service 1.6–13 ms with no statement
+  run; the folded DTO **byte-identical** to the live one for all three. The
+  brand cuts' cost is the per-first-order form / product / team probes
+  (`brandSliceSql`: 2.58 M shared buffers in that run) — cheap warm, which
+  is why a cold database paid 48 s.
 - **Qoʻngʻiroqlar** (URL `/customers`, section id `customers`) — **NEW ON
   2026-09-16 as «Mijozlar va qoʻngʻiroqlar», RENAMED AND STRIPPED ON
   2026-09-17** («eng asosiy malumotlarni koʻrsat, keraksiz narsalarni olib

@@ -210,6 +210,22 @@
 - **Roistat is on the wall clock too (2026-10-22)**: `SYNC_ROISTAT_MIN` (60)
   since the newest `marketing_snapshot.importedAt`. It was `tick % 60` — two
   hours at 120 s, and never on a day of deploys under two hours apart.
+- **A Roistat blob with «резерв» for `rateDate` imports (2026-10-24,
+  `isDatedRate` in `roistatSnapshot.ts`)**: the client's page publishes its typed
+  reserve rate (12 650 that day, the bank 11 838.92) when it cannot reach
+  cbu.uz, and the importer's DD.MM.YYYY check refused every hourly run. The
+  reserve is never stored: the rate is asked of cbu.uz for `D.today`, else the
+  stored rate stays; the rest of the blob is written. The log says which —
+  `roistat: ok, kurs … (CBU — manbada zaxira kurs)` — and a failure now logs
+  every issue line with the value that failed («keldi: …»), not just
+  «The blob failed validation (1 issue(s)):».
+- **«Mijoz qaytishi» is built by the worker and stored (2026-10-24,
+  `cohortSnapshotRefresh.ts`, `cohort_snapshot`)**: the three matrices the page
+  opens on (18 months; company, Collagen, Zextra) and the База card, one at a
+  time, beside the loop (never beside Meta or Roistat), every 30 min in
+  `WARM_HOURS`, every 3 h outside; each statement under a 5-min SET LOCAL
+  limit. Log: `kohort: matrix:[18,null,false,null] 12.3 s · …`.
+  `SYNC_COHORTS=0` turns it off and the screen builds live again.
 - **Bitrix24 dropdown labels age out every 3 h** (`ENUM_LABELS_TTL_MS`): a
   renamed «Проект» / targetolog / region item keeps its id, so only a miss
   re-read them before. **The deals already stored follow too**: the provider

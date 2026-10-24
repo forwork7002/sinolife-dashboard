@@ -2308,3 +2308,22 @@ model AiRegistratorCall {
   @@index([dealExternalId])
   @@map("ai_registrator_call")
 }
+
+/// «MIJOZ QAYTISHI», COMPUTED BY THE SYNC WORKER AND STORED (2026-10-24).
+/// The cohort matrix walks the whole won-deal history, and on the one-core,
+/// one-gigabyte database a cold build ran 13–48 s (the brand cuts longest) —
+/// past the web pool's 20 s statement timeout, so the screen answered 500 on
+/// every cold open. The worker builds the page's standing questions every
+/// half hour (`cohortSnapshotRefresh.ts`); the screen reads the stored
+/// answer and builds live only a question nobody stored (a team cut).
+model CohortSnapshot {
+  /// The question: `matrix:` + the service's memo key, or `stages` for the База card.
+  key     String   @id
+  /// The repository's answer as JSON — BigInt money as a decimal string (`encodeCohortPayload`).
+  payload Json
+  builtAt DateTime
+  /// How long the build took, for the worker's log and for the next person measuring it.
+  ms      Int
+
+  @@map("cohort_snapshot")
+}

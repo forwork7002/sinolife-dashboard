@@ -89,10 +89,48 @@ interface Timers {
   setInterval(fn: () => void, ms: number): { unref?: () => void }
 }
 
+/*
+  ONE WARM-UP AT A TIME, ACROSS EVERY WARMER (2026-10-24). The first builds
+  were already chained (`after`, instrumentation.ts), but every tick after
+  them ran on its own clock — «RNP jadvali» every 4 minutes, «Lidlar» and
+  «Лид назорати» on theirs — so they met: in the 25 minutes after the
+  18:29 deploy that day, «leads / lead-watch warm-up failed» ×12 on the 20 s
+  statement timeout, and readers arriving meanwhile found the six screen
+  connections taken (`poolAtStart.waiting` 3–4). Now a warmer whose tick
+  finds another warmer building waits for it, in order, and only then
+  builds; a free lane starts at once. ON `globalThis` (`processWide`) for
+  the reason `FIRST_WARM` is.
+*/
+const WARM_LANE = 'sinolife.warmLane'
+
+/** Runs `job` once no other warm-up is running — at once when none is. */
+export function inWarmLane<T>(job: () => Promise<T>): Promise<T> {
+  const lane = processWide(WARM_LANE, () => ({ busy: false, waiting: [] as (() => void)[] }))
+  return new Promise<T>((resolve, reject) => {
+    const run = () => {
+      lane.busy = true
+      let built: Promise<T>
+      try {
+        built = job()
+      } catch (error) {
+        built = Promise.reject(error)
+      }
+      void built.then(resolve, reject).finally(() => {
+        const next = lane.waiting.shift()
+        if (next) next()
+        else lane.busy = false
+      })
+    }
+    if (lane.busy) lane.waiting.push(run)
+    else run()
+  })
+}
+
 /**
  * Builds once now — or once `after` has settled — then every `everyMs`,
  * without holding the process open. One build at a time — a slow tick is
- * skipped over, never stacked. Logs «<name> warmed» with the build's time,
+ * skipped over, never stacked — and never beside another warmer's
+ * (`inWarmLane`). Logs «<name> warmed» with the build's time,
  * or «<name> warm skipped» at debug when `warm` answers `OFF_HOURS`; a
  * failure is a warn, and the next tick tries again. Counts as pending for
  * `/api/health` from this call, not from its first tick.
@@ -108,8 +146,12 @@ export function startWarmer(
   pendingSet().add(name)
   const tick = (): Promise<void> => {
     if (running) return running
-    const started = Date.now()
-    running = warm()
+    let started = Date.now()
+    // The time logged is the build's own, not the wait for the lane.
+    running = inWarmLane(() => {
+      started = Date.now()
+      return warm()
+    })
       .then((outcome) =>
         outcome === OFF_HOURS
           ? logger.debug(`${name} warm skipped — outside working hours`)

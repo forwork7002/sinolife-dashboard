@@ -13,6 +13,7 @@ import { prisma } from '@/server/db/prisma'
 import { logger } from '@/server/logging/logger'
 import { DealRepository } from '@/server/repositories/dealRepository'
 import { InsightsRepository } from '@/server/repositories/insightsRepository'
+import { CohortSnapshotRepository } from '@/server/repositories/cohortSnapshotRepository'
 import { PulseRepository } from '@/server/repositories/pulseRepository'
 import { ConcentrationRepository } from '@/server/repositories/concentrationRepository'
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
@@ -88,7 +89,14 @@ export const aiRegistratorService = new AiRegistratorService(aiRegistratorReposi
 
 export const scopeService = new ScopeService(scopeRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)
-export const insightsService = new InsightsService(insightsRepository)
+/*
+  «Mijoz qaytishi» reads the sync worker's stored matrices (`cohort_snapshot`,
+  2026-10-24) and builds live only what nobody stored — see insightsService.ts.
+*/
+export const insightsService = new InsightsService(insightsRepository, {
+  reader: new CohortSnapshotRepository(prisma),
+  timeZone: env.APP_TIMEZONE,
+})
 /*
   «Kiruvchi qoʻngʻiroqlar» (2026-10-05) on «Qoʻngʻiroqlar»: inbound callers by
   number, grouped by what the CRM held for them. See inboundCallsService.ts.

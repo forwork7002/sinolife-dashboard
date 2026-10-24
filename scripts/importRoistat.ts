@@ -53,7 +53,7 @@ import { z } from 'zod'
 import { PrismaClient } from '../src/generated/prisma/client'
 import type { MarketingDimension } from '../src/generated/prisma/enums'
 import { caCertFromEnv, poolConfig } from '../src/server/db/poolConfig'
-import { SNAPSHOT_ID, saveSnapshot } from './roistatSnapshot'
+import { type BankRate, SNAPSHOT_ID, bankRateOf, isDatedRate, saveSnapshot } from './roistatSnapshot'
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -76,6 +76,14 @@ const MIN_TOTAL_ROWS = 500
 
 /** HTTP read budget. The page is 5.5 MB over a CDN; ten seconds is typical. */
 const FETCH_TIMEOUT_MS = 120_000
+
+/**
+ * The Central Bank's dollar rate for one day — what the source itself asks,
+ * read here only when the source published a reserve instead (see
+ * `isDatedRate`). The endpoint «RNP jadvali» reads (`cbuRates.ts`).
+ */
+const CBU_ENDPOINT = 'https://cbu.uz/uz/arkhiv-kursov-valyut/json/USD'
+const CBU_TIMEOUT_MS = 20_000
 
 /**
  * The source's own tab ids, in the order the dashboard shows them, mapped onto
@@ -158,7 +166,6 @@ function extractBlob(html: string): string {
 // ---------------------------------------------------------------------------
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-const RU_DATE = /^(\d{2})\.(\d{2})\.(\d{4})$/
 
 const isoDate = z.string().regex(ISO_DATE, 'expected an ISO YYYY-MM-DD date')
 
@@ -196,7 +203,13 @@ const blobSchema = z.object({
   dims: z.record(z.string(), z.array(rowSchema)),
   tabs: z.array(z.object({ id: z.string(), label: z.string(), parent: z.string().nullable() })),
   rate: z.number().positive('the USD rate must be greater than zero'),
-  rateDate: z.string().regex(RU_DATE, 'expected DD.MM.YYYY'),
+  /*
+    DD.MM.YYYY — OR A WORD, when the source could not reach the Central Bank
+    and published its typed reserve rate instead («резерв», 2026-10-24). That
+    is a fact about the rate, not a broken blob: the rate is then taken from
+    the bank (`isDatedRate`, roistatSnapshot.ts), never the reserve.
+  */
+  rateDate: z.string().min(1, 'expected DD.MM.YYYY, or the source\'s word for its reserve rate'),
   updated: z.string().min(1),
   today: isoDate,
   minDate: isoDate,
@@ -318,6 +331,27 @@ async function loadPage(): Promise<{ text: string; origin: string }> {
   }
 }
 
+/** The value at a zod issue's path, for the message — never more than a line of it. */
+function valueAt(root: unknown, path: readonly PropertyKey[]): unknown {
+  let at: unknown = root
+  for (const key of path) {
+    if (at === null || typeof at !== 'object') return undefined
+    at = (at as Record<PropertyKey, unknown>)[key]
+  }
+  return at
+}
+
+function shown(value: unknown): string {
+  const text = value === undefined ? 'yoʻq' : JSON.stringify(value)
+  return text.length > 80 ? `${text.slice(0, 80)}…` : text
+}
+
+/** The bank's rate in force on `isoDay`; null when it does not answer with one. */
+async function bankRate(isoDay: string): Promise<BankRate | null> {
+  const response = await fetch(`${CBU_ENDPOINT}/${isoDay}/`, { signal: AbortSignal.timeout(CBU_TIMEOUT_MS) })
+  return response.ok ? bankRateOf(await response.json()) : null
+}
+
 async function main(): Promise<void> {
   const started = Date.now()
 
@@ -328,11 +362,13 @@ async function main(): Promise<void> {
   const json = extractBlob(text)
   console.log(`  Sahifa    : ${group(text.length)} belgi · blob ${group(json.length)} belgi`)
 
-  const parsed = blobSchema.safeParse(JSON.parse(json))
+  const raw: unknown = JSON.parse(json)
+  const parsed = blobSchema.safeParse(raw)
   if (!parsed.success) {
+    // The value that failed beside the rule it failed — «rateDate: expected DD.MM.YYYY» alone sent the 2026-10-24 reader to the page.
     const issues = parsed.error.issues
       .slice(0, 12)
-      .map((i) => `      - ${i.path.join('.') || '(root)'}: ${i.message}`)
+      .map((i) => `      - ${i.path.join('.') || '(root)'}: ${i.message} (keldi: ${shown(valueAt(raw, i.path))})`)
     throw new Error(
       `The blob failed validation (${parsed.error.issues.length} issue(s)):\n` + issues.join('\n'),
     )
@@ -342,7 +378,8 @@ async function main(): Promise<void> {
 
   console.log(`  Yangilangan: ${blob.updated}  (manbaning oʻz vaqti, mintaqasiz)`)
   console.log(
-    `  Kurs      : ${blob.rate.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} soʻm/$ · ${blob.rateDate}`,
+    `  Kurs      : ${blob.rate.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} soʻm/$ · ${blob.rateDate}` +
+      (isDatedRate(blob.rateDate) ? '' : '  — manbaning zaxira kursi: yozilmaydi, kurs CBU dan olinadi'),
   )
   console.log(
     `  Davr      : ${blob.minDate} … ${blob.maxDate}` +
@@ -359,6 +396,10 @@ async function main(): Promise<void> {
   console.log(`  ${group(totalRows)} qator jami.`)
 
   if (DRY_RUN) {
+    if (!isDatedRate(blob.rateDate)) {
+      const bank = await bankRate(blob.today).catch(() => null)
+      console.log(`  CBU       : ${bank ? `${bank.rate} soʻm/$ · ${bank.date}` : 'javob bermadi — oldingi kurs qoladi'}`)
+    }
     head('DRY RUN — hech narsa yozilmadi')
     return
   }
@@ -378,6 +419,7 @@ async function main(): Promise<void> {
     const snapshot = await saveSnapshot(prisma, blob, origin, totalRows, {
       force: FORCE,
       now: new Date(),
+      bankRate: () => bankRate(blob.today),
     })
 
     head('SNAPSHOT')
@@ -387,6 +429,8 @@ async function main(): Promise<void> {
       `  usdRateMicro : ${group(snapshot.usdRateMicro)}  (= ${(Number(snapshot.usdRateMicro) / 1e6).toFixed(2)} soʻm/$)`,
     )
     console.log(`  rateDate     : ${snapshot.rateDate.toISOString().slice(0, 10)}`)
+    // Read by the sync worker's log line (`runRoistatImport`): source = the blob's, cbu = the bank's, previous = kept.
+    console.log(`  kurs manbai  : ${snapshot.rateSource}`)
     console.log(`  updatedLabel : ${snapshot.updatedLabel}`)
     console.log(`  rowCount     : ${group(snapshot.rowCount)}`)
     console.log(`  importedAt   : ${snapshot.importedAt.toISOString()}`)

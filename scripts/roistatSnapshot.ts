@@ -16,6 +16,7 @@
  */
 
 import type { PrismaClient } from '../src/generated/prisma/client'
+import { parseCbuRate } from '../src/server/integrations/cbu/cbuRates'
 
 /** One published dashboard, one snapshot row. */
 export const SNAPSHOT_ID = 'roistat'
@@ -67,13 +68,65 @@ export function scaled(value: number, scale: number): bigint {
   return BigInt(Math.round(value * scale))
 }
 
-/** The snapshot row exactly as it is stored. */
-export function snapshotOf(blob: SnapshotFacts, origin: string, totalRows: number, importedAt: Date) {
+/**
+ * WHEN THE SOURCE PUBLISHES NO DATED RATE (2026-10-24). The client's page
+ * asks the Central Bank for the day's rate; when it cannot, it publishes a
+ * typed reserve with `rateDate: "резерв"` instead of a date. That day the
+ * reserve was 12 650.0 against the bank's 11 838.92 — 6.9 % over — and the
+ * importer, which wanted a DD.MM.YYYY date there, refused every hourly run,
+ * so /target kept an older rate with nothing in the log but «1 issue(s)».
+ *
+ * A reserve is not a rate, so it is never stored: the rate is then asked of
+ * the bank directly (`bankRate`, the same cbu.uz endpoint «RNP jadvali»
+ * reads), else the last stored rate stays where it is. With neither, the
+ * import refuses, as it did before. Everything else in the blob is written
+ * either way — it is as good as on any other run.
+ */
+export function isDatedRate(rateDate: string): boolean {
+  return RU_DATE.test(rateDate)
+}
+
+/** The bank's answer for one day: soʻm per dollar, and the DD.MM.YYYY it is dated. */
+export interface BankRate {
+  readonly rate: number
+  readonly date: string
+}
+
+/** Where the stored rate came from: the blob, the bank (the blob had a reserve), or the last import (neither). */
+export type RateSource = 'source' | 'cbu' | 'previous'
+
+/** The bank's rate and its own date from a cbu.uz answer — null when it is not one. */
+export function bankRateOf(body: unknown): BankRate | null {
+  const rate = parseCbuRate(body)
+  if (rate === null || !Array.isArray(body)) return null
+  const date = (body as { Ccy?: unknown; Date?: unknown }[]).find((r) => r?.Ccy === 'USD')?.Date
+  return typeof date === 'string' && RU_DATE.test(date) ? { rate, date } : null
+}
+
+/** The rate as it is stored: micro-soʻm per dollar and the day it was taken. */
+export interface StoredRate {
+  readonly usdRateMicro: bigint
+  readonly rateDate: Date
+}
+
+/** The blob's own rate — only ever asked of a blob whose `rateDate` is a date. */
+export function blobRate(blob: Pick<SnapshotFacts, 'rate' | 'rateDate'>): StoredRate {
+  // UZS per USD in micro units: 11 823.69 is stored as 11 823 690 000.
+  return { usdRateMicro: scaled(blob.rate, 1_000_000), rateDate: ruDay(blob.rateDate) }
+}
+
+/** The snapshot row exactly as it is stored. `rate` is the blob's own unless given. */
+export function snapshotOf(
+  blob: SnapshotFacts,
+  origin: string,
+  totalRows: number,
+  importedAt: Date,
+  rate: StoredRate = blobRate(blob),
+) {
   return {
     sourceUrl: origin,
-    // UZS per USD in micro units: 11 823.69 is stored as 11 823 690 000.
-    usdRateMicro: scaled(blob.rate, 1_000_000),
-    rateDate: ruDay(blob.rateDate),
+    usdRateMicro: rate.usdRateMicro,
+    rateDate: rate.rateDate,
     updatedLabel: blob.updated,
     today: day(blob.today),
     minDate: day(blob.minDate),
@@ -90,18 +143,20 @@ export type SnapshotRecord = ReturnType<typeof snapshotOf>
 
 /**
  * Write the snapshot, after the shrink guard. One upsert — no transaction to
- * hold open, no `marketing_daily` write.
+ * hold open, no `marketing_daily` write. A blob with a reserve in place of a
+ * dated rate takes the bank's rate (`bankRate`), else keeps the stored one
+ * (see `isDatedRate`); `rateSource` says which.
  */
 export async function saveSnapshot(
   prisma: Pick<PrismaClient, 'marketingSnapshot'>,
   blob: SnapshotFacts,
   origin: string,
   totalRows: number,
-  options: { force: boolean; now: Date },
-): Promise<SnapshotRecord> {
+  options: { force: boolean; now: Date; bankRate?: () => Promise<BankRate | null> },
+): Promise<SnapshotRecord & { readonly rateSource: RateSource }> {
   const previous = await prisma.marketingSnapshot.findUnique({
     where: { id: SNAPSHOT_ID },
-    select: { rowCount: true },
+    select: { rowCount: true, usdRateMicro: true, rateDate: true },
   })
 
   if (previous && previous.rowCount > 0 && totalRows < previous.rowCount * SHRINK_GUARD && !options.force) {
@@ -113,11 +168,33 @@ export async function saveSnapshot(
     )
   }
 
-  const snapshot = snapshotOf(blob, origin, totalRows, options.now)
+  let rate: StoredRate
+  let rateSource: RateSource
+  if (isDatedRate(blob.rateDate)) {
+    rate = blobRate(blob)
+    rateSource = 'source'
+  } else {
+    // A bank that cannot be reached is the same answer as no bank: the stored rate stays.
+    const bank = options.bankRate ? await options.bankRate().catch(() => null) : null
+    if (bank) {
+      rate = blobRate({ rate: bank.rate, rateDate: bank.date })
+      rateSource = 'cbu'
+    } else if (previous) {
+      rate = { usdRateMicro: previous.usdRateMicro, rateDate: previous.rateDate }
+      rateSource = 'previous'
+    } else {
+      throw new Error(
+        `The blob's rate is a reserve (rateDate ${JSON.stringify(blob.rateDate)}, rate ${blob.rate}), ` +
+          `the Central Bank did not answer, and there is no earlier rate to keep — nothing written.`,
+      )
+    }
+  }
+
+  const snapshot = snapshotOf(blob, origin, totalRows, options.now, rate)
   await prisma.marketingSnapshot.upsert({
     where: { id: SNAPSHOT_ID },
     create: { id: SNAPSHOT_ID, ...snapshot },
     update: snapshot,
   })
-  return snapshot
+  return { ...snapshot, rateSource }
 }
