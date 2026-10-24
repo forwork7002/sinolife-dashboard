@@ -97,6 +97,12 @@ function createPrismaClient(lane: Lane): PrismaClient {
     poolConfig(env.DATABASE_URL, {
       caCert: caCertFromEnv(),
       max: main ? (isServerless ? 3 : 6) : isServerless ? 1 : 2,
+      /*
+        The auth lane keeps ONE connection once it has made it: a click after
+        half a minute of quiet would otherwise open a fresh TLS connection to
+        the database (the idle timeout below) before the guard could ask.
+      */
+      ...(main || isServerless ? {} : { min: 1 }),
       idleTimeoutMillis: isServerless ? 10_000 : 30_000,
       connectionTimeoutMillis: 20_000,
       // An index read that is still going after five seconds is not going to answer a click.

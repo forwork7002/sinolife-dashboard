@@ -71,7 +71,7 @@ describe('prisma singleton', () => {
     )
     expect(poolCtor).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ max: 2, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 20_000, statement_timeout: 5_000 }),
+      expect.objectContaining({ max: 2, min: 1, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 20_000, statement_timeout: 5_000 }),
     )
   })
 })

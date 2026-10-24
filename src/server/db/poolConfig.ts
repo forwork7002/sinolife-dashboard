@@ -62,6 +62,8 @@ export interface PoolConfigOptions {
    */
   readonly caCert?: string
   readonly max?: number
+  /** Connections the idle timeout leaves open once made (`pg-pool`'s `min`). */
+  readonly min?: number
   readonly idleTimeoutMillis?: number
   readonly connectionTimeoutMillis?: number
   /**

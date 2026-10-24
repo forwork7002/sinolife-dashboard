@@ -11,7 +11,8 @@
  *
  * WHAT THE POOL READINGS CAN AND CANNOT SAY. `poolAtStart.waiting > 0` (or no
  * idle connection) means the request arrived at a full pool and queued for one
- * of the eight connections; a long `authMs` then is mostly that queue. The end
+ * of the six connections. `authMs` is no longer that queue: since 2026-10-24
+ * the caller is resolved on the auth lane's own two (`db/prisma.ts`). The end
  * reading is the pool as the answer left. Neither proves a slow QUERY: a
  * screen can also wait for connections after the caller is resolved, when it
  * runs more statements at once than the pool holds. Read the lines of one

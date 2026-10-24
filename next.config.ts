@@ -78,6 +78,26 @@ const nextConfig: NextConfig = {
    */
   devIndicators: false,
 
+  experimental: {
+    /*
+      A SCREEN ALREADY OPENED IS DRAWN AGAIN WITHOUT ASKING THE SERVER, for
+      five minutes (2026-10-24, «bo'limlardan bo'limlarga o'tishda sekin»).
+      The rail prefetches every page whole, and a prefetch is kept five
+      minutes (`static`, the default) — but a page once NAVIGATED to was kept
+      for `dynamic`, which defaults to 0: every return to a screen asked the
+      server for it again. Measured on production after the auth lane
+      (`db/prisma.ts`): first visits 23–63 ms off the prefetch, returns
+      100–1 054 ms off the network. Nothing on these pages is server data —
+      every page is the guard plus a client shell, and the figures come from
+      `/api/v1` through TanStack Query, which keeps its own clock — so a held
+      page cannot show an old number. What a held page delays is the guard's
+      redirect after an administrator takes a screen away, and that redirect
+      is a courtesy (`pageGuard.ts`): the screen's endpoints refuse at once.
+      `router.refresh()` and a reload still drop the lot.
+    */
+    staleTimes: { dynamic: 300 },
+  },
+
   /**
    * Prisma must not be bundled into the serverless function.
    *
