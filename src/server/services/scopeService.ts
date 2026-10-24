@@ -37,6 +37,7 @@ interface Entry {
 
 export class ScopeService {
   private readonly memo = new Map<string, Entry>()
+  private readonly inFlight = new Map<string, Promise<readonly string[]>>()
 
   constructor(private readonly repository: ScopeRepository) {}
 
@@ -64,8 +65,24 @@ export class ScopeService {
     const cached = this.memo.get(employeeId)
     if (cached && now.getTime() - cached.at < TEAM_TTL_MS) return cached.ids
 
-    const ids = await this.repository.teamEmployeeIds(employeeId)
-    this.memo.set(employeeId, { at: now.getTime(), ids })
-    return ids
+    /*
+      ONE LOOKUP PER ACCOUNT IN FLIGHT (2026-10-24). A TEAM account's page load
+      fires its API requests together; with only the answer memoised, every one
+      of them missed at once and each ran the recursive tree query on the
+      analytics pool — every minute. They now share the lookup that is already
+      running. A rejection reaches every waiter and is dropped, never stored.
+    */
+    const pending = this.inFlight.get(employeeId)
+    if (pending) return pending
+
+    const lookup = this.repository
+      .teamEmployeeIds(employeeId)
+      .then((ids) => {
+        this.memo.set(employeeId, { at: now.getTime(), ids })
+        return ids
+      })
+      .finally(() => this.inFlight.delete(employeeId))
+    this.inFlight.set(employeeId, lookup)
+    return lookup
   }
 }

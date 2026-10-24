@@ -131,6 +131,13 @@
   connection. A pooled connection returns to the pool and Postgres drops the
   lock with it — looks like it works, enforces nothing. A second worker waits
   rather than exiting, because exiting produces a platform restart loop.
+- **Nothing in the worker may wait forever (2026-10-24).** Its pool has a 15 min
+  `statement_timeout` and `idle_in_transaction_session_timeout`, a 60 s connect
+  timeout, TCP keepalive and `application_name: 'sync'` (the web's lanes are
+  `web` / `web-auth`). Before that it ran on `pg`'s defaults — no limit at all —
+  so one statement stuck on a half-dead connection froze the sync and Meta until
+  the next deploy. Fifteen minutes is past the ten-minute cap on its longest
+  transactions; the limit exists to end a hang, never to bound real work.
 - **`DEAL_ITEMS` reads in-memory state left by the `DEALS` pass** in the same
   process, and ignores `updatedSince`. Running it alone yields zero rows and
   reports `SUCCESS`.

@@ -928,7 +928,32 @@ async function main() {
   // sync engine runs one query at a time, so the rest is headroom. The point
   // of the cap is the managed database's 22-connection ceiling, which the web
   // service and the deploy jobs also draw on.
-  const pool = new Pool(poolConfig(url, { caCert: caCertFromEnv(), max: 5 }))
+  /*
+    NOTHING HERE MAY WAIT FOREVER (2026-10-24). The pool had `pg`'s defaults:
+    no statement timeout, no connect timeout, no keepalive — and the loop
+    awaits every query, so ONE statement stuck on a half-dead connection froze
+    the sync, Meta's pass included, until the next deploy. Fifteen minutes is
+    past anything the worker means to run (its longest transactions are capped
+    at ten), so the limit only ever ends a hang. Idle connections live two
+    minutes, past the one-minute tick: the default ten seconds closed them all
+    between ticks and every tick reopened TLS to the one-core database.
+    Keepalive is what notices the lock connection is gone (its 'error' exits,
+    see `acquireLock`); `application_name` is what tells this worker's rows
+    from the web's in `pg_stat_activity`.
+  */
+  const pool = new Pool({
+    ...poolConfig(url, {
+      caCert: caCertFromEnv(),
+      max: 5,
+      idleTimeoutMillis: 120_000,
+      connectionTimeoutMillis: 60_000,
+      statementTimeoutMs: 15 * 60_000,
+    }),
+    idle_in_transaction_session_timeout: 15 * 60_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 60_000,
+    application_name: 'sync',
+  })
   /*
     A TRANSACTION WAITS FOR A CONNECTION UP TO 30 s, NOT PRISMA'S 2 (2026-10-22).
     Since Meta runs beside the loop, its writes and the Bitrix24 tick's share

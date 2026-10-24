@@ -93,8 +93,10 @@ function createPrismaClient(lane: Lane): PrismaClient {
     the seventh and eighth concurrent scan only slowed the other six.
   */
   const main = lane === 'main'
-  const pool = new Pool(
-    poolConfig(env.DATABASE_URL, {
+  const pool = new Pool({
+    // Named so `pg_stat_activity` tells the two lanes and the sync worker apart (2026-10-24).
+    application_name: main ? 'web' : 'web-auth',
+    ...poolConfig(env.DATABASE_URL, {
       caCert: caCertFromEnv(),
       max: main ? (isServerless ? 3 : 6) : isServerless ? 1 : 2,
       /*
@@ -108,7 +110,7 @@ function createPrismaClient(lane: Lane): PrismaClient {
       // An index read that is still going after five seconds is not going to answer a click.
       statementTimeoutMs: main ? 20_000 : 5_000,
     }),
-  )
+  })
 
   if (main) globalForPrisma.__sinolifePool = pool
   else globalForPrisma.__sinolifeAuthPool = pool

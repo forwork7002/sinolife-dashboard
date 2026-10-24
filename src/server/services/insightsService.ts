@@ -81,8 +81,8 @@ export function resetConfirmationRopCache(): void {
  * build in front of the screen each time.
  *
  * `sourceRepeatRates` and `customerStates` take no period and no scope and
- * move only a few times a day — the same five minutes, matching the cohort
- * read beside them on the same screen.
+ * move only a few times a day — so they are rebuilt hourly (below), not on
+ * the page's poll.
  *
  * ALL THREE ARE `LIVE_CACHE`: past the TTL the old answer is handed out while
  * ONE rebuild runs behind it, so the poll that finds an entry expired never
@@ -93,13 +93,26 @@ const customerFlowCache = ttlCache<Awaited<ReturnType<InsightsRepository['custom
   5 * 60_000,
   LIVE_CACHE,
 )
+
+/*
+  THE TWO ALL-HISTORY READS ARE REBUILT HOURLY, NOT ON THE POLL (2026-10-24).
+  They were on the page's five minutes, so one open «Mijoz qaytishi» tab paid
+  two more whole-history walks of "deal" every five minutes on the one-vCPU
+  database, for numbers that move a few times a day. An hour's TTL, and a
+  stale window long enough that the reader past it is still handed the last
+  answer while ONE rebuild runs (the `settledDaysCache` pattern in
+  registrationService).
+*/
+const ALL_HISTORY_MEMO = { ...LIVE_CACHE, staleMs: 12 * 60 * 60_000 }
+const ALL_HISTORY_TTL_MS = 60 * 60_000
+
 const sourceRatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['sourceRepeatRates']>>>(
-  5 * 60_000,
-  LIVE_CACHE,
+  ALL_HISTORY_TTL_MS,
+  ALL_HISTORY_MEMO,
 )
 const customerStatesCache = ttlCache<Awaited<ReturnType<InsightsRepository['customerStates']>>>(
-  5 * 60_000,
-  LIVE_CACHE,
+  ALL_HISTORY_TTL_MS,
+  ALL_HISTORY_MEMO,
 )
 
 /**

@@ -1122,6 +1122,12 @@ const REKLAMA_SOURCE_IDS: readonly string[] = [
 const leadCache = ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE)
 /** The campaigns' kval: Meta's leads arrive hourly, the deals' stages by the minute — the lead scan's own clock. */
 const campaignLeadCache = ttlCache<Awaited<ReturnType<ReklamaRepository['campaignLeads']>> | undefined>(120_000, LIVE_CACHE)
+/*
+  «Formalar»' money on the same key and clock (2026-10-24). It had no memo, and
+  its form map groups every Meta lead ever read on each load — about 1.4 s and
+  a spill to disk per call on production, paid again by every tab and remount.
+*/
+const formAdCache = ttlCache<Awaited<ReturnType<ReklamaRepository['formAdDays']>> | undefined>(120_000, LIVE_CACHE)
 
 /** Logs a failed per-campaign scan and answers `fallback` in its place. */
 function scanFailed<T>(scan: string, fallback: T) {
@@ -1167,7 +1173,7 @@ export class ReklamaService {
       */
       campaignLeadCache.get(key, () => this.repository.campaignLeads(period).catch(scanFailed('campaign leads', undefined))),
       // «Formalar»' money, on the same terms: without it the forms draw their leads alone.
-      this.repository.formAdDays(window.from, window.to, period).catch(scanFailed('form ads', undefined)),
+      formAdCache.get(key, () => this.repository.formAdDays(window.from, window.to, period).catch(scanFailed('form ads', undefined))),
       this.repository.listedForms().catch(scanFailed('form list', undefined)),
       this.repository.campaignsImportedAt(),
     ])

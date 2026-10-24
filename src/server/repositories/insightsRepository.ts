@@ -2089,15 +2089,13 @@ export class InsightsRepository {
       }[]
     >(
       `
-      WITH cust AS (
-        SELECT DISTINCT d."customerId" AS cid
-        FROM "deal" d
-        WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
-      ),
       -- The order clock. Deliberately createdAtSource and not closedAt: the
       -- band this feeds counts arrivals, and the cohort matrix on the same
       -- screen states the other clock in its own heading.
-      last_order AS (
+      -- ONE WALK OF "deal" (2026-10-24): customers was a second, DISTINCT
+      -- walk under the same WHERE — one row per customer, which is exactly
+      -- the row count of ours, so it is counted from there.
+      WITH last_order AS (
         SELECT d."customerId" AS cid, max(d."createdAtSource") AS last_ts
         FROM "deal" d
         WHERE d."countsAsRevenue" AND d."customerId" IS NOT NULL
@@ -2113,7 +2111,7 @@ export class InsightsRepository {
         FROM last_order l
       )
       SELECT
-        (SELECT count(*) FROM cust)::bigint AS customers,
+        count(*)::bigint AS customers,
         count(*) FILTER (WHERE state = 'ACTIVE')::bigint AS active,
         count(*) FILTER (WHERE state = 'AT_RISK')::bigint AS at_risk,
         count(*) FILTER (WHERE state = 'LOST')::bigint AS lost

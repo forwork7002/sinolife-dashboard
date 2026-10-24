@@ -158,6 +158,16 @@ describe('the team query', () => {
     expect(calls).toHaveLength(1)
   })
 
+  it('asks once for a page load whose requests arrive together', async () => {
+    const { service, calls } = serviceFor({ 'emp-rop': ['emp-a'] })
+    const at = new Date('2026-09-05T10:00:00.000Z')
+
+    const scopes = await Promise.all([1, 2, 3, 4].map(() => service.resolve(principal(), at)))
+
+    expect(calls).toHaveLength(1)
+    for (const scope of scopes) expect(scope.restrictToEmployeeIds).toContain('emp-a')
+  })
+
   it('asks again once the memo is older than the sync tick it follows', async () => {
     const { service, calls } = serviceFor({ 'emp-rop': ['emp-a'] })
     const at = new Date('2026-09-05T10:00:00.000Z')
