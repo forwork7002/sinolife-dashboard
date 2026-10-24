@@ -61,10 +61,10 @@ const faktCache = ttlCache<SellerFaktDayRow[]>(120_000, LIVE_CACHE)
   day), so the two reads never overlap and their rows simply add up.
 */
 type SplitDays = { readonly rows: readonly DistributedDayRow[]; readonly bezkval: readonly BezkvalDayRow[] }
-const splitDaysCache = ttlCache<SplitDays>(120_000, LIVE_CACHE)
+const splitDaysCache = ttlCache<DistributedDayRow[]>(120_000, LIVE_CACHE)
 const SETTLED_DAYS_MS = 30 * 60_000
-const settledDaysCache = ttlCache<SplitDays>(SETTLED_DAYS_MS, { ...LIVE_CACHE, staleMs: 12 * 60 * 60_000 })
-const NO_DAYS: Promise<SplitDays> = Promise.resolve({ rows: [], bezkval: [] })
+const settledDaysCache = ttlCache<DistributedDayRow[]>(SETTLED_DAYS_MS, { ...LIVE_CACHE, staleMs: 12 * 60 * 60_000 })
+const NO_DAYS: Promise<DistributedDayRow[]> = Promise.resolve([])
 
 /** Test seam: the memos are module-wide, and each case builds its own answer. */
 export function resetRegistrationCaches(): void {
@@ -106,21 +106,25 @@ export class RegistrationService {
     return leadSplitOfBrand(whole, input.brand ?? 'all')
   }
 
-  /** The month grid's days to `day`: the settled ones from their memo, yesterday and today live — see `settledDaysCache`. */
+  /**
+   * The month grid's days to `day`. The hand-outs: the settled days from their
+   * memo, yesterday and today live — see `settledDaysCache`. «Безквал»: the
+   * stored rows, whole, on a minute's memo — a cheap read, and the worker
+   * recounts settled days too (the week every 3 h, every day on a rules
+   * change), so the half-hour memo would show a recount up to 30 min late.
+   */
   private async monthDays(day: string, timeZone: string, now: Date): Promise<SplitDays> {
     const from = addDays(day, -(GRID_DAYS - 1))
     const yesterday = addDays(zonedDateKey(now, timeZone), -1)
     const settledTo = day < yesterday ? day : addDays(yesterday, -1)
     const liveFrom = from > yesterday ? from : yesterday
-    const days = (lo: string, hi: string) => async (): Promise<SplitDays> => {
-      const [rows, bezkval] = await Promise.all([this.repository.distributedDays(lo, hi), this.repository.bezkvalDays(lo, hi)])
-      return { rows, bezkval }
-    }
-    const [settled, live] = await Promise.all([
-      settledTo >= from ? settledDaysCache.get(`${from}:${settledTo}:${timeZone}`, days(from, settledTo)) : NO_DAYS,
-      day >= liveFrom ? splitDaysCache.get(`${liveFrom}:${day}:${timeZone}`, days(liveFrom, day)) : NO_DAYS,
+    const handedOut = (lo: string, hi: string) => () => this.repository.distributedDays(lo, hi)
+    const [settled, live, bezkval] = await Promise.all([
+      settledTo >= from ? settledDaysCache.get(`${from}:${settledTo}:${timeZone}`, handedOut(from, settledTo)) : NO_DAYS,
+      day >= liveFrom ? splitDaysCache.get(`${liveFrom}:${day}:${timeZone}`, handedOut(liveFrom, day)) : NO_DAYS,
+      trendCache.get(`${from}:${day}`, () => this.repository.bezkvalDays(from, day)),
     ])
-    return { rows: [...settled.rows, ...live.rows], bezkval: [...settled.bezkval, ...live.bezkval] }
+    return { rows: [...settled, ...live], bezkval }
   }
 
   /**

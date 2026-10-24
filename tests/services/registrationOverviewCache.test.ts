@@ -74,9 +74,13 @@ describe('RegistrationService.overview over the last two days', () => {
         reads.push(`handed ${from}..${to}`)
         return from === '2026-09-16' ? settled() : [{ day: to, rop: 'Sevinch', leads: 4, duplicates: 1 }]
       },
+      // The stored «Безквал» rows: read whole, for the grid's window.
       bezkvalDays: async (from: string, to: string) => {
         reads.push(`bezkval ${from}..${to}`)
-        return from === '2026-09-16' ? [{ day: '2026-10-14', rop: 'Sevinch', leads: 11 }] : [{ day: to, rop: 'Sevinch', leads: 7 }]
+        return [
+          { day: '2026-10-14', rop: 'Sevinch', leads: 11 },
+          { day: to, rop: 'Sevinch', leads: 7 },
+        ]
       },
       split: async () => null,
       previousSplit: async () => null,
@@ -100,12 +104,7 @@ describe('RegistrationService.overview over the last two days', () => {
     )
 
     const first = await ask()
-    expect(reads.sort()).toEqual([
-      'bezkval 2026-09-16..2026-10-14',
-      'bezkval 2026-10-15..2026-10-16',
-      'handed 2026-09-16..2026-10-14',
-      'handed 2026-10-15..2026-10-16',
-    ])
+    expect(reads.sort()).toEqual(['bezkval 2026-09-16..2026-10-16', 'handed 2026-09-16..2026-10-14', 'handed 2026-10-15..2026-10-16'])
     // Both reads land in the one grid: today's cards, the settled days' columns and the window's first.
     expect(first.total).toBe(4)
     expect(first.fresh).toBe(3)
@@ -114,12 +113,13 @@ describe('RegistrationService.overview over the last two days', () => {
     expect(first.rops.find((r) => r.rop === 'Asliddin')!.week[0]).toBe(2)
     expect(first.bezkval.rops.find((r) => r.rop === 'Sevinch')!.week.slice(-3)).toEqual([11, 0, 7])
 
-    // Five minutes on: the last two days are read again (behind the reader), the settled ones are not.
+    // Five minutes on: the last two days' hand-outs are read again (behind the reader), the settled ones are
+    // not; the stored «Безквал» rows are read again whole — a recount of a settled day shows within a minute.
     reads.length = 0
     vi.advanceTimersByTime(5 * 60_000)
     await ask()
     await vi.runAllTimersAsync()
-    expect(reads.sort()).toEqual(['bezkval 2026-10-15..2026-10-16', 'handed 2026-10-15..2026-10-16'])
+    expect(reads.sort()).toEqual(['bezkval 2026-09-16..2026-10-16', 'handed 2026-10-15..2026-10-16'])
 
     // Past the half hour the settled days are rebuilt behind the reader, who is handed the previous rows at once.
     release = () => undefined
@@ -142,12 +142,7 @@ describe('RegistrationService.overview over the last two days', () => {
     vi.useFakeTimers({ now: new Date('2026-10-16T09:00:00+05:00') })
     const { reads, ask } = harness(async () => [])
     await ask('2026-10-20')
-    expect(reads.sort()).toEqual([
-      'bezkval 2026-09-20..2026-10-14',
-      'bezkval 2026-10-15..2026-10-20',
-      'handed 2026-09-20..2026-10-14',
-      'handed 2026-10-15..2026-10-20',
-    ])
+    expect(reads.sort()).toEqual(['bezkval 2026-09-20..2026-10-20', 'handed 2026-09-20..2026-10-14', 'handed 2026-10-15..2026-10-20'])
     reads.length = 0
     await ask('2026-11-30')
     expect(reads.sort()).toEqual(['bezkval 2026-10-31..2026-11-30', 'handed 2026-10-31..2026-11-30'])
