@@ -679,8 +679,12 @@ export interface LogisticsStageDto {
  * DTO here: client code may not import from `@/server/*`, and nothing checks
  * the mirror — edit both sides.
  */
-/** The payroll's blocks, in the order the table prints them. */
-export type PayrollBranch = 'toshkent' | 'navoiy' | 'baza' | 'zextra' | 'other'
+/** The payroll's blocks, in the order the table prints them — `PAYROLL_BRANCHES` in `payrollBranches`, restated. */
+export const PAYROLL_BRANCHES = ['toshkent', 'navoiy', 'baza', 'zextra', 'other'] as const
+export type PayrollBranch = (typeof PAYROLL_BRANCHES)[number]
+
+/** «ROP yoʻq» as a `?rops=` value — `PAYROLL_NO_ROP_PICK` in `payrollBranches`, restated. */
+export const PAYROLL_NO_ROP_PICK = '(ROP yoʻq)'
 
 /** Which pay a row is on: the standard tables, БАЗА's, or a flat rate of the person's own. */
 export type PayrollTable = 'standard' | 'baza' | 'flat'
@@ -777,6 +781,22 @@ export interface PayrollBranchDto {
   readonly ropTotal: MoneyDto
 }
 
+/** The «Boʻlim» and «ROP» options: the blocks and teams the sheet draws with no pick on. */
+export interface PayrollChoicesDto {
+  readonly blocks: readonly {
+    readonly branch: PayrollBranch
+    readonly label: string
+    readonly sellers: number
+  }[]
+  /** In the sheet's order — block, then the block's own team order. */
+  readonly teams: readonly {
+    readonly rop: string | null
+    readonly branch: PayrollBranch
+    readonly head: string | null
+    readonly sellers: number
+  }[]
+}
+
 export interface PayrollDto {
   readonly scheme: 'month' | 'half' | 'week'
   /** True while the period is still running — the totals are partial. */
@@ -808,6 +828,8 @@ export interface PayrollDto {
   readonly teams: readonly PayrollTeamDto[]
   /** The blocks that have a team, Toshkent · Navoiy · Baza · Zextra · Boshqa. Σ = `totals`. */
   readonly branches: readonly PayrollBranchDto[]
+  /** Every block and team the window has, whatever `?rops=` / `?blocks=` picked — the toolbar's options. */
+  readonly choices: PayrollChoicesDto
   /** The comparison window (`meta.comparisonPeriod`), by the same table. */
   readonly previous: {
     readonly sellers: number

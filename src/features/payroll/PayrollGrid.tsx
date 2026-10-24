@@ -31,12 +31,12 @@ import {
   mix,
   usePinnedColumns,
 } from '@/features/shared/sheetGrid'
-import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type MoneyDto, type PayrollDto, type PayrollSellerDto, type PayrollTeamDto, type PeriodDto, apiGet } from '@/lib/api'
 import { formatDateShort } from '@/lib/format'
 
-import { BRANCH_HUE, type Block, Growth, RatePill, layout, ropFormula, sellerFormula, tierProgress } from './PayrollSheet'
+import { BRANCH_HUE, type Block, Growth, RatePill, layout, nobodyText, ropFormula, sellerFormula, tierProgress } from './PayrollSheet'
 import { NO_ROP } from './PayrollTeams'
+import { PayrollFilters, type RowPick, shownTotal, usePayrollParams, usePayrollPicked, useRowPick } from './payrollFilters'
 
 /** Mirrors `PayrollDaysDto` in `src/server/services/payrollService.ts` — nothing checks the mirror. */
 export interface PayrollDaysDto {
@@ -74,17 +74,13 @@ const SCHEME_NAME: Record<PayrollDto['scheme'], string> = {
  * Sana, the table picked by its length. Blocks fold; a block's heading
  * sticks under the header while its rows scroll; the column under the
  * pointer lights up; «Excel» downloads the sheet as a CSV.
+ *
+ * THE TOP PANEL FILTERS (2026-10-24): «Boʻlim» · «ROP» pick teams on the
+ * server, «Bosqich» · «Oʻsish» pick people here — see `payrollFilters`.
  */
 export function PayrollGridScreen({ tabs }: { readonly tabs: ReactNode }) {
-  const { filters } = useDashboardFilters()
-  const params = useMemo(() => {
-    const out: Record<string, string> = { preset: filters.preset }
-    if (filters.preset === 'custom' && filters.from && filters.to) {
-      out.from = filters.from
-      out.to = filters.to
-    }
-    return out
-  }, [filters.preset, filters.from, filters.to])
+  const { params, window: windowParams } = usePayrollParams()
+  const picked = usePayrollPicked()
   const [search, setSearch] = useState('')
   const scopeRef = useRef<HTMLDivElement>(null)
 
@@ -93,8 +89,8 @@ export function PayrollGridScreen({ tabs }: { readonly tabs: ReactNode }) {
     queryFn: ({ signal }) => apiGet<PayrollDto>('/payroll/sellers', params, signal),
   })
   const daysQuery = useQuery({
-    queryKey: ['payroll-days', params],
-    queryFn: ({ signal }) => apiGet<PayrollDaysDto>('/payroll/days', params, signal),
+    queryKey: ['payroll-days', windowParams],
+    queryFn: ({ signal }) => apiGet<PayrollDaysDto>('/payroll/days', windowParams, signal),
   })
   // Never a previous window's figures under this one's heading — «Batafsil»'s rule.
   const data = query.isPlaceholderData ? undefined : query.data?.data
@@ -103,6 +99,13 @@ export function PayrollGridScreen({ tabs }: { readonly tabs: ReactNode }) {
   const period = data ? query.data?.meta.period : undefined
   const comparison = data ? query.data?.meta.comparisonPeriod : undefined
   const compared = Boolean(comparison && comparison.start !== comparison.end)
+  const pick = useRowPick(compared)
+  const needle = search.trim().toLowerCase()
+  /* What «Bosqich» / «Oʻsish» or the search leave drawn — counted beside the toolbar, since the sums leave the sheet. */
+  const shown = useMemo(
+    () => (data && (pick !== null || needle !== '') ? shownTotal(layout(data, needle, pick).flatMap((b) => b.teams.flatMap((t) => t.rows))) : null),
+    [data, pick, needle],
+  )
 
   return (
     <PageShell
@@ -116,7 +119,8 @@ export function PayrollGridScreen({ tabs }: { readonly tabs: ReactNode }) {
       toolbar={
         <>
           <SearchInput value={search} onChange={setSearch} placeholder="Ism yoki ROP…" />
-          {data && period && <Facts data={data} period={period} days={days} onToday={() => {
+          <PayrollFilters choices={query.data?.data.choices} compared={compared} />
+          {data && period && <Facts data={data} period={period} days={days} picked={picked} shown={shown} onToday={() => {
             const box = scopeRef.current?.querySelector<HTMLElement>('[data-rnp-grid]')
             if (box) scrollToToday(box)
           }} />}
@@ -145,11 +149,11 @@ export function PayrollGridScreen({ tabs }: { readonly tabs: ReactNode }) {
           </Card>
         ) : data.sellers.length === 0 ? (
           <Card className="p-5">
-            <EmptyState title="Maʼlumot yoʻq" body="Bu davrda kelgan buyurtmalardan hali yetkazilgani yoʻq." />
+            <EmptyState title="Maʼlumot yoʻq" body={emptyBody(picked)} />
           </Card>
         ) : (
           <Card as="div" className="min-h-[320px] min-w-0 flex-1 overflow-hidden p-0 max-sm:min-h-[calc(100dvh-5rem)]">
-            <PayrollGrid data={data} days={days ?? null} search={search} compared={compared} />
+            <PayrollGrid data={data} days={days ?? null} search={search} compared={compared} pick={pick} picked={picked} />
           </Card>
         )}
       </div>
@@ -157,14 +161,44 @@ export function PayrollGridScreen({ tabs }: { readonly tabs: ReactNode }) {
   )
 }
 
-/** The window's verdict beside its controls: which table, what it pays, and today. */
-function Facts({ data, period, days, onToday }: { data: PayrollDto; period: PeriodDto; days: PayrollDaysDto | undefined; onToday: () => void }) {
+/** The empty sheet's line — a pick that leaves nobody is not a period with no deliveries. */
+export function emptyBody(picked: boolean): string {
+  return picked
+    ? 'Tanlangan boʻlim / ROP boʻyicha bu davrda yetkazilgan buyurtma yoʻq.'
+    : 'Bu davrda kelgan buyurtmalardan hali yetkazilgani yoʻq.'
+}
+
+/**
+ * The window's verdict beside its controls: which table, what it pays, and
+ * today. With «Boʻlim» / «ROP» on, the sums are the picked teams' — the
+ * server's — and say so; with a row filter, what is drawn is counted too.
+ */
+function Facts({
+  data,
+  period,
+  days,
+  picked,
+  shown,
+  onToday,
+}: {
+  data: PayrollDto
+  period: PeriodDto
+  days: PayrollDaysDto | undefined
+  picked: boolean
+  shown: { readonly people: number; readonly total: number } | null
+  onToday: () => void
+}) {
   return (
     <dl className="flex flex-wrap items-center gap-2 text-xs">
       <Fact term={SCHEME_NAME[data.scheme]}>{windowText(period)}{data.open ? ' · davom etmoqda' : ''}</Fact>
-      <Fact term="Sotuvchilar">{rnpUzs(data.totals.total.amount)}</Fact>
-      {data.ropTotals.total.amount > 0 && <Fact term="ROP lar">{rnpUzs(data.ropTotals.total.amount)}</Fact>}
-      <Fact term="Hammasi">{rnpUzs(data.fund.amount)} soʻm</Fact>
+      <Fact term={picked ? 'Tanlangan sotuvchilar' : 'Sotuvchilar'}>{rnpUzs(data.totals.total.amount)}</Fact>
+      {data.ropTotals.total.amount > 0 && <Fact term={picked ? 'Tanlangan ROP lar' : 'ROP lar'}>{rnpUzs(data.ropTotals.total.amount)}</Fact>}
+      <Fact term={picked ? 'Tanlanganlar hammasi' : 'Hammasi'}>{rnpUzs(data.fund.amount)} soʻm</Fact>
+      {shown && (
+        <Fact term="Koʻrsatilgan">
+          {rnpNumber(shown.people)} kishi · {rnpUzs(shown.total)}
+        </Fact>
+      )}
       {days && days.days.includes(days.today) && (
         <div>
           <dt className="sr-only">Bugun</dt>
@@ -236,13 +270,30 @@ interface Figures {
   readonly days: readonly number[] | null
 }
 
-export function PayrollGrid({ data, days, search, compared }: { data: PayrollDto; days: PayrollDaysDto | null; search: string; compared: boolean }) {
+export function PayrollGrid({
+  data,
+  days,
+  search,
+  compared,
+  pick = null,
+  picked = false,
+}: {
+  data: PayrollDto
+  days: PayrollDaysDto | null
+  search: string
+  compared: boolean
+  /** «Bosqich» / «Oʻsish» — narrows the rows as the search does, and takes the sums off with it. */
+  pick?: RowPick | null
+  /** «Boʻlim» / «ROP» narrowed the payload: the foot is the picked teams', and says so. */
+  picked?: boolean
+}) {
   const box = useRef<HTMLDivElement>(null)
   const dragScroll = useDragScroll<HTMLDivElement>()
   const crosshair = useMemo(() => crosshairHandlers(STYLE_ID), [])
   usePinnedColumns(box, 2)
   const needle = search.trim().toLowerCase()
-  const blocks = useMemo(() => layout(data, needle), [data, needle])
+  const narrowed = needle !== '' || pick !== null
+  const blocks = useMemo(() => layout(data, needle, pick), [data, needle, pick])
   const cols = compared ? COLS : COLS.filter((c) => c.key !== 'growth')
   const dayList = days?.days ?? []
   const today = days?.today ?? ''
@@ -312,7 +363,7 @@ export function PayrollGrid({ data, days, search, compared }: { data: PayrollDto
           {blocks.length === 0 ? (
             <tr>
               <td colSpan={span + 1} className="px-5 py-8 text-center text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-                «{search.trim()}» boʻyicha hech kim topilmadi.
+                {nobodyText(search)}
               </td>
             </tr>
           ) : (
@@ -325,13 +376,13 @@ export function PayrollGrid({ data, days, search, compared }: { data: PayrollDto
                 days={days}
                 span={span}
                 compared={compared}
-                searching={needle !== ''}
+                searching={narrowed}
                 folded={folded}
                 onToggle={toggle}
               />
             ))
           )}
-          {needle === '' && blocks.length > 0 && <GrandRows data={data} days={days} ctx={ctx} span={span} compared={compared} />}
+          {!narrowed && blocks.length > 0 && <GrandRows data={data} days={days} ctx={ctx} span={span} compared={compared} picked={picked} />}
         </tbody>
       </table>
     </div>
@@ -751,7 +802,21 @@ function FigureRow({
 }
 
 /** The company's foot: the sellers' fund, the ROPs' pay apart, and the two together. */
-function GrandRows({ data, days, ctx, span, compared }: { data: PayrollDto; days: PayrollDaysDto | null; ctx: RowCtx; span: number; compared: boolean }) {
+function GrandRows({
+  data,
+  days,
+  ctx,
+  span,
+  compared,
+  picked,
+}: {
+  data: PayrollDto
+  days: PayrollDaysDto | null
+  ctx: RowCtx
+  span: number
+  compared: boolean
+  picked: boolean
+}) {
   const { totals, ropTotals } = data
   const allDays = useMemo(() => sumDays(days, data.sellers), [days, data.sellers])
   const ropDays = useMemo(() => {
@@ -772,7 +837,7 @@ function GrandRows({ data, days, ctx, span, compared }: { data: PayrollDto; days
         kind="grand"
         hue="var(--ink-primary)"
         ctx={ctx}
-        label="Sotuvchilar jami"
+        label={picked ? 'Tanlangan sotuvchilar jami' : 'Sotuvchilar jami'}
         sub={`${rnpNumber(totals.sellers)} ta sotuvchi`}
         figures={{
           total: totals.total,
@@ -793,7 +858,7 @@ function GrandRows({ data, days, ctx, span, compared }: { data: PayrollDto; days
           kind="rop"
           hue="var(--ink-primary)"
           ctx={ctx}
-          label="ROP lar jami"
+          label={picked ? 'Tanlangan ROP lar jami' : 'ROP lar jami'}
           sub={`${rnpNumber(ropTotals.rops)} ta ROP · kunlarda — ularning 2% asosi`}
           figures={{
             total: ropTotals.total,
@@ -813,7 +878,7 @@ function GrandRows({ data, days, ctx, span, compared }: { data: PayrollDto; days
       <tr data-line="all" className="font-semibold">
         <th scope="row" className={`tcol-sticky rnp-label ${NAME_WIDTH} ${RULE_STRONG} py-2 pr-3 pl-4 text-left sm:pl-5`} style={{ left: 0, background: mix('var(--accent)', 14, 'var(--surface-raised)') }}>
           <span className="block text-[12.5px] tracking-wide uppercase" style={{ color: 'var(--ink-primary)' }}>
-            Hammasi boʻlib
+            {picked ? 'Tanlanganlar hammasi' : 'Hammasi boʻlib'}
           </span>
           <span className="block text-[10.5px] font-normal" style={{ color: 'var(--ink-muted)' }}>
             sotuvchilar + ROP lar

@@ -1840,6 +1840,29 @@ Per-screen traps worth knowing before you touch one:
   still 2% + 2 mln everywhere: the client said Toshkent / Navoiy / Baza ROPs
   will get rates of their own, numbers not given yet. A БАЗА seller with no
   FAKT 2 is no row, so no oklad — not asked yet.
+  **THE TOP PANEL'S FILTERS — 2026-10-24** («sotuvchilar oyligiga rop lar
+  boʻyicha filtrlar … eng kerakli filtrlarni tepa panelga»), both tabs, all in
+  the URL (`payroll/payrollFilters`). «Boʻlim» (`?blocks=`, the five block
+  keys, enumerated — an unknown one is a 400, the hook drops it first) and
+  «ROP» (`?rops=`, team labels, `(ROP yoʻq)` = `PAYROLL_NO_ROP_PICK` for the
+  no-team bucket) PICK TEAMS ON THE SERVER: `payrollPickTest` on a TEAM LABEL
+  — a seller's row by the team they are printed in, a previous row by the
+  label it wore THEN, a ROP's basis by the label it was sold under — applied
+  AFTER the ranks (the badge stays «Kompaniyada N-oʻrin») and before every
+  sum, so totals, fund, previous, `gone`, teams and blocks are the picked
+  teams' own, to the soʻm; a seller's own growth stays theirs. The pick is in
+  the memo key (`payrollPickKey`, order-free); the rows memo is the window's,
+  so a pick costs arithmetic, no scan. `choices` carries the window's WHOLE
+  block and team list whatever is picked — the options; «ROP» lists only the
+  picked blocks' teams, plus any stale-link pick. `/payroll/days` stays on the
+  window alone. «Bosqich» (`?tiers=` fixed / nofixed / near — `tierProgress`
+  ≥ 80%) and «Oʻsish» (`?trend=` up / down / new, by FAKT 2 against
+  `previous`; drawn only with a comparison window) PICK PEOPLE IN THE BROWSER,
+  never sent: like the search they take the team / block / company sums off
+  the sheet (some of a team summed is nobody's pay) and a «Koʻrsatilgan: N
+  kishi · soʻm» chip counts what is drawn. Inside a control «or», across
+  controls «and». Pinned in `tests/services/payrollPick.test.ts` and
+  `tests/features/payrollFilters.test.tsx`.
 - **KPI rejalari** — the preset picks the plan but does not slice it. «Bugun»
   and «Shu oy» give identical numbers inside one plan.
 - **Struktura** — **no money and no reporting window, and both are load-bearing

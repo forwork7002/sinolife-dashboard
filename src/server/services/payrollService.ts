@@ -38,7 +38,10 @@ import {
   PAYROLL_BRANCHES,
   PAYROLL_BRANCH_LABEL,
   type PayrollBranch,
+  type PayrollPick,
   payrollBranchOf,
+  payrollPickKey,
+  payrollPickTest,
 } from '@/server/domain/payroll/payrollBranches'
 import {
   FLAT_RATE_SELLERS,
@@ -233,6 +236,13 @@ export interface PayrollDto {
   readonly teams: readonly PayrollTeamDto[]
   /** The blocks that have a team, in `PAYROLL_BRANCHES`' order. Σ = `totals`. */
   readonly branches: readonly PayrollBranchDto[]
+  /**
+   * Every block and team the window has, WHATEVER THE PICK — the options of
+   * the toolbar's «Boʻlim» and «ROP» (2026-10-24). Everything else in this DTO
+   * is the picked teams only, so the options cannot be read off `teams`: a
+   * reader who picked one ROP would be left a list of one to pick from.
+   */
+  readonly choices: PayrollChoicesDto
   /** The comparison window's totals, by the same table. */
   readonly previous: {
     readonly sellers: number
@@ -252,6 +262,22 @@ export interface PayrollDto {
     readonly fixed: DeltaDto
     readonly total: DeltaDto
   }
+}
+
+/** The «Boʻlim» and «ROP» options: the blocks and teams the sheet draws with no pick on. */
+export interface PayrollChoicesDto {
+  readonly blocks: readonly {
+    readonly branch: PayrollBranch
+    readonly label: string
+    readonly sellers: number
+  }[]
+  /** In the sheet's order — block, then the block's own team order. */
+  readonly teams: readonly {
+    readonly rop: string | null
+    readonly branch: PayrollBranch
+    readonly head: string | null
+    readonly sellers: number
+  }[]
 }
 
 /**
@@ -377,8 +403,8 @@ export class PayrollService {
    * names. `previous` is the comparison window — the dashboard's own
    * `previousEquivalent`, built by the route.
    */
-  async payroll(period: Period, previous: Period, currency: string, now: Date): Promise<PayrollDto> {
-    return this.cached(payrollSchemeOf(period), period, previous, currency, now)
+  async payroll(period: Period, previous: Period, currency: string, now: Date, pick: PayrollPick = {}): Promise<PayrollDto> {
+    return this.cached(payrollSchemeOf(period), period, previous, currency, now, pick)
   }
 
   /** FAKT 2 per day of the window, per seller and per team label — see `PayrollDaysDto`. */
@@ -415,11 +441,14 @@ export class PayrollService {
     previous: Period,
     currency: string,
     now: Date,
+    pick: PayrollPick,
   ): Promise<PayrollDto> {
     /*
       The window's start alone does not name the period — «Bugun» and «Shu
       oy» share it on the 1st — so the scheme and the end are in the key as
-      well, and the comparison window with them.
+      well, and the comparison window with them. AND THE PICK: one ROP's
+      payroll is a different answer from the company's. A pick costs no scan —
+      the rows below are memoised on the window alone.
     */
     const key = [
       scheme,
@@ -428,8 +457,9 @@ export class PayrollService {
       previous.start.toISOString(),
       previous.end.toISOString(),
       keyPart(currency),
+      payrollPickKey(pick),
     ].join('|')
-    return payrollCache.get(key, () => this.build(scheme, period, previous, currency, now))
+    return payrollCache.get(key, () => this.build(scheme, period, previous, currency, now, pick))
   }
 
   /*
@@ -522,6 +552,7 @@ export class PayrollService {
     previousPeriod: Period,
     currency: string,
     now: Date,
+    pick: PayrollPick,
   ): Promise<PayrollDto> {
     /*
       Both windows at once, through the same query. An empty comparison
@@ -557,9 +588,9 @@ export class PayrollService {
     */
     const rows = mergeSellerTeamSlices(slices).filter((row) => row.deliveredMinor > 0n)
     /* The ROPs' basis: what was sold under each label, slice by slice. */
-    const ropBasis = new Map<string, bigint>()
+    const allBasis = new Map<string, bigint>()
     for (const slice of slices) {
-      if (slice.rop !== null) ropBasis.set(slice.rop, (ropBasis.get(slice.rop) ?? 0n) + slice.deliveredMinor)
+      if (slice.rop !== null) allBasis.set(slice.rop, (allBasis.get(slice.rop) ?? 0n) + slice.deliveredMinor)
     }
 
     /*
@@ -568,7 +599,7 @@ export class PayrollService {
       would have been paid then, not a figure from a different rule.
     */
     // Paid people only, as now: the cohort also carries the queued and refused.
-    const previousPay = previousRows.filter((row) => row.deliveredMinor > 0n).map((row) => ({
+    const allPreviousPay = previousRows.filter((row) => row.deliveredMinor > 0n).map((row) => ({
       employeeId: row.employeeId,
       rop: row.rop,
       fakt2: row.deliveredMinor,
@@ -582,7 +613,7 @@ export class PayrollService {
       them top of the risers with their whole FAKT 2.
     */
     const previousById = new Map(
-      previousPay.filter((row) => row.fakt2 > 0n).map((row) => [row.employeeId, row]),
+      allPreviousPay.filter((row) => row.fakt2 > 0n).map((row) => [row.employeeId, row]),
     )
 
     /*
@@ -619,7 +650,7 @@ export class PayrollService {
     const delta = (current: bigint, previous: bigint | null) =>
       toDeltaDto(growth(cash(current).amount, previous === null ? 0 : cash(previous).amount))
 
-    const sellers = ordered.map<PayrollSellerDto>((row, index) => {
+    const allSellers = ordered.map<PayrollSellerDto>((row, index) => {
       const rank = rankOf[index]!
       const table = tableOf(row)
       const pay = sellerPayroll({ basisMinor: row.deliveredMinor, scheme, ...table })
@@ -654,6 +685,22 @@ export class PayrollService {
     })
 
     /*
+      THE PICK NARROWS BY TEAM LABEL, AFTER THE RANKS (2026-10-24, «rop lar
+      boʻyicha filtr»). Three things wear a label and each is kept by its own:
+      a seller's row by the team they are printed in, a previous row by the
+      team it wore THEN (so a team's growth is the like-for-like the cards
+      always drew), a ROP's basis by the label it was sold under. The rank
+      stays the company's — «Kompaniyada N-oʻrin» is what the badge says — and
+      a seller's own growth stays their own whichever team they were in then.
+      Everything summed below is summed over what was kept, so the picked
+      payroll adds up to itself to the soʻm, exactly as the whole one does.
+    */
+    const keep = payrollPickTest(pick, ancestors)
+    const sellers = allSellers.filter((row) => keep(row.rop))
+    const previousPay = allPreviousPay.filter((row) => keep(row.rop))
+    const ropBasis = new Map([...allBasis].filter(([rop]) => keep(rop)))
+
+    /*
       THE FUND IS SUMMED FROM THE ROWS THE SCREEN PRINTS, in minor units, and
       never recomputed from the total FAKT 2: 8% of the sum is not the sum of
       each person's rounded 8%, and the tiers are per person by definition.
@@ -678,8 +725,13 @@ export class PayrollService {
     }
     const counts = countsOf(sellers, leads !== null)
 
-    const printed = new Set(rows.map((row) => row.employeeId))
+    const printed = new Set(sellers.map((row) => row.employeeId))
     const teams = teamsOf(sellers, previousPay, cash, delta, scheme, heads, ropBasis, ancestors, leads !== null)
+    /* The options are the WHOLE window's teams — a pick is never its own menu. */
+    const allTeams =
+      sellers.length === allSellers.length && ropBasis.size === allBasis.size && previousPay.length === allPreviousPay.length
+        ? teams
+        : teamsOf(allSellers, allPreviousPay, cash, delta, scheme, heads, allBasis, ancestors, leads !== null)
     const paidRops = teams.flatMap((team) => (team.ropPay ? [team.ropPay] : []))
 
     return {
@@ -696,6 +748,7 @@ export class PayrollService {
       },
       teams,
       branches: branchesOf(teams, sellers, cash, leads !== null),
+      choices: choicesOf(allTeams),
       ropTotals: {
         rops: paidRops.length,
         percent: cash(paidRops.reduce((acc, pay) => acc + minor(pay.percent), 0n)),
@@ -706,7 +759,7 @@ export class PayrollService {
       flatRates: [...flat.values()].map((rate) => ({ fullName: rate.fullName, percentRate: Number(rate.bp) / 100 })),
       previous: {
         sellers: previousPay.length,
-        gone: [...previousById.keys()].filter((id) => !printed.has(id)).length,
+        gone: previousPay.filter((row) => row.fakt2 > 0n && !printed.has(row.employeeId)).length,
         fakt2: cash(then.fakt2),
         percent: cash(then.percent),
         fixed: cash(then.fixed),
@@ -815,6 +868,27 @@ function teamsOf(
         (minor(b.total) > minor(a.total) ? 1 : minor(b.total) < minor(a.total) ? -1 : 0) ||
         (a.rop ?? '').localeCompare(b.rop ?? '', 'ru'),
     )
+}
+
+/**
+ * The toolbar's options: the teams the sheet draws with no pick (a seller
+ * paid, or a ROP paid on what was sold under the label), in its order.
+ */
+function choicesOf(teams: readonly PayrollTeamDto[]): PayrollChoicesDto {
+  const drawn = teams.filter((team) => team.sellers > 0 || team.ropPay !== null)
+  return {
+    blocks: PAYROLL_BRANCHES.flatMap((branch) => {
+      const own = drawn.filter((team) => team.branch === branch)
+      return own.length === 0
+        ? []
+        : [{ branch, label: PAYROLL_BRANCH_LABEL[branch], sellers: own.reduce((acc, team) => acc + team.sellers, 0) }]
+    }),
+    teams: PAYROLL_BRANCHES.flatMap((branch) =>
+      drawn
+        .filter((team) => team.branch === branch)
+        .map((team) => ({ rop: team.rop, branch, head: team.ropPay?.head ?? null, sellers: team.sellers })),
+    ),
+  }
 }
 
 /** «ROP otchet»'s «Конверсия»: Транз-1 ÷ Лид сони × 100, null with no lead to divide by. */

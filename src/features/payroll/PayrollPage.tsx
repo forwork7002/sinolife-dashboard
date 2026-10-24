@@ -10,7 +10,6 @@ import { SearchInput, SegmentedControl } from '@/components/ui/Controls'
 import { DataTable, type Column } from '@/components/ui/DataTable'
 import { TrendIndicator } from '@/components/ui/TrendIndicator'
 import { PageShell } from '@/features/shared/PageShell'
-import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import {
   type DeltaDto,
   type PayrollBranchDto,
@@ -27,9 +26,10 @@ import {
   formatNumber,
 } from '@/lib/format'
 
-import { PayrollGridScreen } from './PayrollGrid'
+import { PayrollGridScreen, emptyBody } from './PayrollGrid'
 import { PayrollSheet, ropFormula, sellerFormula } from './PayrollSheet'
 import { NO_ROP, PayrollMovers, RopCompareChart } from './PayrollTeams'
+import { PayrollFilters, usePayrollParams, usePayrollPicked, useRowPick } from './payrollFilters'
 
 /**
  * «Sotuvchilar oyligi» — what the office owes each seller over the dashboard's
@@ -115,18 +115,12 @@ function PayrollDetails({ tabs }: { readonly tabs: ReactNode }) {
     dinamikasidek»). The Haftalik / 15 kunlik / Oylik tabs went: PageShell
     draws Bugun · Kecha · Shu oy · Sana, the window rides the URL like every
     other screen's, and the server picks the table by its length
-    (`payrollSchemeOf`). Only the window is sent — no brand, no people: a
-    payroll is the whole company's.
+    (`payrollSchemeOf`). The window is sent, and since 2026-10-24 the
+    toolbar's «Boʻlim» / «ROP» pick of teams — never a brand: a payroll is
+    every team's, or the picked teams' whole (`payrollFilters`).
   */
-  const { filters } = useDashboardFilters()
-  const params = useMemo(() => {
-    const out: Record<string, string> = { preset: filters.preset }
-    if (filters.preset === 'custom' && filters.from && filters.to) {
-      out.from = filters.from
-      out.to = filters.to
-    }
-    return out
-  }, [filters.preset, filters.from, filters.to])
+  const { params } = usePayrollParams()
+  const picked = usePayrollPicked()
   const [search, setSearch] = useState('')
 
   const query = useQuery({
@@ -155,6 +149,7 @@ function PayrollDetails({ tabs }: { readonly tabs: ReactNode }) {
   const comparisonLabel = comparison ? windowText(comparison) : null
   /* A delta over an empty comparison window (a period not started) says nothing. */
   const compared = Boolean(comparison && comparison.start !== comparison.end)
+  const pick = useRowPick(compared)
   /*
     Memoised because the groupings below depend on it: `data?.sellers ?? []`
     mints a fresh empty array on every render while the request is in flight.
@@ -193,6 +188,7 @@ function PayrollDetails({ tabs }: { readonly tabs: ReactNode }) {
       toolbar={
         <>
           <SearchInput value={search} onChange={setSearch} placeholder="Ism yoki ROP…" />
+          <PayrollFilters choices={query.data?.data.choices} compared={compared} />
           <CopyButton
             rows={sellers}
             teams={teams}
@@ -247,7 +243,7 @@ function PayrollDetails({ tabs }: { readonly tabs: ReactNode }) {
                 </p>
               )}
               <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
-                Davr uchun jami toʻlov
+                {picked ? 'Tanlangan boʻlim / ROP uchun jami toʻlov' : 'Davr uchun jami toʻlov'}
                 {data && compared && (
                   <>
                     <TrendIndicator delta={data.deltas.total} />
@@ -358,9 +354,9 @@ function PayrollDetails({ tabs }: { readonly tabs: ReactNode }) {
         ) : heroStatus === 'error' ? (
           <ErrorState message={errorMessage} onRetry={retry} />
         ) : data && sellers.length > 0 ? (
-          <PayrollSheet data={data} search={search} compared={compared} />
+          <PayrollSheet data={data} search={search} compared={compared} pick={pick} />
         ) : (
-          <EmptyState title="Maʼlumot yoʻq" body="Bu davrda kelgan buyurtmalardan hali yetkazilgani yoʻq." />
+          <EmptyState title="Maʼlumot yoʻq" body={emptyBody(picked)} />
         )}
       </ChartCard>
 

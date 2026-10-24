@@ -37,7 +37,15 @@ export const GET = getHandler(ACCESS, payrollQuerySchema, async (ctx) => {
     1 Sep to 11:00 on 17 Sep, not against the whole of 17 Sep.
   */
   const previous = comparablePayrollPeriod(period, previousEquivalent(period), ctx.now)
-  const data = await payrollService.payroll(period, previous, ctx.currency, ctx.now)
+  /*
+    THE TOOLBAR'S «Boʻlim» AND «ROP» (2026-10-24) — a pick of teams, never a
+    scope: who may read this endpoint is still `ACCESS` alone, and a pick
+    only chooses which of the company's teams are summed.
+  */
+  const data = await payrollService.payroll(period, previous, ctx.currency, ctx.now, {
+    rops: ctx.query.rops,
+    blocks: ctx.query.blocks,
+  })
   return {
     data,
     meta: { period: toPeriodDto(period), comparisonPeriod: toPeriodDto(previous) },

@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { rememberPeriod, rememberedPeriod } from './periodMemory'
 
 import { PERIOD_PRESETS, type PeriodPreset, type PeriodSelection } from '@/components/layout/PeriodFilter'
-import { CONFIRMATION_OUTCOMES, type ConfirmationOutcome } from '@/lib/api'
+import { CONFIRMATION_OUTCOMES, type ConfirmationOutcome, PAYROLL_BRANCHES, type PayrollBranch } from '@/lib/api'
 import { isCustomWindow } from '@/lib/customWindow'
 
 /**
@@ -25,6 +25,14 @@ import { isCustomWindow } from '@/lib/customWindow'
  * so a link somebody pastes into Telegram still opens on the dates it was
  * copied on. See `periodMemory`.
  */
+
+/** «Bosqich»: reached a fixed part / oklad, did not, or stands within a fifth of the next rung. */
+export const PAYROLL_TIER_PICKS = ['fixed', 'nofixed', 'near'] as const
+export type PayrollTierPick = (typeof PAYROLL_TIER_PICKS)[number]
+
+/** «Oʻsish»: FAKT 2 above / below the comparison window, or nothing delivered then. */
+export const PAYROLL_TREND_PICKS = ['up', 'down', 'new'] as const
+export type PayrollTrendPick = (typeof PAYROLL_TREND_PICKS)[number]
 
 export interface DashboardFilters {
   readonly preset: PeriodPreset
@@ -66,6 +74,24 @@ export interface DashboardFilters {
   readonly rops: readonly string[]
   /** Which customer regions the queue is narrowed to. `(Region yoʻq)` is one. */
   readonly regions: readonly string[]
+  /**
+   * «Sotuvchilar oyligi»'s toolbar (2026-10-24, the client: «rop lar boʻyicha
+   * filtr … eng kerakli filtrlar tepa panelga»). `rops` above is its «ROP»;
+   * these are the other three.
+   *
+   * `blocks` — «Boʻlim»: Toshkent / Navoiy / Baza / Zextra / Boshqa. Sent to
+   * `/payroll/sellers` with `rops` (by `usePayrollParams`, not `apiParams`),
+   * which narrows on the server, so every total on the page is the picked
+   * teams' own.
+   *
+   * `tiers` — «Bosqich» and `trend` — «Oʻsish» narrow the ROWS in the browser,
+   * as the search box does, and are never sent: they pick people inside a
+   * team, and a team's sum or its ROP's 2% over some of its people is no
+   * figure anybody is paid. See `features/payroll/payrollFilters`.
+   */
+  readonly blocks: readonly PayrollBranch[]
+  readonly tiers: readonly PayrollTierPick[]
+  readonly trend: readonly PayrollTrendPick[]
   /**
    * The СУММА column's range, in whole soʻm — the figure the column prints.
    *
@@ -160,6 +186,9 @@ const DEFAULTS: DashboardFilters = {
   outcomes: [],
   rops: [],
   regions: [],
+  blocks: [],
+  tiers: [],
+  trend: [],
   queue: 'window',
   brand: 'all',
   view: 'chart',
@@ -380,6 +409,16 @@ export function useDashboardFilters() {
       */
       rops: [...new Set([...list(params.get('rops')), ...list(params.get('rop'))])],
       regions: list(params.get('regions')),
+      // Only values this application has — an unknown block is a 400 from the API (see `outcomes`).
+      blocks: list(params.get('blocks')).filter((value): value is PayrollBranch =>
+        (PAYROLL_BRANCHES as readonly string[]).includes(value),
+      ),
+      tiers: list(params.get('tiers')).filter((value): value is PayrollTierPick =>
+        (PAYROLL_TIER_PICKS as readonly string[]).includes(value),
+      ),
+      trend: list(params.get('trend')).filter((value): value is PayrollTrendPick =>
+        (PAYROLL_TREND_PICKS as readonly string[]).includes(value),
+      ),
       amountMin: positive(params.get('amountMin')),
       amountMax: positive(params.get('amountMax')),
       /*
@@ -589,6 +628,7 @@ export function useDashboardFilters() {
     if (filters.outcomes.length) out.outcomes = filters.outcomes.join(',')
     if (filters.rops.length) out.rops = filters.rops.join(',')
     if (filters.regions.length) out.regions = filters.regions.join(',')
+    // `blocks`, `tiers`, `trend`: «Sotuvchilar oyligi» builds its own request (`usePayrollParams`).
     // `!== undefined`, never a truthiness test: a bound of exactly 0 is a
     // reader asking for the free orders, and `if (0)` would drop it silently.
     if (filters.amountMin !== undefined) out.amountMin = String(filters.amountMin)
@@ -611,6 +651,9 @@ export function useDashboardFilters() {
     filters.outcomes.length +
     filters.rops.length +
     filters.regions.length +
+    filters.blocks.length +
+    filters.tiers.length +
+    filters.trend.length +
     // The range counts ONCE however many of its two ends are set: the reader
     // clears one control, so «Filtrlarni tozalash (3)» must promise one thing.
     (filters.amountMin !== undefined || filters.amountMax !== undefined ? 1 : 0) +

@@ -13,6 +13,7 @@
 
 import { z } from 'zod'
 
+import { PAYROLL_BRANCHES } from '@/server/domain/payroll/payrollBranches'
 import { PERIOD_PRESETS } from '@/server/domain/period/period'
 import { ROISTAT_DIMS } from '@/server/domain/roistat/roistatCuts'
 import {
@@ -172,19 +173,43 @@ export const analyticsQuerySchema = periodQuerySchema.and(filterQuerySchema)
  */
 export const PAYROLL_MAX_DAYS = 31
 
-export const payrollQuerySchema = periodQuerySchema.superRefine((value, ctx) => {
-  if (value.preset === 'this_year') {
-    ctx.addIssue({ code: 'custom', path: ['preset'], message: 'A payroll is at most a month' })
-  }
-  if (
-    value.preset === 'custom' &&
-    value.from &&
-    value.to &&
-    Math.round((value.to.getTime() - value.from.getTime()) / 86_400_000) + 1 > PAYROLL_MAX_DAYS
-  ) {
-    ctx.addIssue({ code: 'custom', path: ['to'], message: `At most ${PAYROLL_MAX_DAYS} days` })
-  }
-})
+export const payrollQuerySchema = periodQuerySchema
+  .and(
+    z.object({
+      /**
+       * The toolbar's «ROP» (2026-10-24): team labels as the sheet prints
+       * them, `(ROP yoʻq)` for the no-team bucket. An unknown one matches
+       * nothing — a team renamed on the portal is not a 400 on the page.
+       */
+      rops: nameList,
+      /** The toolbar's «Boʻlim»: the blocks, by key. Enumerated — five there are. */
+      blocks: z
+        .string()
+        .optional()
+        .transform((value) =>
+          value
+            ? value
+                .split(',')
+                .map((part) => part.trim())
+                .filter((part) => part.length > 0)
+            : undefined,
+        )
+        .pipe(z.array(z.enum(PAYROLL_BRANCHES)).max(PAYROLL_BRANCHES.length).optional()),
+    }),
+  )
+  .superRefine((value, ctx) => {
+    if (value.preset === 'this_year') {
+      ctx.addIssue({ code: 'custom', path: ['preset'], message: 'A payroll is at most a month' })
+    }
+    if (
+      value.preset === 'custom' &&
+      value.from &&
+      value.to &&
+      Math.round((value.to.getTime() - value.from.getTime()) / 86_400_000) + 1 > PAYROLL_MAX_DAYS
+    ) {
+      ctx.addIssue({ code: 'custom', path: ['to'], message: `At most ${PAYROLL_MAX_DAYS} days` })
+    }
+  })
 
 /**
  * One department's roster, for the panel the org chart opens.

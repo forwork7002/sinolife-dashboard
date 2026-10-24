@@ -16,6 +16,7 @@ import type {
 import { NO_VALUE, formatCompactUzs, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
 import { NO_ROP, NewChip } from './PayrollTeams'
+import type { RowPick } from './payrollFilters'
 
 /**
  * «Hisob-kitob» — the whole payroll as ONE sheet, «huddi RNP jadvali kabi»
@@ -38,14 +39,18 @@ export function PayrollSheet({
   data,
   search,
   compared,
+  pick = null,
 }: {
   data: PayrollDto
   search: string
   /** Whether a comparison window exists; without one the growth column is dropped. */
   compared: boolean
+  /** «Bosqich» / «Oʻsish» — narrows the rows as the search does. */
+  pick?: RowPick | null
 }) {
   const needle = search.trim().toLowerCase()
-  const blocks = useMemo(() => layout(data, needle), [data, needle])
+  const narrowed = needle !== '' || pick !== null
+  const blocks = useMemo(() => layout(data, needle, pick), [data, needle, pick])
   const columns = compared ? COLUMNS : COLUMNS.filter((c) => c.key !== 'growth')
   const span = columns.length
   const restPx = columns.slice(1).reduce((acc, c) => acc + c.width, 0)
@@ -96,15 +101,15 @@ export function PayrollSheet({
           {blocks.length === 0 ? (
             <tr>
               <td colSpan={span} className="px-5 py-8 text-center text-[13px]" style={{ color: 'var(--ink-muted)' }}>
-                «{search.trim()}» boʻyicha hech kim topilmadi.
+                {nobodyText(search)}
               </td>
             </tr>
           ) : (
             blocks.map((block) => (
-              <BranchRows key={block.branch.branch} block={block} span={span} compared={compared} searching={needle !== ''} />
+              <BranchRows key={block.branch.branch} block={block} span={span} compared={compared} searching={narrowed} />
             ))
           )}
-          {needle === '' && blocks.length > 0 && <GrandRows data={data} span={span} compared={compared} />}
+          {!narrowed && blocks.length > 0 && <GrandRows data={data} span={span} compared={compared} />}
         </tbody>
       </table>
     </div>
@@ -132,9 +137,11 @@ export interface Block {
  * company rank. A SEARCH NARROWS: a team whose name matches keeps everybody,
  * otherwise only the sellers whose name matches; a team or block left empty is
  * not drawn. A team the period paid nobody in (a label only a moved seller sold
- * under) still draws when its ROP is paid.
+ * under) still draws when its ROP is paid. «Bosqich» / «Oʻsish» (`pick`)
+ * narrow the same way, on top of the search.
  */
-export function layout(data: PayrollDto, needle: string): Block[] {
+export function layout(data: PayrollDto, needle: string, pick: RowPick | null = null): Block[] {
+  const narrowed = needle !== '' || pick !== null
   const byRop = new Map<string | null, PayrollSellerDto[]>()
   for (const row of data.sellers) byRop.set(row.rop, [...(byRop.get(row.rop) ?? []), row])
   const teamOf = new Map(data.teams.map((team) => [team.rop, team]))
@@ -145,12 +152,19 @@ export function layout(data: PayrollDto, needle: string): Block[] {
     const teams = own.flatMap((team): TeamBlock[] => {
       const all = byRop.get(team.rop) ?? []
       const name = (team.rop ?? NO_ROP).toLowerCase()
-      const rows = needle === '' || name.includes(needle) ? all : all.filter((row) => row.fullName.toLowerCase().includes(needle))
-      if (rows.length === 0 && (needle !== '' || !drawn(team))) return []
+      const named = needle === '' || name.includes(needle) ? all : all.filter((row) => row.fullName.toLowerCase().includes(needle))
+      const rows = pick === null ? named : named.filter(pick)
+      if (rows.length === 0 && (narrowed || !drawn(team))) return []
       return [{ team, rows }]
     })
     return teams.length > 0 ? [{ branch, teams, teamCount: own.filter(drawn).length }] : []
   })
+}
+
+/** The sheet's line when a search or a row filter leaves nobody. */
+export function nobodyText(search: string): string {
+  const term = search.trim()
+  return term ? `«${term}» boʻyicha hech kim topilmadi.` : 'Tanlangan filtrlar boʻyicha hech kim topilmadi.'
 }
 
 // ---------------------------------------------------------------------------
