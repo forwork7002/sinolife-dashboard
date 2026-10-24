@@ -471,3 +471,46 @@ describe('the brand cut is absent unless it was asked for', () => {
     expect(sql).toContain('= $6')
   })
 })
+
+describe('the cohort matrix statement timeout (2026-10-24)', () => {
+  it('lifts the pool limit for the one statement inside its own transaction when asked', async () => {
+    const steps: string[] = []
+    let options: unknown
+    const tx = {
+      $executeRawUnsafe: async (text: string) => void steps.push(text),
+      $queryRawUnsafe: async (text: string) => {
+        steps.push(text.includes('TWO WALKS OF "deal"') ? 'matrix' : 'other')
+        return []
+      },
+    }
+    const prisma = {
+      $queryRawUnsafe: async () => {
+        throw new Error('ran outside the transaction')
+      },
+      $transaction: async (work: (t: typeof tx) => Promise<unknown>, opts: unknown) => {
+        options = opts
+        return work(tx)
+      },
+    }
+    await new InsightsRepository(prisma as never).cohorts({ months: 18, statementTimeoutMs: 60_000 })
+
+    expect(steps).toEqual(['SET LOCAL statement_timeout = 60000', 'matrix'])
+    expect(options).toEqual({ maxWait: 20_000, timeout: 65_000 })
+  })
+
+  it('runs the plain statement when no timeout is asked', async () => {
+    let ran = false
+    const prisma = {
+      $queryRawUnsafe: async () => {
+        ran = true
+        return []
+      },
+      $transaction: async () => {
+        throw new Error('opened a transaction nobody asked for')
+      },
+    }
+    await new InsightsRepository(prisma as never).cohorts({ months: 18 })
+
+    expect(ran).toBe(true)
+  })
+})

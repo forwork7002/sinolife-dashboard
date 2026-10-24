@@ -1180,6 +1180,27 @@ export class InsightsRepository {
   // -------------------------------------------------------------------------
 
   /**
+   * `$queryRawUnsafe`, with the pool's 20 s statement timeout lifted for this
+   * one statement when `statementTimeoutMs` is given — SET LOCAL inside its
+   * own transaction, so the pooled connection goes back unchanged. The same
+   * mechanism as `RnpRepository.registrationDays`, for the same reason: a
+   * statement that only ever runs behind a shared memo, whose cold build on
+   * the one-core database runs past 20 s, fails on every attempt and so never
+   * fills the memo at all.
+   */
+  private async queryWithTimeout<T>(statementTimeoutMs: number | undefined, sql: string, ...values: unknown[]): Promise<T> {
+    if (!statementTimeoutMs) return this.prisma.$queryRawUnsafe<T>(sql, ...values)
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${Math.trunc(statementTimeoutMs)}`)
+        return tx.$queryRawUnsafe<T>(sql, ...values)
+      },
+      // As long as a plain query waits for a connection (`connectionTimeoutMillis`, prisma.ts).
+      { maxWait: 20_000, timeout: statementTimeoutMs + 5_000 },
+    )
+  }
+
+  /**
    * Repeat-purchase matrix.
    *
    * A customer's cohort is the month of their FIRST revenue-bearing win, and
@@ -1249,6 +1270,12 @@ export class InsightsRepository {
      * sold. A DIMENSION, NOT A SCOPE, like `rop`.
      */
     brand?: BrandSlice | null
+    /**
+     * Lifts the pool's 20 s limit for this one statement (SET LOCAL, inside
+     * its own transaction — see `queryWithTimeout`). The service asks for it;
+     * a caller that does not runs the plain statement.
+     */
+    statementTimeoutMs?: number
   }): Promise<CohortMatrix> {
     /*
       THE ROP CTEs ARE INTERPOLATED, NOT PARAMETERISED AWAY — so a page that
@@ -1294,7 +1321,7 @@ export class InsightsRepository {
     const brandMatch =
       brand === null ? '' : InsightsRepository.brandSliceSql('fd', InsightsRepository.dealTeamSql('fd'), brand, params)
 
-    const rows = await this.prisma.$queryRawUnsafe<
+    const rows = await this.queryWithTimeout<
       {
         is_total: number
         rop: string | null
@@ -1313,6 +1340,7 @@ export class InsightsRepository {
         current_month: Date | null
       }[]
     >(
+      options.statementTimeoutMs,
       `
       -- TWO WALKS OF "deal", AND THAT IS THE MEASURED CHOICE.
       --

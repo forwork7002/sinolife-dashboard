@@ -101,9 +101,9 @@ describe('InsightsService.cohorts', () => {
     await service.cohorts('UZS', 3, { includeRops: true })
 
     expect(asked).toEqual([
-      { months: 18, rop: undefined, includeRops: undefined, brand: null },
-      { months: 18, rop: 'Sevinch', includeRops: undefined, brand: null },
-      { months: 3, rop: undefined, includeRops: true, brand: null },
+      { months: 18, rop: undefined, includeRops: undefined, brand: null, statementTimeoutMs: 60_000 },
+      { months: 18, rop: 'Sevinch', includeRops: undefined, brand: null, statementTimeoutMs: 60_000 },
+      { months: 3, rop: undefined, includeRops: true, brand: null, statementTimeoutMs: 60_000 },
     ])
     /* The База card is not cut with the matrix, so a cut does not rebuild it. */
     expect(stageBuilds()).toBe(1)

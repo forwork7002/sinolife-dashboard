@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && node scripts/writeBuildId.mjs && next build",
-    "start": "next start",
+    "start": "next start --keepAliveTimeout 75000",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",

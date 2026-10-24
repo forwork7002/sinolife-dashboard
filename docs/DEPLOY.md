@@ -331,6 +331,7 @@ doctl apps logs "$APP" --type run migrate
 | The authenticator's code is always rejected | The phone's clock, not the app. TOTP is computed from the time of day; turn on automatic time sync |
 | Phone lost, backup codes lost | A database edit against `two_factor`, by whoever holds `DATABASE_URL`. See [SECURITY.md](SECURITY.md#if-the-phone-and-the-codes-are-both-gone) |
 | Signed out everywhere and the authenticator no longer works | `BETTER_AUTH_SECRET` was rotated. Expected: sign in with the password alone, then re-arm 2FA (§5) |
+| Intermittent `503` on page (`?_rsc=`) requests, a click that reloads the whole page | Seen on 2026-10-24 between the platform's proxy and the app, none of it in the app's log. `npm run start` runs `next start --keepAliveTimeout 75000` — Next's own advice behind a proxy (Node closes an idle connection after 5 s, the proxy may reuse it). Not reproduced with bursts of 20 at 2–6 s gaps, so if it recurs the cause is elsewhere: read the response body of a failing request first |
 | `too many clients already` during a deploy | The pools exceed the cluster's 22 connections. Web holds 8, the worker 5 plus one for its lock, and a deploy briefly adds two jobs |
 | Import stops with `OPERATION_TIME_LIMIT` | The portal blocked a method for ~10 minutes. The worker backs off on its own and resumes from its cursor; nothing to do |
 | Revenue looks about double | The `countsAsRevenue` guard was bypassed. Compare against `npm run db:check` |

@@ -128,6 +128,17 @@ const retentionStagesCache = ttlCache<
   Awaited<ReturnType<InsightsRepository['retentionStages']>>
 >(5 * 60_000, LIVE_CACHE)
 
+/*
+  THE MATRIX MAY RUN A MINUTE (2026-10-24). Measured at 1.6 s p50 on
+  2026-09-15; on 2026-10-24 every cold build ran into the pool's 20 s
+  statement timeout (18:13, 18:43, 18:44, 18:46 — 20–33 s, 500 each time):
+  the deal history no longer fits the one-gigabyte database's memory, and a
+  build that always fails never fills `cohortMatrixCache`, so «Mijoz qaytishi»
+  did not open at all. One build per ten minutes is shared by every reader
+  (the memo and its stale window), so the minute is paid once.
+*/
+const COHORT_STATEMENT_TIMEOUT_MS = 60_000
+
 /** Test seam for the two memos above, same hazard as `resetConfirmationRopCache`. */
 export function resetCohortCaches(): void {
   cohortMatrixCache.clear()
@@ -1185,6 +1196,7 @@ export class InsightsService {
           months,
           rop: options.rop,
           includeRops: options.includeRops,
+          statementTimeoutMs: COHORT_STATEMENT_TIMEOUT_MS,
           brand:
             brand === null
               ? null
