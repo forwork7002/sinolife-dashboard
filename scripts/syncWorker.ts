@@ -91,6 +91,7 @@ import {
 import {
   DEAL_BIRTHS_FROM_MONTH,
   prismaDealBirthStore,
+  prismaDealMoveStore,
   refreshDealBirths,
 } from '../src/server/integrations/crm/sync/dealBirthFeed'
 import { refreshBezkval } from '../src/server/integrations/crm/sync/bezkvalRefresh'
@@ -424,10 +425,11 @@ const LEAD_WATCH_SLACK_MS = 30_000
 const FORM_FILLS_MS = 5 * 60_000
 
 /**
- * How often the deal births are read (`dealBirthFeed.ts`): one batch a pass,
- * ~290 a day. «Безквал»'s today is on a two-minute memo, and a deal whose
- * birth is not read yet still counts by the pipeline it stands in; a pass
- * that stopped at its cap (the first backfill) runs again on the next tick.
+ * How often the deal births, then the moves, are read (`dealBirthFeed.ts`):
+ * one batch each a pass, ~290 passes a day. «Безквал»'s today is on a
+ * two-minute memo, and a deal whose birth is not read yet still counts by the
+ * pipeline it stands in; a pass that stopped at its cap (the first backfill)
+ * runs again on the next tick.
  */
 const DEAL_BIRTHS_MS = 5 * 60_000
 
@@ -1179,6 +1181,7 @@ async function main() {
   const openChatStore = prismaChatStore(prisma, 'BITRIX24')
   const formFillStore = prismaFormFillStore(prisma, 'BITRIX24')
   const dealBirthStore = prismaDealBirthStore(prisma, 'BITRIX24')
+  const dealMoveStore = prismaDealMoveStore(prisma, 'BITRIX24')
   let lastDealBirthsAt: Date | null = null
   const bezkvalStore = new RegistrationRepository(prisma)
   let lastBezkvalAt: Date | null = null
@@ -1839,8 +1842,9 @@ async function main() {
     }
 
     /*
-      THE DEAL BIRTHS — see `DEAL_BIRTHS_MS` and `dealBirthFeed.ts`. The same
-      guards, clock and try as the form fills beside it.
+      THE DEAL BIRTHS, THEN THE MOVES — see `DEAL_BIRTHS_MS` and
+      `dealBirthFeed.ts`. The same guards, clock and try as the form fills
+      beside them; each feed its own try, so a failed one costs only itself.
     */
     const birthsNow = new Date()
     if (
@@ -1850,27 +1854,33 @@ async function main() {
       !stopping
     ) {
       lastDealBirthsAt = birthsNow
-      try {
-        const r = await refreshDealBirths({
-          clock: leadWatchClock,
-          store: dealBirthStore,
-          fetch: (afterId) => provider.fetchDealBirths(afterId),
-          firstIdSince: (since) => provider.firstDealBirthIdSince(since),
-          from: sinceMonth(DEAL_BIRTHS_FROM_MONTH, birthsNow, WORKER_TIME_ZONE).start,
-          now: birthsNow,
-          stopping: () => stopping,
-        })
-        if (!r.complete && !stopping) lastDealBirthsAt = null
-        if (r.bootstrap || !r.complete) {
-          console.log(
-            `  ${stamp()} bitim tugʻilishlari: #${r.floor} gacha ${r.written} ta yozildi` +
-              (r.complete ? '' : ' — hali yetib olinmadi, keyingi tsiklda davom etadi'),
-          )
+      for (const feed of ['births', 'moves'] as const) {
+        if (stopping) break
+        const typeId = feed === 'births' ? 1 : 5
+        const label = feed === 'births' ? 'bitim tugʻilishlari' : 'bitim koʻchishlari'
+        try {
+          const r = await refreshDealBirths({
+            feed,
+            clock: leadWatchClock,
+            store: feed === 'births' ? dealBirthStore : dealMoveStore,
+            fetch: (afterId) => provider.fetchDealBirths(afterId, typeId),
+            firstIdSince: (since) => provider.firstDealBirthIdSince(since, typeId),
+            from: sinceMonth(DEAL_BIRTHS_FROM_MONTH, birthsNow, WORKER_TIME_ZONE).start,
+            now: birthsNow,
+            stopping: () => stopping,
+          })
+          if (!r.complete && !stopping) lastDealBirthsAt = null
+          if (r.bootstrap || !r.complete) {
+            console.log(
+              `  ${stamp()} ${label}: #${r.floor} gacha ${r.written} ta yozildi` +
+                (r.complete ? '' : ' — hali yetib olinmadi, keyingi tsiklda davom etadi'),
+            )
+          }
+        } catch (error) {
+          const message = describeFeedError(error)
+          console.warn(`  ${stamp()} ${label} muvaffaqiyatsiz: ${message}`)
+          await leadWatchClock.failed(feed, message, new Date()).catch(() => undefined)
         }
-      } catch (error) {
-        const message = describeFeedError(error)
-        console.warn(`  ${stamp()} bitim tugʻilishlari muvaffaqiyatsiz: ${message}`)
-        await leadWatchClock.failed('births', message, new Date()).catch(() => undefined)
       }
     }
 
@@ -1890,7 +1900,11 @@ async function main() {
           stopping: () => stopping,
         })
         if (r.days.length > 0) {
-          console.log(`  ${stamp()} bezkval: ${r.days.map((d) => `${d.day} ${d.clients} mijoz ${Math.round(d.ms / 100) / 10} s`).join(' · ')}`)
+          console.log(
+            `  ${stamp()} bezkval: ${r.days.map((d) => `${d.day} ${d.clients} mijoz, ${d.kirim} kirim, ${d.kval} kval ${Math.round(d.ms / 100) / 10} s`).join(' · ')}`,
+          )
+        } else if (r.waiting) {
+          console.log(`  ${stamp()} bezkval: bitim tugʻilishi va koʻchishi lentalari hali toʻlmagan — hisob kutmoqda`)
         }
       } catch (error) {
         console.warn(`  ${stamp()} bezkval hisobi muvaffaqiyatsiz: ${describeFeedError(error)}`)

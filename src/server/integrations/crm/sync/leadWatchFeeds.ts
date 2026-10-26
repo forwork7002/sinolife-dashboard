@@ -55,7 +55,7 @@ import type { FetchOptions, Page, RawCall, RawOpenLineChat } from '@/server/inte
  * bookmarks in the same table. «Лид назорати» reads its two rows by id
  * (`LeadWatchRepository.feedClocks`), so a third row moves nothing there.
  */
-export type LeadWatchFeed = 'calls' | 'chats' | 'forms' | 'births'
+export type LeadWatchFeed = 'calls' | 'chats' | 'forms' | 'births' | 'moves'
 
 /**
  * Where a feed keeps its bookmark and its clock — `lead_watch_sync`, one row

@@ -49,58 +49,67 @@ export interface LeadSplitDto {
 */
 
 export type BezkvalKeyKind = 'phone' | 'dealPhone' | 'contact' | 'deal'
+export type BezkvalBucket = 'rop' | 'registration' | 'unassigned'
+export type BezkvalStatus = 'new' | 't30' | 'old'
+export type BezkvalEntry = 'created' | 'ai'
+export type BezkvalEntryKind = 'created' | 'ai' | 'leadGuard'
 
-export interface BezkvalRopLineDto {
-  /** Null: «Tarqatilmagan». */
-  readonly rop: string | null
+export interface BezkvalCountsDto {
   readonly bezkval: number
-  readonly new30: number
-  readonly newEver: number
+  readonly fresh: number
   readonly repeat30: number
+  readonly repeatOld: number
+}
+
+export interface BezkvalRopLineDto extends BezkvalCountsDto {
+  /** Null on «Регистрация boʻlimida» and «Taqsimlanmagan» — `bucket` says which. */
+  readonly rop: string | null
+  readonly bucket: BezkvalBucket
+  /** Who heads the team now. */
+  readonly head: string | null
   readonly sharePct: number
 }
 
-export interface BezkvalDayDto {
+export interface BezkvalDayDto extends BezkvalCountsDto {
   readonly day: string
   /** When the sync worker last counted the day; null: not yet. */
   readonly computedAt: string | null
-  readonly total: number
-  readonly bezkval: number
-  readonly new30: number
-  readonly newEver: number
-  readonly repeat30: number
+  readonly kirim: number
   readonly unassigned: number
+  readonly registration: number
+  readonly kval: { readonly deals: number; readonly clients: number }
+  readonly entries: Readonly<Record<BezkvalEntryKind, { readonly deals: number; readonly clients: number }>>
   readonly multiRop: number
-  readonly leadGuard: number
-  readonly movedIn: number
-  readonly noBirth: number
   readonly keyKinds: Readonly<Record<BezkvalKeyKind, number>>
   readonly rops: readonly BezkvalRopLineDto[]
-  readonly sources: readonly { readonly source: string | null; readonly bezkval: number; readonly new30: number }[]
+  readonly sources: readonly ({ readonly source: string | null } & BezkvalCountsDto)[]
   readonly hours: readonly number[]
-  readonly trend: readonly { readonly day: string; readonly total: number; readonly bezkval: number }[]
+  readonly trend: readonly { readonly day: string; readonly kirim: number; readonly bezkval: number }[]
   readonly problems: readonly string[]
 }
 
 export interface BezkvalClientDealDto {
   readonly id: string | null
+  /** The pipeline it stands in now. */
   readonly pipeline: string | null
   readonly stage: string | null
   readonly source: string | null
   readonly rop: string | null
   readonly at: string
+  readonly entry: BezkvalEntry
   readonly leadGuard: boolean
-  readonly born: number | null
 }
 
 export interface BezkvalClientDto {
+  /** Masked to its last four digits. */
   readonly phone: string | null
   readonly kind: BezkvalKeyKind
   readonly rop: string | null
+  readonly bucket: BezkvalBucket
   readonly source: string | null
   readonly hour: number
-  readonly new30: boolean
-  readonly newEver: boolean
+  /** Null on a kval client. */
+  readonly status: BezkvalStatus | null
   readonly multiRop: boolean
   readonly previous: { readonly id: string | null; readonly at: string; readonly pipeline: string | null } | null
   readonly deals: readonly BezkvalClientDealDto[]
@@ -109,6 +118,7 @@ export interface BezkvalClientDto {
 export interface BezkvalClientsDto {
   readonly day: string
   readonly clients: readonly BezkvalClientDto[]
+  readonly kval: readonly BezkvalClientDto[]
 }
 
 export interface SaveSplitBody {

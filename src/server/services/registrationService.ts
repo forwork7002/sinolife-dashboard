@@ -72,12 +72,15 @@ export function resetRegistrationCaches(): void {
   settledDaysCache.clear()
   storedDayCache.clear()
   trendCache.clear()
+  ropHeadsCache.clear()
 }
 
 /* «Bezkval lidlar»: one stored day — the worker recomputes today every ten minutes, so a minute's memo costs nothing. */
-type StoredDay = { readonly computedAt: Date | null; readonly clients: readonly BezkvalClientDto[] }
+type StoredDay = { readonly computedAt: Date | null; readonly clients: readonly BezkvalClientDto[]; readonly kval: readonly BezkvalClientDto[] }
 const storedDayCache = ttlCache<StoredDay>(60_000, LIVE_CACHE)
 const trendCache = ttlCache<BezkvalDayRow[]>(60_000, LIVE_CACHE)
+/* Who heads each ROP team — the org chart changes on a sync, a few times a day at most. */
+const ropHeadsCache = ttlCache<Map<string, string>>(10 * 60_000, LIVE_CACHE)
 /** The trend under the day card: the spec's 30 days. */
 const BEZKVAL_TREND_DAYS = 30
 
@@ -128,36 +131,41 @@ export class RegistrationService {
   }
 
   /**
-   * «Bezkval lidlar» — one day opened up (the spec's 5): «Jami lid», the
-   * clients, the new ones, the ROPs, the sources, the hours and the 30 days to
-   * it, every count from the client list `bezkvalClients` serves — so a number
-   * and the rows behind it cannot disagree. One brand keeps the clients of its
-   * teams (`teamBrand`); «Brendsiz» the ones no team got.
+   * «Bezkval lidlar» — one day opened up (the spec v2's 6): «Kirim», the
+   * clients, new and repeat, «Taqsimlanmagan», «Kval», the ROPs, the sources,
+   * the hours and the 30 days to it, every count from the client lists
+   * `bezkvalClients` serves — so a number and the rows behind it cannot
+   * disagree. One brand keeps the clients of its teams (`teamBrand`);
+   * «Brendsiz» the ones no team got.
    */
   async bezkvalDay(input: { day: string; timeZone: string; now: Date; brand?: BrandFilter }): Promise<BezkvalDayDto> {
     const brand = input.brand ?? 'all'
     const trendDays = Array.from({ length: BEZKVAL_TREND_DAYS }, (_, i) => addDays(input.day, i - (BEZKVAL_TREND_DAYS - 1)))
     // The trend from the stored rows alone — never `monthDays`, whose hand-out scan is the slow read here.
-    const [stored, trend] = await Promise.all([
+    const [stored, trend, heads] = await Promise.all([
       this.storedDay(input.day),
       trendCache.get(`${trendDays[0]}:${input.day}`, () => this.repository.bezkvalDays(trendDays[0]!, input.day)),
+      ropHeadsCache.get('heads', () => this.repository.ropHeads()),
     ])
     const keep = (rop: string | null) => brand === 'all' || brandMatches(brand, teamBrand(rop))
     return buildBezkvalDay({
       day: input.day,
       clients: stored.clients.filter((c) => keep(c.rop)),
+      kval: stored.kval.filter((c) => keep(c.rop)),
       computedAt: stored.computedAt?.toISOString() ?? null,
       trendDays,
       totals: bezkvalDayTotals(trend.filter((r) => keep(r.rop)).map((r) => ({ day: r.day, leads: r.leads, deals: r.deals ?? r.leads }))),
       order: (rops) => teamOrder(rops),
+      heads,
     })
   }
 
-  /** The day's clients, each with its deals and what came before it — every drill-down of «Bezkval lidlar». */
+  /** The day's clients — безквал and kval — each with its deals and what came before it: every drill-down of «Bezkval lidlar». */
   async bezkvalClients(input: { day: string; timeZone: string; brand?: BrandFilter }): Promise<BezkvalClientsDto> {
     const brand = input.brand ?? 'all'
     const stored = await this.storedDay(input.day)
-    return { day: input.day, clients: brand === 'all' ? stored.clients : stored.clients.filter((c) => brandMatches(brand, teamBrand(c.rop))) }
+    const keep = (c: BezkvalClientDto) => brand === 'all' || brandMatches(brand, teamBrand(c.rop))
+    return { day: input.day, clients: stored.clients.filter(keep), kval: stored.kval.filter(keep) }
   }
 
   /** The day as the sync worker stored it (`bezkvalRefresh.ts`) — the card and its drill-downs read one memo. */

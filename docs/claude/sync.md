@@ -260,6 +260,16 @@
   since 2026-09-01. The migration also made `phone_nines(text[])` and the GIN
   index `customer_phone_nines_idx` over `phone_nines(phones || phone)` — not in
   schema.prisma, drift on `migrate dev` is expected.
+- **Where each deal moved (2026-10-26, `crm_deal_move`, the same `dealBirthFeed.ts`
+  pass, feed 'moves')**: the TYPE_ID 5 rows — a pipeline change each, with the
+  pipeline moved INTO — read right after the births with their own bookmark
+  (`lead_watch_sync` row 'moves'), backfilled from 2026-08 the same way. «Безквал»
+  v2 counts an «ИИ обработка» → Регистрация move as a kirim of its day; the
+  pipeline it came FROM is the category of the deal's previous births/moves row
+  (history ids rise with time). `refreshBezkval` counts nothing until both
+  feeds have reached the newest row once (`bezkvalReady`) — a day counted
+  without its moves would be stored under the new `BEZKVAL_RULES` and never
+  counted again.
 
 - **THE PORTAL CAN BLOCK ITSELF, AND THE DASHBOARD NOW SAYS SO.** On
   2026-09-14 every REST call came back `401` with

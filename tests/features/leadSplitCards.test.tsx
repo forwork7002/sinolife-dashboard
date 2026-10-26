@@ -183,7 +183,8 @@ describe('LeadSplitCards', () => {
     expect(within(aziz).getByText('395')).toBeTruthy()
     expect(within(grid()).getByText('Davlat')).toBeTruthy()
     expect(within(grid()).queryByText('Berilmagan')).toBeNull()
-    expect(within(within(grid()).getByText('Tarqatilmagan').closest('tr')!).getAllByText('330').length).toBe(2)
+    // Since the spec v2 (2026-10-26) the no-ROP row is both «Taqsimlanmagan» and «Регистрация boʻlimida».
+    expect(within(within(grid()).getByText('ROPʼsiz').closest('tr')!).getAllByText('330').length).toBe(2)
     expect(within(within(grid()).getByText('Jami lid (bitimlar)').closest('tr')!).getByText('950')).toBeTruthy()
     // A cell is a button: it opens the clients behind it.
     expect(within(aziz).getByRole('button', { name: '275' })).toBeTruthy()

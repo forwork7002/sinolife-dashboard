@@ -65,16 +65,16 @@ describe('bezkvalDaysDue', () => {
 
 describe('refreshBezkval', () => {
   const client = (rop: string | null): BezkvalClientDto => ({
-    phone: '+998 90 ***-45-67',
+    phone: '+998 •• •••-45-67',
     kind: 'phone',
     rop,
-    source: 'Ген лид',
+    bucket: rop === null ? 'unassigned' : 'rop',
+    source: 'Facebook',
     hour: 10,
-    new30: true,
-    newEver: true,
+    status: 'new',
     multiRop: false,
     previous: null,
-    deals: [{ id: '1', pipeline: 'Регистрация', stage: 'Лид новый', source: 'Ген лид', rop, at: NOW.toISOString(), leadGuard: false, born: 0 }],
+    deals: [{ id: '1', pipeline: 'Регистрация', stage: 'Лид новый', source: 'Facebook', rop, at: NOW.toISOString(), entry: 'created', leadGuard: false }],
   })
 
   it('counts the due days, stores each with the instant its count started, and stops when the worker stops', async () => {
@@ -82,23 +82,40 @@ describe('refreshBezkval', () => {
     let clock = NOW.getTime()
     let stop = false
     const store: BezkvalStore = {
+      bezkvalReady: async () => true,
       bezkvalComputedDays: async () => new Map(),
       computeBezkvalDay: async (day) => {
         clock += 2_000
-        return [{ key: `p:${day}`, client: client('Sevinch') }]
+        return { clients: [{ key: `p:${day}`, client: client('Sevinch') }], kval: [{ key: `p:${day}`, client: { ...client('Sevinch'), status: null } }] }
       },
-      storeBezkvalDay: async (day, rows, at, rules) => {
+      storeBezkvalDay: async (day, counted, at, rules) => {
         expect(rules).toBe(BEZKVAL_RULES)
-        stored.push(`${day}:${rows.length}:${at.toISOString()}`)
+        stored.push(`${day}:${counted.clients.length}+${counted.kval.length}:${at.toISOString()}`)
         if (stored.length === 2) stop = true
       },
     }
     const r = await refreshBezkval({ store, today: '2026-10-24', timeZone: 'Asia/Tashkent', now: () => new Date(clock), stopping: () => stop })
-    expect(stored).toEqual(['2026-10-24:1:2026-10-24T05:00:00.000Z', '2026-10-23:1:2026-10-24T05:00:02.000Z'])
-    expect(r.days.map((d) => [d.day, d.clients, d.ms])).toEqual([
-      ['2026-10-24', 1, 2_000],
-      ['2026-10-23', 1, 2_000],
+    expect(stored).toEqual(['2026-10-24:1+1:2026-10-24T05:00:00.000Z', '2026-10-23:1+1:2026-10-24T05:00:02.000Z'])
+    expect(r.days.map((d) => [d.day, d.clients, d.kirim, d.kval, d.ms])).toEqual([
+      ['2026-10-24', 1, 1, 1, 2_000],
+      ['2026-10-23', 1, 1, 1, 2_000],
     ])
+    expect(r.waiting).toBe(false)
     expect(BEZKVAL_DAYS_PER_PASS).toBeGreaterThan(2)
+  })
+
+  it('counts nothing until the births and the moves have both been read whole once — a day without its «ИИ» moves would be stored as final', async () => {
+    let asked = false
+    const store: BezkvalStore = {
+      bezkvalReady: async () => false,
+      bezkvalComputedDays: async () => {
+        asked = true
+        return new Map()
+      },
+      computeBezkvalDay: async () => ({ clients: [], kval: [] }),
+      storeBezkvalDay: async () => undefined,
+    }
+    expect(await refreshBezkval({ store, today: '2026-10-24', timeZone: 'Asia/Tashkent', now: () => NOW })).toEqual({ days: [], waiting: true })
+    expect(asked).toBe(false)
   })
 })

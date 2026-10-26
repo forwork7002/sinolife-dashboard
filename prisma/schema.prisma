@@ -2142,29 +2142,54 @@ model OpenLineChat {
 /// prints them.
 model BezkvalClient {
   day        DateTime @db.Date
-  /// The client's key: `p:<nine digits>`, `c:<contact>` or `d:<deal>`.
+  /// The client's key: `p:<number key>` (nine digits, or `x` + a foreign number's digits), `c:<contact>` or `d:<deal>`.
   key        String
-  /// The team (canonical), or the person's name; null «Tarqatilmagan».
+  /// The main deal's ROP team (canonical); null on «Регистрация boʻlimida» and «Taqsimlanmagan» — `bucket` says which.
   rop        String?
+  /// rop | registration | unassigned (the spec v2's 5.5, 2026-10-26); null on a day counted by older rules.
+  bucket     String?
   /// phone | dealPhone | contact | deal — what keyed the client.
   kind       String
-  /// The first number, masked (+998 90 ***-45-67); null without one.
+  /// The first number, masked to its last four digits; null without one.
   phone      String?
-  /// The Tashkent hour of its first deal.
+  /// The Tashkent hour of its main deal.
   hour       Int
-  /// Its first deal's source.
+  /// Its main deal's source («Ген лид (Lead Guard)» for a Lead Guard deal).
   source     String?
+  /// No deal in the 30 days before the day: «Yangi» or «Takror eski».
   new30      Boolean
+  /// No deal ever before the day: «Yangi».
   newEver    Boolean
   multiRop   Boolean
   /// The latest earlier deal: { id, at, pipeline }.
   previous   Json?
-  /// Its deals that day: [{ id, pipeline, stage, source, rop, at, leadGuard, born }].
+  /// Its kirim deals that day: [{ id, pipeline, stage, source, rop, at, entry, leadGuard }].
   deals      Json
   dealCount  Int
 
   @@id([day, key])
   @@map("bezkval_client")
+}
+
+/// «KVAL» BESIDE «БЕЗКВАЛ» (the spec v2, 2026-10-26): one row per client per
+/// Tashkent day of the deals CREATED in Первичный отдел (#12) — the ROPs' own
+/// operators re-create a Регистрация lead there (336 of 337 on 23.10), so it is
+/// never a безквал lead, and is counted on its own. Written with the day's
+/// безквал rows, in the same transaction, by the same grouping.
+model KvalClient {
+  day        DateTime @db.Date
+  key        String
+  rop        String?
+  bucket     String
+  kind       String
+  phone      String?
+  hour       Int
+  source     String?
+  deals      Json
+  dealCount  Int
+
+  @@id([day, key])
+  @@map("kval_client")
 }
 
 /// When each «Безквал» day was last computed — a day with no clients is still
@@ -2177,6 +2202,9 @@ model BezkvalDay {
   clients    Int
   /// `BEZKVAL_RULES` of the code that counted it — a day counted by older rules is counted again.
   rules      String?
+  /// Первичный отдел's births that day, and their clients (`kval_client`); null on a day counted by older rules.
+  kvalDeals   Int?
+  kvalClients Int?
 
   @@map("bezkval_day")
 }
@@ -2208,6 +2236,35 @@ model CrmDealBirth {
   @@unique([externalSource, externalId])
   @@index([dealExternalId])
   @@map("crm_deal_birth")
+}
+
+/// WHERE A DEAL MOVED (2026-10-26, «Безквал» v2): the deal's `crm.stagehistory`
+/// rows of TYPE_ID 5 — the portal writes one when a deal changes pipeline, with
+/// the CATEGORY_ID and stage it moved INTO. An «ИИ обработка» (#20) deal moved
+/// into Регистрация (#0) is a kirim of that day (the spec's fact 2: 60–190 a
+/// day); one back from Первичный отдел is not. The pipeline it came FROM is the
+/// category of the deal's previous row — its birth or its move before — read
+/// beside `crm_deal_birth`. Written by `dealBirthFeed.ts` (feed 'moves') in id
+/// order, append-only, every pipeline; no foreign key, as the births.
+model CrmDealMove {
+  id              String         @id @default(cuid())
+  externalSource  ExternalSource @default(BITRIX24)
+  /// The stage-history row's portal id — ids rise with time, across births and moves alike.
+  externalId      String
+  /// OWNER_ID — `deal."externalId"`.
+  dealExternalId  String
+  /// CATEGORY_ID the deal moved into.
+  categoryId      Int
+  /// STAGE_ID it moved into.
+  stageExternalId String
+  /// CREATED_TIME — the instant of the move.
+  movedAt         DateTime
+  createdAt       DateTime       @default(now())
+
+  @@unique([externalSource, externalId])
+  @@index([dealExternalId])
+  @@index([categoryId, movedAt])
+  @@map("crm_deal_move")
 }
 
 /// One CRM-FORM FILL as the portal recorded it (2026-10-15, the client: the

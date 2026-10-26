@@ -47,71 +47,80 @@ describe('distributedDaysSql', () => {
 })
 
 /*
-  «Безквал» by the client's spec, 2026-10-22. Run against PGlite with every
-  migration applied and fifteen synthetic deals of 21.10: a client's two
-  Регистрация deals naming two ROPs (one «Дубликат (лид)»), a contact with two
-  numbers and a Первичный отдел deal (now in Доставка) of a contact holding
-  one of them, a number-less contact with the deal's own «Телефон ракам», its
-  second deal, a deal with only the portal's contact id, one with nothing, a
-  Lead Guard deal created after midnight that arrived at 23:00, another that
-  arrived the evening before, an «ИИ обработка» deal moved into Регистрация,
-  one still there, a Доставка-born deal, an HR deal and a junk number —
-  11 leads, 8 clients, the ROPs and the history as worked out by hand.
+  «Безквал» by the client's spec v2, 2026-10-26. Run against PGlite with every
+  migration applied and twenty-one synthetic deals of 23.10: a Регистрация
+  birth with a Доставка deal 13 days before (takror 30), a contact of two
+  numbers tied to another contact by one of them with a deal in May (takror
+  eski), an «ИИ» birth moved into Регистрация on a +7 number whose last nine
+  are another contact's (yangi), a Первичка birth moved back into Регистрация
+  (not a kirim), a Регистрация deal moved out to «ИИ» and back (kirim), a
+  Первичка birth (kval), a Lead Guard deal created at 01:30 that «arrived» at
+  23:30 the evening before (23.10, by DATE_CREATE), a deal whose birth is not
+  read yet, an operator of a ROP team in «ROP KVAL LID», a member of a ROP
+  team in «РОП (Первичка)», an owner sitting in a ROP team, the desk users 10
+  and 1, an HR deal, two contacts on one junk number, and a deal a second
+  either side of the day — 13 kirim, 12 clients, 8 new / 3 + 1 repeat, the
+  ROPs, the buckets and the kval as worked out by hand. Then 200 000 deals,
+  120 000 contacts: a day counted in 0.15 s.
 */
 describe('bezkvalLeadsSql', () => {
   const sql = bare(RegistrationRepository.bezkvalLeadsSql())
   const detail = bare(RegistrationRepository.bezkvalLeadsSql(true))
+  const kval = bare(RegistrationRepository.bezkvalLeadsSql(true, 'kval'))
 
-  it('reads a window of Tashkent days by the lead\'s instant, end-exclusive', () => {
-    expect(sql).toContain(`x.at >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
-    expect(sql).toContain(`x.at < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
-    expect(sql).toContain(`(w.at AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day`)
-    expect(sql).toContain(`extract(hour FROM (w.at AT TIME ZONE 'UTC' AT TIME ZONE $3))::int AS hour`)
+  it('reads a window of Tashkent days by the kirim\'s instant, end-exclusive — DATE_CREATE, never «Лид тушган сана»', () => {
+    expect(sql).toContain(`WHERE e.at >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC') AND e.at < (($2::date + 1)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')`)
+    expect(sql).toContain(`(l.at AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day`)
+    expect(sql).toContain(`extract(hour FROM (l.at AT TIME ZONE 'UTC' AT TIME ZONE $3))::int AS hour`)
+    expect(sql).not.toContain('leadArrivedAt')
+    expect(sql).toContain(`COALESCE(d."leadVia" ILIKE '%lead guard%', false) AS lead_guard`)
   })
 
-  it('dates a Lead Guard deal by «Лид тушган сана», found through either index', () => {
-    expect(sql).toContain(`COALESCE(d."leadVia" ILIKE '%lead guard%' AND d."leadArrivedAt" IS NOT NULL, false) AS lead_guard`)
-    expect(sql).toContain(`CASE WHEN g.lead_guard THEN d."leadArrivedAt" ELSE d."createdAtSource" END AS at`)
-    expect(sql).toMatch(/\(d\."createdAtSource" >= .+ AND d\."createdAtSource" < .+\)\s+OR \(d\."leadArrivedAt" >= .+ AND d\."leadArrivedAt" < .+\)/)
-  })
-
-  it('takes a deal born in Регистрация or Первичный отдел, or standing in one now — every stage', () => {
-    expect(sql).toContain(`FROM "crm_deal_birth" b`)
-    expect(sql).toContain(`WHERE born."categoryId" IN (0, 12) OR w.pipeline IN ('0', '12')`)
+  it('a deal BORN in Регистрация — its birth row, else where it stands while the feed has not read it', () => {
+    expect(sql).toContain(`COALESCE(born."bornAt", m.created_at) AS at, 'created' AS entry`)
+    expect(sql).toContain(`WHERE CASE WHEN born."categoryId" IS NULL THEN m.pipeline = '0' ELSE born."categoryId" = 0 END`)
     // Read once for the window's ids — never a lookup per deal (a month timed out that way, 2026-10-22).
-    expect(sql).toContain(`WHERE b."dealExternalId" IN (SELECT external_id FROM w)`)
-    expect(sql).not.toContain('LEFT JOIN LATERAL')
+    expect(sql).toContain(`WHERE b."dealExternalId" IN (SELECT external_id FROM made)`)
+    expect(sql).not.toContain('IN (0, 12)')
     expect(sql).not.toContain('phone_nines')
-    expect(sql).not.toMatch(/[Дд]убл/)
-    expect(sql).not.toContain(`p."role"`)
+  })
+
+  it('a deal MOVED into Регистрация whose previous row — its birth or its move before — is in «ИИ обработка»', () => {
+    expect(sql).toContain(`SELECT d."id", mv."movedAt", 'ai'`)
+    expect(sql).toContain(`WHERE mv."categoryId" = 0 AND mv."movedAt" >= `)
+    expect(sql).toContain(`WHERE e.id < mv."externalId"::bigint`)
+    expect(sql).toMatch(/ORDER BY e\.id DESC\s+LIMIT 1\) = 20/)
+    expect(sql).toContain(`SELECT DISTINCT ON (e.deal_id) e.deal_id, e.at, e.entry`)
+  })
+
+  it('kval: Первичный отдел\'s births, and no moves', () => {
+    expect(kval).toContain(`WHERE CASE WHEN born."categoryId" IS NULL THEN m.pipeline = '12' ELSE born."categoryId" = 12 END`)
+    expect(kval).not.toContain('crm_deal_move')
   })
 
   it('hands over every number of the contact, and the contact even before the customer pass links it', () => {
     expect(sql).toContain(`array_remove(cu."phones" || cu."phone", NULL) END AS phones`)
     expect(sql).toContain(`d."metadata"->>'contactId' AS meta_contact`)
-    expect(sql).toContain(`COALESCE(cu."externalId", w.meta_contact) AS contact_id`)
+    expect(sql).toContain(`COALESCE(cu."externalId", l.meta_contact) AS contact_id`)
     expect(sql).toContain(`d."dealPhone" AS deal_phone`)
   })
 
-  it('names «ROP KVAL LID» and «РОП (Первичка)» by the team they head, else by the person — once per person', () => {
+  it('reads «ROP KVAL LID», «РОП (Первичка)» and the owner once per person, and the desk by its portal ids', () => {
     expect(sql).toContain(`d."ropKvalLidEmployeeId" AS rop_id`)
     expect(sql).toContain(`d."leadRopEmployeeId" AS rop_primary_id`)
+    expect(sql).toContain(`d."employeeId" AS owner_id`)
+    expect(sql).toContain(`WHERE o."id" IN (SELECT rop_id FROM lead UNION SELECT rop_primary_id FROM lead UNION SELECT owner_id FROM lead)`)
+    expect(sql).toContain(`(o."externalSource" = 'BITRIX24' AND o."externalId" IN ('1', '10')) AS desk`)
+    // A head of a «(ROP)» team, else the «(ROP)» team they sit in — primary, then any listing.
     expect(sql).toContain(`WHERE h."headId" = o."id" AND h."isActive"`)
-    expect(sql).toContain(`AND o."fullName" ~* '(^|[^[:alpha:]])rop([^[:alpha:]]|$)'`)
-    // A person who heads no ROP team counts for the ROP team they sit in, else for nobody — never by name.
-    expect(sql).toContain(`WHERE dep."id" = o."departmentId" AND dep."isActive")`)
-    expect(sql).not.toContain(`o."fullName") AS name`)
-    expect(sql).toContain(`WHERE o."id" IN (SELECT rop_id FROM lead UNION SELECT rop_primary_id FROM lead)`)
-    expect(sql).toContain(`LEFT JOIN names k ON k."id" = w.rop_id`)
-    expect(sql).toContain(`LEFT JOIN names lr ON lr."id" = w.rop_primary_id`)
-    // The old guesses are gone: the owner, the seller's unit, the hand-over log.
-    expect(sql).not.toContain('deal_owner_change')
-    expect(sql).not.toContain('createdByEmployeeId')
+    expect(sql).toContain(`WHERE dep."id" = o."departmentId" AND dep."isActive"`)
+    expect(sql).toContain(`WHERE m."employeeId" = o."id"`)
+    expect(sql).not.toContain('fullName')
   })
 
   it('reads the names only for the day card', () => {
     expect(sql).not.toContain('sales_source')
-    expect(detail).toContain(`LEFT JOIN "sales_source" s ON s."id" = w.source_id`)
+    expect(detail).toContain(`LEFT JOIN "sales_source" s ON s."id" = l.source_id`)
     expect(detail).toContain(`st."name" AS stage`)
   })
 })
@@ -144,25 +153,29 @@ describe('dayChunks — a month read a week at a time', () => {
 describe('bezkvalHistorySql', () => {
   const sql = bare(RegistrationRepository.bezkvalHistorySql())
 
-  it('finds the contacts holding a number through the phone index, and number-less contacts by id', () => {
-    expect(sql).toContain(`WHERE phone_nines(cu."phones" || cu."phone") && $2::text[]`)
-    expect(sql).toContain(`WHERE cu."externalId" = ANY($3::text[])`)
+  it('finds the contacts holding a number one GIN probe per number, and number-less contacts by id', () => {
+    expect(sql).toContain(`FROM unnest($2::text[]) AS t(tail)`)
+    expect(sql).toMatch(/WHERE phone_nines\(c\."phones" \|\| c\."phone"\) @> ARRAY\[t\.tail\]\s+OFFSET 0/)
+    // The array form scanned every contact (4 s on 120 000 in PGlite): never again.
+    expect(sql).not.toContain('&& $2')
+    expect(sql).toContain(`WHERE cardinality($3::text[]) > 0 AND cu."externalId" = ANY($3::text[])`)
   })
 
-  it('looks only before the day, past HR, with the lead rule and instant of the window read', () => {
+  it('hands over each contact\'s numbers and its latest deal created before the day, past HR', () => {
+    expect(sql).toContain(`SELECT o.contact_id, o.phones, y.external_id, y.pipeline, y.at`)
     expect(sql).toContain(`WHERE d."customerId" = o.customer_id`)
-    expect(sql).toContain(`AND x.at < (($1::date)::timestamp AT TIME ZONE $4 AT TIME ZONE 'UTC')`)
-    // A fence: the LATERAL must stay a per-contact index read, never a hash of every deal.
-    expect(sql).toMatch(/IS DISTINCT FROM '8'\s+OFFSET 0\s+\) y/)
+    expect(sql).toContain(`AND d."createdAtSource" < (($1::date)::timestamp AT TIME ZONE $4 AT TIME ZONE 'UTC')`)
     expect(sql).toContain(`AND p."externalId" IS DISTINCT FROM '8'`)
-    expect(sql).toContain(`(born."categoryId" IN (0, 12) OR pd.pipeline_ext IN ('0', '12')) AS is_lead`)
-    expect(sql).toContain(`WHERE b."dealExternalId" IN (SELECT external_id FROM pd)`)
-    expect(sql).toContain(`FILTER (WHERE is_lead AND at >= (($1::date)::timestamp AT TIME ZONE $4 AT TIME ZONE 'UTC') - interval '30 days')`)
+    expect(sql).toMatch(/ORDER BY d\."createdAtSource" DESC, d\."externalId" DESC\s+LIMIT 1/)
+    expect(sql).not.toContain('crm_deal_birth')
   })
+})
 
-  it('returns one row a key: its latest earlier deal', () => {
-    expect(sql).toContain('SELECT DISTINCT ON (key)')
-    expect(sql).toContain('ORDER BY key, at DESC, external_id DESC')
+describe('ropHeadsSql', () => {
+  it('names the head of every active «(ROP)» team', () => {
+    const sql = bare(RegistrationRepository.ropHeadsSql())
+    expect(sql).toContain(`JOIN "employee" e ON e."id" = h."headId"`)
+    expect(sql).toContain(`WHERE h."isActive" AND`)
   })
 })
 

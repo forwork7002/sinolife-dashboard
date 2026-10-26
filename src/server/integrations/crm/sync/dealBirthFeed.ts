@@ -26,6 +26,12 @@ import type { FeedClock } from './leadWatchFeeds'
  * chained pages), every `DEAL_BIRTHS_MS` in the worker. The first pass finds
  * its floor with ONE dated read and walks from `DEAL_BIRTHS_FROM_MONTH`: ~400
  * 000 births to 2026-10-22, ~170 batches, `DEAL_BIRTH_BATCHES` a pass.
+ *
+ * THE SAME PASS READS WHERE DEALS MOVED (feed 'moves', 2026-10-26, «Безквал»
+ * v2): the TYPE_ID 5 rows, a pipeline change each, into `crm_deal_move`, on
+ * a bookmark of their own. An «ИИ обработка» deal the portal moves into
+ * Регистрация is a lead of the day it moved (the spec's fact 2), and nothing
+ * but these rows says when, or from where.
  */
 
 /** The month (`YYYY-MM`, Tashkent) the backfill starts at — before «Безквал»'s month grid and its 30-day look-back. */
@@ -55,11 +61,14 @@ export function parseDealBirthsState(json: unknown): DealBirthsState | null {
   return { floor, from: at }
 }
 
-/** The `crm_deal_birth` table, as the pass needs it. */
+/** The `crm_deal_birth` table (or `crm_deal_move`), as the pass needs it. */
 export interface DealBirthStore {
   /** Write the births; one already held is skipped. Returns how many were new. */
   insert(births: readonly RawDealBirth[]): Promise<number>
 }
+
+/** Which feed a pass walks: TYPE_ID 1 rows into `crm_deal_birth`, or TYPE_ID 5 rows into `crm_deal_move`. */
+export type DealStageFeed = 'births' | 'moves'
 
 export function prismaDealBirthStore(prisma: PrismaClient, source: ExternalSourceValue): DealBirthStore {
   return {
@@ -73,6 +82,27 @@ export function prismaDealBirthStore(prisma: PrismaClient, source: ExternalSourc
           categoryId: b.categoryId,
           stageExternalId: b.stageExternalId,
           bornAt: b.bornAt,
+        })),
+        skipDuplicates: true,
+      })
+      return count
+    },
+  }
+}
+
+/** `crm_deal_move` — a move row's `bornAt` is the instant of the move. */
+export function prismaDealMoveStore(prisma: PrismaClient, source: ExternalSourceValue): DealBirthStore {
+  return {
+    async insert(moves) {
+      if (moves.length === 0) return 0
+      const { count } = await prisma.crmDealMove.createMany({
+        data: moves.map((m) => ({
+          externalSource: source,
+          externalId: m.externalId,
+          dealExternalId: m.dealExternalId,
+          categoryId: m.categoryId,
+          stageExternalId: m.stageExternalId,
+          movedAt: m.bornAt,
         })),
         skipDuplicates: true,
       })
@@ -100,6 +130,8 @@ export interface DealBirthsResult {
  * what came before it, and a first floor that cannot be found throws.
  */
 export async function refreshDealBirths(deps: {
+  /** 'births' when omitted. */
+  readonly feed?: DealStageFeed
   readonly clock: FeedClock
   readonly store: DealBirthStore
   /** ONE batch of births above `afterId`, and whether it reached the newest (`fetchDealBirths`). */
@@ -112,16 +144,17 @@ export async function refreshDealBirths(deps: {
   /** The worker's shutdown flag: the walk ends between two batches. */
   readonly stopping?: () => boolean
 }): Promise<DealBirthsResult> {
-  let state = parseDealBirthsState(await deps.clock.read('births'))
+  const feed = deps.feed ?? 'births'
+  let state = parseDealBirthsState(await deps.clock.read(feed))
   let bootstrap = false
   if (state === null) {
     const first = await deps.firstIdSince(deps.from)
     if (first === null || !NUMERIC.test(first)) {
-      throw new Error('bitim tugʻilishlari: boshlanish nuqtasi topilmadi — keyingi oʻtishda yana soʻraladi')
+      throw new Error(`bitim ${feed === 'births' ? 'tugʻilishlari' : 'koʻchishlari'}: boshlanish nuqtasi topilmadi — keyingi oʻtishda yana soʻraladi`)
     }
     state = { floor: String(Math.max(0, Number(first) - 1)), from: deps.from }
     bootstrap = true
-    await deps.clock.remember('births', stateJson(state))
+    await deps.clock.remember(feed, stateJson(state))
   }
 
   const settled = deps.now.getTime() - DEAL_BIRTH_OVERLAP_MS
@@ -147,13 +180,13 @@ export async function refreshDealBirths(deps: {
       if (deps.stopping?.()) break
     }
   } catch (error) {
-    if (floor !== state.floor) await deps.clock.remember('births', stateJson({ ...state, floor }))
+    if (floor !== state.floor) await deps.clock.remember(feed, stateJson({ ...state, floor }))
     throw error
   }
 
   const next: DealBirthsState = { ...state, floor }
-  if (complete) await deps.clock.succeeded('births', stateJson(next), deps.now)
-  else await deps.clock.remember('births', stateJson(next))
+  if (complete) await deps.clock.succeeded(feed, stateJson(next), deps.now)
+  else await deps.clock.remember(feed, stateJson(next))
   return { floor, read, written, complete, bootstrap }
 }
 

@@ -630,6 +630,30 @@ Per-screen traps worth knowing before you touch one:
   as «Qoʻngʻiroqlar» counts them, on the person's roster row (off-roster: the
   group where they earned most), a dash before `CALL_DATA_FLOOR`. Roster = team heads +
   PRIMARY department members; leads/orders naming no team form «Jamoasiz».
+  «БЕЗКВАЛ» v2 SINCE 2026-10-26 — THE CLIENT'S SPEC v2
+  (`~/Downloads/bezkval-lid-spec (1).md`, checked by its author on the
+  portal; `docs/bezkval.md` says where every number comes from). A KIRIM =
+  a deal created in Регистрация (#0, `crm_deal_birth`) or moved there from
+  «ИИ обработка» (#20, `crm_deal_move`: a TYPE_ID 5 row into #0 whose
+  previous row is in #20); Первичка → Регистрация is not one. Its day =
+  the history row's (DATE_CREATE) — «Лид тушган сана» is two hours early
+  on form leads and is never read. A client = a phone number as the spec's
+  4.4 keys it (`phoneKey`: local nine digits, a foreign number whole), tied
+  by union-find as before. Its ROP = the MAIN (earliest) deal's: «ROP KVAL
+  LID» → «РОП (Первичка)» → the owner's «(ROP)» team (each person: the
+  team they head, else sit in — `bezkvalPersonRopSql`); none → «Taqsimlanmagan»
+  when the owner is the desk (portal users 10 and 1), else «Регистрация
+  boʻlimida» (`bezkval_client.bucket`). Yangi / Takror 30 kun / Takror eski
+  = no earlier non-HR deal of any contact holding the number / the latest
+  within 30 days / older (`bezkvalHistorySql` — one GIN probe per number;
+  the array form scanned every contact). «Kval» = Первичный отдел births by
+  client, stored beside (`kval_client`), never in безквал. The day card
+  (`BezkvalDayCard`): 7 cards (Kirim · Bezkval · Yangi · T30 · T eski ·
+  Taqsimlanmagan · Kval), the ROP table with the head's name and the two
+  buckets, sources, «Kirim turi», hours, 30-day trend; every number opens
+  its clients (masked to the last four digits, a link to every deal, the
+  earlier deal of a repeat) with «Excel» (CSV). The paragraphs below are
+  its history.
   «БЕЗКВАЛ» IS STORED SINCE 2026-10-24: the sync worker counts each day
   (`bezkvalRefresh.ts`, today every 10 min) into `bezkval_client`, and every
   screen below reads those rows — the card prints «Hisoblangan: …».

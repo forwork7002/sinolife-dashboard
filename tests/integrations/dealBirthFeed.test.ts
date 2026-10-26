@@ -67,6 +67,15 @@ describe('fetchDealBirths', () => {
     })
   })
 
+  it('reads the MOVES with TYPE_ID 5 — the pipeline a deal moved into, at the move\'s instant (2026-10-26)', async () => {
+    const { provider, batches } = portal((_c, key) => (key === 'c0' ? [row(5019700, { TYPE_ID: 5, CATEGORY_ID: 0, STAGE_ID: 'NEW' })] : { error: 'INVALID_ARG_VALUE' }))
+    const answer = await provider.fetchDealBirths('5019600', 5)
+    expect(decodeURIComponent(batches[0]!.c0!)).toContain('filter[TYPE_ID]=5')
+    expect(answer.births).toEqual([{ externalId: '5019700', dealExternalId: '1161678', categoryId: 0, stageExternalId: 'NEW', bornAt: new Date('2026-10-20T19:00:03.000Z') }])
+    const born = portal((_c, key) => (key === 'c0' ? [row(5019701)] : { error: 'INVALID_ARG_VALUE' }))
+    await expect(born.provider.fetchDealBirths('5019600', 5)).rejects.toThrow(/bitim koʻchishi.*filtr eʼtiborsiz qoldi/)
+  })
+
   it('refuses a row of another kind or at the floor — an ignored filter must not be appended', async () => {
     const moved = portal((_c, key) => (key === 'c0' ? [row(5019636, { TYPE_ID: 5 })] : { error: 'INVALID_ARG_VALUE' }))
     await expect(moved.provider.fetchDealBirths('5019600')).rejects.toThrow(/filtr eʼtiborsiz qoldi/)
@@ -185,6 +194,24 @@ describe('refreshDealBirths', () => {
       }),
     ).rejects.toThrow('portal refused')
     expect(parseDealBirthsState(failing.state())!.floor).toBe('150')
+  })
+
+  it('the moves keep a bookmark of their own', async () => {
+    const { clock, log } = fakeClock()
+    const r = await refreshDealBirths({
+      feed: 'moves',
+      clock,
+      store: fakeStore().store,
+      fetch: async () => ({ births: [birth('900')], complete: true }),
+      firstIdSince: async () => '900',
+      from: FROM,
+      now: NOW,
+    })
+    expect(r).toMatchObject({ complete: true, bootstrap: true, floor: '900' })
+    expect(log).toEqual(['read:moves', 'remember:moves', 'succeeded:moves'])
+    await expect(
+      refreshDealBirths({ feed: 'moves', clock: fakeClock().clock, store: fakeStore().store, fetch: async () => ({ births: [], complete: true }), firstIdSince: async () => null, from: FROM, now: NOW }),
+    ).rejects.toThrow(/bitim koʻchishlari: boshlanish nuqtasi topilmadi/)
   })
 
   it('throws rather than walking the portal\'s whole history when no first floor is found', async () => {

@@ -169,7 +169,7 @@ export function LeadWeekCard({ day }: { day: string }) {
   const hint =
     view === 'kval'
       ? `Har bir ROP ${formatDate(day)} gacha bir oyda olgan lidlar soni (Bitrix24, «РОП (Первичка)»). Rang qanchalik toʻq boʻlsa — shuncha koʻp. Oldingi kunlar — chapga suring.`
-      : `Безквал: bir kunda bitta mijoz (telefon raqami; kontaktning hamma raqamlari bitta odam) = 1 lid, qayerdan va necha marta tushmasin. Lid — Регистрация yoki Первичный отдел voronkasida ochilgan (yoki hozir oʻsha yerda turgan) bitim, barcha bosqichlar, «Дубликат (лид)» ham. Kun — bitim yaratilgan kun, Lead Guard orqali kech kiritilgani esa «Лид тушган сана». ROP — mijozning shu kundagi bitimlaridan birinchi berilgan ROP («ROP KVAL LID», boʻlmasa «РОП (Первичка)»); hech biri yoʻq — «Tarqatilmagan». ${formatDate(day)} gacha bir oy; raqamni bosing — mijozlar va bitimlar ochiladi. Oldingi kunlar — chapga suring.`
+      : `Безквал: bir kunda Регистрация voronkasiga kirgan bitta mijoz (telefon raqami; kontaktning hamma raqamlari bitta odam) = 1 lid, qayerdan va necha marta tushmasin. Kirim — Регистрация'da yaratilgan yoki «ИИ обработка»'dan oʻtkazilgan bitim, barcha bosqichlar, «Дубликат (лид)» ham; Первичный отдел (kval) bunga kirmaydi. Kun — bitim kirgan kun (yaratilgani — «Дата создания»). ROP — mijozning shu kundagi birinchi bitimidan: «ROP KVAL LID», boʻlmasa «РОП (Первичка)», boʻlmasa «Ответственный» oʻtirgan ROP jamoasi; hech biri yoʻq — «ROPʼsiz» (taqsimlanmagan yoki Регистрация boʻlimida). ${formatDate(day)} gacha bir oy; raqamni bosing — mijozlar va bitimlar ochiladi. Oldingi kunlar — chapga suring.`
   let grid: ReactNode = null
   if (data) {
     grid =
@@ -181,11 +181,11 @@ export function LeadWeekCard({ day }: { day: string }) {
           days={data.week.days}
           rows={data.bezkval.rops.map((r, i) => ({ ...r, color: colors.get(r.rop) ?? ROP_COLORS[(rows.length + i) % ROP_COLORS.length]! }))}
           unassigned={data.bezkval.unassigned}
-          unassignedLabel="Tarqatilmagan"
+          unassignedLabel="ROPʼsiz"
           resetKey={data.day}
           totalLabel="Bezkval"
           deals={data.bezkval.deals}
-          onCell={(d, rop) => setDrill({ day: d, title: `${rop ?? 'Tarqatilmagan'} · bezkval`, pick: rop === undefined ? {} : { rop } })}
+          onCell={(d, rop) => setDrill({ day: d, title: `${rop ?? 'ROPʼsiz'} · bezkval`, pick: rop === undefined ? {} : { rop } })}
         />
       )
   }

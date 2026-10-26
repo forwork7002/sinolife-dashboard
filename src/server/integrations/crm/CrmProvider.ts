@@ -345,9 +345,11 @@ export interface RawFormFill extends ExternalRecord {
 }
 
 /**
- * Where a deal was born — its `crm.stagehistory` row of TYPE_ID 1. Not part of
- * `CrmProvider`, like the form fills: read through the provider class itself
- * (`fetchDealBirths`). `externalId` is the history row's id.
+ * Where a deal was born — its `crm.stagehistory` row of TYPE_ID 1 — or, read
+ * with TYPE_ID 5, where it moved: the pipeline it moved INTO, and `bornAt` the
+ * move's instant. Not part of `CrmProvider`, like the form fills: read through
+ * the provider class itself (`fetchDealBirths`). `externalId` is the history
+ * row's id.
  */
 export interface RawDealBirth extends ExternalRecord {
   readonly dealExternalId: string

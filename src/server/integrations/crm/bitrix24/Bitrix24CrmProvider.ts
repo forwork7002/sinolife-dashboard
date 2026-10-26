@@ -225,6 +225,9 @@ const ACTIVITY_LIST = 'crm.activity.list'
 /** The stage history — the deal births' method (`fetchDealBirths`). */
 const STAGE_HISTORY_LIST = 'crm.stagehistory.list'
 
+/** The `crm.stagehistory` TYPE_ID of a deal's creation (1) and of its move to another pipeline (5). */
+export type DealStageEventType = 1 | 5
+
 /**
  * Pages of fifty one open-chat read may take before it refuses.
  *
@@ -2828,11 +2831,16 @@ export class Bitrix24CrmProvider implements CrmProvider {
    * ~5 000 deals a day open across the pipelines (21.10.2026: 4 845), so an
    * ordinary pass is one short page; a backfill moves 2 500 rows a call.
    *
+   * `typeId` 5 reads WHERE DEALS MOVED instead (2026-10-26, «Безквал» v2):
+   * the rows the portal writes when a deal changes pipeline, with the
+   * CATEGORY_ID it moved into — `bornAt` is then the move's instant. Far
+   * fewer: a few hundred a day.
+   *
    * THROWS RATHER THAN GUESSING, as `fetchFormFills`: the caller appends and
    * never deletes, so a row of another TYPE_ID, at or under the floor, or
    * without its deal, pipeline or date is an ignored filter, and refused.
    */
-  async fetchDealBirths(afterId: string): Promise<{ births: RawDealBirth[]; complete: boolean }> {
+  async fetchDealBirths(afterId: string, typeId: DealStageEventType = 1): Promise<{ births: RawDealBirth[]; complete: boolean }> {
     const { rows, done } = await this.batchWalk<{
       ID: number | string
       OWNER_ID: number | string
@@ -2842,7 +2850,7 @@ export class Bitrix24CrmProvider implements CrmProvider {
       TYPE_ID: number | string
     }>(
       STAGE_HISTORY_LIST,
-      { entityTypeId: 2, filter: { TYPE_ID: 1 }, select: ['ID', 'OWNER_ID', 'CATEGORY_ID', 'STAGE_ID', 'CREATED_TIME', 'TYPE_ID'] },
+      { entityTypeId: 2, filter: { TYPE_ID: typeId }, select: ['ID', 'OWNER_ID', 'CATEGORY_ID', 'STAGE_ID', 'CREATED_TIME', 'TYPE_ID'] },
       afterId,
       { unwrap: nestedIn('items'), refPath: '[items][49][ID]' },
     )
@@ -2852,10 +2860,10 @@ export class Bitrix24CrmProvider implements CrmProvider {
       const deal = nonEmpty(row.OWNER_ID)
       const category = nonEmpty(row.CATEGORY_ID)
       const bornAt = toDate(row.CREATED_TIME)
-      const asked = id !== undefined && /^\d+$/.test(id) && Number(id) > Number(afterId) && String(row.TYPE_ID) === '1'
+      const asked = id !== undefined && /^\d+$/.test(id) && Number(id) > Number(afterId) && String(row.TYPE_ID) === String(typeId)
       if (!asked || !deal || category === undefined || !/^\d+$/.test(category) || !row.STAGE_ID || !bornAt) {
         throw new Bitrix24Error(
-          `Bitrix24 ${STAGE_HISTORY_LIST} (bitim tugʻilishi) soʻralmagan yoki chala yozuvni qaytardi: ${id !== undefined && /^\d+$/.test(id) ? id : '—'} — filtr eʼtiborsiz qoldi`,
+          `Bitrix24 ${STAGE_HISTORY_LIST} (${typeId === 1 ? 'bitim tugʻilishi' : 'bitim koʻchishi'}) soʻralmagan yoki chala yozuvni qaytardi: ${id !== undefined && /^\d+$/.test(id) ? id : '—'} — filtr eʼtiborsiz qoldi`,
           undefined,
           false,
           undefined,
@@ -2868,15 +2876,15 @@ export class Bitrix24CrmProvider implements CrmProvider {
   }
 
   /**
-   * The id of the first deal birth at or after `since` — where the births
-   * feed starts on its very first pass. A DATE filter, asked once in a
-   * database's life (0.8 s on the live portal, 2026-10-22). Null when nothing
-   * is that new.
+   * The id of the first deal birth (or, `typeId` 5, move) at or after
+   * `since` — where its feed starts on its very first pass. A DATE filter,
+   * asked once in a database's life (0.8 s on the live portal, 2026-10-22).
+   * Null when nothing is that new.
    */
-  async firstDealBirthIdSince(since: Date): Promise<string | null> {
+  async firstDealBirthIdSince(since: Date, typeId: DealStageEventType = 1): Promise<string | null> {
     const payload = await this.call<unknown>(
       STAGE_HISTORY_LIST,
-      { entityTypeId: 2, order: { ID: 'ASC' }, filter: { TYPE_ID: 1, '>=CREATED_TIME': isoLocal(since) }, select: ['ID'], start: -1 },
+      { entityTypeId: 2, order: { ID: 'ASC' }, filter: { TYPE_ID: typeId, '>=CREATED_TIME': isoLocal(since) }, select: ['ID'], start: -1 },
       { retries: 0 },
     )
     const items = nestedIn<{ ID?: unknown }>('items')(payload.result)

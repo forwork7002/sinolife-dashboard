@@ -1,4 +1,4 @@
-import type { BezkvalClientDto } from '@/server/domain/registration/bezkval'
+import type { BezkvalCountedDay } from '@/server/domain/registration/bezkval'
 
 /**
  * «БЕЗКВАЛ» IS COUNTED HERE, IN THE SYNC WORKER, AND STORED (2026-10-24).
@@ -12,10 +12,10 @@ import type { BezkvalClientDto } from '@/server/domain/registration/bezkval'
  * every screen reads the stored rows (`bezkval_client`).
  *
  * WHICH DAYS, HOW OFTEN (`bezkvalDaysDue`): today and yesterday every
- * `BEZKVAL_LIVE_MS` (a Lead Guard deal lands on the evening before; a
- * registrar hands a lead to a ROP within the day); the `BEZKVAL_WEEK_DAYS`
- * before them every `BEZKVAL_WEEK_MS` (late Lead Guard deals, late hand-overs,
- * the births feed catching up); every older day from `BEZKVAL_FROM` once,
+ * `BEZKVAL_LIVE_MS` (a registrar hands a lead to a ROP within the day, a deal
+ * moves in from «ИИ»); the `BEZKVAL_WEEK_DAYS` before them every
+ * `BEZKVAL_WEEK_MS` (late hand-overs, a contact merged, the feeds catching
+ * up); every older day from `BEZKVAL_FROM` once,
  * when it has never been counted. At most `BEZKVAL_DAYS_PER_PASS` a pass,
  * newest first, so a first run spreads over a few ticks.
  */
@@ -26,8 +26,11 @@ import type { BezkvalClientDto } from '@/server/domain/registration/bezkval'
  * is then due again, newest first, as a never-counted day is.
  * 2026-10-24b: a person in the ROP fields who heads no ROP team counts for the
  * ROP team they sit in, else for nobody (was: their own name).
+ * 2026-10-26 v2: the client's spec v2 — Регистрация births and «ИИ» moves only,
+ * days by DATE_CREATE, foreign numbers whole, ROP by the main deal through the
+ * org chart, yangi / takror 30 / takror eski, Kval beside it.
  */
-export const BEZKVAL_RULES = '2026-10-24b'
+export const BEZKVAL_RULES = '2026-10-26-v2'
 
 /** The first day counted — «Guruhlar» and /rnp read whole months, the grid a month back. */
 export const BEZKVAL_FROM = '2026-09-01'
@@ -80,9 +83,15 @@ export interface BezkvalCounted {
 
 /** What a pass needs of the repository — a seam, so the pass is tested without a database. */
 export interface BezkvalStore {
+  /**
+   * Both stage-history feeds (births and moves) have reached the newest row
+   * once. Until then a day would be counted without its «ИИ» moves and stored
+   * as counted by these rules — never counted again — so nothing is counted.
+   */
+  bezkvalReady(): Promise<boolean>
   bezkvalComputedDays(from: string, to: string): Promise<Map<string, BezkvalCounted>>
-  computeBezkvalDay(day: string, timeZone: string): Promise<{ key: string; client: BezkvalClientDto }[]>
-  storeBezkvalDay(day: string, rows: readonly { key: string; client: BezkvalClientDto }[], at: Date, rules: string): Promise<void>
+  computeBezkvalDay(day: string, timeZone: string): Promise<BezkvalCountedDay>
+  storeBezkvalDay(day: string, counted: BezkvalCountedDay, at: Date, rules: string): Promise<void>
 }
 
 /**
@@ -96,16 +105,23 @@ export async function refreshBezkval(deps: {
   readonly timeZone: string
   readonly now: () => Date
   readonly stopping?: () => boolean
-}): Promise<{ days: { day: string; clients: number; ms: number }[] }> {
+}): Promise<{ days: { day: string; clients: number; kirim: number; kval: number; ms: number }[]; waiting: boolean }> {
+  if (!(await deps.store.bezkvalReady())) return { days: [], waiting: true }
   const computed = await deps.store.bezkvalComputedDays(BEZKVAL_FROM, deps.today)
   const due = bezkvalDaysDue({ today: deps.today, computed, now: deps.now() })
-  const days: { day: string; clients: number; ms: number }[] = []
+  const days: { day: string; clients: number; kirim: number; kval: number; ms: number }[] = []
   for (const day of due) {
     if (deps.stopping?.()) break
     const started = deps.now()
-    const rows = await deps.store.computeBezkvalDay(day, deps.timeZone)
-    await deps.store.storeBezkvalDay(day, rows, started, BEZKVAL_RULES)
-    days.push({ day, clients: rows.length, ms: deps.now().getTime() - started.getTime() })
+    const counted = await deps.store.computeBezkvalDay(day, deps.timeZone)
+    await deps.store.storeBezkvalDay(day, counted, started, BEZKVAL_RULES)
+    days.push({
+      day,
+      clients: counted.clients.length,
+      kirim: counted.clients.reduce((n, r) => n + r.client.deals.length, 0),
+      kval: counted.kval.length,
+      ms: deps.now().getTime() - started.getTime(),
+    })
   }
-  return { days }
+  return { days, waiting: false }
 }
