@@ -20,6 +20,19 @@ import { isCustomWindow } from '@/lib/customWindow'
  * recipient last looked at. This only supplies a window when the address bar
  * carries none, and it is written only when a person actually chooses one.
  *
+ * BUT ONLY UP TO A MONTH (2026-10-26, the client: «1 oydan koʻp maʼlumot
+ * qidirib, misol uchun yillik … keyingi boʻlimga oʻtsa u boʻlimda ham yillik
+ * turmasin, bugun boʻlib tursin»). A year, or a range of more than
+ * `CARRIED_MAX_DAYS` days, is asked of ONE screen on purpose; carried, it
+ * opened every next screen on a year — the slowest question each of them
+ * can be asked, on a one-core database — for a reader who only wanted to look
+ * at today there. Such a window is remembered as chosen and READ as never
+ * chosen (`usable`), so every other section's link is bare and opens on the
+ * default, «Bugun». Up to a month — Bugun · Kecha · Hafta · Shu oy · Oʻtgan
+ * oy, or a range of 31 days — still travels, for the comparison above. The
+ * screen it was chosen on keeps it: the address carries it, and the rail's
+ * entry for the current section links to the current address.
+ *
  * PER BROWSER, NOT PER ACCOUNT. It is a convenience, not a setting: two people
  * sharing a login should not move each other's dates around, and nothing here
  * is worth a database round trip on every page load.
@@ -31,6 +44,9 @@ import { isCustomWindow } from '@/lib/customWindow'
  */
 
 const KEY = 'sinolife.period.v2'
+
+/** The longest window carried to another section: a month — «Shu oy» of 31 days, or a 31-day range. */
+export const CARRIED_MAX_DAYS = 31
 
 type Stored = { window?: PeriodSelection }
 
@@ -102,17 +118,30 @@ export function rememberedPeriod(): PeriodSelection | null {
 }
 
 /**
- * A stored window we can actually resolve.
+ * A stored window we can actually resolve — and one short enough to travel.
  *
  * A custom range missing a bound resolves to nothing, and storing one is a bug
  * elsewhere rather than something to render around. So does one the API would
  * refuse («2026-9-01» typed into a month field drawn as text): remembered, it
- * rode every nav link and opened every screen on a 400.
+ * rode every nav link and opened every screen on a 400. And a window longer
+ * than a month is not carried at all — see the note at the top.
  */
 function usable(stored: PeriodSelection | undefined): PeriodSelection | null {
   if (!stored?.preset) return null
   if (stored.preset === 'custom' && !isCustomWindow(stored.from, stored.to)) return null
-  return stored
+  return carries(stored) ? stored : null
+}
+
+/**
+ * Whether a window travels to the next section: every preset up to a month,
+ * and a range of at most `CARRIED_MAX_DAYS` calendar days, both ends counted.
+ */
+export function carries(selection: PeriodSelection): boolean {
+  if (selection.preset === 'this_year') return false
+  if (selection.preset !== 'custom') return true
+  if (!selection.from || !selection.to) return false
+  const days = Math.round((Date.parse(selection.to) - Date.parse(selection.from)) / 86_400_000) + 1
+  return days <= CARRIED_MAX_DAYS
 }
 
 export function rememberPeriod(selection: PeriodSelection): void {

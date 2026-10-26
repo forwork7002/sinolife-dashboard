@@ -83,6 +83,37 @@ describe('remembering the window', () => {
   })
 })
 
+describe('a window longer than a month stays on its screen (2026-10-26)', () => {
+  /*
+    The client: «yillik … keyingi boʻlimga oʻtsa u boʻlimda ham yillik
+    turmasin, bugun boʻlib tursin». Remembered as chosen, read as never
+    chosen — so the next section's link is bare and opens on «Bugun».
+  */
+  it('does not carry «Shu yil» to another section', () => {
+    rememberPeriod({ preset: 'this_month' })
+    rememberPeriod({ preset: 'this_year' })
+    expect(rememberedPeriod()).toBeNull()
+    expect(periodQuery()).toBe('')
+    expect(periodQuery(periodMemorySnapshot())).toBe('')
+  })
+
+  it('carries a range of 31 days and not one of 32', () => {
+    rememberPeriod({ preset: 'custom', from: '2026-08-01', to: '2026-08-31' })
+    expect(periodQuery()).toBe('?preset=custom&from=2026-08-01&to=2026-08-31')
+
+    rememberPeriod({ preset: 'custom', from: '2026-08-01', to: '2026-09-01' })
+    expect(rememberedPeriod()).toBeNull()
+    expect(periodQuery()).toBe('')
+  })
+
+  it('still carries every preset up to a month', () => {
+    for (const preset of ['today', 'yesterday', 'this_week', 'this_month', 'previous_month'] as const) {
+      rememberPeriod({ preset })
+      expect(periodQuery()).toBe(`?preset=${preset}`)
+    }
+  })
+})
+
 describe('when storage will not cooperate', () => {
   it('reads nothing rather than throwing when getItem fails', () => {
     install({
@@ -141,7 +172,7 @@ describe('the snapshot the sidebar renders from', () => {
   })
 
   it('answers from the snapshot without re-reading storage', () => {
-    expect(periodQuery(JSON.stringify({ window: { preset: 'this_year' } }))).toBe('?preset=this_year')
+    expect(periodQuery(JSON.stringify({ window: { preset: 'previous_month' } }))).toBe('?preset=previous_month')
     expect(periodQuery('{}')).toBe('')
   })
 })
