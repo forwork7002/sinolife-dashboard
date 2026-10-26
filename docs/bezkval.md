@@ -27,7 +27,7 @@ Bugun va kecha — har 10 daqiqada, oldingi 7 kun — har 3 soatda, eski kunlar 
 | Karta | Qanday sanaladi |
 |---|---|
 | **Kirim (sdelka)** | Kun ichida (Asia/Tashkent) Регистрация'ga (#0) kirgan bitimlar: (a) shu yerda **yaratilgan** (TYPE_ID 1, kategoriya 0), yoki (b) **«ИИ обработка» (#20) dan o'tkazilgan** (TYPE_ID 5 → 0, bitimning oldingi yozuvi #20 da). Первичка'dan qaytgani (12→0) kirim emas. Bir kunda ikki marta kirgan bitim — 1 marta |
-| **Bezkval lid** | Kirimlarning noyob mijozlari. Mijoz = telefon raqami (pastdagi normallashtirish); kontaktning hamma raqamlari va bitta kontaktli bitimlar union-find bilan bitta mijoz. Raqam yo'q → bitimdagi «Телефон ракам» → kontakt → bitim |
+| **Bezkval lid** | Kirimlarning noyob mijozlari. Mijoz = telefon raqami (pastdagi normallashtirish); kontaktning hamma raqamlari, **bitimdagi «Телефон ракам»** va bitta kontaktli bitimlar union-find bilan bitta mijoz. Raqam umuman yo'q → kontakt → bitim. Bitim raqami doim bog'lanadi (spec matni uni faqat zaxira deydi, lekin etalon shunday sanalgan: 23.10 Bitrix'ning o'zidan zaxira usulida 1 250, doim bog'lab 1 232, etalon 1 228) |
 | **Yangi** | Mijozning biror raqamini saqlagan **hamma** kontaktlarda kun boshigacha (00:00) HR (#8) dan boshqa voronkada yaratilgan bitim yo'q |
 | **Takror 30 kun** | O'sha bitimlarning eng yangisi kun boshidan oldingi 30 kun ichida |
 | **Takror eski** | Bitim bor, lekin 30 kundan oldin |

@@ -75,10 +75,13 @@ describe('phoneKey — the spec\'s 4.4', () => {
   })
 })
 
-describe('dealKeys — the contact\'s numbers, the deal\'s own, the contact, the deal', () => {
+describe('dealKeys — the contact\'s numbers with the deal\'s own, then the contact, then the deal', () => {
   it('in that order', () => {
     expect(dealKeys(lead({ phones: ['931112233', '901234567'] }))).toEqual({ kind: 'phone', keys: ['p:901234567', 'p:931112233'] })
     expect(dealKeys(lead({ phones: [], dealPhone: '+998 97 555 44 33' }))).toEqual({ kind: 'dealPhone', keys: ['p:975554433'] })
+    // The deal's own number ties beside the contact's — the spec's etalon counts that way (23.10: 1 232 vs 1 250).
+    expect(dealKeys(lead({ phones: ['931112233'], dealPhone: '+998 97 555 44 33' }))).toEqual({ kind: 'phone', keys: ['p:931112233', 'p:975554433'] })
+    expect(dealKeys(lead({ phones: ['931112233'], dealPhone: '93 111 22 33' }))).toEqual({ kind: 'phone', keys: ['p:931112233'] })
     expect(dealKeys(lead({ phones: ['111111111'], contactId: '77' }))).toEqual({ kind: 'contact', keys: ['c:77'] })
     expect(dealKeys(lead({ dealId: 'x', phones: [], contactId: null }))).toEqual({ kind: 'deal', keys: ['d:x'] })
   })
@@ -121,6 +124,12 @@ describe('bezkvalClients', () => {
     expect(clients).toHaveLength(1)
     expect(clients[0]!.phones).toEqual(['912223344', '931112233'])
     expect(clients[0]!.key).toBe('p:912223344')
+  })
+
+  it('ties two contacts through a deal whose own number is the other contact\'s', () => {
+    const typo = lead({ contactId: 'a', phones: ['+99850004292'], dealPhone: '+998 90 777 66 55' })
+    const other = lead({ contactId: 'b', phones: ['907776655'] })
+    expect(bezkvalClients([typo, other])).toHaveLength(1)
   })
 
   it('ties two deals of one contact even when only one of them has a number', () => {

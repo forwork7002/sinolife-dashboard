@@ -639,7 +639,8 @@ Per-screen traps worth knowing before you touch one:
   the history row's (DATE_CREATE) — «Лид тушган сана» is two hours early
   on form leads and is never read. A client = a phone number as the spec's
   4.4 keys it (`phoneKey`: local nine digits, a foreign number whole), tied
-  by union-find as before. Its ROP = the MAIN (earliest) deal's: «ROP KVAL
+  by union-find as before — the deal's own «Телефон ракам» always beside the
+  contact's (the etalon counts that way: 23.10 on the portal 1 232 vs 1 250). Its ROP = the MAIN (earliest) deal's: «ROP KVAL
   LID» → «РОП (Первичка)» → the owner's «(ROP)» team (each person: the
   team they head, else sit in — `bezkvalPersonRopSql`); none → «Taqsimlanmagan»
   when the owner is the desk (portal users 10 and 1), else «Регистрация

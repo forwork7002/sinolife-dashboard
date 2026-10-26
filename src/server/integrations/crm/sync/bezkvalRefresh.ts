@@ -29,8 +29,10 @@ import type { BezkvalCountedDay } from '@/server/domain/registration/bezkval'
  * 2026-10-26 v2: the client's spec v2 — Регистрация births and «ИИ» moves only,
  * days by DATE_CREATE, foreign numbers whole, ROP by the main deal through the
  * org chart, yangi / takror 30 / takror eski, Kval beside it.
+ * 2026-10-26 v2b: the deal's own «Телефон ракам» ties its client always, not
+ * only when the contact has no number — the spec's etalon counts that way.
  */
-export const BEZKVAL_RULES = '2026-10-26-v2'
+export const BEZKVAL_RULES = '2026-10-26-v2b'
 
 /** The first day counted — «Guruhlar» and /rnp read whole months, the grid a month back. */
 export const BEZKVAL_FROM = '2026-09-01'

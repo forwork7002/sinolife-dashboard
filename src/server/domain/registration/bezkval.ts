@@ -21,13 +21,17 @@
  * A CLIENT is a phone number, normalised as the spec's 4.4 (`phoneKey`): a
  * local number is its nine digits, a foreign one all of its digits (+7 and
  * +992 numbers are other people than the local nine they end in). Every
- * number the deal's contact holds is joined by union-find, so a contact with
- * two numbers ties both, and so does one contact named by two deals. A
- * contact with no usable number falls back to the deal's own «Телефон
- * ракам», then to the contact itself (`c:`), then to the deal (`d:`). A
- * number of one repeated digit is nobody's. One client a day is ONE безквал
- * lead, however many deals it opened; its FIRST deal (the earliest kirim) is
- * its main one.
+ * number the deal's contact holds AND the deal's own «Телефон ракам» are
+ * joined by union-find, so a contact with two numbers ties both, one contact
+ * named by two deals ties them, and a deal whose own number differs from its
+ * contact's ties the two (23.10: 128 of 1 324 deals). The spec's text uses
+ * the deal's number only when the contact has none; its etalon does not —
+ * the portal's own 23.10 counted that way gives 1 250 clients against the
+ * etalon's 1 228, tying it always 1 232 (2026-10-26, read-only). With no
+ * number at all: the contact itself (`c:`), then the deal (`d:`). A number
+ * of one repeated digit is nobody's. One client a day is ONE безквал lead,
+ * however many deals it opened; its FIRST deal (the earliest kirim) is its
+ * main one.
  *
  * ITS ROP is the main deal's (the spec's 5.5, in order): the team the «ROP
  * KVAL LID» person stands for (heads, else sits in), else «РОП (Первичка)»
@@ -147,12 +151,16 @@ export function dealRop(row: Pick<BezkvalLeadRow, 'ropKval' | 'ropPrimary' | 'ow
   return { rop: null, bucket: row.ownerDesk ? 'unassigned' : 'registration' }
 }
 
-/** The keys one deal ties together, and what they are. */
+/**
+ * The keys one deal ties together, and what they are: its contact's numbers
+ * and its own «Телефон ракам» together; `kind` says which held a number —
+ * the contact, else only the deal.
+ */
 export function dealKeys(row: Pick<BezkvalLeadRow, 'dealId' | 'contactId' | 'phones' | 'dealPhone'>): { kind: BezkvalKeyKind; keys: string[] } {
-  const phones = [...new Set(row.phones.map(phoneKey).filter((p): p is string => p !== null))].sort()
-  if (phones.length > 0) return { kind: 'phone', keys: phones.map((p) => `p:${p}`) }
+  const contact = row.phones.map(phoneKey).filter((p): p is string => p !== null)
   const own = phoneKey(row.dealPhone)
-  if (own !== null) return { kind: 'dealPhone', keys: [`p:${own}`] }
+  const phones = [...new Set(own === null ? contact : [...contact, own])].sort()
+  if (phones.length > 0) return { kind: contact.length > 0 ? 'phone' : 'dealPhone', keys: phones.map((p) => `p:${p}`) }
   if (row.contactId) return { kind: 'contact', keys: [`c:${row.contactId}`] }
   return { kind: 'deal', keys: [`d:${row.dealId}`] }
 }
