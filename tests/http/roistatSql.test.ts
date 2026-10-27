@@ -92,6 +92,23 @@ describe('RoistatRepository.bitrix', () => {
     expect(calls[1]!.params[3]).toEqual(new Date(PERIOD.end.getTime() + 30 * 86_400_000))
   })
 
+  it('probes only the orders its window keeps (2026-10-27)', async () => {
+    const { calls, repository } = recorder()
+    await repository.bitrix(PERIOD, new Date('2026-10-05T00:00:00Z'), 'days')
+    const sql = calls[0]!.sql
+    // A Квалификация deal adds 0 to every counter: it is not read.
+    expect(sql).toContain(`p."role" IN ('CONFIRMATION', 'REVENUE')`)
+    expect(sql).not.toContain(`'QUALIFICATION'`)
+    // The origin probe and the window filter come first; the product, team and first-order probes read what is kept.
+    const origin = sql.indexOf('sale_origin AS MATERIALIZED')
+    const rows = sql.indexOf('sale_rows AS (')
+    expect(sql.indexOf('l."createdAtSource" AS created')).toBeGreaterThan(origin)
+    expect(sql.indexOf('l."createdAtSource" AS created')).toBeLessThan(rows)
+    expect(sql.slice(origin, rows)).toContain('WHERE COALESCE(o.created, sb."createdAtSource") >= $1')
+    expect(sql.slice(rows)).toContain('FROM sale_origin sb')
+    expect(sql.slice(rows)).not.toContain('WHERE COALESCE(o.created')
+  })
+
   it('never reads База, and counts only «Дубликат (лид)» as a duplicate', async () => {
     const { calls, repository } = recorder()
     await repository.bitrix(PERIOD, new Date('2026-10-05T00:00:00Z'))

@@ -298,6 +298,11 @@ export class RoistatRepository {
         product probe (pb) and the origin-lead probe run on them alone, never
         on the window's Регистрация deals the planner could otherwise reach
         before the pipeline filter.
+
+        ORDERS ONLY (2026-10-27). A Квалификация deal adds 0 to every counter
+        — ordered, sold, new_customer and deal_days all ask for CONFIRMATION
+        or REVENUE — and a cut row with nothing in it is dropped
+        (roistatService rows), so it only cost its probes.
       */
       sale_base AS MATERIALIZED (
         SELECT
@@ -305,8 +310,50 @@ export class RoistatRepository {
           p."role"::text AS role, d."amountMinor", d."title", d."targetolog", d."productLine",
           d."region", d."operatorTeamSource", d."operatorNameSource", d."operatorEmployeeId", d."sourceId"
         FROM "deal" d
-        JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" IN ('QUALIFICATION', 'CONFIRMATION', 'REVENUE')
+        JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" IN ('CONFIRMATION', 'REVENUE')
         WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $4
+      ),
+      /*
+        THE WINDOW IS DECIDED BEFORE THE PER-SALE PROBES (2026-10-27). A sale
+        belongs to the window its origin lead opened in, so sale_base reads a
+        month past the window's end ($4) — for a past month twice the sales
+        it keeps. Only the origin probe is needed to tell; the product,
+        team, first-order and form probes then run on the kept sales alone.
+        Before this, one full month timed out at 20 s on the one-core
+        database (/analytics/sales-days, /roistat/overview).
+      */
+      sale_origin AS MATERIALIZED (
+        SELECT
+          sb.*,
+          o.created AS o_created, o.source_id AS o_source_id, o.source_name AS o_source_name,
+          o.title AS o_title, o.sd AS o_sd, o.targetolog AS o_targetolog, o.registrar AS o_registrar
+        FROM sale_base sb
+        /*
+          The ORIGIN LEAD: this contact's Регистрация deal opened up to
+          ${ORIGIN_LEAD_DAYS} days before the sales deal — a WON one first,
+          since «Сделка успешна» is what opens the sales deal, then the latest.
+        */
+        LEFT JOIN LATERAL (
+          SELECT
+            l."createdAtSource" AS created,
+            ls."externalId" AS source_id,
+            ls."name" AS source_name,
+            l."title" AS title,
+            ${sourceDescriptionSql('l')} AS sd,
+            NULLIF(btrim(l."targetolog"), '') AS targetolog,
+            NULLIF(btrim(l."registrar"), '') AS registrar
+          FROM "deal" l
+          JOIN "pipeline" lp ON lp."id" = l."pipelineId" AND lp."role" = 'LEAD'
+          LEFT JOIN "sales_source" ls ON ls."id" = l."sourceId"
+          WHERE sb."customerId" IS NOT NULL
+            AND l."customerId" = sb."customerId"
+            AND l."createdAtSource" <= sb."createdAtSource"
+            AND l."createdAtSource" > sb."createdAtSource" - interval '${ORIGIN_LEAD_DAYS} days'
+          ORDER BY ${originLeadOrderSql('l')}
+          LIMIT 1
+        ) o ON true
+        WHERE COALESCE(o.created, sb."createdAtSource") >= $1
+          AND COALESCE(o.created, sb."createdAtSource") < $2
       ),
       sale_rows AS (
         SELECT
@@ -382,7 +429,7 @@ export class RoistatRepository {
           -- The rop column again: the team decides a sale with no form and no line item (rnpSheet saleBrand).
           tm.team AS b_team,
           pb.brand AS b_product
-        FROM sale_base sb
+        FROM sale_origin sb
         LEFT JOIN LATERAL (SELECT ${InsightsRepository.dealProductBrandSql('sb')} AS brand) pb ON true
         LEFT JOIN "sales_source" ss ON ss."id" = sb."sourceId"
         LEFT JOIN "employee" e ON e."id" = sb."operatorEmployeeId"
@@ -391,37 +438,16 @@ export class RoistatRepository {
             ${InsightsRepository.teamSql('sb."operatorTeamSource"', 'e."id"', 'dep."name"')},
             '${InsightsRepository.NO_ROP}'
           ) AS team) tm ON true
-        /*
-          The ORIGIN LEAD: this contact's Регистрация deal opened up to
-          ${ORIGIN_LEAD_DAYS} days before the sales deal — a WON one first,
-          since «Сделка успешна» is what opens the sales deal, then the latest.
-        */
-        LEFT JOIN LATERAL (
-          SELECT
-            l."createdAtSource" AS created,
-            ls."externalId" AS source_id,
-            ls."name" AS source_name,
-            l."title" AS title,
-            ${sourceDescriptionSql('l')} AS sd,
-            NULLIF(btrim(l."targetolog"), '') AS targetolog,
-            NULLIF(btrim(l."registrar"), '') AS registrar
-          FROM "deal" l
-          JOIN "pipeline" lp ON lp."id" = l."pipelineId" AND lp."role" = 'LEAD'
-          LEFT JOIN "sales_source" ls ON ls."id" = l."sourceId"
-          WHERE sb."customerId" IS NOT NULL
-            AND l."customerId" = sb."customerId"
-            AND l."createdAtSource" <= sb."createdAtSource"
-            AND l."createdAtSource" > sb."createdAtSource" - interval '${ORIGIN_LEAD_DAYS} days'
-          ORDER BY ${originLeadOrderSql('l')}
-          LIMIT 1
-        ) o ON true
+        -- The origin lead the probe in sale_origin found, under the names the columns above read.
+        CROSS JOIN LATERAL (
+          SELECT sb.o_created AS created, sb.o_source_id AS source_id, sb.o_source_name AS source_name,
+            sb.o_title AS title, sb.o_sd AS sd, sb.o_targetolog AS targetolog, sb.o_registrar AS registrar
+        ) o
         ${forms ? 'LEFT JOIN form_alias ofa ON ofa.sd = o.sd' : ''}
         -- The brand the origin lead's form names — originFormBrandSql's reading, over the lead joined above.
         LEFT JOIN LATERAL (
           SELECT ${formBrandOfTitleSql(saleFormTitleSql('o.created IS NOT NULL', 'o.title', 'o.sd', 'sb."title"'))} AS brand
         ) sfb ON true
-        WHERE COALESCE(o.created, sb."createdAtSource") >= $1
-          AND COALESCE(o.created, sb."createdAtSource") < $2
       ),
       base AS (
         SELECT * FROM lead_rows
