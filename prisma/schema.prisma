@@ -2235,11 +2235,93 @@ model CrmFormFill {
   ownerTypeId     String
   /// OWNER_ID — the portal id of that deal or contact.
   ownerExternalId String
+  /// PROVIDER_TYPE_ID — the CRM form's portal id (`crm_web_form.externalId`),
+  /// since 2026-10-24. Null on a row read before then until the id walk
+  /// (`formFillFeed.ts`, bookmark 'form-ids') reaches it.
+  crmFormId       String?
   createdAt       DateTime       @default(now())
 
   @@unique([externalSource, externalId])
   @@index([filledAt])
+  @@index([crmFormId, filledAt])
   @@map("crm_form_fill")
+}
+
+/// THE PORTAL'S CRM FORMS AND THE FACEBOOK FORM EACH ONE IS FED BY (2026-10-24,
+/// the client: every Facebook form on the dashboard, «bitrix24ga ulangan yoki
+/// yoʻq»). `crm.webform.list` gives the forms; `crm.api.form.get` gives each
+/// one's integration — Bitrix24's own Facebook Lead Ads link (FB form id and
+/// name, FB page id and name). That link is the only authority on whether a
+/// Facebook form's leads reach the portal: the Meta token cannot read the forms
+/// on the ~16 pages it is not assigned to, Bitrix24's Facebook connection can.
+/// Written by `formRegistryFeed.ts`, whole list per pass.
+model CrmWebForm {
+  externalSource ExternalSource @default(BITRIX24)
+  /// The portal's form id — `crm_form_fill.crmFormId`.
+  externalId     String
+  name           String
+  active         Boolean
+  /// The last pass whose list carried the form.
+  listedAt       DateTime
+  createdAt      DateTime       @default(now())
+
+  @@id([externalSource, externalId])
+  @@map("crm_web_form")
+}
+
+/// One Facebook lead form linked to one CRM form, as the CRM form's own
+/// integration names it (`crm.api.form.get` → integration.cases, providerCode
+/// 'facebook'). A CRM form's links are replaced whole when its read succeeds.
+model CrmWebFormFacebook {
+  externalSource ExternalSource @default(BITRIX24)
+  crmFormId      String
+  fbFormId       String
+  fbFormName     String         @default("")
+  fbPageId       String         @default("")
+  fbPageName     String         @default("")
+  /// When the link was made, as the portal dates it.
+  linkedAt       DateTime?
+  readAt         DateTime
+
+  @@id([externalSource, crmFormId, fbFormId])
+  @@index([fbFormId])
+  @@map("crm_web_form_facebook")
+}
+
+/// EVERY FACEBOOK LEAD FORM BITRIX24'S FACEBOOK CONNECTION CAN SEE, page by page
+/// (`crm.api.ads.leadads.account.getAccounts` + `crm.api.ads.leadads.form.list`,
+/// 2026-10-24): 105 active forms on 16 pages that day, against the 24 the Meta
+/// token lists. The connection lists ACTIVE forms only, so a form missing from
+/// its page's latest successful read is no longer active there. Never deleted —
+/// the name is what the dashboard knows the form by.
+model FacebookLeadForm {
+  /// Meta's form id.
+  id          String   @id
+  name        String
+  pageId      String
+  pageName    String   @default("")
+  firstSeenAt DateTime @default(now())
+  /// The last successful read of its page that listed it.
+  listedAt    DateTime
+
+  @@index([pageId])
+  @@map("fb_lead_form")
+}
+
+/// The Facebook pages Bitrix24's Facebook connection lists, with the last time
+/// each page's forms were read whole — what «still listed» is measured against.
+model FacebookPage {
+  /// Meta's page id.
+  id          String    @id
+  name        String
+  /// The last pass whose page list carried it.
+  listedAt    DateTime
+  /// The last read of its forms that succeeded; null until one has.
+  formsReadAt DateTime?
+  /// One line, the portal's or Facebook's refusal of the last forms read; null after a success.
+  lastError   String?
+
+  @@map("fb_page")
 }
 
 /// The lead watch's two feeds, one row each — id 'calls' and 'chats'. Like
