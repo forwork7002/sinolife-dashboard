@@ -107,7 +107,19 @@ describe('POST /api/ai-registrator/calls', () => {
     expect((await post(body({ startedAt: 'yesterday' }))).status).toBe(400)
     expect((await post(body({ dealId: 'abc' }))).status).toBe(400)
     expect((await post(body({ transferAttempts: [{ ext: '115', result: 'maybe' }] }))).status).toBe(400)
+    expect((await post(body({ transferAttempts: [{ ext: '115', result: 'busy', ring_sec: -1 }] }))).status).toBe(400)
     expect(stored).toEqual([])
+  })
+
+  it('stores a turned-down try and how long each one rang', async () => {
+    const attempts = [
+      { ext: '135', result: 'rejected', at: '2026-10-27T15:20:01+05:00', ring_sec: 4.2 },
+      { ext: '136', result: 'no_answer', at: '2026-10-27T15:20:06+05:00', ring_sec: 15 },
+      { ext: '141', result: 'caller_left', at: '2026-10-27T15:20:21+05:00', ring_sec: 3 },
+      { ext: '143', result: 'answered', at: '2026-10-27T15:20:24+05:00', ring_sec: 6.1 },
+    ]
+    expect((await post(body({ transferAttempts: attempts }))).status).toBe(200)
+    expect(stored[0]).toMatchObject({ transferAttempts: attempts })
   })
 
   it('stores an outcome it does not know yet rather than losing the call', async () => {

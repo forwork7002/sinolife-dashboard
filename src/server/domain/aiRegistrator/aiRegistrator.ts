@@ -51,8 +51,13 @@ export const AI_OUTCOMES = [
 ] as const
 export type AiOutcome = (typeof AI_OUTCOMES)[number]
 
-/** Each extension tried on a transfer ends one of these ways. */
-export const TRANSFER_RESULTS = ['answered', 'busy', 'no_answer', 'failed'] as const
+/**
+ * Each extension tried on a transfer ends one of these ways (the agent's `call_runner.specialist_result`):
+ * `busy` — the seller was on another call (their line said so, so they were not rung, or the ATS said busy
+ * at once); `rejected` — it rang and the seller turned it down (the red button); `no_answer` — it rang out;
+ * `caller_left` — the caller hung up while it rang; `failed` — the ATS would not put it through.
+ */
+export const TRANSFER_RESULTS = ['answered', 'busy', 'rejected', 'no_answer', 'caller_left', 'failed'] as const
 export type TransferResult = (typeof TRANSFER_RESULTS)[number]
 
 /** A sale may open a little BEFORE its hand-off is stamped: the seller types while the agent's call is still ending. */
@@ -68,6 +73,8 @@ export interface TransferAttempt {
   readonly ext: string
   readonly result: TransferResult
   readonly at: Date | null
+  /** How long the seller's phone rang before this ended (answered, turned down or rang out); absent on older calls. */
+  readonly ringSec?: number
 }
 
 /** One stored call, as the screen reads it. */
@@ -97,11 +104,16 @@ export function readTransferAttempts(json: unknown): TransferAttempt[] {
   const out: TransferAttempt[] = []
   for (const item of json) {
     if (typeof item !== 'object' || item === null) continue
-    const { ext, result, at } = item as Record<string, unknown>
+    const { ext, result, at, ring_sec: ring } = item as Record<string, unknown>
     if (typeof ext !== 'string' || ext.trim() === '') continue
     if (typeof result !== 'string' || !(TRANSFER_RESULTS as readonly string[]).includes(result)) continue
     const when = typeof at === 'string' ? new Date(at) : null
-    out.push({ ext: ext.trim(), result: result as TransferResult, at: when && !Number.isNaN(when.getTime()) ? when : null })
+    out.push({
+      ext: ext.trim(),
+      result: result as TransferResult,
+      at: when && !Number.isNaN(when.getTime()) ? when : null,
+      ...(typeof ring === 'number' && Number.isFinite(ring) && ring >= 0 ? { ringSec: Math.round(ring) } : {}),
+    })
   }
   return out
 }
@@ -164,20 +176,26 @@ export interface ExtensionAttempts {
   readonly tried: number
   readonly answered: number
   readonly busy: number
+  readonly rejected: number
   readonly noAnswer: number
   readonly failed: number
 }
 
-/** Per extension, in the order of how often it was tried (then the number). Test calls never count. */
+/**
+ * Per extension, in the order of how often it was tried (then the number). Test calls never count, nor a
+ * try the caller cut short by hanging up while it rang — that is not the seller's doing.
+ */
 export function attemptsByExtension(calls: readonly AiCall[]): ExtensionAttempts[] {
-  const rows = new Map<string, { tried: number; answered: number; busy: number; noAnswer: number; failed: number }>()
+  const rows = new Map<string, { tried: number; answered: number; busy: number; rejected: number; noAnswer: number; failed: number }>()
   for (const call of calls) {
     if (call.isTest) continue
     for (const a of attemptsOf(call)) {
-      const row = rows.get(a.ext) ?? { tried: 0, answered: 0, busy: 0, noAnswer: 0, failed: 0 }
+      if (a.result === 'caller_left') continue
+      const row = rows.get(a.ext) ?? { tried: 0, answered: 0, busy: 0, rejected: 0, noAnswer: 0, failed: 0 }
       row.tried += 1
       if (a.result === 'answered') row.answered += 1
       else if (a.result === 'busy') row.busy += 1
+      else if (a.result === 'rejected') row.rejected += 1
       else if (a.result === 'no_answer') row.noAnswer += 1
       else row.failed += 1
       rows.set(a.ext, row)

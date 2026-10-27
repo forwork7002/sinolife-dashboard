@@ -68,6 +68,14 @@ Per-screen traps worth knowing before you touch one:
   portal id, joined to `deal."externalId"` at READ time — a push may land
   before the sync read the deal («Bitrix24dan hali oʻqilmagan»). An outcome
   the screen does not know is stored and printed as given, never refused.
+  A transfer TRY's `result` is the opposite — `z.enum(TRANSFER_RESULTS)`, an
+  unknown one refuses the whole call — so a new result lands HERE first and
+  the agent sends it after. Since 2026-10-27 (the owner: «band faqat boshqa
+  odam bilan gaplashayotgan bo'lsa … ataylab ko'tarmadi, qizilni bosdi — aniq
+  ko'rinsin»): `busy` = on another call only, `rejected` = it rang and the
+  seller turned it down, `no_answer` = rang out, `caller_left` = the caller
+  hung up while it rang (not counted against the extension), `failed` = the
+  ATS refused; each try may carry `ring_sec`, printed «· 15 s jiringladi».
   Every definition is in `domain/aiRegistrator/aiRegistrator.ts`: the two
   cohorts are dated by their HAND-OFF (AI: the transfer call's start; KLASSIK:
   «Сделка успешна» of a lead the agent never called — a lead the AI talked to

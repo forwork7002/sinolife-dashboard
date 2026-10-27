@@ -123,7 +123,7 @@ export interface AiCallRowDto {
   /** The seller the answering extension resolves to by its floor number. */
   readonly seller: string | null
   /** Every extension tried, in order, each with the seller it resolves to. */
-  readonly attempts: readonly { readonly ext: string; readonly name: string | null; readonly result: string; readonly at: string | null }[]
+  readonly attempts: readonly { readonly ext: string; readonly name: string | null; readonly result: string; readonly at: string | null; readonly ringSec: number | null }[]
   /** What the agent wrote down, field by field, as given. */
   readonly notes: readonly { readonly key: string; readonly value: string }[]
   /** The Регистрация deal now; null until the sync has read it. */
@@ -223,7 +223,13 @@ export class AiRegistratorService {
           outcome: call.outcome,
           transferredTo: call.transferredTo,
           seller: sellerOf(call.transferredTo),
-          attempts: attemptsOf(call).map((a) => ({ ext: a.ext, name: sellerOf(a.ext), result: a.result, at: a.at?.toISOString() ?? null })),
+          attempts: attemptsOf(call).map((a) => ({
+            ext: a.ext,
+            name: sellerOf(a.ext),
+            result: a.result,
+            at: a.at?.toISOString() ?? null,
+            ringSec: a.ringSec ?? null,
+          })),
           notes: notesOf(call.result),
           lead: lead ? { pipeline: lead.pipeline, stage: lead.stage, status: lead.status } : null,
           verdict: deal?.verdict ?? null,

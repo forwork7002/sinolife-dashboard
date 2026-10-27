@@ -123,10 +123,36 @@ describe('transfer attempts', () => {
       call({ callId: '4', isTest: true, transferAttempts: [{ ext: '115', result: 'answered', at: null }] }),
     ])
     expect(rows).toEqual([
-      { ext: '112', tried: 2, answered: 1, busy: 1, noAnswer: 0, failed: 0 },
-      { ext: '115', tried: 2, answered: 0, busy: 1, noAnswer: 1, failed: 0 },
-      { ext: '114', tried: 1, answered: 0, busy: 0, noAnswer: 0, failed: 1 },
-      { ext: '117', tried: 1, answered: 1, busy: 0, noAnswer: 0, failed: 0 },
+      { ext: '112', tried: 2, answered: 1, busy: 1, rejected: 0, noAnswer: 0, failed: 0 },
+      { ext: '115', tried: 2, answered: 0, busy: 1, rejected: 0, noAnswer: 1, failed: 0 },
+      { ext: '114', tried: 1, answered: 0, busy: 0, rejected: 0, noAnswer: 0, failed: 1 },
+      { ext: '117', tried: 1, answered: 1, busy: 0, rejected: 0, noAnswer: 0, failed: 0 },
+    ])
+  })
+
+  it('keeps a seller who turned the call down apart from one on another call, with how long it rang', () => {
+    const attempts = readTransferAttempts([
+      { ext: '134', result: 'busy', at: '2026-10-27T10:00:00Z' },
+      { ext: '135', result: 'rejected', at: '2026-10-27T10:00:01Z', ring_sec: 4.4 },
+      { ext: '136', result: 'no_answer', at: '2026-10-27T10:00:06Z', ring_sec: 15 },
+      { ext: '141', result: 'caller_left', at: '2026-10-27T10:00:21Z', ring_sec: 3 },
+      { ext: '143', result: 'answered', at: '2026-10-27T10:00:30Z', ring_sec: 6 },
+      { ext: '143', result: 'answered', ring_sec: 'soon' },
+    ])
+    expect(attempts.map((a) => [a.ext, a.result, a.ringSec])).toEqual([
+      ['134', 'busy', undefined],
+      ['135', 'rejected', 4],
+      ['136', 'no_answer', 15],
+      ['141', 'caller_left', 3],
+      ['143', 'answered', 6],
+      ['143', 'answered', undefined],
+    ])
+    // the caller hanging up while it rang is not the seller's try
+    expect(attemptsByExtension([call({ callId: '1', transferredTo: '143', transferAttempts: attempts.slice(0, 5) })])).toEqual([
+      { ext: '134', tried: 1, answered: 0, busy: 1, rejected: 0, noAnswer: 0, failed: 0 },
+      { ext: '135', tried: 1, answered: 0, busy: 0, rejected: 1, noAnswer: 0, failed: 0 },
+      { ext: '136', tried: 1, answered: 0, busy: 0, rejected: 0, noAnswer: 1, failed: 0 },
+      { ext: '143', tried: 1, answered: 1, busy: 0, rejected: 0, noAnswer: 0, failed: 0 },
     ])
   })
 })

@@ -87,6 +87,7 @@ interface ReportDto {
     readonly tried: number
     readonly answered: number
     readonly busy: number
+    readonly rejected: number
     readonly noAnswer: number
     readonly failed: number
   }[]
@@ -100,10 +101,12 @@ interface ReportDto {
 type Status = 'loading' | 'error' | 'ready'
 
 const ATTEMPT_LABEL: Readonly<Record<string, string>> = {
-  answered: 'javob berdi',
-  busy: 'band',
-  no_answer: 'javob bermadi',
-  failed: 'xato',
+  answered: 'koʻtardi',
+  busy: 'band (boshqa qoʻngʻiroqda)',
+  rejected: 'rad etdi',
+  no_answer: 'koʻtarmadi',
+  caller_left: 'mijoz kutmadi',
+  failed: 'ATS ulamadi',
 }
 
 const VERDICT: Readonly<Record<Verdict, { readonly label: string; readonly color?: string }>> = {
@@ -454,10 +457,19 @@ function Extensions({ data, status, onDrill }: { readonly data: ReportDto | unde
               <tr style={{ color: 'var(--ink-muted)' }}>
                 <th className="py-1 pr-3 text-left font-medium">Ichki raqam</th>
                 <th className="py-1 pr-3 text-right font-medium">Urinish</th>
-                <th className="py-1 pr-3 text-right font-medium">Javob berdi</th>
-                <th className="py-1 pr-3 text-right font-medium">Band</th>
-                <th className="py-1 pr-3 text-right font-medium">Javob bermadi</th>
-                <th className="py-1 text-right font-medium">Xato</th>
+                <th className="py-1 pr-3 text-right font-medium">Koʻtardi</th>
+                <th className="py-1 pr-3 text-right font-medium" title="Boshqa odam bilan gaplashayotgan edi">
+                  Band
+                </th>
+                <th className="py-1 pr-3 text-right font-medium" title="Jiringladi, qizil tugmani bosib rad etdi">
+                  Rad etdi
+                </th>
+                <th className="py-1 pr-3 text-right font-medium" title="Jiringladi, koʻtarmadi">
+                  Koʻtarmadi
+                </th>
+                <th className="py-1 text-right font-medium" title="Telefon stansiyasi (ATS) ulamadi">
+                  ATS
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -479,6 +491,9 @@ function Extensions({ data, status, onDrill }: { readonly data: ReportDto | unde
                     {share(e.answered, e.tried)}
                   </td>
                   <td className="py-1.5 pr-3 text-right">{share(e.busy, e.tried)}</td>
+                  <td className="py-1.5 pr-3 text-right" style={e.rejected > 0 ? { color: 'var(--status-critical)' } : undefined}>
+                    {share(e.rejected, e.tried)}
+                  </td>
                   <td className="py-1.5 pr-3 text-right">{share(e.noAnswer, e.tried)}</td>
                   <td className="py-1.5 text-right">{formatNumber(e.failed)}</td>
                 </tr>

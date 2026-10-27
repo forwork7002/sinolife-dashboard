@@ -81,7 +81,9 @@ const CALLS = {
       seller: 'Sirojov 115 Davlatbek',
       attempts: [
         { ext: '112', name: 'Karimova 112 Malika', result: 'busy', at: null },
-        { ext: '115', name: 'Sirojov 115 Davlatbek', result: 'answered', at: null },
+        { ext: '114', name: null, result: 'rejected', at: null, ringSec: 4 },
+        { ext: '116', name: null, result: 'no_answer', at: null, ringSec: 15 },
+        { ext: '115', name: 'Sirojov 115 Davlatbek', result: 'answered', at: null, ringSec: 6 },
       ],
       notes: [
         { key: 'problem', value: 'Boʻgʻim' },
@@ -172,7 +174,7 @@ describe('AiRegistratorPage', () => {
   it('lists each lead with its tries, its seller and what followed, and filters the failed ones', async () => {
     renderPage()
     const deals = await screen.findByRole('table', { name: 'Lidlar — bitimma-bitim' })
-    expect(within(deals).getByText('112 band → 115 javob berdi')).toBeTruthy()
+    expect(within(deals).getByText('112 band (boshqa qoʻngʻiroqda) → 115 koʻtardi')).toBeTruthy()
     expect(within(deals).getByText('Buyurtma bor')).toBeTruthy()
     expect(within(deals).getByText('Ulanmadi — sotuvchi javob bermadi')).toBeTruthy()
 
@@ -190,7 +192,11 @@ describe('AiRegistratorPage — every number opens its calls', () => {
     const drawer = await screen.findByRole('dialog')
     expect(await within(drawer).findByText('+998 90 123 45 67')).toBeTruthy()
     expect(within(drawer).getByText('Karimova 112 Malika')).toBeTruthy()
-    expect(within(drawer).getByText('— band')).toBeTruthy()
+    expect(within(drawer).getByText('— band — boshqa qoʻngʻiroqda')).toBeTruthy()
+    // a seller who pressed the red button is not «band», and each try says how long it rang
+    expect(within(drawer).getByText('— rad etdi (qizil tugma) · 4 s da')).toBeTruthy()
+    expect(within(drawer).getByText('— koʻtarmadi · 15 s jiringladi')).toBeTruthy()
+    expect(within(drawer).getByText('— koʻtardi · 6 s da')).toBeTruthy()
     expect(within(drawer).getByText('Samarqand')).toBeTruthy()
     expect(within(drawer).getByText('Hudud:')).toBeTruthy()
     // The agent's English enumerations read in the floor's words.

@@ -27,7 +27,13 @@ interface CallRow {
   readonly outcome: string
   readonly transferredTo: string | null
   readonly seller: string | null
-  readonly attempts: readonly { readonly ext: string; readonly name: string | null; readonly result: string; readonly at: string | null }[]
+  readonly attempts: readonly {
+    readonly ext: string
+    readonly name: string | null
+    readonly result: string
+    readonly at: string | null
+    readonly ringSec?: number | null
+  }[]
   readonly notes: readonly { readonly key: string; readonly value: string }[]
   readonly lead: { readonly pipeline: string | null; readonly stage: string | null; readonly status: string } | null
   readonly verdict: Verdict | null
@@ -79,11 +85,40 @@ const OUTCOME_TONE: Readonly<Record<string, string>> = {
   error: 'var(--status-critical)',
 }
 
-const ATTEMPT: Readonly<Record<string, { readonly label: string; readonly color: string }>> = {
-  answered: { label: 'javob berdi', color: 'var(--status-good)' },
-  busy: { label: 'band', color: 'var(--status-warning)' },
-  no_answer: { label: 'javob bermadi', color: 'var(--status-critical)' },
-  failed: { label: 'xato', color: 'var(--status-critical)' },
+/**
+ * How each try at a seller ended, in the floor's words, and what it means on hover. «Band» is only a seller
+ * on another call; one who was rung and turned it down is «rad etdi», one who let it ring out «koʻtarmadi».
+ */
+const ATTEMPT: Readonly<Record<string, { readonly label: string; readonly color: string; readonly hint: string }>> = {
+  answered: { label: 'koʻtardi', color: 'var(--status-good)', hint: 'Sotuvchi koʻtardi va mijoz unga ulandi' },
+  busy: {
+    label: 'band — boshqa qoʻngʻiroqda',
+    color: 'var(--status-warning)',
+    hint: 'Sotuvchi shu paytda boshqa odam bilan gaplashayotgan edi — unga terilmadi',
+  },
+  rejected: {
+    label: 'rad etdi (qizil tugma)',
+    color: 'var(--status-critical)',
+    hint: 'Telefoni jiringladi, sotuvchi qoʻngʻiroqni rad etdi',
+  },
+  no_answer: {
+    label: 'koʻtarmadi',
+    color: 'var(--status-critical)',
+    hint: 'Telefoni jiringladi, sotuvchi koʻtarmadi',
+  },
+  caller_left: {
+    label: 'mijoz kutmay qoʻydi',
+    color: 'var(--ink-muted)',
+    hint: 'Sotuvchining telefoni jiringlab turganda mijoz goʻshakni qoʻydi',
+  },
+  failed: { label: 'ATS ulamadi', color: 'var(--status-critical)', hint: 'Telefon stansiyasi (ATS) bu raqamga ulamadi' },
+}
+
+/** «koʻtarmadi · 15 s jiringladi», «rad etdi (qizil tugma) · 4 s da», «koʻtardi · 6 s da» — how long it rang, when known. */
+export function attemptLabel(result: string, ringSec: number | null | undefined): string {
+  const label = ATTEMPT[result]?.label ?? result
+  if (ringSec === null || ringSec === undefined || result === 'busy' || result === 'failed') return label
+  return result === 'no_answer' || result === 'caller_left' ? `${label} · ${ringSec} s jiringladi` : `${label} · ${ringSec} s da`
 }
 
 const VERDICT: Readonly<Record<Verdict, { readonly label: string; readonly color?: string }>> = {
@@ -354,21 +389,21 @@ function CallCard({ row }: { row: CallRow }) {
         <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
           <span style={muted}>Ulash:</span>
           {row.attempts.map((a, i) => {
-            const step = ATTEMPT[a.result] ?? { label: a.result, color: 'var(--ink-muted)' }
+            const step = ATTEMPT[a.result] ?? { label: a.result, color: 'var(--ink-muted)', hint: '' }
             return (
               <span key={`${a.ext}-${i}`} className="inline-flex items-center gap-1.5">
                 {i > 0 && <span style={muted}>→</span>}
                 <span
                   className="inline-flex items-center gap-1 rounded-[5px] border px-1.5 py-px"
                   style={{ borderColor: `color-mix(in oklab, ${step.color} 40%, var(--border))`, background: `color-mix(in oklab, ${step.color} 9%, transparent)` }}
-                  title={a.at ? formatDateTime(a.at) : undefined}
+                  title={[a.at ? formatDateTime(a.at) : null, step.hint || null].filter(Boolean).join(' — ') || undefined}
                 >
                   <span className="tabular font-semibold" style={{ color: 'var(--ink-primary)' }}>
                     {a.ext}
                   </span>
                   {a.name && <span style={{ color: 'var(--ink-secondary)' }}>{a.name}</span>}
                   <span className="font-semibold" style={{ color: step.color }}>
-                    — {step.label}
+                    — {attemptLabel(a.result, a.ringSec)}
                   </span>
                 </span>
               </span>
