@@ -338,6 +338,18 @@ export function formatTime(iso: string): string {
   return `${hour}:${minute}`
 }
 
+/** Wall-clock time in Tashkent with seconds, «16:18:06» — for moments seconds apart (a seller's line at a transfer). */
+const APP_ZONE_CLOCK = new Intl.DateTimeFormat('en-GB', {
+  timeZone: APP_TIME_ZONE,
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+})
+export function formatClock(iso: string): string {
+  return APP_ZONE_CLOCK.format(new Date(iso))
+}
+
 export function formatDateTime(iso: string): string {
   const { day, month, hour, minute } = appZoneParts(iso)
   return `${day}-${UZ_MONTHS_SHORT[month]}, ${hour}:${minute}`

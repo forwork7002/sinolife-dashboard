@@ -80,7 +80,21 @@ const CALLS = {
       transferredTo: '115',
       seller: 'Sirojov 115 Davlatbek',
       attempts: [
-        { ext: '112', name: 'Karimova 112 Malika', result: 'busy', at: null },
+        {
+          ext: '112',
+          name: 'Karimova 112 Malika',
+          result: 'busy',
+          at: '2026-10-22T07:00:06.000Z',
+          note: 'On the phone',
+          doing: {
+            kind: 'talking',
+            from: '2026-10-22T06:51:01.000Z',
+            to: '2026-10-22T07:06:23.000Z',
+            direction: 'OUTBOUND',
+            phone: '998971272099',
+            gapSec: null,
+          },
+        },
         { ext: '114', name: null, result: 'rejected', at: null, ringSec: 4 },
         { ext: '116', name: null, result: 'no_answer', at: null, ringSec: 15 },
         { ext: '115', name: 'Sirojov 115 Davlatbek', result: 'answered', at: null, ringSec: 6 },
@@ -197,6 +211,10 @@ describe('AiRegistratorPage — every number opens its calls', () => {
     expect(within(drawer).getByText('— rad etdi (qizil tugma) · 4 s da')).toBeTruthy()
     expect(within(drawer).getByText('— koʻtarmadi · 15 s jiringladi')).toBeTruthy()
     expect(within(drawer).getByText('— koʻtardi · 6 s da')).toBeTruthy()
+    // and what the busy seller was doing then, from their own Bitrix24 calls
+    expect(
+      within(drawer).getByText('— mijoz bilan gaplashayotgan edi: 11:51:01–12:06:23, chiquvchi, +998 97 127 20 99'),
+    ).toBeTruthy()
     expect(within(drawer).getByText('Samarqand')).toBeTruthy()
     expect(within(drawer).getByText('Hudud:')).toBeTruthy()
     // The agent's English enumerations read in the floor's words.

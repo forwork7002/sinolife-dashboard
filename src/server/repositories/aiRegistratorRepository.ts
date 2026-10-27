@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@/generated/prisma/client'
-import { type AiCall, type Handoff, type SaleDeal, readTransferAttempts } from '@/server/domain/aiRegistrator/aiRegistrator'
+import { type AiCall, type Handoff, type SaleDeal, type SellerCall, readTransferAttempts } from '@/server/domain/aiRegistrator/aiRegistrator'
 import type { AiCallPush } from '@/server/integrations/aiRegistrator/ingest'
 
 /** The Регистрация deal a call or a hand-off is about, as the store holds it now. */
@@ -50,6 +50,27 @@ export class AiRegistratorRepository {
       create: { callId: call.callId, ...data },
       update: data,
     })
+  }
+
+  /**
+   * The sellers' own Bitrix24 calls that could cover a moment in [from, to]: started up to three hours before
+   * `from` (the longest calls run that long) and up to a minute after `to`.
+   */
+  async sellerCalls(employeeIds: readonly string[], from: Date, to: Date): Promise<SellerCall[]> {
+    if (employeeIds.length === 0) return []
+    const rows = await this.prisma.callRecord.findMany({
+      where: {
+        employeeId: { in: [...employeeIds] },
+        startedAt: { gte: new Date(from.getTime() - 3 * 3_600_000), lte: new Date(to.getTime() + 60_000) },
+      },
+      select: { employeeId: true, direction: true, phoneNumber: true, startedAt: true, durationSec: true, connected: true },
+      orderBy: { startedAt: 'asc' },
+    })
+    return rows.flatMap((r) =>
+      r.employeeId
+        ? [{ employeeId: r.employeeId, direction: r.direction, phone: r.phoneNumber, startedAt: r.startedAt, durationSec: r.durationSec, connected: r.connected }]
+        : [],
+    )
   }
 
   /** Every call that STARTED in [start, end), tests included (the caller sets them apart). */

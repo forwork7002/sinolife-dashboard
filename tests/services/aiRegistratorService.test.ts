@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { AiCall, Handoff, SaleDeal } from '@/server/domain/aiRegistrator/aiRegistrator'
+import type { AiCall, Handoff, SaleDeal, SellerCall } from '@/server/domain/aiRegistrator/aiRegistrator'
 import type { Period } from '@/server/domain/period/period'
 import type { AiRegistratorRepository, ClassicLeadRow, LeadDealRow } from '@/server/repositories/aiRegistratorRepository'
 import { AiRegistratorService } from '@/server/services/aiRegistratorService'
@@ -61,6 +61,7 @@ function service(data: {
   classic: ClassicLeadRow[]
   sales: SaleDeal[]
   history?: Handoff[]
+  sellerCalls?: SellerCall[]
 }) {
   const repo = {
     calls: async () => data.calls,
@@ -73,6 +74,7 @@ function service(data: {
     leadDeals: async (ids: readonly string[]) => new Map(data.leads.filter((l) => ids.includes(l.externalId)).map((l) => [l.externalId, l])),
     handoffs: async () => data.history ?? [],
     sales: async () => data.sales,
+    sellerCalls: async (ids: readonly string[]) => (data.sellerCalls ?? []).filter((c) => ids.includes(c.employeeId)),
   } as unknown as AiRegistratorRepository
   return new AiRegistratorService(repo, 'UZS')
 }
@@ -209,5 +211,39 @@ describe('AiRegistratorService.calls', () => {
     const capped = await svc.calls(window, { kind: 'all', limit: 1 }, at(5 * HOUR))
     expect(capped).toMatchObject({ total: 2 })
     expect(capped.rows).toHaveLength(1)
+  })
+
+  it('tells what each seller who did not take the caller was doing then, from their own calls', async () => {
+    const svc = service({
+      calls: [
+        call({
+          callId: 'a',
+          transferAttempts: [
+            { ext: '112', result: 'busy', at: at(60_000), note: 'On the phone' },
+            { ext: '200', result: 'no_answer', at: at(61_000), ringSec: 15 },
+            { ext: '115', result: 'answered', at: at(76_000), ringSec: 5 },
+          ],
+        }),
+      ],
+      leads: [lead('1', 'cu1')],
+      classic: [],
+      sales: [],
+      sellerCalls: [
+        { employeeId: 'e112', direction: 'OUTBOUND', phone: '998901112233', startedAt: at(-9 * 60_000), durationSec: 900, connected: true },
+        { employeeId: 'e115', direction: 'INBOUND', phone: '998907778899', startedAt: at(0), durationSec: 30, connected: true },
+      ],
+    })
+    // its own window: the drawer's calls are cached per window across tests
+    const own: Period = { ...window, start: new Date('2026-10-19T19:00:00Z') }
+    const [row] = (await svc.calls(own, { kind: 'all', limit: 100 }, at(5 * HOUR))).rows
+    expect(row!.attempts.map((x) => [x.ext, x.doing?.kind ?? null, x.note])).toEqual([
+      ['112', 'talking', 'On the phone'],
+      ['200', 'none', null], // no call of theirs near it: an internal call or other work
+      ['115', null, null], // the one who answered is not looked up
+    ])
+    expect(row!.attempts[0]!.doing).toMatchObject({ direction: 'OUTBOUND', phone: '998901112233', from: at(-9 * 60_000).toISOString() })
+    // the same moment read minutes later: the call sync may not have read their calls yet
+    const fresh = (await svc.calls(own, { kind: 'all', limit: 100 }, at(5 * 60_000))).rows[0]!
+    expect(fresh.attempts[1]!.doing?.kind).toBe('pending')
   })
 })

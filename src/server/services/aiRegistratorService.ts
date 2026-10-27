@@ -9,9 +9,12 @@ import {
   type LeadOutcome,
   type LeadVerdict,
   type SaleDeal,
+  type SellerCall,
+  type TransferAttempt,
   FOLLOW_DAYS,
   HANDOFF_SLACK_MS,
   MIN_LEADS_TO_COMPARE,
+  activityAt,
   aiTransfers,
   assignSales,
   attemptsByExtension,
@@ -56,6 +59,35 @@ export interface AiSellerRowDto {
   readonly ai: AiGroupDto
   readonly classic: AiGroupDto
 }
+
+/**
+ * What the seller was doing when the agent found them busy or rang them, from their own Bitrix24 calls
+ * (`activityAt`); `pending` — the moment is too recent for the call sync to have read their calls yet.
+ */
+export interface SellerDoingDto {
+  readonly kind: 'talking' | 'dialing' | 'ended' | 'starting' | 'none' | 'pending'
+  readonly from: string | null
+  readonly to: string | null
+  readonly direction: string | null
+  readonly phone: string | null
+  readonly gapSec: number | null
+}
+
+export interface AiAttemptDto {
+  readonly ext: string
+  readonly name: string | null
+  readonly result: string
+  readonly at: string | null
+  readonly ringSec: number | null
+  /** The ATS's word for a busy line («On the phone», «Ringing», «On hold»), since when, and when it came free. */
+  readonly note: string | null
+  readonly since: string | null
+  readonly freedAt: string | null
+  readonly doing: SellerDoingDto | null
+}
+
+/** Bitrix24 calls reach `call_record` within a sync pass or two; younger moments read «not yet». */
+const SELLER_CALLS_SETTLE_MS = 20 * 60_000
 
 export interface AiExtensionDto extends ExtensionAttempts {
   readonly name: string | null
@@ -123,7 +155,7 @@ export interface AiCallRowDto {
   /** The seller the answering extension resolves to by its floor number. */
   readonly seller: string | null
   /** Every extension tried, in order, each with the seller it resolves to. */
-  readonly attempts: readonly { readonly ext: string; readonly name: string | null; readonly result: string; readonly at: string | null; readonly ringSec: number | null }[]
+  readonly attempts: readonly AiAttemptDto[]
   /** What the agent wrote down, field by field, as given. */
   readonly notes: readonly { readonly key: string; readonly value: string }[]
   /** The Регистрация deal now; null until the sync has read it. */
@@ -201,7 +233,38 @@ export class AiRegistratorService {
       sellerKeyOf,
     )
     const page = picked.slice(0, query.limit)
-    const leads = await this.repository.leadDeals([...new Set(page.map((c) => c.dealExternalId))])
+    // every try that did not put the caller through, with the seller it resolves to: what were they doing then
+    const looked = page.flatMap((c) => attemptsOf(c)).filter((a) => a.result !== 'answered' && a.at !== null && employeeOfExt(a.ext))
+    const moments = looked.map((a) => (a.at as Date).getTime())
+    const [leads, sellerCalls] = await Promise.all([
+      this.repository.leadDeals([...new Set(page.map((c) => c.dealExternalId))]),
+      looked.length > 0
+        ? this.repository.sellerCalls(
+            [...new Set(looked.map((a) => employeeOfExt(a.ext) as string))],
+            new Date(Math.min(...moments)),
+            new Date(Math.max(...moments)),
+          )
+        : Promise.resolve([]),
+    ])
+    const callsOf = new Map<string, SellerCall[]>()
+    for (const c of sellerCalls) callsOf.set(c.employeeId, [...(callsOf.get(c.employeeId) ?? []), c])
+    const doingOf = (a: TransferAttempt): SellerDoingDto | null => {
+      const id = a.result === 'answered' || a.at === null ? null : employeeOfExt(a.ext)
+      if (!id || a.at === null) return null
+      const act = activityAt(callsOf.get(id) ?? [], a.at)
+      if (act.kind === 'none') {
+        const recent = now.getTime() - a.at.getTime() < SELLER_CALLS_SETTLE_MS
+        return { kind: recent ? 'pending' : 'none', from: null, to: null, direction: null, phone: null, gapSec: null }
+      }
+      return {
+        kind: act.kind,
+        from: act.call.startedAt.toISOString(),
+        to: act.endsAt.toISOString(),
+        direction: act.call.direction,
+        phone: act.call.phone,
+        gapSec: 'gapSec' in act ? act.gapSec : null,
+      }
+    }
     const sellerOf = (ext: string | null) => {
       const id = ext ? employeeOfExt(ext) : null
       return id ? (nameOf.get(id) ?? null) : null
@@ -229,6 +292,10 @@ export class AiRegistratorService {
             result: a.result,
             at: a.at?.toISOString() ?? null,
             ringSec: a.ringSec ?? null,
+            note: a.note ?? null,
+            since: a.since?.toISOString() ?? null,
+            freedAt: a.freedAt?.toISOString() ?? null,
+            doing: doingOf(a),
           })),
           notes: notesOf(call.result),
           lead: lead ? { pipeline: lead.pipeline, stage: lead.stage, status: lead.status } : null,

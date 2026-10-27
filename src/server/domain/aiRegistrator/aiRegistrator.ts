@@ -75,6 +75,67 @@ export interface TransferAttempt {
   readonly at: Date | null
   /** How long the seller's phone rang before this ended (answered, turned down or rang out); absent on older calls. */
   readonly ringSec?: number
+  /** A busy seller's line as the ATS put it — «On the phone», «Ringing», «On hold» — and since when (agent, 2026-10-27). */
+  readonly note?: string
+  readonly since?: Date
+  /** A busy seller whose line came free while the same transfer was still looking. */
+  readonly freedAt?: Date
+}
+
+/** One of the seller's own calls in Bitrix24 (`call_record`), for «what were they doing then». */
+export interface SellerCall {
+  readonly employeeId: string
+  readonly direction: 'INBOUND' | 'OUTBOUND' | 'CALLBACK'
+  readonly phone: string | null
+  readonly startedAt: Date
+  readonly durationSec: number
+  readonly connected: boolean
+}
+
+/**
+ * What a seller was doing at the moment the agent found them busy or rang them, from their own Bitrix24 calls:
+ * `talking` — a connected call spans the moment; `dialing` — an unanswered call started up to `RING_WINDOW_SEC`
+ * before it; `ended` / `starting` — the nearest call ended or began within `NEAR_SEC` of it (the ATS's line state
+ * lags a few seconds); `none` — no call near it in Bitrix24, which keeps only customer calls through the ATS (an
+ * internal call between extensions is not there). Measured 2026-10-27 on 125 «band» marks of 24–27.10: 110 talking
+ * or dialing, 10 within 60 s, 5 none.
+ */
+export type SellerActivity =
+  | { readonly kind: 'talking' | 'dialing'; readonly call: SellerCall; readonly endsAt: Date }
+  | { readonly kind: 'ended' | 'starting'; readonly call: SellerCall; readonly endsAt: Date; readonly gapSec: number }
+  | { readonly kind: 'none' }
+
+const RING_WINDOW_SEC = 60
+const NEAR_SEC = 60
+/** `CALL_DURATION` is talk time; the ATS's state and Bitrix24's clock may differ by a second or two. */
+const SLACK_SEC = 3
+
+export function activityAt(calls: readonly SellerCall[], at: Date): SellerActivity {
+  const t = at.getTime()
+  const endOf = (c: SellerCall) => new Date(c.startedAt.getTime() + c.durationSec * 1000)
+  const spanning = calls.find(
+    (c) => c.connected && c.startedAt.getTime() - SLACK_SEC * 1000 <= t && t <= endOf(c).getTime() + SLACK_SEC * 1000,
+  )
+  if (spanning) return { kind: 'talking', call: spanning, endsAt: endOf(spanning) }
+  const ringing = calls
+    .filter((c) => !c.connected && c.startedAt.getTime() <= t + SLACK_SEC * 1000 && t - c.startedAt.getTime() <= RING_WINDOW_SEC * 1000)
+    .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime())[0]
+  if (ringing) return { kind: 'dialing', call: ringing, endsAt: endOf(ringing) }
+  let best: SellerActivity = { kind: 'none' }
+  let bestGap = NEAR_SEC + 1
+  for (const c of calls) {
+    const ended = Math.round((t - endOf(c).getTime()) / 1000)
+    const starts = Math.round((c.startedAt.getTime() - t) / 1000)
+    if (c.connected && ended > 0 && ended < bestGap) {
+      best = { kind: 'ended', call: c, endsAt: endOf(c), gapSec: ended }
+      bestGap = ended
+    }
+    if (starts > 0 && starts < bestGap) {
+      best = { kind: 'starting', call: c, endsAt: endOf(c), gapSec: starts }
+      bestGap = starts
+    }
+  }
+  return best
 }
 
 /** One stored call, as the screen reads it. */
@@ -104,15 +165,23 @@ export function readTransferAttempts(json: unknown): TransferAttempt[] {
   const out: TransferAttempt[] = []
   for (const item of json) {
     if (typeof item !== 'object' || item === null) continue
-    const { ext, result, at, ring_sec: ring } = item as Record<string, unknown>
+    const { ext, result, at, ring_sec: ring, note, since, freed_at: freed } = item as Record<string, unknown>
     if (typeof ext !== 'string' || ext.trim() === '') continue
     if (typeof result !== 'string' || !(TRANSFER_RESULTS as readonly string[]).includes(result)) continue
-    const when = typeof at === 'string' ? new Date(at) : null
+    const date = (v: unknown) => {
+      const d = typeof v === 'string' ? new Date(v) : null
+      return d && !Number.isNaN(d.getTime()) ? d : null
+    }
+    const sinceAt = date(since)
+    const freedAt = date(freed)
     out.push({
       ext: ext.trim(),
       result: result as TransferResult,
-      at: when && !Number.isNaN(when.getTime()) ? when : null,
+      at: date(at),
       ...(typeof ring === 'number' && Number.isFinite(ring) && ring >= 0 ? { ringSec: Math.round(ring) } : {}),
+      ...(typeof note === 'string' && note.trim() !== '' ? { note: note.trim() } : {}),
+      ...(sinceAt ? { since: sinceAt } : {}),
+      ...(freedAt ? { freedAt } : {}),
     })
   }
   return out

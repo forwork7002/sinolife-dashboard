@@ -7,6 +7,7 @@ import {
   HANDOFF_SLACK_MS,
   aiTransfers,
   assignSales,
+  activityAt,
   attemptsByExtension,
   callFunnel,
   groupStats,
@@ -154,6 +155,51 @@ describe('transfer attempts', () => {
       { ext: '136', tried: 1, answered: 0, busy: 0, rejected: 0, noAnswer: 1, failed: 0 },
       { ext: '143', tried: 1, answered: 1, busy: 0, rejected: 0, noAnswer: 0, failed: 0 },
     ])
+  })
+})
+
+describe('what a seller was doing when the agent found them busy', () => {
+  // 26.10 at 16:18:06 Tashkent the agent found ten sellers busy; Bitrix24 had each of them on a customer call.
+  const T = new Date('2026-10-26T11:18:06Z')
+  const sc = (startIso: string, durationSec: number, connected = true, direction: 'INBOUND' | 'OUTBOUND' = 'OUTBOUND') => ({
+    employeeId: 'e',
+    direction,
+    phone: '+998901112233',
+    startedAt: new Date(startIso),
+    durationSec,
+    connected,
+  })
+
+  it('reads a connected call that spans the moment as talking, with when it ended', () => {
+    const act = activityAt([sc('2026-10-26T11:09:01Z', 922)], T) // 108: 16:09:01–16:24:23
+    expect(act.kind).toBe('talking')
+    expect(act.kind === 'talking' && act.endsAt.toISOString()).toBe('2026-10-26T11:24:23.000Z')
+    // 123: hung up ten seconds after the check — still talking at it
+    expect(activityAt([sc('2026-10-26T11:01:09Z', 1027)], T).kind).toBe('talking')
+  })
+
+  it('reads a call not yet answered that started just before as dialing', () => {
+    expect(activityAt([sc('2026-10-26T11:17:50Z', 0, false)], T).kind).toBe('dialing')
+    expect(activityAt([sc('2026-10-26T11:16:00Z', 0, false)], T).kind).toBe('none') // two minutes before: over
+  })
+
+  it('names a call that had just ended or was about to start, and how far off', () => {
+    const ended = activityAt([sc('2026-10-26T11:10:00Z', 476)], T) // ended 16:17:56, 10 s before
+    expect(ended).toMatchObject({ kind: 'ended', gapSec: 10 })
+    const starting = activityAt([sc('2026-10-26T11:18:22Z', 600)], T)
+    expect(starting).toMatchObject({ kind: 'starting', gapSec: 16 })
+  })
+
+  it('says none when Bitrix24 has no call near the moment', () => {
+    expect(activityAt([sc('2026-10-26T10:00:00Z', 60), sc('2026-10-26T11:30:00Z', 60)], T)).toEqual({ kind: 'none' })
+    expect(activityAt([], T)).toEqual({ kind: 'none' })
+  })
+
+  it('keeps the ATS line word, since when and when it came free', () => {
+    const [a] = readTransferAttempts([
+      { ext: '136', result: 'busy', at: '2026-10-27T11:00:00Z', note: 'Ringing', since: '2026-10-27T10:59:58Z', freed_at: '2026-10-27T11:00:09Z' },
+    ])
+    expect(a).toMatchObject({ note: 'Ringing', since: new Date('2026-10-27T10:59:58Z'), freedAt: new Date('2026-10-27T11:00:09Z') })
   })
 })
 

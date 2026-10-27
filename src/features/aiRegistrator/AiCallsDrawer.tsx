@@ -10,7 +10,7 @@ import { SearchInput } from '@/components/ui/Controls'
 import { MultiplyGlyph } from '@/components/ui/Icons'
 import { bitrixDealUrl } from '@/features/target/targetApi'
 import { ApiClientError, apiGet } from '@/lib/api'
-import { formatCompactUzs, formatDateTime, formatNumber, formatUzs } from '@/lib/format'
+import { formatClock, formatCompactUzs, formatDateTime, formatNumber, formatUzs } from '@/lib/format'
 
 /* Mirrors `AiCallsDto` / `AiCallRowDto` in `src/server/services/aiRegistratorService.ts` — nothing checks the mirror. */
 type Verdict = 'sold' | 'ordered' | 'with_seller' | 'lost' | 'no_deal' | 'not_transferred' | 'not_synced'
@@ -33,6 +33,10 @@ interface CallRow {
     readonly result: string
     readonly at: string | null
     readonly ringSec?: number | null
+    readonly note?: string | null
+    readonly since?: string | null
+    readonly freedAt?: string | null
+    readonly doing?: SellerDoing | null
   }[]
   readonly notes: readonly { readonly key: string; readonly value: string }[]
   readonly lead: { readonly pipeline: string | null; readonly stage: string | null; readonly status: string } | null
@@ -114,8 +118,51 @@ const ATTEMPT: Readonly<Record<string, { readonly label: string; readonly color:
   failed: { label: 'ATS ulamadi', color: 'var(--status-critical)', hint: 'Telefon stansiyasi (ATS) bu raqamga ulamadi' },
 }
 
+/** What the seller was doing at that moment, from their own Bitrix24 calls (server `activityAt`). */
+export interface SellerDoing {
+  readonly kind: 'talking' | 'dialing' | 'ended' | 'starting' | 'none' | 'pending'
+  readonly from: string | null
+  readonly to: string | null
+  readonly direction: string | null
+  readonly phone: string | null
+  readonly gapSec: number | null
+}
+
+const DIRECTION: Readonly<Record<string, string>> = { INBOUND: 'kiruvchi', OUTBOUND: 'chiquvchi', CALLBACK: 'qayta qoʻngʻiroq' }
+
+/**
+ * «mijoz bilan gaplashayotgan edi: 16:09:01–16:24:23, chiquvchi, +998 …» — the owner, 2026-10-27: «u vaqtda sotuvchi
+ * nima qilayotgandi — mijoz bilan gaplashayotganmidi yoki boshqa ish qilayotganmidi, aniq koʻrishim kerak».
+ */
+export function doingText(d: SellerDoing): string {
+  const call = [d.direction ? (DIRECTION[d.direction] ?? d.direction) : null, (d.phone ? phoneText(d.phone) : null)].filter(Boolean).join(', ')
+  const tail = call ? `, ${call}` : ''
+  switch (d.kind) {
+    case 'talking':
+      return `mijoz bilan gaplashayotgan edi: ${d.from ? formatClock(d.from) : '?'}–${d.to ? formatClock(d.to) : '?'}${tail}`
+    case 'dialing':
+      return `mijozga qoʻngʻiroq qilayotgan edi (${d.from ? formatClock(d.from) : '?'} dan, javob boʻlmagan)${tail}`
+    case 'ended':
+      return `qoʻngʻirogʻi ${d.gapSec ?? '?'} s oldin tugagan (${d.from ? formatClock(d.from) : '?'}–${d.to ? formatClock(d.to) : '?'}${tail})`
+    case 'starting':
+      return `${d.gapSec ?? '?'} s keyin qoʻngʻiroq boshlagan (${d.from ? formatClock(d.from) : '?'}${tail})`
+    case 'pending':
+      return 'Bitrix24 qoʻngʻiroqlari hali kelmadi — 20 daqiqadan keyin koʻrinadi'
+    default:
+      return 'Bitrix24da oʻsha paytda qoʻngʻiroq yoʻq — ichki (sotuvchilararo) qoʻngʻiroq yoki boshqa ish'
+  }
+}
+
+/** The ATS's own word for a busy line, when it is not plain «talking». */
+const LINE_NOTE: Readonly<Record<string, string>> = {
+  ringing: 'telefoni jiringlayotgan edi',
+  'on hold': 'qoʻngʻiroqni kutishga qoʻygan edi',
+}
+
 /** «koʻtarmadi · 15 s jiringladi», «rad etdi (qizil tugma) · 4 s da», «koʻtardi · 6 s da» — how long it rang, when known. */
-export function attemptLabel(result: string, ringSec: number | null | undefined): string {
+export function attemptLabel(result: string, ringSec: number | null | undefined, note?: string | null): string {
+  const lineNote = result === 'busy' && note ? LINE_NOTE[note.toLowerCase()] : undefined
+  if (lineNote) return `band — ${lineNote}`
   const label = ATTEMPT[result]?.label ?? result
   if (ringSec === null || ringSec === undefined || result === 'busy' || result === 'failed') return label
   return result === 'no_answer' || result === 'caller_left' ? `${label} · ${ringSec} s jiringladi` : `${label} · ${ringSec} s da`
@@ -403,13 +450,30 @@ function CallCard({ row }: { row: CallRow }) {
                   </span>
                   {a.name && <span style={{ color: 'var(--ink-secondary)' }}>{a.name}</span>}
                   <span className="font-semibold" style={{ color: step.color }}>
-                    — {attemptLabel(a.result, a.ringSec)}
+                    — {attemptLabel(a.result, a.ringSec, a.note)}
                   </span>
                 </span>
               </span>
             )
           })}
         </div>
+      )}
+
+      {row.attempts.some((a) => a.doing || a.freedAt) && (
+        <ul className="mt-1 space-y-0.5 pl-1" aria-label="Sotuvchilar oʻsha paytda">
+          {row.attempts.map((a, i) =>
+            a.doing || a.freedAt ? (
+              <li key={`doing-${a.ext}-${i}`} style={{ color: 'var(--ink-secondary)' }}>
+                <span className="tabular font-semibold" style={{ color: 'var(--ink-primary)' }}>
+                  {a.ext}
+                </span>
+                {a.at && <span style={muted}> · {formatClock(a.at)}</span>}
+                {a.doing && <span> — {doingText(a.doing)}</span>}
+                {a.freedAt && <span style={muted}> · {formatClock(a.freedAt)} da boʻshadi</span>}
+              </li>
+            ) : null,
+          )}
+        </ul>
       )}
 
       {row.notes.length > 0 && (

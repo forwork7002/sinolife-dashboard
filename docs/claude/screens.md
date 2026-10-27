@@ -76,6 +76,17 @@ Per-screen traps worth knowing before you touch one:
   seller turned it down, `no_answer` = rang out, `caller_left` = the caller
   hung up while it rang (not counted against the extension), `failed` = the
   ATS refused; each try may carry `ring_sec`, printed «· 15 s jiringladi».
+  A busy try also carries the ATS's word for the line (`note`: «On the phone»,
+  «Ringing» → «band — telefoni jiringlayotgan edi», «On hold»), `since` and
+  `freed_at` (came free while the caller waited). Under the chips the drawer
+  says WHAT EACH SELLER WAS DOING THEN (the owner, 2026-10-27: «u vaqtda
+  sotuvchi nima qilayotgandi … aniq ko'rishim kerak»): `activityAt` over the
+  seller's own `call_record` rows (resolved by floor number) — talking (a
+  connected call spans the moment, ±3 s), dialing (unanswered, started ≤60 s
+  before), ended / starting (≤60 s off — the ATS state lags), none (Bitrix24
+  keeps only customer calls through the ATS, not ext-to-ext ones), pending
+  (<20 min old, the call sync may not have read it). The answered try is not
+  looked up. Checked by hand on 26.10 16:18:06: all ten «band» on a call.
   Every definition is in `domain/aiRegistrator/aiRegistrator.ts`: the two
   cohorts are dated by their HAND-OFF (AI: the transfer call's start; KLASSIK:
   «Сделка успешна» of a lead the agent never called — a lead the AI talked to

@@ -39,6 +39,9 @@ export const aiCallSchema = z.object({
         result: z.enum(TRANSFER_RESULTS),
         at: instant.nullable().optional(),
         ring_sec: z.number().min(0).max(3_600).nullable().optional(),
+        note: z.string().trim().max(60).nullable().optional(),
+        since: instant.nullable().optional(),
+        freed_at: instant.nullable().optional(),
       }),
     )
     .max(20)
