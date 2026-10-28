@@ -994,6 +994,31 @@ Per-screen traps worth knowing before you touch one:
   production for August 2026: 3 222 entered, 2 873 Тасдиқланди (89.2%), 331
   Тасдиқланмади, 17 Тасдиқланмай чиқди, 1 still queued. Per-ROP was offered
   and DECLINED («faqat kompaniya boʻyicha») — do not add the columns unasked.
+- **«Kunlar boʻyicha» and Roistat read the closed months from the worker's
+  store (2026-10-28, T046)** — `RoistatService`, `month_scan`. Production,
+  27–28.10: sales-days «Shu yil» 500 at 20.1 s, «Shu oy» 500 at 20.3 s (first
+  reader of the morning), «Oʻtgan oy» overview 18.7 s. A window is the sum of
+  its months (`monthPieces`; `RoistatRepository.bitrix` learns a short name per
+  month, `formAliasByMonthCteSql`; the FAKT queue cohort counts an order on its
+  last arrival, in one month): the closed whole months come stored, the rest is
+  ONE live read per run of months the store did not answer. «Oʻtgan oy» alone
+  is the stored answer to the statement it ran. A stored month is served while
+  built after the month closed and under 6 h old (2 days once settled); the
+  previous window's same-age read takes a stored month only if it was settled
+  at that age. The running month's live read is shared by «Shu oy» and «Shu
+  yil» (`liveScanCache`, 60 s), its FAKT borrowed from the RNP sheet's warmed
+  memo (`warmMonthFakt`, ≤ 8 min), and «Shu oy» «Kunlar boʻyicha» is warmed on
+  the warm lane every 4 min of the working day. SAME ANSWER, measured in PGlite
+  over every migration and 59 000 seeded deals against origin/main's code: every
+  window inside one month and every «Hammasi» day / total read byte-identical
+  (rows and DTO); stored + live ≡ live everywhere. THE ONE DELIBERATE CHANGE:
+  across months, a «Ген лид» lead known only by a short name takes its own
+  month's reading (as «Oʻtgan oy» names it), not the whole window's — the form
+  and product cuts and the brand switch of a multi-month window can move such
+  a lead; in the seed, one short name shared by two forms moved 1–2 % of
+  those cuts' rows. The worker stores a month folded to its brands
+  (`foldBitrixToBrand`, 7 286 → 1 317 rows in the seed) and its day / total
+  sets apart (`bitrix-days`), which is all «Kunlar boʻyicha» reads.
 - **Sverka** — added 2026-10-06 («bitrix24 bilan moy skladni solishtiramiz …
   mahsulot … fakt 2 va fakt 1»). MoySklad is a SECOND SOURCE read directly:
   `importMoyskladOrders` (`src/server/integrations/moysklad`, GET only — the

@@ -226,8 +226,26 @@ export function staleWhileRevalidate<T>(
     has(key: string): boolean {
       return entries.has(key)
     },
+    /** The answer `key` holds if it was built under `maxAgeMs` ago — nothing built, nothing started; else null. */
+    peek(key: string, maxAgeMs: number): Promise<T> | null {
+      const found = entries.get(key)
+      return found && clock() - found.at < maxAgeMs ? found.value : null
+    },
   }
   return memo
+}
+
+/**
+ * The running month's queue-cohort team-days — FAKT 1 / FAKT 2 by team and
+ * day — from the sheet's own memo, as the warmer built it under `maxAgeMs`
+ * ago; null when it holds none that young (2026-10-28). «Kunlar boʻyicha»
+ * reads the same rows for the same month (`RoistatService`, the month's
+ * `rnpTeamDays` to date is its whole month: nothing arrives in the future),
+ * so it borrows this one instead of running the same scan a second time.
+ */
+export function warmMonthFakt(month: string, maxAgeMs: number): Promise<RnpTeamDayRow[]> | null {
+  const rows = monthCache.peek(month, maxAgeMs)
+  return rows === null ? null : rows.then((r) => r.fakt)
 }
 
 export class RnpService {

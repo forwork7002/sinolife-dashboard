@@ -149,22 +149,29 @@ function currentNameBrandSql(name: string): string {
  * every place that reads it, and the CTE cost five times the strict one
  * (measured on PostgreSQL 18 over 60 000 titles).
  */
-export function formAliasOverSql(rows: string): string {
+export function formAliasOverSql(rows: string, bucketed = false): string {
+  /*
+    `bucketed`: `rows` carries a `bucket` too, and each bucket learns its own
+    short names — every column, group and partition below is per bucket
+    (`formAliasByMonthCteSql`). Without it the statement is the one it always was.
+  */
+  const b = (alias: string) => (bucketed ? `${alias}.bucket, ` : '')
+  const by = (alias: string) => (bucketed ? `${alias}.bucket, ${alias}.sd` : `${alias}.sd`)
   return `form_alias AS MATERIALIZED (
-        SELECT fan.sd, fan.title
+        SELECT ${b('fan')}fan.sd, fan.title
         FROM (
-          SELECT fg.sd, fg.title, fg.deals,
-                 sum(fg.deals) OVER (PARTITION BY fg.sd) AS named,
-                 row_number() OVER (PARTITION BY fg.sd ORDER BY fg.deals DESC, fg.form) AS place,
+          SELECT ${b('fg')}fg.sd, fg.title, fg.deals,
+                 sum(fg.deals) OVER (PARTITION BY ${by('fg')}) AS named,
+                 row_number() OVER (PARTITION BY ${by('fg')} ORDER BY fg.deals DESC, fg.form) AS place,
                  -- min / max skip a form that names no brand: it contradicts none.
-                 min(fg.brand) OVER (PARTITION BY fg.sd) = max(fg.brand) OVER (PARTITION BY fg.sd) AS one_brand
+                 min(fg.brand) OVER (PARTITION BY ${by('fg')}) = max(fg.brand) OVER (PARTITION BY ${by('fg')}) AS one_brand
           FROM (
-            SELECT fdn.sd, fdn.form, ${currentNameBrandSql('fdn.form')} AS brand, count(*) AS deals,
+            SELECT ${b('fdn')}fdn.sd, fdn.form, ${currentNameBrandSql('fdn.form')} AS brand, count(*) AS deals,
                    COALESCE(min(fdn.title) FILTER (WHERE fdn.folded = fdn.form), min(fdn.title)) AS title
             FROM (
-              SELECT fdf.sd, fdf.title, fdf.folded, ${renamedFormNameSql('fdf.folded')} AS form
+              SELECT ${b('fdf')}fdf.sd, fdf.title, fdf.folded, ${renamedFormNameSql('fdf.folded')} AS form
               FROM (
-                SELECT fd.sd, fd.title, ${foldedFormNameSql(titleFormNameSql('fd.title'))} AS folded
+                SELECT ${b('fd')}fd.sd, fd.title, ${foldedFormNameSql(titleFormNameSql('fd.title'))} AS folded
                 FROM ${rows}
                 WHERE fd.title LIKE '%CRM-форм%' AND fd.sd IS NOT NULL
                 OFFSET 0
@@ -173,7 +180,7 @@ export function formAliasOverSql(rows: string): string {
               WHERE fdf.folded IS NOT NULL
               OFFSET 0
             ) fdn
-            GROUP BY fdn.sd, fdn.form
+            GROUP BY ${by('fdn')}, fdn.form
           ) fg
         ) fan
         WHERE fan.place = 1 AND (fan.deals = fan.named OR (fan.one_brand AND fan.deals * 20 >= fan.named * 19))
@@ -189,6 +196,43 @@ export function formAliasCteSql(from: string, to: string): string {
           WHERE ad."createdAtSource" >= ${from} AND ad."createdAtSource" < ${to}
             AND ad."title" LIKE '%CRM-форм%'
         ) fd`)
+}
+
+/**
+ * THE SAME CTE, ONE ALIAS TABLE PER CALENDAR MONTH OF THE WINDOW (2026-10-28,
+ * Roistat). A window's short names are learned from the deals of [its start −
+ * `ORIGIN_LEAD_DAYS` days, its scan end), so a lead of September read in
+ * «Shu yil» was named from a year of deals and the same lead read in «Oʻtgan
+ * oy» from two months of them — and a year was not the sum of its months.
+ * Here each month the window touches (`buckets`, `YYYY-MM`) learns from its
+ * own [piece start − `ORIGIN_LEAD_DAYS` days, the earlier of `to` and piece
+ * end + `ORIGIN_LEAD_DAYS` days) — exactly what that month's piece learns
+ * read as a window of its own — so a stored month and a live one add up to
+ * the window. A window inside one month never comes here (`RoistatRepository.bitrix`).
+ * Each piece's bounds are instants the server computed, written as literals —
+ * UTC wall times, as the column stores them.
+ */
+export function formAliasByMonthCteSql(
+  buckets: readonly { readonly bucket: string; readonly from: Date; readonly to: Date }[],
+  from: string,
+  to: string,
+): string {
+  const values = buckets
+    // TIMESTAMP, never TIMESTAMPTZ: the column's own type, so `to` keeps the type the statement gives it everywhere else.
+    .map((p) => `('${p.bucket}', '${p.from.toISOString()}'::timestamp, LEAST(${to}, '${p.to.toISOString()}'::timestamp))`)
+    .join(', ')
+  return formAliasOverSql(
+    `(
+          SELECT bk.bucket, ${sourceDescriptionSql('ad')} AS sd, ad."title" AS title
+          FROM "deal" ad
+          JOIN "pipeline" ap ON ap."id" = ad."pipelineId" AND ap."role" = 'LEAD'
+          JOIN (VALUES ${values}) bk(bucket, a_from, a_to)
+            ON ad."createdAtSource" >= bk.a_from AND ad."createdAtSource" < bk.a_to
+          WHERE ad."createdAtSource" >= ${from} AND ad."createdAtSource" < ${to}
+            AND ad."title" LIKE '%CRM-форм%'
+        ) fd`,
+    true,
+  )
 }
 
 /** `LEFT JOIN form_alias <alias>` on a deal's description. */

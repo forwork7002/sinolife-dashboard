@@ -151,7 +151,17 @@ const CONNECTION_WAIT_MS = 20_000
 export class RnpRepository {
   private readonly tz: string
 
-  constructor(private readonly prisma: PrismaClient) {
+  /**
+   * `poolStatementTimeoutMs`: the limit the client's own pool already sets —
+   * the warm lane's minute (`warmPrisma`, prisma.ts). A statement asked to
+   * run under no more than that needs no transaction of its own, and on the
+   * warm lane's one connection a transaction would queue behind the build's
+   * other read for longer than Prisma lets it wait (`CONNECTION_WAIT_MS`).
+   */
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly poolStatementTimeoutMs = 0,
+  ) {
     this.tz = env.APP_TIMEZONE
   }
 
@@ -221,7 +231,7 @@ export class RnpRepository {
       ai: bigint
     }
     const sql = RnpRepository.registrationDaysSql()
-    const rows = statementTimeoutMs
+    const rows = statementTimeoutMs && statementTimeoutMs > this.poolStatementTimeoutMs
       ? await this.prisma.$transaction(
           async (tx) => {
             await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${Math.trunc(statementTimeoutMs)}`)

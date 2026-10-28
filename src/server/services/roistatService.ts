@@ -18,7 +18,15 @@
  * on the server.
  */
 
-import { type Period, previousEquivalent, zonedDateKey } from '@/server/domain/period/period'
+import {
+  type Period,
+  calendarMonth,
+  monthPieces,
+  previousEquivalent,
+  resolvePeriod,
+  zonedDateKey,
+  zonedMonthKey,
+} from '@/server/domain/period/period'
 import {
   type RoistatColumns,
   type RoistatCounters,
@@ -43,10 +51,21 @@ import type { CbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { LEAD_SOURCE_VOCABULARY } from '@/server/integrations/crm/bitrix24/mapping'
 import { adBudgetProduct, campaignChannel, ownerOf } from '@/server/integrations/meta/accounts'
 import type { InsightsRepository, RnpTeamDayRow } from '@/server/repositories/insightsRepository'
+import { ORIGIN_LEAD_DAYS } from '@/server/repositories/leadFormSql'
+import type { MonthScanReader, StoredMonthScan } from '@/server/repositories/monthScanRepository'
 import type { ReklamaRepository } from '@/server/repositories/reklamaRepository'
-import type { RoistatBitrixRow, RoistatMetaRow, RoistatRepository } from '@/server/repositories/roistatRepository'
+import {
+  type RoistatBitrixRow,
+  type RoistatMetaRow,
+  type RoistatRepository,
+  bitrixRowsOfShape,
+  mergeBitrixRows,
+} from '@/server/repositories/roistatRepository'
+
+import { processWide } from '@/server/processWide'
 
 import { leadBrand } from './rnpService'
+import { OFF_HOURS, WARM_HOURS, type WarmOutcome, withinHours } from './rnpWarmer'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 /** The brand and channel rules the cuts label by — RNP's and «Lidlar»'s, never a copy. */
@@ -207,13 +226,36 @@ export interface RoistatQuery {
  */
 function bitrixOfBrand(rows: readonly RoistatBitrixRow[], brand: BrandFilter): Parameters<typeof bitrixCut>[1] {
   if (brand === 'all') return rows
-  return narrowBitrix(rows, (row) =>
-    brandMatches(
-      brand,
-      row.brandTeam !== null
-        ? saleBrand(row.brandProduct as DealProductBrand, row.brandTeam, row.brandForm as 'Collagen' | 'Zextra' | null)
-        : leadBrand(row.brandSource, row.brandForm, row.brandLine),
-    ),
+  return narrowBitrix(rows, (row) => brandMatches(brand, brandOfRow(row)))
+}
+
+/** The brand a brand-keyed row is filed by — decided already on a stored month's row (`foldBitrixToBrand`). */
+function brandOfRow(row: RoistatBitrixRow): 'Collagen' | 'Zextra' | null {
+  if (row.brand !== undefined) return row.brand
+  return row.brandTeam !== null
+    ? saleBrand(row.brandProduct as DealProductBrand, row.brandTeam, row.brandForm as 'Collagen' | 'Zextra' | null)
+    : leadBrand(row.brandSource, row.brandForm, row.brandLine)
+}
+
+/**
+ * A brand-keyed scan with each row's brand decided and its five inputs let
+ * go, rows of one group and brand added together — what the worker stores
+ * for a month (`monthScanRefresh.ts`). The switch reads nothing of a row but
+ * that brand (`bitrixOfBrand`), and a month's widest scan split by every
+ * source, form, «Проект», team and product ran to tens of thousands of rows
+ * where its brands are a few thousand.
+ */
+export function foldBitrixToBrand(rows: readonly RoistatBitrixRow[]): RoistatBitrixRow[] {
+  return mergeBitrixRows(
+    rows.map((row) => ({
+      ...row,
+      brand: brandOfRow(row),
+      brandSource: null,
+      brandForm: null,
+      brandLine: null,
+      brandTeam: null,
+      brandProduct: null,
+    })),
   )
 }
 
@@ -294,7 +336,8 @@ interface DaysScan {
   readonly rate: number | null | undefined
   readonly teamDays: readonly RnpTeamDayRow[] | null
 }
-const daysScanCache = ttlCache<DaysScan>(120_000, LIVE_CACHE)
+/* On `globalThis` (`processWide`): the warm-up (`warm`, from `instrumentation.ts`'s bundle) fills the routes' copy. */
+const daysScanCache = processWide('sinolife.roistat.daysScanCache', () => ttlCache<DaysScan>(120_000, LIVE_CACHE))
 /*
   The two scans, memoised apart from the table (2026-10-06). Neither depends
   on the cut or its drill parent, and the brand reaches them only as `keyed`:
@@ -307,12 +350,68 @@ const daysScanCache = ttlCache<DaysScan>(120_000, LIVE_CACHE)
 const bitrixScanCache = ttlCache<BitrixScan>(SCAN_TTL_MS, LIVE_CACHE)
 let bitrixScanBuilds = 0
 
+/*
+  THE CLOSED MONTHS ARE READ FROM THE SYNC WORKER'S STORE (2026-10-28).
+  «Kunlar boʻyicha» and the overview read a lead cohort, and a window of it
+  is the sum of its months (`RoistatRepository.bitrix`; the queue cohort's
+  FAKT is too — an order is counted on its LAST arrival, in one month only).
+  On the one-core database a year of it ran past the web pool's 20 s
+  statement timeout — /analytics/sales-days «Shu yil» answered 500 at 20.1 s
+  on 27.10, «Oʻtgan oy» took 18.7 s, and September or July 8.7–10.3 s. So
+  the worker reads each closed month once and stores it (`month_scan`,
+  `monthScanRefresh.ts`), and a window here is its stored months plus ONE
+  live read of what is left — the running month, a part-month at either end,
+  or a run of months the store does not hold yet. A closed whole month on its
+  own («Oʻtgan oy») is the stored answer to the very statement it ran; any
+  other window inside one month never touches the store and is read live,
+  exactly as before.
+
+  A STORED MONTH IS SERVED ONLY WHILE IT IS TRUE ENOUGH: built after the
+  month closed, and under `MONTH_SCAN_MAX_AGE_MS` old — six hours while its
+  leads' sales still open (`monthSettling`, the worker rebuilds it every half
+  hour of the working day), two days after (rebuilt twice a day: a delivery
+  or a refund still moves it, rarely). Past either, or missing, it is read
+  live with the rest — a stalled worker costs speed, never a wrong table.
+*/
+const MONTH_SCAN_VERSION = 'v1'
+const DAY_MS = 86_400_000
+/**
+ * A stored month's key, `YYYY-MM` in Tashkent: its scan (`bitrix`), the same
+ * scan's day and total sets alone (`bitrix-days` — what «Kunlar boʻyicha»
+ * reads, a hundredth of it), or its queue cohort's FAKT (`fakt`).
+ */
+export function monthScanKey(kind: 'bitrix' | 'bitrix-days' | 'fakt', month: string): string {
+  return `${MONTH_SCAN_VERSION}:${kind}:${month}`
+}
+/** True while sales deals may still open for the month's leads (`ORIGIN_LEAD_DAYS` after it), and a few days more. */
+export function monthSettling(monthEnd: Date, now: Date): boolean {
+  return now.getTime() < monthEnd.getTime() + (ORIGIN_LEAD_DAYS + 5) * DAY_MS
+}
+export const MONTH_SCAN_MAX_AGE_MS = { settling: 6 * 3_600_000, settled: 48 * 3_600_000 } as const
+
+/** The stored rows, a minute at a time: a primary-key read, shared by every reader of the minute. */
+const monthScanCache = processWide('sinolife.roistat.monthScanCache', () => ttlCache<StoredMonthScan<unknown> | null>(60_000))
+/*
+  THE RUNNING MONTH'S LIVE READ, ONE PER MINUTE WHOEVER ASKS (2026-10-28):
+  «Shu oy» and «Shu yil» both read the month to date live, and as two
+  windows they were two scans. Keyed by the piece and the read — never by a
+  preset: a piece is never compared against anything — and only for a read
+  as of now (the previous window's same-age reads are not shared). No stale
+  window of its own: the memos above it have theirs, and two would stack.
+*/
+const liveScanCache = processWide('sinolife.roistat.liveScanCache', () => ttlCache<RoistatBitrixRow[]>(60_000))
+
 /** Test seam: each case builds its own answer, and the memo would hand the first one to the rest. */
 export function resetRoistatCaches(): void {
   overviewCache.clear()
   daysScanCache.clear()
   bitrixScanCache.clear()
+  monthScanCache.clear()
+  liveScanCache.clear()
 }
+
+/** How old the RNP sheet's FAKT may be to stand in for «Kunlar boʻyicha»'s own scan: two of its warm ticks. */
+export const BORROWED_FAKT_MAX_AGE_MS = 8 * 60_000
 
 export class RoistatService {
   constructor(
@@ -320,7 +419,31 @@ export class RoistatService {
     private readonly reklama: Pick<ReklamaRepository, 'campaignDays'>,
     private readonly usd: Pick<CbuUsdRates, 'forDays'>,
     private readonly insights: Pick<InsightsRepository, 'rnpTeamDays'>,
+    /** The sync worker's closed months (`month_scan`); null reads every month live. */
+    private readonly months: MonthScanReader | null = null,
+    /**
+     * The running month's FAKT as the RNP sheet's warmer last built it
+     * (`warmMonthFakt`), or null when it holds none young enough.
+     */
+    private readonly borrowFakt: ((month: string) => Promise<RnpTeamDayRow[]> | null) | null = null,
   ) {}
+
+  /**
+   * Builds «Kunlar boʻyicha»'s «Shu oy» into its memo — the table Savdo
+   * dinamikasi opens on (2026-10-28): its first reader of the morning waited
+   * for the month's scan cold and met the 20 s limit (08:19 on 28.10). Run by
+   * the warm lane every few minutes of the working day (`instrumentation.ts`);
+   * `OFF_HOURS` outside them.
+   */
+  async warm(now: Date, timeZone: string): Promise<WarmOutcome> {
+    if (!withinHours(now, timeZone, WARM_HOURS)) return OFF_HOURS
+    const period = resolvePeriod('this_month', { timeZone, now })
+    await daysScanCache.refresh(this.daysKey(period, false), () => this.daysScan(period, now, false))
+  }
+
+  private daysKey(period: Period, keyed: boolean): string {
+    return [period.preset, period.start.toISOString(), period.end.toISOString(), keyed].join('|')
+  }
 
   /*
     Both memoised (2026-10-05): each build runs the lead cohort with a LATERAL
@@ -344,8 +467,7 @@ export class RoistatService {
 
   async days(period: Period, now: Date, brand: BrandFilter = 'all'): Promise<RoistatDaysDto> {
     const keyed = brand !== 'all'
-    const key = [period.preset, period.start.toISOString(), period.end.toISOString(), keyed].join('|')
-    return this.daysTable(await daysScanCache.get(key, () => this.daysScan(period, now, keyed)), brand)
+    return this.daysTable(await daysScanCache.get(this.daysKey(period, keyed), () => this.daysScan(period, now, keyed)), brand)
   }
 
   /** The overview's two scans for a window, shared by every cut, drill and brand slice of it. */
@@ -355,7 +477,7 @@ export class RoistatService {
     return bitrixScanCache.get(key, async () => {
       const previous = previousEquivalent(period)
       const [current, previousRows] = await Promise.all([
-        this.repository.bitrix(period, now, 'all', keyed),
+        this.bitrixRows(period, now, 'all', keyed, now),
         /*
           THE PREVIOUS COHORT AT THE SAME AGE. Read as of now, last month's
           leads have had thirty days to become sales and this month's a few,
@@ -364,7 +486,7 @@ export class RoistatService {
           window's start. (Kval is the registrar's verdict as of now and keeps
           a smaller form of the same lean.)
         */
-        this.repository.bitrix(previous, new Date(now.getTime() - (period.start.getTime() - previous.start.getTime())), 'total', keyed),
+        this.bitrixRows(previous, new Date(now.getTime() - (period.start.getTime() - previous.start.getTime())), 'total', keyed, now),
       ])
       bitrixScanBuilds += 1
       return { build: bitrixScanBuilds, current, previous: previousRows }
@@ -431,12 +553,12 @@ export class RoistatService {
     const window = dayRange(period)
     const rateDay = window.to < today ? window.to : today
     const [bitrix, spend, rates, teamDays] = await Promise.all([
-      this.repository.bitrix(period, now, 'days', keyed),
+      this.bitrixRows(period, now, 'days', keyed, now),
       this.spendDays(window.from, window.to),
       this.usd.forDays([rateDay], today),
       // An addition to the «Дни» table, never its price: a failed scan is logged and the table draws without FAKT.
       // Under «Hammasi» no order is filed by brand, so the per-order brand probes are skipped.
-      this.insights.rnpTeamDays(period, keyed).catch((error: unknown) => {
+      this.faktRows(period, keyed, now).catch((error: unknown) => {
         void import('@/server/logging/logger').then(({ logger }) =>
           logger.warn({ err: error }, '«Kunlar boʻyicha» FAKT scan failed; the table draws without it'),
         )
@@ -444,6 +566,92 @@ export class RoistatService {
       }),
     ])
     return { today, rateDay, bitrix, spend, rate: rates[0], teamDays }
+  }
+
+  /**
+   * `RoistatRepository.bitrix(period, asOf, shape, keyed)`, its closed whole
+   * months from the store (see `monthScanKey`) and the rest in one live read
+   * per run of months the store did not answer. `asOf` is the cohort's age —
+   * `now`, or the previous window's same-age instant; a stored month read
+   * up to a later instant than `asOf` allows is not used.
+   */
+  private async bitrixRows(
+    period: Period,
+    asOf: Date,
+    shape: 'all' | 'days' | 'total',
+    keyed: boolean,
+    now: Date,
+  ): Promise<RoistatBitrixRow[]> {
+    const pieces = monthPieces(period)
+    const live = (range: Period) =>
+      asOf.getTime() === now.getTime()
+        ? liveScanCache.get([range.start.toISOString(), range.end.toISOString(), shape, keyed].join('|'), () =>
+            this.repository.bitrix(range, asOf, shape, keyed),
+          )
+        : this.repository.bitrix(range, asOf, shape, keyed)
+    if (this.months === null) return live(period)
+    const stored = await Promise.all(
+      pieces.map(async (piece) => {
+        const month = await this.storedMonth<RoistatBitrixRow[]>(shape === 'all' ? 'bitrix' : 'bitrix-days', piece, now)
+        if (month === null) return null
+        // Its sales were read up to min(built, the month's last possible sale); the cohort's age may not be passed.
+        const settle = piece.end.getTime() + ORIGIN_LEAD_DAYS * DAY_MS
+        return Math.min(month.builtAt.getTime(), settle) <= Math.min(asOf.getTime(), settle) ? month.rows : null
+      }),
+    )
+    // Nothing stored: the window read as it always was, in one statement.
+    if (stored.every((rows) => rows === null)) return live(period)
+    const read = await Promise.all(liveRuns(pieces, stored).map(live))
+    return mergeBitrixRows([...stored.flatMap((rows) => (rows === null ? [] : bitrixRowsOfShape(rows, shape, keyed))), ...read.flat()])
+  }
+
+  /** `InsightsRepository.rnpTeamDays(period, brands)` the same way — the closed whole months stored, the rest live. */
+  private async faktRows(period: Period, brands: boolean, now: Date): Promise<RnpTeamDayRow[]> {
+    const pieces = monthPieces(period)
+    // Stored brand-keyed: under «Hammasi» `faktDays` reads no brand, and the split rows add up to the unsplit ones.
+    const stored = await Promise.all(pieces.map(async (piece) => (await this.storedMonth<RnpTeamDayRow[]>('fakt', piece, now))?.rows ?? null))
+    const runs = stored.every((rows) => rows === null) ? [period] : liveRuns(pieces, stored)
+    const scan = (range: Period) => this.insights.rnpTeamDays(range, brands)
+    const live = await Promise.all(runs.map((range) => this.borrowedFakt(range, now)?.catch(() => scan(range)) ?? scan(range)))
+    return [...stored.flatMap((rows) => rows ?? []), ...live.flat()]
+  }
+
+  /**
+   * The RNP sheet's FAKT for `range` when `range` is the running month to
+   * date — the sheet reads the whole month, and nothing has arrived after
+   * now — and the sheet holds one young enough; null otherwise. Brand-keyed,
+   * so it answers «Hammasi» and either brand alike.
+   */
+  private borrowedFakt(range: Period, now: Date): Promise<RnpTeamDayRow[]> | null {
+    if (this.borrowFakt === null) return null
+    const month = calendarMonth(now, range.timeZone)
+    if (
+      range.start.getTime() !== month.start.getTime() ||
+      range.end.getTime() <= now.getTime() ||
+      range.end.getTime() > month.end.getTime()
+    ) {
+      return null
+    }
+    return this.borrowFakt(zonedMonthKey(now, range.timeZone))
+  }
+
+  /** A closed whole month's stored rows while they may be served (see `MONTH_SCAN_MAX_AGE_MS`); null otherwise. */
+  private async storedMonth<T>(kind: 'bitrix' | 'bitrix-days' | 'fakt', piece: Period, now: Date): Promise<StoredMonthScan<T> | null> {
+    const reader = this.months
+    const month = calendarMonth(piece.start, piece.timeZone)
+    if (
+      reader === null ||
+      piece.start.getTime() !== month.start.getTime() ||
+      piece.end.getTime() !== month.end.getTime() ||
+      month.end.getTime() > calendarMonth(now, piece.timeZone).start.getTime()
+    ) {
+      return null
+    }
+    const key = monthScanKey(kind, zonedMonthKey(piece.start, piece.timeZone))
+    const row = (await monthScanCache.get(key, () => reader.read(key)).catch(() => null)) as StoredMonthScan<T> | null
+    if (row === null || row.builtAt.getTime() < month.end.getTime()) return null
+    const maxAge = monthSettling(month.end, now) ? MONTH_SCAN_MAX_AGE_MS.settling : MONTH_SCAN_MAX_AGE_MS.settled
+    return now.getTime() - row.builtAt.getTime() < maxAge ? row : null
   }
 
   /** The «Дни» table — the same rows `overview(period, { dim: 'days' })` draws, newest day first. */
@@ -540,4 +748,23 @@ export class RoistatService {
       }
     })
   }
+}
+
+/**
+ * The windows to read live: each run of consecutive pieces the store did not
+ * answer, as one window — a window's months read together are the same rows
+ * as read one by one (`RoistatRepository.bitrix`), in one statement.
+ */
+function liveRuns(pieces: readonly Period[], stored: readonly (unknown | null)[]): Period[] {
+  const runs: Period[] = []
+  let from: Period | null = null
+  pieces.forEach((piece, i) => {
+    if (stored[i] === null) from ??= piece
+    if (from !== null && (stored[i] !== null || i === pieces.length - 1)) {
+      const end = stored[i] === null ? piece.end : pieces[i - 1]!.end
+      runs.push(Object.freeze({ start: from.start, end, timeZone: piece.timeZone, preset: 'custom' as const }))
+      from = null
+    }
+  })
+  return runs
 }

@@ -200,6 +200,14 @@ const ROISTAT_MS = ROISTAT_EVERY > 0 ? Number(process.env.SYNC_ROISTAT_MIN ?? 60
 const COHORTS_ON = process.env.SYNC_COHORTS !== '0'
 
 /**
+ * Roistat's closed months — «Kunlar boʻyicha», «Shu yil», «Oʻtgan oy» —
+ * read and stored beside the loop (2026-10-28), at most three months a
+ * pass; see `src/server/services/monthScanRefresh.ts`. `SYNC_MONTH_SCANS=0`
+ * switches it off, and the screens then read every month live, as before.
+ */
+const MONTH_SCANS_ON = process.env.SYNC_MONTH_SCANS !== '0'
+
+/**
  * Meta Ads spend, lead-form leads and ad→form links, every `SYNC_META_MIN`
  * minutes. Off without `META_ACCESS_TOKEN`. In-process, unlike Roistat:
  * fourteen accounts' daily rows are a few hundred small objects, not a
@@ -1173,6 +1181,8 @@ async function main() {
   /** «Mijoz qaytishi»'s pass in flight (`runCohortPass`), and when the stored answers were last built. */
   let cohortInFlight: Promise<void> | null = null
   let lastCohortAt: Date | null = null
+  /** Roistat's closed months' pass in flight (`runMonthScanPass`) — it decides itself which months are due. */
+  let monthScanInFlight: Promise<void> | null = null
   // In memory only: a restart costs one near and one wide check, ~150 invocations.
   const recentSweepAt = new Map<string, Date>()
   // In memory only: a restart costs one pass of the feeds, two requests.
@@ -1329,6 +1339,23 @@ async function main() {
       for (const f of r.failed) console.warn(`  ${stamp()} kohort muvaffaqiyatsiz: ${f.key} — ${f.error.slice(0, 200)}`)
     } catch (error) {
       console.warn(`  ${stamp()} kohort hisobi muvaffaqiyatsiz: ${describeFeedError(error)}`)
+    }
+  }
+
+  /*
+    ROISTAT'S CLOSED MONTHS, READ AND STORED — see `MONTH_SCANS_ON`. Never
+    throws, like the cohorts. Each pass asks the store which months are due,
+    so a failing month is tried again on the next pass, never twice in one.
+  */
+  const runMonthScanPass = async (): Promise<void> => {
+    try {
+      const m = await import('../src/server/services/monthScanRefresh')
+      const r = await m.refreshMonthScans({ prisma, timeZone: WORKER_TIME_ZONE, stopping: () => stopping })
+      const built = r.built.map((b) => `${b.key.replace(/^v\d+:/, '')} ${(b.ms / 1000).toFixed(1)} s`).join(' · ')
+      if (built) console.log(`  ${stamp()} oy keshi: ${built}`)
+      for (const f of r.failed) console.warn(`  ${stamp()} oy keshi muvaffaqiyatsiz: ${f.key} — ${f.error.slice(0, 200)}`)
+    } catch (error) {
+      console.warn(`  ${stamp()} oy keshi hisobi muvaffaqiyatsiz: ${describeFeedError(error)}`)
     }
   }
 
@@ -2319,9 +2346,37 @@ async function main() {
       scans are the heaviest thing this worker asks of the one core — and
       never on tick 0 (`runCohortPass` decides whether it is due).
     */
-    if (COHORTS_ON && tick > 0 && cohortInFlight === null && metaInFlight === null && !roistatDue && !stopping) {
+    if (
+      COHORTS_ON &&
+      tick > 0 &&
+      cohortInFlight === null &&
+      monthScanInFlight === null &&
+      metaInFlight === null &&
+      !roistatDue &&
+      !stopping
+    ) {
       cohortInFlight = runCohortPass().finally(() => {
         cohortInFlight = null
+      })
+    }
+
+    /*
+      Roistat's closed months, on the cohorts' rules — beside the loop, never
+      beside a Meta pass, the hour's Roistat import or a cohort pass (two
+      month-long scans side by side on one core are what timed out), never
+      on tick 0. A cohort pass that started above this tick goes first.
+    */
+    if (
+      MONTH_SCANS_ON &&
+      tick > 0 &&
+      monthScanInFlight === null &&
+      cohortInFlight === null &&
+      metaInFlight === null &&
+      !roistatDue &&
+      !stopping
+    ) {
+      monthScanInFlight = runMonthScanPass().finally(() => {
+        monthScanInFlight = null
       })
     }
 
@@ -2509,6 +2564,7 @@ async function main() {
   if (metaInFlight) await Promise.race([metaInFlight, sleep(15_000)])
   // A cohort build cut short keeps its old row: each question is written only once it is built.
   if (cohortInFlight) await Promise.race([cohortInFlight, sleep(15_000)])
+  if (monthScanInFlight) await Promise.race([monthScanInFlight, sleep(15_000)])
 
   // Releasing the lock explicitly lets a replacement worker start at once
   // instead of waiting out the connection's own timeout.

@@ -222,6 +222,13 @@ describe('registrationDays — the history scan gets its own statement timeout',
     expect(calls).toEqual(['tx:65000', 'SET LOCAL statement_timeout = 60000', 'query'])
     expect(rows).toHaveLength(1)
   })
+
+  it('reads plainly on a pool that already allows that long — the warm lane, whose one connection a transaction would queue for', async () => {
+    const { client, calls } = fakePrisma()
+    const repo = new RnpRepository(client as never, 60_000)
+    await repo.registrationDays('2026-09-01', '2026-09-29', 60_000)
+    expect(calls).toEqual(['query'])
+  })
 })
 
 describe('bezkvalDays — «Lidlar»\'s stored «Безквал» rows, for the sheet\'s «без квал» rows', () => {

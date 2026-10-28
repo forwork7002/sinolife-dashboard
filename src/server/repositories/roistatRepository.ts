@@ -30,7 +30,7 @@
 
 import type { PrismaClient } from '@/generated/prisma/client'
 import { env } from '@/server/config/env'
-import type { Period } from '@/server/domain/period/period'
+import { type Period, monthPieces, zonedMonthKey } from '@/server/domain/period/period'
 import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { ROISTAT_NO_PRODUCT } from '@/server/domain/roistat/roistatCuts'
 
@@ -38,6 +38,7 @@ import { InsightsRepository } from './insightsRepository'
 import {
   ORIGIN_LEAD_DAYS,
   dealFormTitleSql,
+  formAliasByMonthCteSql,
   formAliasCteSql,
   formAliasJoinSql,
   formBrandOfTitleSql,
@@ -95,6 +96,13 @@ export interface RoistatBitrixRow extends RoistatBitrixCounters {
   readonly brandLine: string | null
   readonly brandTeam: string | null
   readonly brandProduct: string | null
+  /**
+   * The brand the switch files the row by, ALREADY DECIDED — set on a stored
+   * month's rows only (`RoistatService` folds a brand-keyed month to its
+   * brands before the worker stores it, the five inputs above then null);
+   * absent on every row a statement returns.
+   */
+  readonly brand?: 'Collagen' | 'Zextra' | null
 }
 
 /** One Meta ad (or adset, or campaign) over the window, hiring not yet removed. */
@@ -118,6 +126,71 @@ export interface RoistatMetaRow {
 }
 
 export type RoistatMetaGrain = 'camp' | 'adset' | 'ad'
+
+/** The columns that name a row's group — every one but the counters. */
+const ROW_KEYS = [
+  'set', 'day', 'sourceId', 'sourceName', 'formTitle', 'targetolog', 'productLine', 'region', 'rop', 'seller', 'registrar',
+  'brandSource', 'brandForm', 'brandLine', 'brandTeam', 'brandProduct',
+] as const satisfies readonly (keyof RoistatBitrixRow)[]
+
+/**
+ * Scan rows of several windows — a window's months — as the one statement
+ * over all of them returns them: rows naming the same group are added up,
+ * every counter (the sum of the day sums is the window's day sum). First
+ * appearance keeps a group's place.
+ */
+export function mergeBitrixRows(rows: readonly RoistatBitrixRow[]): RoistatBitrixRow[] {
+  const merged = new Map<string, { -readonly [K in keyof RoistatBitrixRow]: RoistatBitrixRow[K] }>()
+  for (const row of rows) {
+    // A decided brand is part of the group; «not decided» (a statement's row) is told apart from «no brand».
+    const key = JSON.stringify([...ROW_KEYS.map((k) => row[k]), row.brand === undefined ? '?' : row.brand])
+    const into = merged.get(key)
+    if (!into) {
+      merged.set(key, { ...row })
+      continue
+    }
+    into.leads += row.leads
+    into.clean += row.clean
+    into.kval += row.kval
+    into.orders += row.orders
+    into.orderedMinor += row.orderedMinor
+    into.sold += row.sold
+    into.soldMinor += row.soldMinor
+    into.newCustomers += row.newCustomers
+    into.dealDaysSum += row.dealDaysSum
+    into.dealCount += row.dealCount
+  }
+  return [...merged.values()]
+}
+
+/** The grouping sets each shape reads (`bitrix`'s `shape`). */
+const SHAPE_SETS: Record<'all' | 'days' | 'total', ReadonlySet<RoistatBitrixRow['set']> | null> = {
+  all: null,
+  days: new Set(['total', 'day']),
+  total: new Set(['total']),
+}
+
+/**
+ * What `bitrix(period, now, shape, brandKeys)` returns, cut from the rows of
+ * the WIDEST read of the same window — `bitrix(period, now, 'all', true)`,
+ * folded to its brands (`foldBitrixToBrand`, roistatService.ts): its grouping
+ * sets narrowed to the shape's, and, unkeyed, its brands added back together.
+ * Every set reads the same rows whatever else is grouped beside it, and a
+ * brand-keyed set is its unkeyed set split by brand — so the stored month
+ * answers every question of that month, and the brand switch every slice.
+ */
+export function bitrixRowsOfShape(
+  widest: readonly RoistatBitrixRow[],
+  shape: 'all' | 'days' | 'total',
+  brandKeys: boolean,
+): RoistatBitrixRow[] {
+  const sets = SHAPE_SETS[shape]
+  const kept = sets === null ? widest : widest.filter((row) => sets.has(row.set))
+  if (brandKeys) return [...kept]
+  return mergeBitrixRows(
+    kept.map(({ brand: _brand, ...row }) => ({ ...row, brandSource: null, brandForm: null, brandLine: null, brandTeam: null, brandProduct: null })),
+  )
+}
 
 function money(value: string | null | undefined): bigint {
   return value === null || value === undefined ? 0n : BigInt(value)
@@ -148,12 +221,24 @@ export class RoistatRepository {
    * narrowed to one brand: the rule (RNP's `leadBrand` for a lead,
    * `saleBrand` for a sale — its origin lead's form's brand, else its line
    * items', else its team) lives in TypeScript.
+   *
+   * A WINDOW IS THE SUM OF ITS MONTHS (2026-10-28): every row of it falls in
+   * the month of its lead's day, and each month's piece reads exactly what it
+   * reads as a window of its own — its sales up to a month past it, its
+   * short names from its own month (`formAliasByMonthCteSql`). So the rows of
+   * a year are the rows of its months added up (`mergeBitrixRows`), which is
+   * what lets `RoistatService` read the closed months from the sync worker's
+   * store. A window inside one month runs the statement it always ran.
+   *
+   * `statementTimeoutMs` — the sync worker's own bound (SET LOCAL, one
+   * transaction); a screen's read runs under the pool's.
    */
   async bitrix(
     period: Period,
     now: Date,
     shape: 'all' | 'days' | 'total' = 'all',
     brandKeys = false,
+    statementTimeoutMs?: number,
   ): Promise<RoistatBitrixRow[]> {
     /*
       The form (leadFormSql.ts — a repeat lead's from its SOURCE_DESCRIPTION)
@@ -163,6 +248,31 @@ export class RoistatRepository {
     const forms = shape === 'all' || brandKeys
     // Sales deals open after their lead; none can belong to the window once a month has passed.
     const scanEnd = new Date(Math.min(now.getTime(), period.end.getTime() + ORIGIN_LEAD_DAYS * 86_400_000))
+    const pieces = monthPieces(period)
+    // Short names learned per month — only where the window has more than one and the form is read at all.
+    const bucketed = forms && pieces.length > 1
+    const originDays = ORIGIN_LEAD_DAYS * 86_400_000
+    const formAlias = !forms
+      ? ''
+      : bucketed
+        ? formAliasByMonthCteSql(
+            pieces.map((piece) => ({
+              bucket: zonedMonthKey(piece.start, period.timeZone),
+              from: new Date(piece.start.getTime() - originDays),
+              to: new Date(piece.end.getTime() + originDays),
+            })),
+            '$7',
+            '$4',
+          )
+        : formAliasCteSql('$7', '$4')
+    /* The month a row's lead day falls in — the bucket its short names were learned for. */
+    const monthOf = (instant: string) => `to_char(${instant} AT TIME ZONE 'UTC' AT TIME ZONE $3, 'YYYY-MM')`
+    const leadAliasJoin = bucketed
+      ? `LEFT JOIN form_alias fa ON fa.bucket = ${monthOf('d."createdAtSource"')} AND fa.sd = ${sourceDescriptionSql('d')}`
+      : formAliasJoinSql('d', 'fa')
+    const saleAliasJoin = bucketed
+      ? `LEFT JOIN form_alias ofa ON ofa.bucket = ${monthOf('COALESCE(o.created, sb."createdAtSource")')} AND ofa.sd = o.sd`
+      : 'LEFT JOIN form_alias ofa ON ofa.sd = o.sd'
     const brandColumns = ['b_source', 'b_form', 'b_line', 'b_team', 'b_product']
     const setColumns: readonly (readonly string[])[] = shape === 'total'
       ? [[]]
@@ -208,7 +318,7 @@ export class RoistatRepository {
       ...brandColumns.map((key) => `${brandKeys ? key : `NULL::text AS ${key}`},`),
     ].join('\n        ')
 
-    const rows = await this.prisma.$queryRawUnsafe<
+    const rows = await this.query<
       {
         g_day: number
         g_form: number
@@ -248,8 +358,9 @@ export class RoistatRepository {
         deal_count: bigint
       }[]
     >(
+      statementTimeoutMs,
       `
-      WITH ${forms ? `${formAliasCteSql('$7', '$4')},` : ''}
+      WITH ${forms ? `${formAlias},` : ''}
       lead_rows AS (
         SELECT
           /*
@@ -290,7 +401,7 @@ export class RoistatRepository {
         JOIN "pipeline" p ON p."id" = d."pipelineId" AND p."role" = 'LEAD'
         LEFT JOIN "deal_stage" st ON st."id" = d."stageId"
         LEFT JOIN "sales_source" s ON s."id" = d."sourceId"
-        ${forms ? formAliasJoinSql('d', 'fa') : ''}
+        ${forms ? leadAliasJoin : ''}
         WHERE d."createdAtSource" >= $1 AND d."createdAtSource" < $2
       ),
       /*
@@ -443,7 +554,7 @@ export class RoistatRepository {
           SELECT sb.o_created AS created, sb.o_source_id AS source_id, sb.o_source_name AS source_name,
             sb.o_title AS title, sb.o_sd AS sd, sb.o_targetolog AS targetolog, sb.o_registrar AS registrar
         ) o
-        ${forms ? 'LEFT JOIN form_alias ofa ON ofa.sd = o.sd' : ''}
+        ${forms ? saleAliasJoin : ''}
         -- The brand the origin lead's form names — originFormBrandSql's reading, over the lead joined above.
         LEFT JOIN LATERAL (
           SELECT ${formBrandOfTitleSql(saleFormTitleSql('o.created IS NOT NULL', 'o.title', 'o.sd', 'sb."title"'))} AS brand
@@ -528,6 +639,18 @@ export class RoistatRepository {
         dealCount: int(r.deal_count),
       }
     })
+  }
+
+  /** One statement, under `statementTimeoutMs` (SET LOCAL, its own transaction) when given. */
+  private async query<T>(statementTimeoutMs: number | undefined, sql: string, ...values: unknown[]): Promise<T> {
+    if (!statementTimeoutMs) return this.prisma.$queryRawUnsafe<T>(sql, ...values)
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${Math.trunc(statementTimeoutMs)}`)
+        return tx.$queryRawUnsafe<T>(sql, ...values)
+      },
+      { maxWait: 20_000, timeout: statementTimeoutMs + 5_000 },
+    )
   }
 
   /**

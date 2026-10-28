@@ -157,6 +157,43 @@ describe('RoistatRepository.bitrix — the form of a repeat lead (2026-10-06)', 
   })
 })
 
+describe('RoistatRepository.bitrix — a window is the sum of its months (2026-10-28)', () => {
+  const YEAR: Period = { start: new Date('2025-12-31T19:00:00Z'), end: new Date('2026-10-28T19:00:00Z'), timeZone: 'Asia/Tashkent', preset: 'this_year' }
+  const NOW = new Date('2026-10-28T05:00:00Z')
+
+  it('runs the statement it always ran for a window inside one month', async () => {
+    const { calls, repository } = recorder()
+    await repository.bitrix(PERIOD, NOW, 'all', true)
+    expect(calls[0]!.sql).not.toContain('bucket')
+    expect(calls[0]!.sql).toContain('LEFT JOIN form_alias ofa ON ofa.sd = o.sd')
+  })
+
+  it('learns the short names per month across months — each month from its own reach, the lead and the sale by their day', async () => {
+    const { calls, repository } = recorder()
+    await repository.bitrix(YEAR, NOW, 'all', false)
+    const sql = calls[0]!.sql
+    expectBound(calls[0]!)
+    // Ten months, each [its start − 30 days, the earlier of the scan end and its end + 30 days).
+    expect(sql.match(/\('2026-\d\d', '/g)).toHaveLength(10)
+    expect(sql).toContain(`('2026-01', '2025-12-01T19:00:00.000Z'::timestamp, LEAST($4, '2026-03-02T19:00:00.000Z'::timestamp))`)
+    expect(sql).toContain(`fa.bucket = to_char(d."createdAtSource" AT TIME ZONE 'UTC' AT TIME ZONE $3, 'YYYY-MM')`)
+    expect(sql).toContain(`ofa.bucket = to_char(COALESCE(o.created, sb."createdAtSource") AT TIME ZONE 'UTC' AT TIME ZONE $3, 'YYYY-MM')`)
+    expect(sql).toContain('PARTITION BY fg.bucket, fg.sd')
+  })
+
+  it('writes the month bounds as TIMESTAMP, the column\'s type — TIMESTAMPTZ retyped the scan end and moved it by the session zone', async () => {
+    const { calls, repository } = recorder()
+    await repository.bitrix(YEAR, NOW, 'days', true)
+    expect(calls[0]!.sql).not.toContain('timestamptz')
+  })
+
+  it('reads no alias at all where no form is read, however long the window', async () => {
+    const { calls, repository } = recorder()
+    await repository.bitrix(YEAR, NOW, 'days', false)
+    expect(calls[0]!.sql).not.toContain('form_alias')
+  })
+})
+
 describe('RoistatRepository.meta', () => {
   it('binds the parent only where a grain has one', async () => {
     const { calls, repository } = recorder()

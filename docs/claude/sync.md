@@ -226,6 +226,19 @@
   `WARM_HOURS`, every 3 h outside; each statement under a 5-min SET LOCAL
   limit. Log: `kohort: matrix:[18,null,false,null] 12.3 s · …`.
   `SYNC_COHORTS=0` turns it off and the screen builds live again.
+- **Roistat's closed months are read by the worker and stored (2026-10-28,
+  `monthScanRefresh.ts`, `month_scan`)**: every closed month from January of
+  last year — the widest scan (`RoistatRepository.bitrix(month, now, 'all',
+  true)`, every grouping set, brand-keyed; every shape and brand slice is cut
+  from it, `bitrixRowsOfShape`) — and the queue cohort's team-days (FAKT) of
+  this year's closed months and the month just closed. At most three months a
+  pass, newest first, one at a time, beside the loop and never beside Meta,
+  Roistat's import or a cohort pass; a month whose sales still open
+  (`monthSettling`, its end + 35 days) every 30 min in `WARM_HOURS` and 3 h
+  outside, an older one every 12 h; 5-min SET LOCAL limit per statement. The
+  first fill after a deploy is spread over ~11 ticks. Log: `oy keshi:
+  bitrix:2026-09 31.2 s · fakt:2026-09 6.0 s`. `SYNC_MONTH_SCANS=0` turns it
+  off and «Kunlar boʻyicha» / Roistat read every month live again.
 - **Bitrix24 dropdown labels age out every 3 h** (`ENUM_LABELS_TTL_MS`): a
   renamed «Проект» / targetolog / region item keeps its id, so only a miss
   re-read them before. **The deals already stored follow too**: the provider

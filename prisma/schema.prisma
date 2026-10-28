@@ -2384,3 +2384,24 @@ model CohortSnapshot {
 
   @@map("cohort_snapshot")
 }
+
+/// «KUNLAR BOʻYICHA» AND ROISTAT'S CLOSED MONTHS, computed by the sync worker
+/// (2026-10-28). Roistat's lead cohort is the sum of its months
+/// (`RoistatRepository.bitrix`), and a year of it ran past the web pool's 20 s
+/// statement timeout on the one-core database — «Shu yil» answered 500, «Oʻtgan
+/// oy» took 18.7 s. The worker reads each closed month once and stores it here
+/// (`monthScanRefresh.ts`); `RoistatService` adds the stored months to the one
+/// it reads live. One row per question: `v1:bitrix:YYYY-MM` — the month's scan,
+/// every grouping set, brand-keyed, from which every shape and brand slice is
+/// cut — and `v1:fakt:YYYY-MM` — its queue cohort's team-days (FAKT 1 / 2).
+model MonthScan {
+  /// The question: `v1:bitrix:` or `v1:fakt:` + the Tashkent month.
+  key     String   @id
+  /// The repository's rows as JSON — BigInt money as a decimal string (`encodeCohortPayload`).
+  payload Json
+  builtAt DateTime
+  /// How long the build took, for the worker's log and for the next person measuring it.
+  ms      Int
+
+  @@map("month_scan")
+}

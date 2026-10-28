@@ -383,6 +383,36 @@ export function calendarMonth(
 }
 
 /**
+ * A window cut at every calendar-month boundary in its timezone, in order:
+ * its part of each month it touches. A window inside one month comes back as
+ * itself, one piece; the pieces tile the window, [start, end) with no gap and
+ * no overlap.
+ *
+ * For a reading that is the sum of its months — Roistat's lead cohort
+ * (`RoistatService`) — so the months that have closed can be read from what
+ * the sync worker stored, and only the rest asked of the database live. Each
+ * piece is `custom`: no preset selects it, and it is never compared against
+ * anything.
+ */
+export function monthPieces(period: Period): readonly Period[] {
+  const pieces: Period[] = []
+  let start = period.start
+  while (start.getTime() < period.end.getTime()) {
+    const monthEnd = calendarMonth(start, period.timeZone).end
+    const end = monthEnd.getTime() < period.end.getTime() ? monthEnd : period.end
+    pieces.push(Object.freeze({ start, end, timeZone: period.timeZone, preset: 'custom' as const }))
+    start = end
+  }
+  if (pieces.length === 1) return [period]
+  return pieces
+}
+
+/** `YYYY-MM` of the month `instant` falls in, in `timeZone`. */
+export function zonedMonthKey(instant: Date, timeZone: string): string {
+  return zonedDateKey(instant, timeZone).slice(0, 7)
+}
+
+/**
  * A window that opens at the start of a named calendar month and runs to now.
  *
  * For a reading whose lower bound is a FACT rather than a choice — the record

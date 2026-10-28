@@ -5826,9 +5826,10 @@ export class InsightsRepository {
    * it on 2026-09-28, and it is how Logistika's per-ROP strip already reads,
    * so the two screens name every order's team identically.
    */
-  async rnpTeamDays(period: Period, brands = true): Promise<RnpTeamDayRow[]> {
+  async rnpTeamDays(period: Period, brands = true, statementTimeoutMs?: number): Promise<RnpTeamDayRow[]> {
     const params: unknown[] = [period.start, period.end, null]
-    const rows = await this.prisma.$queryRawUnsafe<
+    // `statementTimeoutMs`: the sync worker's own bound, storing a closed month (`monthScanRefresh.ts`).
+    const rows = await this.queryWithTimeout<
       {
         day: string
         rop: string
@@ -5841,7 +5842,7 @@ export class InsightsRepository {
         product_brand: string | null
         form_brand: string | null
       }[]
-    >(`${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.rnpTeamDaysSql(brands)}`, ...params)
+    >(statementTimeoutMs, `${InsightsRepository.queueSql('window', '$3')}${InsightsRepository.rnpTeamDaysSql(brands)}`, ...params)
     return rows.map((r) => ({
       day: r.day,
       rop: r.rop,

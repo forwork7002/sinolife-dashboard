@@ -9,11 +9,12 @@
 
 import { sharedCbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 import { env } from '@/server/config/env'
-import { prisma } from '@/server/db/prisma'
+import { WARM_STATEMENT_TIMEOUT_MS, prisma, warmPrisma } from '@/server/db/prisma'
 import { logger } from '@/server/logging/logger'
 import { DealRepository } from '@/server/repositories/dealRepository'
 import { InsightsRepository } from '@/server/repositories/insightsRepository'
 import { CohortSnapshotRepository } from '@/server/repositories/cohortSnapshotRepository'
+import { MonthScanRepository } from '@/server/repositories/monthScanRepository'
 import { PulseRepository } from '@/server/repositories/pulseRepository'
 import { ConcentrationRepository } from '@/server/repositories/concentrationRepository'
 import { MarketingRepository } from '@/server/repositories/marketingRepository'
@@ -49,8 +50,8 @@ import { LeadSourcesService } from './leadSourcesService'
 import { LeadWatchService } from './leadWatchService'
 import { ReklamaService } from './reklamaService'
 import { RegistrationService } from './registrationService'
-import { RnpService } from './rnpService'
-import { RoistatService } from './roistatService'
+import { RnpService, warmMonthFakt } from './rnpService'
+import { BORROWED_FAKT_MAX_AGE_MS, RoistatService } from './roistatService'
 import { SverkaService } from './sverkaService'
 import { InboundAnalysisService } from './inboundAnalysisService'
 import { InboundCallsService } from './inboundCallsService'
@@ -156,7 +157,16 @@ export const rnpService = new RnpService(insightsRepository, rnpRepository, rekl
   cohort through to Доставка, from its own repository; Meta's campaign-days
   for the money through the reklama repository. See roistatService.ts.
 */
-export const roistatService = new RoistatService(new RoistatRepository(prisma), reklamaRepository, cbuUsdRates, insightsRepository)
+export const roistatService = new RoistatService(
+  new RoistatRepository(prisma),
+  reklamaRepository,
+  cbuUsdRates,
+  insightsRepository,
+  // The closed months the sync worker stored (`monthScanRefresh.ts`).
+  new MonthScanRepository(prisma),
+  // The running month's FAKT, from the RNP sheet's warmed memo when it is young enough.
+  (month) => warmMonthFakt(month, BORROWED_FAKT_MAX_AGE_MS),
+)
 /*
   «Registratsiya» (2026-10-01) — the day's handed-out leads per ROP against the
   administrator's split, and «ROP otchet» seller by seller (FAKT from the
@@ -188,6 +198,47 @@ export const leadWatchService = new LeadWatchService(
   referenceRepository,
   leadSourcesService,
 )
+/*
+  THE WARMERS' OWN SERVICES (2026-10-28): «RNP jadvali», «Lidlar» and «Лид
+  назорати» once more, on the warm lane's one connection (`warmPrisma`,
+  prisma.ts) — `instrumentation.ts` warms through these and nothing else
+  does. Their memos are process-wide (`processWide`), so what a warm-up
+  builds here is the very answer the screens' services above hand out; only
+  the connection it was read on differs.
+*/
+const warmInsightsRepository = new InsightsRepository(warmPrisma)
+const warmReklamaRepository = new ReklamaRepository(warmPrisma)
+const warmLeadSourcesService = new LeadSourcesService(
+  new LeadSourcesRepository(warmPrisma),
+  warmReklamaRepository,
+  warmInsightsRepository,
+)
+export const warmServices = {
+  rnp: new RnpService(
+    warmInsightsRepository,
+    // The lane already allows a minute: the month's registration history needs no transaction of its own there.
+    new RnpRepository(warmPrisma, WARM_STATEMENT_TIMEOUT_MS),
+    warmReklamaRepository,
+    cbuUsdRates,
+  ),
+  leadSources: warmLeadSourcesService,
+  // «Kunlar boʻyicha»'s «Shu oy» (`RoistatService.warm`) — its memos are process-wide too.
+  roistat: new RoistatService(
+    new RoistatRepository(warmPrisma),
+    warmReklamaRepository,
+    cbuUsdRates,
+    warmInsightsRepository,
+    new MonthScanRepository(warmPrisma),
+    (month) => warmMonthFakt(month, BORROWED_FAKT_MAX_AGE_MS),
+  ),
+  leadWatch: new LeadWatchService(
+    new LeadWatchRepository(warmPrisma),
+    new InboundCallsRepository(warmPrisma),
+    new RegistrationRepository(warmPrisma),
+    new ReferenceRepository(warmPrisma),
+    warmLeadSourcesService,
+  ),
+} as const
 /*
   «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.
 */

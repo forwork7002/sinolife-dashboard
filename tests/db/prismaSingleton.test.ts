@@ -38,7 +38,7 @@ vi.mock('@/server/config/env', () => ({
   env: { NODE_ENV: 'production', DATABASE_URL: 'postgresql://u:p@localhost:5432/db' },
 }))
 
-const KEYS = ['__sinolifePrisma', '__sinolifeAuthPrisma']
+const KEYS = ['__sinolifePrisma', '__sinolifeAuthPrisma', '__sinolifeWarmPrisma']
 
 afterEach(() => {
   for (const key of KEYS) delete (globalThis as Record<string, unknown>)[key]
@@ -57,21 +57,30 @@ describe('prisma singleton', () => {
 
     expect(second).toBe(first)
     expect(third).toBe(first)
-    // Two lanes — the main pool and the auth lane — each opened once.
-    expect(poolCtor).toHaveBeenCalledTimes(2)
-    expect(clientCtor).toHaveBeenCalledTimes(2)
+    // Three lanes — the main pool, the auth lane and the warm lane — each opened once.
+    expect(poolCtor).toHaveBeenCalledTimes(3)
+    expect(clientCtor).toHaveBeenCalledTimes(3)
   })
 
-  it('splits the long-lived eight into six for the screens and two for the auth lane', async () => {
-    const { prisma, authPrisma } = await import('@/server/db/prisma')
+  it('splits the long-lived eight into five for the screens, two for the auth lane and one for the warm-ups', async () => {
+    const { prisma, authPrisma, warmPrisma } = await import('@/server/db/prisma')
     expect(authPrisma).not.toBe(prisma)
+    expect(warmPrisma).not.toBe(prisma)
     expect(poolCtor).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ max: 6, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 20_000, statement_timeout: 20_000 }),
+      expect.objectContaining({ max: 5, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 20_000, statement_timeout: 20_000 }),
     )
     expect(poolCtor).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ max: 2, min: 1, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 20_000, statement_timeout: 5_000 }),
     )
+    // One connection, a minute's limit, and a wait for it as long as two builds: the warm-ups queue behind themselves.
+    expect(poolCtor).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({ max: 1, application_name: 'web-warm', connectionTimeoutMillis: 120_000, statement_timeout: 60_000 }),
+    )
+    const sizes = poolCtor.mock.calls.map(([config]) => (config as { max: number }).max)
+    // 2 × 8 + the worker's 6 + the deploy's 2 = 24 of max_connections 25 (prisma.ts).
+    expect(sizes.reduce((a, b) => a + b, 0)).toBe(8)
   })
 })

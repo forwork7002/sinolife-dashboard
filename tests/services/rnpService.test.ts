@@ -23,6 +23,20 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
   reader past the half hour must be handed the old answer, not made to wait.
 */
 describe('staleWhileRevalidate', () => {
+  it('peek hands out an answer young enough and never builds one (2026-10-28, «Kunlar boʻyicha» borrows the FAKT)', async () => {
+    let now = 0
+    let builds = 0
+    const memo = staleWhileRevalidate<number>(1_000, () => now)
+    expect(memo.peek('k', 5_000)).toBeNull()
+    expect(builds).toBe(0)
+    await memo.get('k', () => Promise.resolve(++builds))
+    now = 4_000
+    expect(await memo.peek('k', 5_000)).toBe(1)
+    now = 6_000
+    expect(memo.peek('k', 5_000)).toBeNull()
+    expect(builds).toBe(1)
+  })
+
   it('builds once, serves the old answer after the ttl while rebuilding, then the new one', async () => {
     let now = 0
     let builds = 0

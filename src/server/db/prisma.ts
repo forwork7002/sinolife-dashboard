@@ -39,8 +39,8 @@ if (typeof window !== 'undefined') {
   )
 }
 
-/** Which of the process's two pools a client sits on — see THE AUTH LANE below. */
-type Lane = 'main' | 'auth'
+/** Which of the process's pools a client sits on — see THE AUTH LANE and THE WARM LANE below. */
+type Lane = 'main' | 'auth' | 'warm'
 
 function createPrismaClient(lane: Lane): PrismaClient {
   /**
@@ -91,28 +91,48 @@ function createPrismaClient(lane: Lane): PrismaClient {
     probe now have two connections nothing else can take (`authPrisma`), so a
     click is never queued behind a report. Analytics keep six; on one core
     the seventh and eighth concurrent scan only slowed the other six.
+
+    THE WARM LANE (2026-10-28). The six are now FIVE + ONE, so the
+    arithmetic still holds. The background warm-ups — «RNP jadvali», «Lidlar», «Лид
+    назорати» (`instrumentation.ts`) — ran on the readers' six, two scans at
+    a time, and on production that morning the six were taken with fifteen
+    requests queued behind them while «Lidlar»'s ran (plain screens 1.3–3.4 s),
+    and its «Факт1 мижоз» match died on the 20 s limit 29 times in 17 hours
+    («leads warm-up failed»). The warmers now build on ONE connection of
+    their own (`warmPrisma`), one statement at a time — nobody waits on a
+    warm-up, so it queues behind itself and never in front of a reader — and
+    under a minute's limit: a build that took 25 s beside the readers is
+    allowed to finish rather than be thrown away and started again.
   */
   const main = lane === 'main'
+  const warm = lane === 'warm'
   const pool = new Pool({
-    // Named so `pg_stat_activity` tells the two lanes and the sync worker apart (2026-10-24).
-    application_name: main ? 'web' : 'web-auth',
+    // Named so `pg_stat_activity` tells the lanes and the sync worker apart (2026-10-24).
+    application_name: main ? 'web' : warm ? 'web-warm' : 'web-auth',
     ...poolConfig(env.DATABASE_URL, {
       caCert: caCertFromEnv(),
-      max: main ? (isServerless ? 3 : 6) : isServerless ? 1 : 2,
+      max: main ? (isServerless ? 3 : 5) : warm ? 1 : isServerless ? 1 : 2,
       /*
         The auth lane keeps ONE connection once it has made it: a click after
         half a minute of quiet would otherwise open a fresh TLS connection to
         the database (the idle timeout below) before the guard could ask.
       */
-      ...(main || isServerless ? {} : { min: 1 }),
+      ...(main || warm || isServerless ? {} : { min: 1 }),
       idleTimeoutMillis: isServerless ? 10_000 : 30_000,
       connectionTimeoutMillis: 20_000,
       // An index read that is still going after five seconds is not going to answer a click.
-      statementTimeoutMs: main ? 20_000 : 5_000,
+      statementTimeoutMs: main ? 20_000 : warm ? WARM_STATEMENT_TIMEOUT_MS : 5_000,
+      /*
+        The warm lane's own builds queue for its one connection — a warm-up
+        reads two scans side by side — and that wait is the design, not a
+        fault: as long as a build may run, twice over.
+      */
+      ...(warm ? { connectionTimeoutMillis: WARM_STATEMENT_TIMEOUT_MS * 2 } : {}),
     }),
   })
 
   if (main) globalForPrisma.__sinolifePool = pool
+  else if (warm) globalForPrisma.__sinolifeWarmPool = pool
   else globalForPrisma.__sinolifeAuthPool = pool
   const adapter = new PrismaPg(pool)
 
@@ -125,11 +145,16 @@ function createPrismaClient(lane: Lane): PrismaClient {
   })
 }
 
+/** A warm-up statement's limit (THE WARM LANE): its slowest builds measured 25–43 s beside the readers. */
+export const WARM_STATEMENT_TIMEOUT_MS = 60_000
+
 const globalForPrisma = globalThis as unknown as {
   __sinolifePrisma?: PrismaClient
   __sinolifePool?: Pool
   __sinolifeAuthPrisma?: PrismaClient
   __sinolifeAuthPool?: Pool
+  __sinolifeWarmPrisma?: PrismaClient
+  __sinolifeWarmPool?: Pool
 }
 
 // Written in every environment — see ONE POOL PER PROCESS above. Gating this
@@ -148,6 +173,15 @@ export const prisma: PrismaClient = globalForPrisma.__sinolifePrisma
 globalForPrisma.__sinolifeAuthPrisma ??= createPrismaClient('auth')
 
 export const authPrisma: PrismaClient = globalForPrisma.__sinolifeAuthPrisma
+
+/*
+  The warm lane's client — the background warm-ups only; see THE WARM LANE
+  above. A reader on it would wait behind a whole warm-up. Like the auth
+  lane it opens nothing until asked, so the sync worker never holds one.
+*/
+globalForPrisma.__sinolifeWarmPrisma ??= createPrismaClient('warm')
+
+export const warmPrisma: PrismaClient = globalForPrisma.__sinolifeWarmPrisma
 
 /**
  * The pool's state at this instant — for the slow-request log (`handler.ts`).
