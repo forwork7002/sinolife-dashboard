@@ -254,7 +254,7 @@ export class RnpService {
     private readonly repository: RnpRepository,
     private readonly reklama: ReklamaRepository,
     /** The dollar's official rate per day — see `integrations/cbu/cbuRates.ts`. */
-    private readonly usd: Pick<CbuUsdRates, 'forDays'>,
+    private readonly usd: Pick<CbuUsdRates, 'forDays' | 'latestOnOrBefore'>,
   ) {}
 
   async overview(input: { month: string; timeZone: string; now: Date; canEditPlans: boolean }): Promise<RnpOverviewDto> {
@@ -264,10 +264,12 @@ export class RnpService {
     const today = zonedDateKey(input.now, input.timeZone)
     const memo = to < today ? pastMonthCache : monthCache
     /* Plans are read fresh: what somebody just saved shows on the next load. */
-    const [rows, plans, usdRates, manualCosts, manualHeadcount] = await Promise.all([
+    const [rows, plans, usdRates, usdCarry, manualCosts, manualHeadcount] = await Promise.all([
       memo.get(input.month, () => this.monthRows(input.month, from, to, input.timeZone, input.now)),
       this.repository.plans(input.month),
       this.usd.forDays(days, today),
+      // A month the bank never answered (cbu.uz is closed to DigitalOcean) converts at the last stored day before it.
+      this.usd.latestOnOrBefore(previousDay(from)),
       // Typed a moment ago, shown on the next load — never cached.
       this.repository.manualCosts(from, to),
       this.repository.manualHeadcount(from, to),
@@ -277,6 +279,7 @@ export class RnpService {
       days,
       today,
       usdRates,
+      usdCarry,
       manualCosts,
       manualHeadcount,
       teams: rows.teams,

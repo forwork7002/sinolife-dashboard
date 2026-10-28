@@ -162,6 +162,46 @@ describe('a blob whose rate is the source\u2019s reserve', () => {
     expect(db.row).toBeNull()
   })
 
+  it('takes usd_rate\u2019s newest day over the snapshot\u2019s older one when the bank is out of reach (2026-10-28)', async () => {
+    const db = fakeDb({ id: SNAPSHOT_ID, ...snapshotOf(BLOB, 'x', 24_000, new Date(0)) } as unknown as Row)
+    const saved = await saveSnapshot(db as never, RESERVE, 'x', 55_899, {
+      force: false,
+      now: NOW,
+      bankRate: async () => null,
+      rates: {
+        latest: async () => ({ usdRateMicro: 11_918_980_000n, rateDate: new Date(Date.UTC(2026, 9, 28)) }),
+        keep: async () => {},
+      },
+    })
+    expect(saved.rateSource).toBe('stored')
+    expect(db.row?.usdRateMicro).toBe(11_918_980_000n)
+    expect(db.row?.rateDate).toEqual(new Date(Date.UTC(2026, 9, 28)))
+  })
+
+  it('keeps the snapshot\u2019s rate when usd_rate holds nothing newer', async () => {
+    const db = fakeDb({ id: SNAPSHOT_ID, ...snapshotOf(BLOB, 'x', 24_000, new Date(0)) } as unknown as Row)
+    const saved = await saveSnapshot(db as never, RESERVE, 'x', 55_899, {
+      force: false,
+      now: NOW,
+      bankRate: async () => null,
+      rates: { latest: async () => ({ usdRateMicro: 1n, rateDate: new Date(Date.UTC(2026, 9, 1)) }), keep: async () => {} },
+    })
+    expect(saved.rateSource).toBe('previous')
+    expect(db.row?.usdRateMicro).toBe(11_823_690_000n)
+  })
+
+  it('hands a dated rate to usd_rate, the blob\u2019s as «roistat», the bank\u2019s as «cbu»', async () => {
+    const kept: string[] = []
+    const rates = {
+      latest: async () => null,
+      keep: async (r: { rateDate: Date }, source: string) => void kept.push(`${source} ${r.rateDate.toISOString().slice(0, 10)}`),
+    }
+    await saveSnapshot(fakeDb() as never, BLOB, 'x', 24_000, { force: false, now: NOW, rates })
+    const db = fakeDb({ id: SNAPSHOT_ID, ...snapshotOf(BLOB, 'x', 24_000, new Date(0)) } as unknown as Row)
+    await saveSnapshot(db as never, RESERVE, 'x', 55_899, { force: false, now: NOW, bankRate: async () => bankRateOf(BANK), rates })
+    expect(kept).toEqual(['roistat 2026-10-06', 'cbu 2026-10-24'])
+  })
+
   it('takes a dated blob\u2019s own rate without asking the bank', async () => {
     const db = fakeDb()
     let asked = 0

@@ -196,11 +196,11 @@ function serviceOver(
   scan: (month: string) => Promise<void>,
   {
     Service = RnpService,
-    usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) },
+    usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000), latestOnOrBefore: async () => null },
     registrationDays = async () => [],
   }: {
     Service?: typeof RnpService
-    usd?: { forDays: (days: readonly string[]) => Promise<number[]> }
+    usd?: { forDays: (days: readonly string[]) => Promise<number[]>; latestOnOrBefore: () => Promise<null> }
     registrationDays?: (from: string, to: string) => Promise<never[]>
   } = {},
 ) {
@@ -319,6 +319,7 @@ describe('RnpService — the month memo (2026-10-02)', () => {
           asked.push(days[0]!.slice(0, 7))
           return days.map(() => 12_000)
         },
+        latestOnOrBefore: async () => null,
       },
     })
     // Each says so — `OFF_HOURS` — so the warmer logs a skip rather than «rnp warmed» with 0 ms.
@@ -472,7 +473,7 @@ describe('RnpService — the Collagen funnel reads Meta views and clicks (2026-1
         campaign({ campaignName: 'EX - Sinolife (vakansiya) - DM', impressions: 900, clicks: 9 }),
       ],
     }
-    const usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) }
+    const usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000), latestOnOrBefore: async () => null }
     const service = new RnpService({ rnpTeamDays: none } as never, repository as never, reklama as never, usd)
     const sheet = await service.overview({ month: '2025-03', timeZone: TZ, now: new Date(Date.now()), canEditPlans: false })
     const rows = sheet.blocks.find((b) => b.id === 'funnel:collagen')!.rows
@@ -485,14 +486,14 @@ describe('RnpService.headcountTeamsOf — a ROP types their own team (2026-10-07
   it('names the teams the person heads, an old department name folded into today\'s', async () => {
     const asked: string[] = []
     const repository = { teamsHeadedBy: async (id: string) => (asked.push(id), ['Malika', 'Lola']) }
-    const service = new RnpService({} as never, repository as never, {} as never, { forDays: async () => [] })
+    const service = new RnpService({} as never, repository as never, {} as never, { forDays: async () => [], latestOnOrBefore: async () => null })
     expect([...(await service.headcountTeamsOf('e1'))].sort()).toEqual(['Charos', 'Lola'])
     expect(asked).toEqual(['e1'])
   })
 
   it('is empty for a login with no employee, without asking the database', async () => {
     const repository = { teamsHeadedBy: async () => { throw new Error('asked') } }
-    const service = new RnpService({} as never, repository as never, {} as never, { forDays: async () => [] })
+    const service = new RnpService({} as never, repository as never, {} as never, { forDays: async () => [], latestOnOrBefore: async () => null })
     expect((await service.headcountTeamsOf(null)).size).toBe(0)
   })
 })

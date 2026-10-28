@@ -37,6 +37,7 @@ import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import { ReferenceRepository } from '@/server/repositories/referenceRepository'
+import { UsdRateRepository } from '@/server/repositories/usdRateRepository'
 import { InsightsService } from './insightsService'
 import { PayrollService } from './payrollService'
 import { KpiService } from './kpiService'
@@ -150,7 +151,7 @@ const rnpRepository = new RnpRepository(prisma)
   read for one is not asked of cbu.uz again for the other — and one for the
   process, so the RNP warmer's bundle and the routes' share it too.
 */
-const cbuUsdRates = sharedCbuUsdRates()
+const cbuUsdRates = sharedCbuUsdRates(new UsdRateRepository(prisma))
 export const rnpService = new RnpService(insightsRepository, rnpRepository, reklamaRepository, cbuUsdRates)
 /*
   «Roistat» (2026-10-05) — Meta's ad-level rows and the Регистрация lead

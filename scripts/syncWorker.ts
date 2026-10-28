@@ -912,7 +912,14 @@ async function runRoistatImport(): Promise<void> {
           const rate = /\(= ([\d.]+) soʻm\/\$\)/.exec(tail)
           // Which rate it is: the blob's, the bank's (the blob carried a reserve), or the one kept (roistatSnapshot.ts).
           const source = /kurs manbai\s*:\s*(\S+)/.exec(tail)?.[1]
-          const from = source === 'cbu' ? ' (CBU — manbada zaxira kurs)' : source === 'previous' ? ' (oldingi kurs qoldi — manbada zaxira kurs, CBU javob bermadi)' : ''
+          const from =
+            source === 'cbu'
+              ? ' (CBU — manbada zaxira kurs)'
+              : source === 'stored'
+                ? ' (saqlangan oxirgi CBU kursi — manbada zaxira kurs, CBU javob bermadi)'
+                : source === 'previous'
+                  ? ' (oldingi kurs qoldi — manbada zaxira kurs, CBU javob bermadi)'
+                  : ''
           console.log(`  ${stamp()} roistat: ok, kurs ${rate ? `${rate[1]} soʻm/$` : 'yozildi'}${from}`)
         } else if (code === null) {
           /*

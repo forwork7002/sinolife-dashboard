@@ -120,7 +120,7 @@ function metaRow(fields: Partial<RoistatMetaRow>): RoistatMetaRow {
   }
 }
 
-function harness() {
+function harness(rateOf: (day: string) => { rate: number; day: string } | null = (day) => ({ rate: 12_000, day })) {
   const bitrixCalls: { period: Period; now: Date; shape: string }[] = []
   const metaCalls: unknown[][] = []
   const repository = {
@@ -158,9 +158,9 @@ function harness() {
   }
   const usdDays: string[][] = []
   const usd = {
-    forDays: async (days: readonly string[]) => {
-      usdDays.push([...days])
-      return days.map(() => 12_000)
+    dated: async (day: string) => {
+      usdDays.push([day])
+      return rateOf(day)
     },
   }
   const service = new RoistatService(repository as never, reklama, usd, insights)
@@ -219,6 +219,18 @@ describe('RoistatService.overview', () => {
     expect(usdDays[0]).toEqual(['2026-10-05'])
     expect(r.rate).toEqual({ uzsPerUsd: 12_000, date: '2026-10-05' })
     expect(r.freshFrom).toBe('2026-09-29')
+  })
+
+  it('names the stored day it converts at when the bank does not answer the window\u2019s (2026-10-28)', async () => {
+    const { service } = harness(() => ({ rate: 11_918.98, day: '2026-10-03' }))
+    const r = await service.overview(PERIOD, { dim: 'days' }, NOW)
+    expect(r.rate).toEqual({ uzsPerUsd: 11_918.98, date: '2026-10-03' })
+  })
+
+  it('says no rate when nothing was ever stored either', async () => {
+    const { service } = harness(() => null)
+    const r = await service.overview(PERIOD, { dim: 'days' }, NOW)
+    expect(r.rate).toBeNull()
   })
 })
 
@@ -311,7 +323,7 @@ describe('faktDays — the brand switch', () => {
     const asked: unknown[] = []
     const repository = { bitrix: async () => [], meta: async () => [], metaName: async () => null, metaImportedAt: async () => null }
     const probe = { rnpTeamDays: async (_p: unknown, brands?: boolean) => (asked.push(brands), []) }
-    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, probe as never)
+    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { dated: async (day: string) => ({ rate: 12_000, day }) }, probe as never)
     await service.days(PERIOD, NOW, 'all')
     await service.days(PERIOD, NOW, 'Zextra')
     expect(asked).toEqual([false, true])
@@ -369,7 +381,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
         campaignDay({ accountId: '440073592484616', accountName: 'Zextra Umar', spendMicroUsd: 8_000_000n }),
       ],
     }
-    const usd = { forDays: async (days: readonly string[]) => days.map(() => 12_000) }
+    const usd = { dated: async (day: string) => ({ rate: 12_000, day }) }
     return { service: new RoistatService(repository as never, reklama, usd, insights), calls }
   }
 
@@ -422,7 +434,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
         metaName: async () => null,
         metaImportedAt: async () => null,
       }
-      const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, insights)
+      const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { dated: async (day: string) => ({ rate: 12_000, day }) }, insights)
       expect((await service.overview(PERIOD, { dim: 'rop' }, NOW)).kpi.leads).toBe(100)
 
       // Past the TTL: the old answer is handed out while ONE rebuild of the scan runs behind it…
@@ -454,7 +466,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
           return []
         },
       }
-      const service = new RoistatService(repository as never, reklama, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, insights)
+      const service = new RoistatService(repository as never, reklama, { dated: async (day: string) => ({ rate: 12_000, day }) }, insights)
       await service.overview(PERIOD, { dim: 'rop' }, NOW)
       // A table's Meta reads: this window's spend and the previous one's.
       expect(spendReads).toBe(2)
@@ -521,7 +533,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
       metaName: async () => null,
       metaImportedAt: async () => null,
     }
-    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, insights)
+    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { dated: async (day: string) => ({ rate: 12_000, day }) }, insights)
     const z = await service.overview(PERIOD, { dim: 'days', brand: 'Zextra' }, NOW)
     expect(z.kpi).toMatchObject({ sold: 2, soldUzs: 7_000_000 })
     const n = await service.overview(PERIOD, { dim: 'days', brand: 'none' }, NOW)
@@ -537,7 +549,7 @@ describe('RoistatService — the Collagen / Zextra switch', () => {
       bitrixRow('total', { brandTeam: 'Sevinch', brandProduct: '-', brandForm: 'Zextra', sold: 1, soldMinor: 3_000_000_00n }),
     ]
     const repository = { bitrix: async () => rows, meta: async () => [], metaName: async () => null, metaImportedAt: async () => null }
-    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { forDays: async (d: readonly string[]) => d.map(() => 12_000) }, insights)
+    const service = new RoistatService(repository as never, { campaignDays: async () => [] }, { dated: async (day: string) => ({ rate: 12_000, day }) }, insights)
     expect((await service.overview(PERIOD, { dim: 'days', brand: 'Collagen' }, NOW)).kpi).toMatchObject({ sold: 1, soldUzs: 5_000_000 })
     expect((await service.overview(PERIOD, { dim: 'days', brand: 'Zextra' }, NOW)).kpi).toMatchObject({ sold: 1, soldUzs: 3_000_000 })
     expect((await service.overview(PERIOD, { dim: 'days', brand: 'none' }, NOW)).kpi.sold).toBe(0)

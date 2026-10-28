@@ -428,7 +428,7 @@ export class RoistatService {
   constructor(
     private readonly repository: RoistatRepository,
     private readonly reklama: Pick<ReklamaRepository, 'campaignDays'>,
-    private readonly usd: Pick<CbuUsdRates, 'forDays'>,
+    private readonly usd: Pick<CbuUsdRates, 'dated'>,
     private readonly insights: Pick<InsightsRepository, 'rnpTeamDays'>,
     /** The sync worker's closed months (`month_scan`); null reads every month live. */
     private readonly months: MonthScanReader | null = null,
@@ -532,7 +532,7 @@ export class RoistatService {
       dim === 'camp' || dim === 'adset' || dim === 'ad'
         ? this.repository.meta(dim, window.from, window.to, parent)
         : Promise.resolve([] as RoistatMetaRow[]),
-      this.usd.forDays([rateDay], today),
+      this.usd.dated(rateDay, today),
       this.repository.metaImportedAt(),
       parent ? this.repository.metaName(dim === 'adset' ? 'campaign' : 'adset', parent) : Promise.resolve(null),
     ])
@@ -557,7 +557,7 @@ export class RoistatService {
     }))
 
     return {
-      ...this.table(dim, bitrix, spend, metaRows, rates[0], rateDay, today),
+      ...this.table(dim, bitrix, spend, metaRows, rates?.rate, rates?.day ?? rateDay, today),
       parent: parent ? { key: parent, label: parentName?.name ?? parent } : null,
       grandParent:
         dim === 'ad' && parentName ? { key: parentName.campaignId, label: parentName.campaignName } : null,
@@ -577,7 +577,7 @@ export class RoistatService {
     const [bitrix, spend, rates, teamDays] = await Promise.all([
       this.bitrixRows(period, now, 'days', keyed, now),
       this.spendDays(window.from, window.to),
-      this.usd.forDays([rateDay], today),
+      this.usd.dated(rateDay, today),
       // An addition to the «Дни» table, never its price: a failed scan is logged and the table draws without FAKT.
       // Under «Hammasi» no order is filed by brand, so the per-order brand probes are skipped.
       this.faktRows(period, keyed, now).catch((error: unknown) => {
@@ -587,7 +587,8 @@ export class RoistatService {
         return null
       }),
     ])
-    return { today, rateDay, bitrix, spend, rate: rates[0], teamDays }
+    // The day the rate is the bank's for — rateDay, or the last stored day before it when the bank is out of reach.
+    return { today, rateDay: rates?.day ?? rateDay, bitrix, spend, rate: rates?.rate, teamDays }
   }
 
   /**

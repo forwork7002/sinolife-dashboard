@@ -1375,6 +1375,23 @@ model MarketingDaily {
 /// stamp — they are different systems refreshed on different clocks, and
 /// showing the wrong one is how a dashboard claims to be fresh while serving
 /// three-day-old ad spend.
+/// THE CENTRAL BANK'S DOLLAR RATE, ONE ROW PER DAY (2026-10-28). What cbu.uz
+/// answered for the day (`CbuUsdRates`), kept so a deploy does not forget it:
+/// the bank stopped answering DigitalOcean's network, and every rate lived in
+/// the process alone. A day neither the bank nor this table has converts at
+/// the newest stored day before it, and the screen names that day.
+model UsdRate {
+  /// The day the rate is in force — a weekend holds the Friday's, as the bank answers it.
+  day       DateTime @id @db.Date
+  /// UZS per USD in micro units, as `marketing_snapshot.usdRateMicro`: 11 918.98 is 11 918 980 000.
+  rateMicro BigInt
+  /// 'cbu' — asked of cbu.uz · 'roistat' — the dated rate the client's Roistat page published · 'seed' — the migration's, read from cbu.uz on 2026-10-28.
+  source    String
+  fetchedAt DateTime @default(now())
+
+  @@map("usd_rate")
+}
+
 model MarketingSnapshot {
   /// Constant 'roistat'. One published dashboard, one row, no history table:
   /// the blob is a full replacement each time, not an increment.

@@ -219,6 +219,12 @@ export interface RnpSheetInput {
    * (`CbuUsdRates`); null for a day not reached or not answered. Nothing typed.
    */
   readonly usdRates: readonly (number | null)[]
+  /**
+   * The newest stored rate before the month (`usd_rate`), for days before the
+   * month's first answered one — a month the bank never answered converts at
+   * it, and the header names its day. Absent: none.
+   */
+  readonly usdCarry?: { readonly rate: number; readonly day: string } | null
   /** Each ROP team's «Ходим сони» typed by hand (`rnp_manual_headcount`). */
   readonly manualHeadcount: readonly { readonly day: string; readonly rop: string; readonly heads: number }[]
   /** The P&L cost lines typed by hand (`rnp_manual_cost`), soʻm. */
@@ -771,9 +777,12 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     A day the bank did not answer converts at the nearest day it did: the
     last answered day before it, or — for the month's first days — the
     month's first answered rate. Never at 0: a silent 0 would undercount the
-    soʻm budget, the targetolog and the CAC. No answer all month: dashes.
+    soʻm budget, the targetolog and the CAC. No answer all month: the last
+    stored day before the month (`usdCarry`, 2026-10-28 — cbu.uz is closed to
+    DigitalOcean), else dashes.
   */
-  const firstRate = input.usdRates.find((r) => r !== null) ?? null
+  const carry = input.usdCarry ?? null
+  const firstRate = input.usdRates.find((r) => r !== null) ?? carry?.rate ?? null
   const rates: (number | null)[] = []
   for (let i = 0; i < n; i++) rates.push(input.usdRates[i] ?? (i > 0 ? rates[i - 1]! : firstRate))
   const rateKnown = rates.some((r) => r !== null)
@@ -1536,8 +1545,8 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     blocks: [...blocks.filter((b) => b.kind !== 'project'), ...blocks.filter((b) => b.kind === 'project')],
     lines: sheetLines(blocks, { month: input.month, teamName: labelOf }).map(withLineBrand),
     settings: {
-      usdRate: lastRateAt < 0 ? null : rates[lastRateAt]!,
-      usdRateDate: lastRateAt < 0 ? null : days[lastRateAt]!,
+      usdRate: lastRateAt < 0 ? (carry?.rate ?? null) : rates[lastRateAt]!,
+      usdRateDate: lastRateAt < 0 ? (carry?.day ?? null) : days[lastRateAt]!,
     },
     canEditPlans: input.canEditPlans,
   }

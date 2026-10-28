@@ -408,7 +408,14 @@ Per-screen traps worth knowing before you touch one:
     converts at the last answered day's rate, the month's first days before
     any answer at the month's first answered rate (never at 0); no rate at
     all → the converted rows are empty. The header names the latest day the
-    bank ANSWERED.
+    bank ANSWERED. **Kept in `usd_rate` since 2026-10-28** (cbu.uz is closed to
+    DigitalOcean's network — a connect timeout from the web container): a
+    stored day is read before the bank, every answer is written back, the
+    migration seeded 2025-01-01 … 2026-10-28 from cbu.uz, and the Roistat
+    import adds the dated rates its blob or the bank gives. A month with no
+    answer at all converts at the last stored day before it (`usdCarry`),
+    which the header names; «Kunlar boʻyicha» / Roistat take `dated()` — the
+    window's day, else the last stored one — and print «kurs: … · DD.MM».
     Old `usd_rate` rows in `rnp_plan` are ignored, and the plans form no
     longer offers the field.
   · **THE SHEET IS KEPT WARM** (2026-09-30, «tezroq ochilish»). Cold, the

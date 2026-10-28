@@ -92,8 +92,24 @@ export interface BankRate {
   readonly date: string
 }
 
-/** Where the stored rate came from: the blob, the bank (the blob had a reserve), or the last import (neither). */
-export type RateSource = 'source' | 'cbu' | 'previous'
+/**
+ * Where the stored rate came from: the blob, the bank (the blob had a
+ * reserve), `usd_rate`'s newest day (a reserve and no bank), or the last
+ * import (none of those).
+ */
+export type RateSource = 'source' | 'cbu' | 'stored' | 'previous'
+
+/**
+ * `usd_rate` as the import sees it (2026-10-28): the day-by-day rates the
+ * dashboard converts with. A dated rate the blob or the bank gives is kept
+ * there — the client's page reaches the Central Bank when DigitalOcean cannot
+ * — and a reserve with no bank takes its newest day when that is newer than
+ * the snapshot's.
+ */
+export interface DayRates {
+  latest(): Promise<StoredRate | null>
+  keep(rate: StoredRate, source: 'roistat' | 'cbu'): Promise<void>
+}
 
 /** The bank's rate and its own date from a cbu.uz answer — null when it is not one. */
 export function bankRateOf(body: unknown): BankRate | null {
@@ -152,7 +168,7 @@ export async function saveSnapshot(
   blob: SnapshotFacts,
   origin: string,
   totalRows: number,
-  options: { force: boolean; now: Date; bankRate?: () => Promise<BankRate | null> },
+  options: { force: boolean; now: Date; bankRate?: () => Promise<BankRate | null>; rates?: DayRates },
 ): Promise<SnapshotRecord & { readonly rateSource: RateSource }> {
   const previous = await prisma.marketingSnapshot.findUnique({
     where: { id: SNAPSHOT_ID },
@@ -170,15 +186,23 @@ export async function saveSnapshot(
 
   let rate: StoredRate
   let rateSource: RateSource
+  // A store that fails is no store: the snapshot is written all the same.
+  const keep = async (kept: StoredRate, source: 'roistat' | 'cbu') => options.rates?.keep(kept, source).catch(() => {})
   if (isDatedRate(blob.rateDate)) {
     rate = blobRate(blob)
     rateSource = 'source'
+    await keep(rate, 'roistat')
   } else {
     // A bank that cannot be reached is the same answer as no bank: the stored rate stays.
     const bank = options.bankRate ? await options.bankRate().catch(() => null) : null
+    const stored = bank ? null : await (options.rates?.latest() ?? Promise.resolve(null)).catch(() => null)
     if (bank) {
       rate = blobRate({ rate: bank.rate, rateDate: bank.date })
       rateSource = 'cbu'
+      await keep(rate, 'cbu')
+    } else if (stored && (!previous || stored.rateDate > previous.rateDate)) {
+      rate = stored
+      rateSource = 'stored'
     } else if (previous) {
       rate = { usdRateMicro: previous.usdRateMicro, rateDate: previous.rateDate }
       rateSource = 'previous'

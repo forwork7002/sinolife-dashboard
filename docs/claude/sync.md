@@ -216,7 +216,10 @@
   cbu.uz, and the importer's DD.MM.YYYY check refused every hourly run. The
   reserve is never stored: the rate is asked of cbu.uz for `D.today`, else the
   stored rate stays; the rest of the blob is written. The log says which —
-  `roistat: ok, kurs … (CBU — manbada zaxira kurs)` — and a failure now logs
+  `roistat: ok, kurs … (CBU — manbada zaxira kurs)`; since 2026-10-28 a reserve
+  with no bank takes `usd_rate`'s newest day when it is newer than the
+  snapshot's (`stored`, «saqlangan oxirgi CBU kursi»), and a dated rate is
+  kept in `usd_rate` (blob → 'roistat', bank → 'cbu') — and a failure now logs
   every issue line with the value that failed («keldi: …»), not just
   «The blob failed validation (1 issue(s)):».
 - **«Mijoz qaytishi» is built by the worker and stored (2026-10-24,

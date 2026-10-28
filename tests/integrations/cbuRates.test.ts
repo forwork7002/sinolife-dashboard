@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { CbuUsdRates, parseCbuRate, sharedCbuUsdRates } from '@/server/integrations/cbu/cbuRates'
+import { CbuUsdRates, type UsdRateStore, parseCbuRate, sharedCbuUsdRates } from '@/server/integrations/cbu/cbuRates'
 
 // The container, imported below, reads `env` as it loads.
 process.env.DATABASE_URL ??= 'postgresql://test@127.0.0.1:5432/test'
@@ -93,6 +93,72 @@ describe('CbuUsdRates', () => {
   The RNP warmer's bundle and the routes' each load this module (2026-10-06):
   one cache for the process, so a day the warmer read is not asked again.
 */
+/** `usd_rate` in memory: what was written, and the newest day on or before a day. */
+function memoryStore(seed: Record<string, number> = {}) {
+  const rows = new Map(Object.entries(seed))
+  const writes: string[] = []
+  const store: UsdRateStore = {
+    read: async (days) => new Map(days.flatMap((d) => (rows.has(d) ? [[d, rows.get(d)!] as const] : []))),
+    latestOnOrBefore: async (day) => {
+      const best = [...rows.keys()].filter((d) => d <= day).sort().pop()
+      return best ? { day: best, rate: rows.get(best)! } : null
+    },
+    write: async (day, rate) => {
+      writes.push(day)
+      rows.set(day, rate)
+    },
+  }
+  return { store, rows, writes }
+}
+
+describe('CbuUsdRates over usd_rate (2026-10-28 — cbu.uz closed to DigitalOcean)', () => {
+  it('reads a past day from the store and never asks the bank for it', async () => {
+    const { fetcher, asked } = bank({})
+    const { store } = memoryStore({ '2026-10-27': 11861.96 })
+    const rates = await new CbuUsdRates(fetcher, Date.now, store).forDays(['2026-10-27'], '2026-10-28')
+    expect(rates).toEqual([11861.96])
+    expect(asked).toEqual([])
+  })
+
+  it('keeps what the bank answers, so the next process has it', async () => {
+    const { fetcher } = bank({ '2026-10-28': answer('11918.98') })
+    const { store, rows, writes } = memoryStore()
+    await new CbuUsdRates(fetcher, Date.now, store).forDays(['2026-10-28'], '2026-10-28')
+    await Promise.resolve()
+    expect(writes).toEqual(['2026-10-28'])
+    expect(rows.get('2026-10-28')).toBe(11918.98)
+    // A deploy: a new process, a bank that no longer answers — the day is still there.
+    const after = await new CbuUsdRates(bank({}).fetcher, Date.now, store).forDays(['2026-10-28'], '2026-10-29')
+    expect(after).toEqual([11918.98])
+  })
+
+  it("answers today's stored rate when the bank fails today", async () => {
+    const { fetcher } = bank({ '2026-10-28': new Error('connect timeout') })
+    const { store } = memoryStore({ '2026-10-28': 11918.98 })
+    expect(await new CbuUsdRates(fetcher, Date.now, store).forDays(['2026-10-28'], '2026-10-28')).toEqual([11918.98])
+  })
+
+  it('dates a day neither answers at the newest stored day before it', async () => {
+    const { fetcher } = bank({ '2026-10-30': new Error('connect timeout') })
+    const { store } = memoryStore({ '2026-10-27': 11861.96, '2026-10-28': 11918.98 })
+    const usd = new CbuUsdRates(fetcher, Date.now, store)
+    expect(await usd.dated('2026-10-30', '2026-10-30')).toEqual({ rate: 11918.98, day: '2026-10-28' })
+    expect(await usd.dated('2026-10-27', '2026-10-30')).toEqual({ rate: 11861.96, day: '2026-10-27' })
+    expect(await usd.dated('2026-10-01', '2026-10-30')).toBeNull()
+  })
+
+  it('reads a failing store as an empty one', async () => {
+    const broken: UsdRateStore = {
+      read: async () => Promise.reject(new Error('db down')),
+      latestOnOrBefore: async () => Promise.reject(new Error('db down')),
+      write: async () => Promise.reject(new Error('db down')),
+    }
+    const usd = new CbuUsdRates(bank({ '2026-10-28': answer('11918.98') }).fetcher, Date.now, broken)
+    expect(await usd.forDays(['2026-10-28'], '2026-10-28')).toEqual([11918.98])
+    expect(await usd.latestOnOrBefore('2026-10-28')).toBeNull()
+  })
+})
+
 describe('sharedCbuUsdRates', () => {
   it('hands a second copy of the module — another bundle’s — the same rates', async () => {
     const first = sharedCbuUsdRates()

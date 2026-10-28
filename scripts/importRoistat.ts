@@ -420,6 +420,19 @@ async function main(): Promise<void> {
       force: FORCE,
       now: new Date(),
       bankRate: () => bankRate(blob.today),
+      rates: {
+        latest: async () => {
+          const row = await prisma.usdRate.findFirst({ orderBy: { day: 'desc' }, select: { day: true, rateMicro: true } })
+          return row ? { usdRateMicro: row.rateMicro, rateDate: row.day } : null
+        },
+        // Never over the bank's own answer for the day: a day already held stays as it is.
+        keep: async (kept, source) => {
+          await prisma.usdRate.createMany({
+            data: [{ day: kept.rateDate, rateMicro: kept.usdRateMicro, source }],
+            skipDuplicates: true,
+          })
+        },
+      },
     })
 
     head('SNAPSHOT')
@@ -429,7 +442,7 @@ async function main(): Promise<void> {
       `  usdRateMicro : ${group(snapshot.usdRateMicro)}  (= ${(Number(snapshot.usdRateMicro) / 1e6).toFixed(2)} soʻm/$)`,
     )
     console.log(`  rateDate     : ${snapshot.rateDate.toISOString().slice(0, 10)}`)
-    // Read by the sync worker's log line (`runRoistatImport`): source = the blob's, cbu = the bank's, previous = kept.
+    // Read by the sync worker's log line (`runRoistatImport`): source = the blob's, cbu = the bank's, stored = usd_rate's newest day, previous = kept.
     console.log(`  kurs manbai  : ${snapshot.rateSource}`)
     console.log(`  updatedLabel : ${snapshot.updatedLabel}`)
     console.log(`  rowCount     : ${group(snapshot.rowCount)}`)

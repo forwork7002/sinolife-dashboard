@@ -107,7 +107,7 @@ function harness(options: { stored?: Map<string, { rows: unknown; builtAt: Date 
   const service = new RoistatService(
     repository as never,
     { campaignDays: async () => [] },
-    { forDays: async (days: readonly string[]) => days.map(() => 12_000) },
+    { dated: async (day: string) => ({ rate: 12_000, day }) },
     insights,
     reader,
     borrow,
@@ -276,7 +276,7 @@ describe('RoistatService over the stored months', () => {
     const service = new RoistatService(
       { bitrix: async (...args: unknown[]) => (timeouts.push(args[4]), [row('total')]) } as never,
       { campaignDays: async () => [] },
-      { forDays: async (days: readonly string[]) => days.map(() => 12_000) },
+      { dated: async (day: string) => ({ rate: 12_000, day }) },
       { rnpTeamDays: async (...args: unknown[]) => (timeouts.push(args[2]), []) },
       null,
     )

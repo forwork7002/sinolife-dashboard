@@ -85,6 +85,13 @@ export function AdSalesDaysTable() {
             CBU kursi olinmadi — soʻmdagi Расход, CPL, CPQL, CPO va ROAS hozircha chiqmaydi.
           </Callout>
         )}
+        {/* The day the rate is the bank's for: the last stored one when cbu.uz does not answer. */}
+        {data?.rate && (
+          <p className="mb-2 text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+            kurs: {formatFullUzs(Math.round(data.rate.uzsPerUsd))} soʻm · {data.rate.date.slice(8, 10)}.
+            {data.rate.date.slice(5, 7)}
+          </p>
+        )}
         <RoistatTable
           data={data}
           status={status}

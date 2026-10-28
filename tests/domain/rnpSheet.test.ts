@@ -281,6 +281,17 @@ describe('buildRnpSheet — company blocks', () => {
     expect(row(dto, 'marketing', 'meta:cac').fact).toBeNull()
   })
 
+  it('converts a month the bank never answered at the last stored day before it, and names that day (2026-10-28)', () => {
+    const dto = buildRnpSheet(input({ usdRates: days.map(() => null), usdCarry: { rate: 12_200, day: '2026-08-31' } }))
+    expect(row(dto, 'marketing', 'meta:cac').fact).not.toBeNull()
+    expect(row(dto, 'marketing', 'meta:share').fact).not.toBeNull()
+    expect(dto.settings.usdRate).toBe(12_200)
+    expect(dto.settings.usdRateDate).toBe('2026-08-31')
+    // The same money as a month answered at that rate every day.
+    const answered = buildRnpSheet(input({ usdRates: days.map(() => 12_200) }))
+    expect(row(dto, 'marketing', 'meta:cac').fact).toBeCloseTo(row(answered, 'marketing', 'meta:cac').fact!, 6)
+  })
+
   it('adds the typed marketing costs into CAC and ROMI', () => {
     const without = buildRnpSheet(input())
     const x = buildRnpSheet(
