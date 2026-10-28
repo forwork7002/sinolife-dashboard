@@ -780,3 +780,42 @@ describe('importMetaSpend — a quiet account is read a week from the second pas
     expect(second.wide).toEqual(['Refused 2026-09-03'])
   })
 })
+
+describe('importMetaSpend — four accounts at a time (2026-10-28)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('reads up to four accounts side by side, never more, and lists refusals in the accounts’ order', async () => {
+    const grain = () => ({ groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' })
+    const prisma = {
+      metaAdDaily: grain(),
+      metaCampaignDaily: grain(),
+      metaAdInsightDaily: grain(),
+      $transaction: async () => [],
+    } as unknown as PrismaClient
+    const ids = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7']
+    let inFlight = 0
+    let most = 0
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/me/adaccounts')) {
+        return new Response(JSON.stringify({ data: ids.map((id) => ({ account_id: id, name: `Acc ${id}` })) }))
+      }
+      inFlight += 1
+      most = Math.max(most, inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      inFlight -= 1
+      // Two refusals, the later account's first in time: the list still reads in the accounts' order.
+      if (url.includes('act_a6')) return new Response(JSON.stringify({ error: { message: 'six', code: 200 } }), { status: 400 })
+      if (url.includes('act_a2')) {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        return new Response(JSON.stringify({ error: { message: 'two', code: 200 } }), { status: 400 })
+      }
+      return new Response(JSON.stringify({ data: [] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const r = await importMetaSpend(prisma, 'token', '2026-10-28')
+    expect(most).toBeGreaterThan(1)
+    expect(most).toBeLessThanOrEqual(4)
+    expect(r.failed.map((f) => f.split(':')[0])).toEqual(['Acc a2', 'Acc a6'])
+    expect(r.accounts).toBe(7)
+  })
+})

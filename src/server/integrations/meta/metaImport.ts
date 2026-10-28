@@ -139,6 +139,23 @@ const CAMPAIGN_SLICE_DAYS = 31
 */
 const AD_SLICE_DAYS = 14
 
+/** Accounts read side by side in one pass — see `importMetaSpend`. */
+const META_ACCOUNTS_AT_ONCE = 4
+
+/** `fn` over `items`, at most `width` at a time; the answers in `items`' order. */
+async function mapAtMost<T, R>(items: readonly T[], width: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length)
+  let next = 0
+  const lane = async () => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i]!)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(width, items.length) }, lane))
+  return out
+}
+
 /**
  * `[since, until]` cut into consecutive inclusive windows of at most `days`
  * days. Bare `YYYY-MM-DD` strings in and out, stepped as UTC dates.
@@ -375,7 +392,16 @@ export async function importMetaSpend(
   let earliest = today
   const windowStart = refreshFloor(today, refreshDays)
   const wide: string[] = []
-  for (const account of accounts) {
+  /*
+    FOUR ACCOUNTS AT A TIME (2026-10-28). One after another, 28 accounts' three
+    grains were ~84 Graph calls end to end: 136 s a pass on a week's window,
+    every 15 minutes. Meta throttles insights per ad account, and the pass
+    makes the same calls as before, only side by side; each account's rows
+    are still written in its own transactions. Every account's outcome is
+    gathered in the accounts' own order, so the log reads as it did.
+  */
+  const outcomes = await mapAtMost(accounts, META_ACCOUNTS_AT_ONCE, async (account) => {
+    const out = { rows: 0, campaignRows: 0, adRows: 0, failed: [] as string[], wide: [] as string[], read: false }
     let spentNow = false
     try {
       const from = fromOf(account.account_id)
@@ -383,10 +409,11 @@ export async function importMetaSpend(
       if (adMax.get(account.account_id) && (since === null || from < since)) since = from
       const campaignFrom = bounded(`campaign:${account.account_id}`, campaignFromOf(account.account_id))
       const first = from < campaignFrom ? from : campaignFrom
-      if (first < windowStart) wide.push(`${account.name} ${first}`)
+      if (first < windowStart) out.wide.push(`${account.name} ${first}`)
       const imported = await importAccount(prisma, token, account, { from, campaignFrom, today })
-      rows += imported.rows
-      campaignRows += imported.campaignRows
+      out.rows = imported.rows
+      out.campaignRows = imported.campaignRows
+      out.read = true
       spentNow = imported.rows > 0
       options.readThrough?.set(`account:${account.account_id}`, today)
       options.readThrough?.set(`campaign:${account.account_id}`, today)
@@ -396,9 +423,8 @@ export async function importMetaSpend(
         account stale: the rows of the others are already written, each in
         its own transaction.
       */
-      failed.push(`${account.name}: ${(error as Error).message}`)
-      unread += 1
-      continue
+      out.failed.push(`${account.name}: ${(error as Error).message}`)
+      return out
     }
 
     /*
@@ -417,17 +443,32 @@ export async function importMetaSpend(
     if (adMin.get(account.account_id) || spentNow) {
       try {
         const adFrom = bounded(`ad:${account.account_id}`, adFromOf(account.account_id))
-        if (adFrom < windowStart) wide.push(`${account.name} · eʼlon ${adFrom}`)
-        adRows += await importAccountAds(prisma, token, account, { from: adFrom, today })
+        if (adFrom < windowStart) out.wide.push(`${account.name} · eʼlon ${adFrom}`)
+        out.adRows = await importAccountAds(prisma, token, account, { from: adFrom, today })
         options.readThrough?.set(`ad:${account.account_id}`, today)
       } catch (error) {
-        failed.push(`${account.name} · eʼlon darajasi: ${(error as Error).message}`)
+        out.failed.push(`${account.name} · eʼlon darajasi: ${(error as Error).message}`)
       }
+    }
+    return out
+  })
+
+  for (const [i, account] of accounts.entries()) {
+    const out = outcomes[i]!
+    rows += out.rows
+    campaignRows += out.campaignRows
+    adRows += out.adRows
+    failed.push(...out.failed)
+    wide.push(...out.wide)
+    if (!out.read) {
+      unread += 1
+      continue
     }
 
     /*
       The walk back, last and inside the pass's own time: today's numbers
-      come first, and an account Meta refused above was `continue`d past.
+      come first, and an account Meta refused above was passed over. One
+      account at a time — its time is the pass's budget (`historyLeft`).
       A refusal here costs only the walk — it resumes from its marker.
     */
     if (!options.historyMs) continue
