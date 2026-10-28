@@ -125,6 +125,16 @@ describe('TargetService.overview', () => {
     service = new TargetService(repository, marketing)
   })
 
+  it('hands the warm lane\'s opening question to the reader, and builds another scope as before (2026-10-28)', async () => {
+    await service.warm(PERIOD, 24 * 60_000)
+    expect(asked).toHaveLength(1)
+    await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')
+    expect(asked).toHaveLength(1)
+    await service.overview(PERIOD, 'all', 'all', 'Asia/Tashkent')
+    expect(asked).toHaveLength(2)
+    expect(asked[1]!.sourceIds).toBeNull()
+  })
+
   it('counts the target pages by default and every source when asked', async () => {
     await service.overview(PERIOD, 'target', 'all', 'Asia/Tashkent')
     await service.overview(PERIOD, 'all', 'all', 'Asia/Tashkent')

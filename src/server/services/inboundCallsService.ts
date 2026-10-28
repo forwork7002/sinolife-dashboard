@@ -13,6 +13,8 @@ import {
 } from '@/server/domain/calls/inboundCalls'
 import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/period/period'
 import type { InboundCallsRepository, OutboundCall } from '@/server/repositories/inboundCallsRepository'
+import { processWide } from '@/server/processWide'
+
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 export interface InboundDayDto extends InboundDay {
@@ -95,8 +97,13 @@ interface Basis {
   readonly contacts: Map<string, ContactHistory>
 }
 
-/** The window's calls and contacts, read once for the report and its callback list. */
-const basisCache = ttlCache<Basis>(120_000, LIVE_CACHE)
+/*
+  The window's calls and contacts, read once for the report and its callback
+  list. On `globalThis` with the report's memo and its counter (2026-10-28):
+  the warm lane builds «Shu oy» / «Oʻtgan oy» into them (`warm`) — cold, the
+  basis made «javobsiz qoldi» for «Oʻtgan oy» take 16.6–17.2 s of the 20 s.
+*/
+const basisCache = processWide('sinolife.inboundCalls.basisCache', () => ttlCache<Basis>(120_000, LIVE_CACHE))
 /**
  * The report AND the calls it was counted from. A group list is built from
  * this snapshot, never from a newer read: the report is served stale for up
@@ -109,8 +116,9 @@ interface Snapshot {
   /** Which build this is — the group lists' memo key. */
   readonly seq: number
 }
-let snapshotSeq = 0
-const reportCache = ttlCache<Snapshot>(120_000, LIVE_CACHE)
+/* One counter for both bundles: a seq repeated by the other bundle would key a group list to the wrong snapshot. */
+const snapshotSeq = processWide('sinolife.inboundCalls.snapshotSeq', () => ({ next: 0 }))
+const reportCache = processWide('sinolife.inboundCalls.reportCache', () => ttlCache<Snapshot>(120_000, LIVE_CACHE))
 /*
   No stale window: once a callback is written it must leave «Qilinmagan» on the
   next poll, not up to five minutes later. It is written only by the CALLS pass,
@@ -156,6 +164,17 @@ export class InboundCallsService {
 
   async report(period: Period, now: Date): Promise<InboundCallsDto> {
     return (await this.snapshot(period, now)).dto
+  }
+
+  /**
+   * The window's basis and report, built by the warm lane (2026-10-28) and
+   * handed out for `ttlMs` — see `OwnedRefresh`. The basis first, so the
+   * report is counted from the basis just built. «javobsiz qoldi» itself is
+   * not warmed: its callback column is read fresh on every miss, as before.
+   */
+  async warm(period: Period, now: Date, ttlMs: number): Promise<void> {
+    await basisCache.refresh(this.key(period), () => this.readBasis(period), { ttlMs })
+    await reportCache.refresh(this.key(period), () => this.build(period, now), { ttlMs })
   }
 
   /**
@@ -256,17 +275,19 @@ export class InboundCallsService {
   }
 
   private basis(period: Period): Promise<Basis> {
-    return basisCache.get(this.key(period), async () => {
-      const start = callWindowStart(period.start)
-      const end = period.end
-      const [calls, outbound] = await Promise.all([
-        this.repository.inboundCalls(start, end),
-        this.repository.outboundByDay(start, end),
-      ])
-      const customerIds = [...new Set(calls.map((c) => c.customerId).filter((id): id is string => !!id))]
-      const contacts = await this.repository.contactHistories(customerIds)
-      return { calls, outbound, contacts }
-    })
+    return basisCache.get(this.key(period), () => this.readBasis(period))
+  }
+
+  private async readBasis(period: Period): Promise<Basis> {
+    const start = callWindowStart(period.start)
+    const end = period.end
+    const [calls, outbound] = await Promise.all([
+      this.repository.inboundCalls(start, end),
+      this.repository.outboundByDay(start, end),
+    ])
+    const customerIds = [...new Set(calls.map((c) => c.customerId).filter((id): id is string => !!id))]
+    const contacts = await this.repository.contactHistories(customerIds)
+    return { calls, outbound, contacts }
   }
 
   private async build(period: Period, now: Date): Promise<Snapshot> {
@@ -292,7 +313,7 @@ export class InboundCallsService {
       undatedContacts: undated,
       floorApplied: callFloorApplied(period.start),
     }
-    snapshotSeq += 1
-    return { dto, basis, seq: snapshotSeq }
+    snapshotSeq.next += 1
+    return { dto, basis, seq: snapshotSeq.next }
   }
 }

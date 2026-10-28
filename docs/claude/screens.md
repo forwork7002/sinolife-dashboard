@@ -618,7 +618,13 @@ Per-screen traps worth knowing before you touch one:
     builds «Shu oy» every tick and «Oʻtgan oy» hourly for «Qoʻngʻiroqlar»
     (`callActivity`), «Kiruvchi tahlil» and «Reklama samarasi» / «Target
     tahlili» DM (`ReklamaService.warm`) — all four answered 500 on «Shu oy».
-    The medals and the record wall keep their old answer six hours.
+    The medals and the record wall keep their old answer six hours. The
+    same day it took two more, measured cold after that deploy: «Kiruvchi
+    qoʻngʻiroqlar»' basis (`InboundCallsService.warm` — the report and
+    «javobsiz qoldi» read it; /insights/calls/inbound/unanswered «Oʻtgan oy»
+    16.6–17.2 s; the callback column itself is still read fresh) and «Target
+    tahlili»'s opening question, target pages × both products
+    (`TargetService.warm`; /target/overview «Shu oy» 15.2–16.0 s).
   · **«Баҳо» (2026-10-03, the client's scales)**: every ROP block has a grade
     line under «Сумма факт 1 сум» — the day's FAKT 1 graded 2–5 on the team's
     scale (`domain/rnp/rnpGrade.ts`: Collagen первичка 20/35/50 M, Zextra

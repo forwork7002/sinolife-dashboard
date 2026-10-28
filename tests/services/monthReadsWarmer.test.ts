@@ -23,6 +23,8 @@ function harness(fail: (name: string, preset: string) => boolean = () => false) 
     insights: { warmCallActivity: read('calls') },
     inboundAnalysis: { warm: read('analysis') },
     reklama: { warm: read('reklama') },
+    inboundCalls: { warm: read('inbound') },
+    target: { warm: read('target') },
   }
   let now = 0
   const warm = monthReadsWarm(services as never, () => now)
@@ -34,7 +36,13 @@ describe('monthReadsWarm — the month reads the screens could not build (2026-1
     const { built, warm } = harness()
     await warm(NOON, TZ)
     const ttl = WARM_OWNED_TTL_MS / 60_000
-    expect(built).toEqual([`calls this_month ${ttl}`, `analysis this_month ${ttl}`, `reklama this_month ${ttl}`])
+    expect(built).toEqual([
+      `calls this_month ${ttl}`,
+      `analysis this_month ${ttl}`,
+      `reklama this_month ${ttl}`,
+      `inbound this_month ${ttl}`,
+      `target this_month ${ttl}`,
+    ])
   })
 
   it('adds «Oʻtgan oy» from the second tick, then once an hour, good for two', async () => {
@@ -46,6 +54,8 @@ describe('monthReadsWarm — the month reads the screens could not build (2026-1
       'calls previous_month 120',
       'analysis previous_month 120',
       'reklama previous_month 120',
+      'inbound previous_month 120',
+      'target previous_month 120',
     ])
     built.length = 0
     tick(12 * 60_000)
@@ -53,21 +63,21 @@ describe('monthReadsWarm — the month reads the screens could not build (2026-1
     expect(built.some((b) => b.includes('previous_month'))).toBe(false)
     tick(50 * 60_000)
     await warm(NOON, TZ)
-    expect(built.filter((b) => b.includes('previous_month'))).toHaveLength(3)
+    expect(built.filter((b) => b.includes('previous_month'))).toHaveLength(5)
   })
 
   it('tries every read when one fails, throws the first after, and retries a failed «Oʻtgan oy» on the next tick', async () => {
     let failing = true
-    const { built, warm, tick } = harness((name, preset) => failing && name === 'calls')
+    const { built, warm, tick } = harness((name) => failing && name === 'calls')
     await expect(warm(NOON, TZ)).rejects.toThrow('calls 57014')
-    expect(built).toHaveLength(3)
+    expect(built).toHaveLength(5)
     tick(12 * 60_000)
     await expect(warm(NOON, TZ)).rejects.toThrow('calls 57014')
     failing = false
     built.length = 0
     tick(12 * 60_000)
     await warm(NOON, TZ)
-    expect(built.filter((b) => b.includes('previous_month'))).toHaveLength(3)
+    expect(built.filter((b) => b.includes('previous_month'))).toHaveLength(5)
   })
 
   it('does nothing at night', async () => {

@@ -243,6 +243,8 @@ export const warmServices = {
     The month reads that answered 500 on the screens' 20 s pool (2026-10-28):
     «Qoʻngʻiroqlar», «Kiruvchi tahlil», «Reklama samarasi» / «Target tahlili»
     DM — built here (`monthReadsWarmer.ts`) into their process-wide memos.
+    «Kiruvchi qoʻngʻiroqlar»' basis and «Target tahlili»'s opening question
+    joined them the same day: 16.6–17.2 s and 15.2–16.0 s cold.
   */
   insights: new InsightsService(warmInsightsRepository),
   inboundAnalysis: new InboundAnalysisService(
@@ -251,6 +253,8 @@ export const warmServices = {
     env.APP_TIMEZONE,
   ),
   reklama: new ReklamaService(warmReklamaRepository),
+  inboundCalls: new InboundCallsService(new InboundCallsRepository(warmPrisma), env.APP_TIMEZONE),
+  target: new TargetService(new TargetRepository(warmPrisma), new MarketingRepository(warmPrisma)),
 } as const
 /*
   «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.

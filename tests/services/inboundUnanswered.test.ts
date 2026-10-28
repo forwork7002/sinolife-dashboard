@@ -76,3 +76,38 @@ describe('InboundCallsService.unanswered', () => {
     expect(r).toMatchObject({ waiting: 1, calledBack: 2, reached: 1 })
   })
 })
+
+describe('InboundCallsService.warm (2026-10-28)', () => {
+  it('builds the basis once for the report and «javobsiz qoldi»; the callbacks are still read by the reader', async () => {
+    const period = resolvePeriod('custom', {
+      timeZone: 'Asia/Tashkent',
+      customStart: new Date('2026-09-21T00:00:00Z'),
+      customEnd: new Date('2026-09-21T00:00:00Z'),
+    })
+    let basisReads = 0
+    let callbackReads = 0
+    const service = new InboundCallsService(
+      {
+        inboundCalls: async () => {
+          basisReads += 1
+          return [call('+998901110005', '09:00', 0, null)]
+        },
+        outboundByDay: async () => new Map(),
+        contactHistories: async () => new Map(),
+        outboundTo: async () => {
+          callbackReads += 1
+          return []
+        },
+        contactCards: async () => new Map(),
+      } as never,
+      'Asia/Tashkent',
+    )
+
+    await service.warm(period, at('12:00'), 24 * 60_000)
+    expect([basisReads, callbackReads]).toEqual([1, 0])
+    await service.report(period, at('12:00'))
+    const r = await service.unanswered(period)
+    expect([basisReads, callbackReads]).toEqual([1, 1])
+    expect(r.rows.map((x) => x.key)).toEqual(['901110005'])
+  })
+})

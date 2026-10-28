@@ -1,8 +1,10 @@
 import { type Period, resolvePeriod } from '@/server/domain/period/period'
 
 import type { InboundAnalysisService } from './inboundAnalysisService'
+import type { InboundCallsService } from './inboundCallsService'
 import type { InsightsService } from './insightsService'
 import type { ReklamaService } from './reklamaService'
+import type { TargetService } from './targetService'
 import { OFF_HOURS, WARM_HOURS, WARM_OWNED_TTL_MS, type WarmOutcome, withinHours } from './rnpWarmer'
 
 /*
@@ -17,6 +19,11 @@ import { OFF_HOURS, WARM_HOURS, WARM_OWNED_TTL_MS, type WarmOutcome, withinHours
   by late deliveries — and good for two hours. The first tick builds «Shu oy»
   alone, so a deploy's health gate waits for one month, not two. The same
   SQL, the same builds: only the connection and its limit differ.
+
+  Two more the same day, measured after the first deploy of this warmer:
+  «Kiruvchi qoʻngʻiroqlar»' basis (the report and «javobsiz qoldi» both read
+  it; /insights/calls/inbound/unanswered «Oʻtgan oy» 16.6–17.2 s cold) and
+  «Target tahlili»'s opening question (/target/overview «Shu oy» 15.2–16.0 s).
 */
 const PREVIOUS_EVERY_MS = 60 * 60_000
 const PREVIOUS_TTL_MS = 2 * PREVIOUS_EVERY_MS
@@ -25,6 +32,8 @@ export interface MonthReadServices {
   readonly insights: Pick<InsightsService, 'warmCallActivity'>
   readonly inboundAnalysis: Pick<InboundAnalysisService, 'warm'>
   readonly reklama: Pick<ReklamaService, 'warm'>
+  readonly inboundCalls: Pick<InboundCallsService, 'warm'>
+  readonly target: Pick<TargetService, 'warm'>
 }
 
 /** The warmer's tick: builds what is due, every read tried; the first failure is thrown after, for the warmer to log. */
@@ -46,6 +55,8 @@ export function monthReadsWarm(services: MonthReadServices, clock: () => number 
         () => services.insights.warmCallActivity(period, ttlMs),
         () => services.inboundAnalysis.warm(period, now, ttlMs),
         () => services.reklama.warm(period, timeZone, ttlMs),
+        () => services.inboundCalls.warm(period, now, ttlMs),
+        () => services.target.warm(period, ttlMs),
       ]
       for (const read of reads) {
         try {

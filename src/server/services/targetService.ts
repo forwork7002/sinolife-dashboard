@@ -39,6 +39,8 @@ import { TARGET_PRODUCTS, type TargetProductFilter, type TargetScope } from '@/s
 import type { MarketingRepository } from '@/server/repositories/marketingRepository'
 import type { GeneratedLeadsByBrand } from './leadSourcesService'
 import { leadBrand } from './rnpService'
+import { processWide } from '@/server/processWide'
+
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -864,11 +866,27 @@ function leadDto(row: TargetLeadRow): TargetLeadDto {
   preset and the source scope. Company-wide by construction — the route refuses
   a narrowed account — so no employee scope reaches it.
 */
-const summaryCache = ttlCache<Awaited<ReturnType<TargetRepository['summary']>>>(120_000, LIVE_CACHE)
+/*
+  The three on `globalThis` (2026-10-28): the warm lane builds «Shu oy» /
+  «Oʻtgan oy» of the screen's opening question into them (`warm`) — cold,
+  /target/overview «Shu oy» took 15.2–16.0 s of the 20 s.
+*/
+const summaryCache = processWide('sinolife.target.summaryCache', () =>
+  ttlCache<Awaited<ReturnType<TargetRepository['summary']>>>(120_000, LIVE_CACHE),
+)
 /** The lead-form scan, keyed by the window alone — it takes no source scope. */
-const formCache = ttlCache<Awaited<ReturnType<TargetRepository['formLeads']>>>(120_000, LIVE_CACHE)
+const formCache = processWide('sinolife.target.formCache', () =>
+  ttlCache<Awaited<ReturnType<TargetRepository['formLeads']>>>(120_000, LIVE_CACHE),
+)
 /** The window's CRM-form fills, keyed like the form scan. */
-const fillCache = ttlCache<TargetFormFills>(120_000, LIVE_CACHE)
+const fillCache = processWide('sinolife.target.fillCache', () => ttlCache<TargetFormFills>(120_000, LIVE_CACHE))
+
+/** The summary's memo key: the window, the preset and the pages counted. */
+const summaryKey = (period: Period, sourceIds: readonly string[] | null): string =>
+  [period.preset, period.start.toISOString(), periodLengthInDays(period), keyPart(sourceIds ?? null)].join('|')
+
+/** The form scan's and the fills' memo key: the window alone. */
+const formKey = (period: Period): string => [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
 
 /** Test seam: module-level, so shared between test files inside one worker. */
 export function resetTargetCaches(): void {
@@ -906,6 +924,19 @@ export class TargetService {
     return scope === 'target' ? TARGET_SOURCE_IDS : null
   }
 
+  /**
+   * The screen's opening question — the target pages, both products — built
+   * by the warm lane (2026-10-28) and handed out for `ttlMs` (see
+   * `OwnedRefresh`): its summary, form scan and fills. Another scope or one
+   * product is a reader's question, memoised as before.
+   */
+  async warm(period: Period, ttlMs: number): Promise<void> {
+    const sourceIds = this.sourceIds('target', 'all')
+    await summaryCache.refresh(summaryKey(period, sourceIds), () => this.repository.summary({ period, sourceIds }), { ttlMs })
+    await formCache.refresh(formKey(period), () => this.repository.formLeads(period), { ttlMs })
+    await fillCache.refresh(formKey(period), () => this.repository.formFills(period), { ttlMs })
+  }
+
   /** `lidlar`: «Lidlar»'s «Ген лид» per brand, read beside this (`LeadSourcesService.generatedLeads`); null, the fills. */
   async overview(
     period: Period,
@@ -915,23 +946,17 @@ export class TargetService {
     lidlar: Promise<GeneratedLeadsByBrand | null> | null = null,
   ): Promise<TargetOverviewDto> {
     const sourceIds = this.sourceIds(scope, product)
-    const key = [
-      period.preset,
-      period.start.toISOString(),
-      periodLengthInDays(period),
-      keyPart(sourceIds ?? null),
-    ].join('|')
+    const key = summaryKey(period, sourceIds)
 
     const window = {
       from: zonedDateKey(period.start, timeZone),
       to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),
     }
 
-    const formKey = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
     const [summary, formRows, formFills, targetSources, snapshot, metaRows, campaignRows, metaImportedAt, generated] = await Promise.all([
       summaryCache.get(key, () => this.repository.summary({ period, sourceIds })),
-      formCache.get(formKey, () => this.repository.formLeads(period)),
-      fillCache.get(formKey, () => this.repository.formFills(period)),
+      formCache.get(formKey(period), () => this.repository.formLeads(period)),
+      fillCache.get(formKey(period), () => this.repository.formFills(period)),
       this.repository.targetSources(TARGET_SOURCE_IDS),
       this.marketing.snapshot(),
       this.repository.metaSpend(window.from, window.to),
