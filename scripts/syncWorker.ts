@@ -1390,6 +1390,13 @@ async function main() {
       '\n',
   )
 
+  /*
+    Each account's grains, read through which day (`MetaImportOptions.readThrough`):
+    the worker's memory, so a quiet account is asked a week, not July → today,
+    from the second pass after a start.
+  */
+  const metaReadThrough = new Map<string, string>()
+
   /**
    * One Meta pass — spend (with the history walk, and the 37-day re-read when
    * `deep`), then the forms' leads, then the ad→form links — each in a try of
@@ -1405,6 +1412,7 @@ async function main() {
       const r = await importMetaSpend(prisma, token, zonedDateKey(new Date(), WORKER_TIME_ZONE), {
         refreshDays: deep ? META_DEEP_REFRESH_DAYS : undefined,
         historyMs: META_HISTORY_MS,
+        readThrough: metaReadThrough,
       })
       console.log(
         `  ${stamp()} meta${deep ? ' (tungi chuqur qayta oʻqish)' : ''}: ${r.accounts} akkaunt, ${r.rows} kun-qator, ${r.campaignRows} kampaniya-kun, ${r.adRows} eʼlon-kun (${r.since} – ${r.until})` +
@@ -1413,6 +1421,7 @@ async function main() {
             : '') +
           `  (${((Date.now() - metaStarted) / 1000).toFixed(1)}s)`,
       )
+      if (r.wide.length > 0) console.log(`  ${stamp()} meta keng oyna (7 kundan uzun): ${r.wide.join(' · ')}`)
       for (const refused of r.failed) console.warn(`  ${stamp()} meta akkaunt oʻqilmadi — ${refused}`)
       complete = r.failed.every((f) => f.includes(' · eski tarix: '))
     } catch (error) {

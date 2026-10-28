@@ -179,13 +179,34 @@ export function grainStarts(
   adMin: ReadonlyMap<string, Date | null>,
   grain: ReadonlyMap<string, { min: Date | null; max: Date | null }>,
   refreshDays: number = META_REFRESH_DAYS,
+  /**
+   * The pass's day and each account's latest account-grain day. Given, an
+   * account that has not spent since the history start reads only the refresh
+   * window — see `refreshFloor`.
+   */
+  quiet?: { readonly today: string; readonly adMax: ReadonlyMap<string, Date | null> },
 ): (accountId: string) => string {
   const day = (d: Date) => d.toISOString().slice(0, 10)
   return (accountId) => {
     const have = grain.get(accountId)
     const adStart = adMin.get(accountId) ?? null
     const historyStart = adStart && day(adStart) > META_HISTORY_FROM ? day(adStart) : META_HISTORY_FROM
-    if (!have?.min || !have.max) return historyStart
+    if (!have?.min || !have.max) {
+      /*
+        NO ROWS BECAUSE NOTHING WAS SPENT (2026-10-28). An account whose last
+        spend is before the history start — or that never spent — has nothing
+        at this grain to backfill, and read from the history start it was
+        read July → today on every pass, a month or two weeks a call: the
+        pass took 212–242 s every 15 minutes, the log pinned at «2026-07-01 –».
+        Its account grain says when it spends again; that pass writes its
+        first rows here and the next one backfills them (the signature below).
+      */
+      if (quiet) {
+        const latest = quiet.adMax.get(accountId) ?? null
+        if (!latest || day(latest) < historyStart) return refreshFloor(quiet.today, refreshDays)
+      }
+      return historyStart
+    }
     /*
       ONLY THE INTERRUPTED-RUN SIGNATURE: rows that start late AND cover no
       more than one refresh window. An account whose older campaigns (or ads)
@@ -198,6 +219,14 @@ export function grainStarts(
     return sinceOf(have.max, refreshDays)
   }
 }
+
+/** `refreshDays` back from `day`, never before the history start. */
+export function refreshFloor(today: string, refreshDays: number = META_REFRESH_DAYS): string {
+  const floor = new Date(new Date(`${today}T00:00:00Z`).getTime() - refreshDays * 86_400_000).toISOString().slice(0, 10)
+  return floor < META_HISTORY_FROM ? META_HISTORY_FROM : floor
+}
+
+const latestOf = (a: string, b: string): string => (a > b ? a : b)
 
 /** First day to (re)read: the history start with no rows yet, else `refreshDays` back from the latest. */
 function sinceOf(latest: Date | null, refreshDays: number = META_REFRESH_DAYS): string {
@@ -247,6 +276,12 @@ export interface MetaImportResult {
   readonly historyRows: number
   /** Accounts whose walk back is not finished — the next pass carries on. */
   readonly historyPending: number
+  /**
+   * «<account> <first day>» for each account some grain of which was read from
+   * before the refresh window — a backfill, a refusal caught up, or (before
+   * 2026-10-28) a quiet account re-read every pass. The worker logs them.
+   */
+  readonly wide: readonly string[]
 }
 
 export interface MetaImportOptions {
@@ -260,6 +295,13 @@ export interface MetaImportOptions {
    * (`backfillAccount`). 0, the default, does not walk at all.
    */
   readonly historyMs?: number
+  /**
+   * The last `today` each account's grain was read through without a
+   * refusal, keyed `account:` / `campaign:` / `ad:` + the account id — the
+   * worker keeps one across passes, and this pass updates it. Absent: every
+   * window starts at the rows alone.
+   */
+  readonly readThrough?: Map<string, string>
 }
 
 export async function importMetaSpend(
@@ -295,11 +337,23 @@ export async function importMetaSpend(
     asked from July every hour: one paged account-level call.
   */
   const adMax = new Map(adSpans.map((a) => [a.accountId, a._max.date]))
-  const fromOf = (accountId: string) => sinceOf(adMax.get(accountId) ?? null, refreshDays)
+  /*
+    NO EARLIER THAN A WEEK BEFORE THE LAST GOOD READ (2026-10-28,
+    `readThrough`). A window starts at an account's last ROW, and an account
+    that stopped spending keeps its last row: each pass re-read from a week
+    before it to today — four months for one quiet since July, every 15
+    minutes. An account read through today last pass starts a refresh window
+    before that; one refused since keeps its own last week, as before.
+  */
+  const bounded = (key: string, from: string): string => {
+    const through = options.readThrough?.get(key)
+    return through ? latestOf(from, refreshFloor(through, refreshDays)) : from
+  }
+  const fromOf = (accountId: string) => bounded(`account:${accountId}`, sinceOf(adMax.get(accountId) ?? null, refreshDays))
   const spans = (grain: typeof campaignSpans) =>
     new Map(grain.map((c) => [c.accountId, { min: c._min.date, max: c._max.date }]))
-  const campaignFromOf = grainStarts(adMin, spans(campaignSpans), refreshDays)
-  const adFromOf = grainStarts(adMin, spans(adInsightSpans), refreshDays)
+  const campaignFromOf = grainStarts(adMin, spans(campaignSpans), refreshDays, { today, adMax })
+  const adFromOf = grainStarts(adMin, spans(adInsightSpans), refreshDays, { today, adMax })
 
   const accounts = await listAccounts(prisma, token)
   const failed: string[] = []
@@ -319,17 +373,23 @@ export async function importMetaSpend(
   */
   let since: string | null = null
   let earliest = today
+  const windowStart = refreshFloor(today, refreshDays)
+  const wide: string[] = []
   for (const account of accounts) {
     let spentNow = false
     try {
       const from = fromOf(account.account_id)
       if (from < earliest) earliest = from
       if (adMax.get(account.account_id) && (since === null || from < since)) since = from
-      const campaignFrom = campaignFromOf(account.account_id)
+      const campaignFrom = bounded(`campaign:${account.account_id}`, campaignFromOf(account.account_id))
+      const first = from < campaignFrom ? from : campaignFrom
+      if (first < windowStart) wide.push(`${account.name} ${first}`)
       const imported = await importAccount(prisma, token, account, { from, campaignFrom, today })
       rows += imported.rows
       campaignRows += imported.campaignRows
       spentNow = imported.rows > 0
+      options.readThrough?.set(`account:${account.account_id}`, today)
+      options.readThrough?.set(`campaign:${account.account_id}`, today)
     } catch (error) {
       /*
         One account refused is one account stale for an hour, not every
@@ -356,7 +416,10 @@ export async function importMetaSpend(
     */
     if (adMin.get(account.account_id) || spentNow) {
       try {
-        adRows += await importAccountAds(prisma, token, account, { from: adFromOf(account.account_id), today })
+        const adFrom = bounded(`ad:${account.account_id}`, adFromOf(account.account_id))
+        if (adFrom < windowStart) wide.push(`${account.name} · eʼlon ${adFrom}`)
+        adRows += await importAccountAds(prisma, token, account, { from: adFrom, today })
+        options.readThrough?.set(`ad:${account.account_id}`, today)
       } catch (error) {
         failed.push(`${account.name} · eʼlon darajasi: ${(error as Error).message}`)
       }
@@ -395,6 +458,7 @@ export async function importMetaSpend(
     failed,
     since: since ?? earliest,
     until: today,
+    wide,
     historyRows,
     historyPending,
   }

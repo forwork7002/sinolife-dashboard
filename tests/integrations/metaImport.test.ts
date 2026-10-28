@@ -7,6 +7,7 @@ import {
   backfillSlice,
   dateSlices,
   grainStarts,
+  refreshFloor,
   importMetaSpend,
   META_DEEP_REFRESH_DAYS,
   metaHistoryFloor,
@@ -690,5 +691,92 @@ describe('importMetaSpend — the history before 2026-07-01 (2026-10-22)', () =>
     const { prisma, asked } = world({ firstSpend: null })
     await importMetaSpend(prisma, 'token', '2026-10-22', { refreshDays: META_DEEP_REFRESH_DAYS })
     expect(asked()).toContain('account 2026-09-14..2026-10-22')
+  })
+})
+
+describe('grainStarts — a quiet account reads one week, not July → today (2026-10-28)', () => {
+  const d = (iso: string) => new Date(`${iso}T00:00:00Z`)
+  const today = '2026-10-28'
+  const adMin = new Map([
+    ['active', d('2026-07-01')],
+    ['quiet-since-aug', d('2026-07-01')],
+    ['old-history', d('2026-07-01')],
+  ])
+  const adMax = new Map<string, Date | null>([
+    ['active', d('2026-10-28')],
+    ['quiet-since-aug', d('2026-08-20')],
+    // Spent in 2025, nothing since July: the account grain's latest is before the history start.
+    ['old-history', d('2026-06-12')],
+  ])
+  const from = grainStarts(adMin, new Map([['active', { min: d('2026-07-01'), max: d('2026-10-28') }]]), 7, { today, adMax })
+
+  it('refreshes the last week of an account still spending, as before', () => {
+    expect(from('active')).toBe('2026-10-21')
+  })
+
+  it('does not backfill from July an account with nothing spent since — its grain has no rows to find', () => {
+    // Was 2026-07-01 → today at both finer grains, every pass.
+    expect(from('old-history')).toBe('2026-10-21')
+    expect(from('never-spent')).toBe('2026-10-21')
+  })
+
+  it('still backfills a grain whose account spends since the history start', () => {
+    const f = grainStarts(adMin, new Map(), 7, { today, adMax: new Map([['active', d('2026-10-28')]]) })
+    expect(f('active')).toBe('2026-07-01')
+  })
+
+  it('reads 37 days on the nightly pass', () => {
+    expect(grainStarts(adMin, new Map(), 37, { today, adMax })('old-history')).toBe('2026-09-21')
+    expect(refreshFloor(today, 37)).toBe('2026-09-21')
+  })
+
+  it('never reads before the history start', () => {
+    expect(refreshFloor('2026-07-03', 7)).toBe('2026-07-01')
+  })
+})
+
+describe('importMetaSpend — a quiet account is read a week from the second pass on (2026-10-28, readThrough)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('starts each grain a week before its last good read; a refused account keeps its own last week', async () => {
+    const day = (iso: string) => new Date(`${iso}T00:00:00Z`)
+    const span = (accountId: string, max: string) => ({ accountId, _min: { date: day('2026-07-01') }, _max: { date: day(max) } })
+    const grain = (rows: ReturnType<typeof span>[]) => ({ groupBy: async () => rows, deleteMany: () => 'delete', createMany: () => 'create' })
+    const prisma = {
+      // Quiet since 20.08; refused since 10.09.
+      metaAdDaily: grain([span('111', '2026-08-20'), span('222', '2026-09-10')]),
+      metaCampaignDaily: grain([span('111', '2026-08-20'), span('222', '2026-09-10')]),
+      metaAdInsightDaily: grain([span('111', '2026-08-20'), span('222', '2026-09-10')]),
+      $transaction: async () => [],
+    } as unknown as PrismaClient
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes('/me/adaccounts')) {
+        return new Response(JSON.stringify({ data: [{ account_id: '111', name: 'Quiet' }, { account_id: '222', name: 'Refused' }] }))
+      }
+      if (url.includes('act_222')) return new Response(JSON.stringify({ error: { message: 'no access', code: 200 } }), { status: 400 })
+      return new Response(JSON.stringify({ data: [] }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const sinces = () =>
+      fetchMock.mock.calls
+        .map(([url]) => new URL(url))
+        .filter((u) => u.searchParams.get('time_range'))
+        .map((u) => `${u.pathname.split('/').find((p) => p.startsWith('act_'))} ${u.searchParams.get('level')} ${(JSON.parse(u.searchParams.get('time_range')!) as { since: string }).since}`)
+
+    const readThrough = new Map<string, string>()
+    const first = await importMetaSpend(prisma, 'token', '2026-10-28', { readThrough })
+    // The first pass of a process reads from the rows, as before — and says so.
+    expect(sinces()).toContain('act_111 account 2026-08-13')
+    expect(first.wide).toContain('Quiet 2026-08-13')
+    expect(readThrough.get('account:111')).toBe('2026-10-28')
+    expect(readThrough.has('account:222')).toBe(false)
+
+    fetchMock.mockClear()
+    const second = await importMetaSpend(prisma, 'token', '2026-10-28', { readThrough })
+    const asked = sinces()
+    expect(asked.filter((a) => a.startsWith('act_111'))).toEqual(['act_111 account 2026-10-21', 'act_111 campaign 2026-10-21', 'act_111 ad 2026-10-21'])
+    // Refused, never read through: its own last week again, until Meta answers.
+    expect(asked).toContain('act_222 account 2026-09-03')
+    expect(second.wide).toEqual(['Refused 2026-09-03'])
   })
 })
