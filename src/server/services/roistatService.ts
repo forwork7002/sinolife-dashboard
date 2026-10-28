@@ -412,6 +412,17 @@ export function resetRoistatCaches(): void {
 
 /** How old the RNP sheet's FAKT may be to stand in for «Kunlar boʻyicha»'s own scan: two of its warm ticks. */
 export const BORROWED_FAKT_MAX_AGE_MS = 8 * 60_000
+/*
+  A LIVE READ HERE MAY TAKE A MINUTE (2026-10-28), as «Mijoz qaytishi»'s may:
+  the running month alone measured 10–24 s on production the morning this
+  shipped (the warm lane's «sales-days warmed»), past the pool's 20 s on a
+  busy minute — a reader then waits, it does not get a 500. Under it the
+  readers who matter most never wait at all: «Shu oy», «Shu yil» and «Oʻtgan
+  oy» are warmed (`warm`).
+*/
+export const ROISTAT_READ_TIMEOUT_MS = 60_000
+/** The «Kunlar boʻyicha» windows the warm lane keeps built — what the client opens. */
+const WARM_DAYS_PRESETS = ['this_month', 'this_year', 'previous_month'] as const
 
 export class RoistatService {
   constructor(
@@ -429,16 +440,27 @@ export class RoistatService {
   ) {}
 
   /**
-   * Builds «Kunlar boʻyicha»'s «Shu oy» into its memo — the table Savdo
-   * dinamikasi opens on (2026-10-28): its first reader of the morning waited
-   * for the month's scan cold and met the 20 s limit (08:19 on 28.10). Run by
-   * the warm lane every few minutes of the working day (`instrumentation.ts`);
-   * `OFF_HOURS` outside them.
+   * Builds «Kunlar boʻyicha»'s «Shu oy», «Shu yil» and «Oʻtgan oy» into
+   * their memo (2026-10-28): the first reader of the morning waited for the
+   * month's scan cold and met the 20 s limit (08:19 on 28.10). One live read
+   * of the running month serves the first two (`liveScanCache`); the year's
+   * other months and «Oʻtgan oy» are the store's. Run by the warm lane every
+   * few minutes of the working day (`instrumentation.ts`); `OFF_HOURS`
+   * outside them. One window's failure does not stop the others; the first
+   * is thrown after, for the warmer to log.
    */
   async warm(now: Date, timeZone: string): Promise<WarmOutcome> {
     if (!withinHours(now, timeZone, WARM_HOURS)) return OFF_HOURS
-    const period = resolvePeriod('this_month', { timeZone, now })
-    await daysScanCache.refresh(this.daysKey(period, false), () => this.daysScan(period, now, false))
+    let failure: { error: unknown } | undefined
+    for (const preset of WARM_DAYS_PRESETS) {
+      const period = resolvePeriod(preset, { timeZone, now })
+      try {
+        await daysScanCache.refresh(this.daysKey(period, false), () => this.daysScan(period, now, false))
+      } catch (error) {
+        failure ??= { error }
+      }
+    }
+    if (failure) throw failure.error
   }
 
   private daysKey(period: Period, keyed: boolean): string {
@@ -583,12 +605,11 @@ export class RoistatService {
     now: Date,
   ): Promise<RoistatBitrixRow[]> {
     const pieces = monthPieces(period)
+    const read = (range: Period) => this.repository.bitrix(range, asOf, shape, keyed, ROISTAT_READ_TIMEOUT_MS)
     const live = (range: Period) =>
       asOf.getTime() === now.getTime()
-        ? liveScanCache.get([range.start.toISOString(), range.end.toISOString(), shape, keyed].join('|'), () =>
-            this.repository.bitrix(range, asOf, shape, keyed),
-          )
-        : this.repository.bitrix(range, asOf, shape, keyed)
+        ? liveScanCache.get([range.start.toISOString(), range.end.toISOString(), shape, keyed].join('|'), () => read(range))
+        : read(range)
     if (this.months === null) return live(period)
     const stored = await Promise.all(
       pieces.map(async (piece) => {
@@ -601,8 +622,8 @@ export class RoistatService {
     )
     // Nothing stored: the window read as it always was, in one statement.
     if (stored.every((rows) => rows === null)) return live(period)
-    const read = await Promise.all(liveRuns(pieces, stored).map(live))
-    return mergeBitrixRows([...stored.flatMap((rows) => (rows === null ? [] : bitrixRowsOfShape(rows, shape, keyed))), ...read.flat()])
+    const runs = await Promise.all(liveRuns(pieces, stored).map(live))
+    return mergeBitrixRows([...stored.flatMap((rows) => (rows === null ? [] : bitrixRowsOfShape(rows, shape, keyed))), ...runs.flat()])
   }
 
   /** `InsightsRepository.rnpTeamDays(period, brands)` the same way — the closed whole months stored, the rest live. */
@@ -611,7 +632,7 @@ export class RoistatService {
     // Stored brand-keyed: under «Hammasi» `faktDays` reads no brand, and the split rows add up to the unsplit ones.
     const stored = await Promise.all(pieces.map(async (piece) => (await this.storedMonth<RnpTeamDayRow[]>('fakt', piece, now))?.rows ?? null))
     const runs = stored.every((rows) => rows === null) ? [period] : liveRuns(pieces, stored)
-    const scan = (range: Period) => this.insights.rnpTeamDays(range, brands)
+    const scan = (range: Period) => this.insights.rnpTeamDays(range, brands, ROISTAT_READ_TIMEOUT_MS)
     const live = await Promise.all(runs.map((range) => this.borrowedFakt(range, now)?.catch(() => scan(range)) ?? scan(range)))
     return [...stored.flatMap((rows) => rows ?? []), ...live.flat()]
   }

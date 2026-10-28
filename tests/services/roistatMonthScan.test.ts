@@ -257,14 +257,30 @@ describe('RoistatService over the stored months', () => {
     expect(bitrixCalls).toHaveLength(1)
   })
 
-  it("warms «Shu oy» into the screen's memo in the working day, and builds nothing at night", async () => {
-    const { service, bitrixCalls } = harness({ stored: store2026(new Date('2026-10-28T04:30:00Z')) })
+  it("warms «Shu oy», «Shu yil» and «Oʻtgan oy» into the screen's memo in the working day — one live read for all three", async () => {
+    const { service, bitrixCalls, reads } = harness({ stored: store2026(new Date('2026-10-28T04:30:00Z')) })
     expect(await service.warm(new Date('2026-10-27T20:00:00Z'), TZ)).toBe('off-hours')
     expect(bitrixCalls).toHaveLength(0)
     await service.warm(NOW, TZ)
     expect(bitrixCalls).toHaveLength(1)
-    // The reader then gets the warmed answer: no second read.
-    await service.days(resolvePeriod('this_month', { timeZone: TZ, now: NOW }), NOW)
+    expect(reads).toContain('v1:bitrix-days:2026-01')
+    // The readers then get the warmed answers: no second read.
+    for (const preset of ['this_month', 'this_year', 'previous_month'] as const) {
+      await service.days(resolvePeriod(preset, { timeZone: TZ, now: NOW }), NOW)
+    }
     expect(bitrixCalls).toHaveLength(1)
+  })
+
+  it('reads live under a minute\'s limit, not the pool\'s 20 s: a reader waits rather than gets a 500', async () => {
+    const timeouts: unknown[] = []
+    const service = new RoistatService(
+      { bitrix: async (...args: unknown[]) => (timeouts.push(args[4]), [row('total')]) } as never,
+      { campaignDays: async () => [] },
+      { forDays: async (days: readonly string[]) => days.map(() => 12_000) },
+      { rnpTeamDays: async (...args: unknown[]) => (timeouts.push(args[2]), []) },
+      null,
+    )
+    await service.days(resolvePeriod('this_month', { timeZone: TZ, now: NOW }), NOW)
+    expect(timeouts).toEqual([60_000, 60_000])
   })
 })

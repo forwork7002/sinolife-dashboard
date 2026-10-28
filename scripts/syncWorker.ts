@@ -1178,11 +1178,13 @@ async function main() {
    * first. One at a time — a slow pass is never doubled.
    */
   let metaInFlight: Promise<void> | null = null
-  /** «Mijoz qaytishi»'s pass in flight (`runCohortPass`), and when the stored answers were last built. */
-  let cohortInFlight: Promise<void> | null = null
+  /**
+   * The stored answers' passes in flight — «Mijoz qaytishi» (`runCohortPass`),
+   * then Roistat's closed months (`runMonthScanPass`), one after the other —
+   * and when the cohorts were last built.
+   */
+  let storedInFlight: Promise<void> | null = null
   let lastCohortAt: Date | null = null
-  /** Roistat's closed months' pass in flight (`runMonthScanPass`) — it decides itself which months are due. */
-  let monthScanInFlight: Promise<void> | null = null
   // In memory only: a restart costs one near and one wide check, ~150 invocations.
   const recentSweepAt = new Map<string, Date>()
   // In memory only: a restart costs one pass of the feeds, two requests.
@@ -2346,37 +2348,20 @@ async function main() {
       scans are the heaviest thing this worker asks of the one core — and
       never on tick 0 (`runCohortPass` decides whether it is due).
     */
-    if (
-      COHORTS_ON &&
-      tick > 0 &&
-      cohortInFlight === null &&
-      monthScanInFlight === null &&
-      metaInFlight === null &&
-      !roistatDue &&
-      !stopping
-    ) {
-      cohortInFlight = runCohortPass().finally(() => {
-        cohortInFlight = null
-      })
-    }
-
     /*
-      Roistat's closed months, on the cohorts' rules — beside the loop, never
-      beside a Meta pass, the hour's Roistat import or a cohort pass (two
-      month-long scans side by side on one core are what timed out), never
-      on tick 0. A cohort pass that started above this tick goes first.
+      Roistat's closed months ride the same passenger, AFTER the cohorts
+      (2026-10-28) — two month-long scans side by side on one core are what
+      timed out. As two passengers the months never ran at all: the cohort
+      pass is started every tick (it decides for itself whether it is due),
+      so a second check on «no cohort pass in flight» was false in the very
+      tick that started it.
     */
-    if (
-      MONTH_SCANS_ON &&
-      tick > 0 &&
-      monthScanInFlight === null &&
-      cohortInFlight === null &&
-      metaInFlight === null &&
-      !roistatDue &&
-      !stopping
-    ) {
-      monthScanInFlight = runMonthScanPass().finally(() => {
-        monthScanInFlight = null
+    if ((COHORTS_ON || MONTH_SCANS_ON) && tick > 0 && storedInFlight === null && metaInFlight === null && !roistatDue && !stopping) {
+      storedInFlight = (async () => {
+        if (COHORTS_ON) await runCohortPass()
+        if (MONTH_SCANS_ON && !stopping) await runMonthScanPass()
+      })().finally(() => {
+        storedInFlight = null
       })
     }
 
@@ -2563,8 +2548,7 @@ async function main() {
   // transaction, so one cut short leaves the last pass's rows, never a hole.
   if (metaInFlight) await Promise.race([metaInFlight, sleep(15_000)])
   // A cohort build cut short keeps its old row: each question is written only once it is built.
-  if (cohortInFlight) await Promise.race([cohortInFlight, sleep(15_000)])
-  if (monthScanInFlight) await Promise.race([monthScanInFlight, sleep(15_000)])
+  if (storedInFlight) await Promise.race([storedInFlight, sleep(15_000)])
 
   // Releasing the lock explicitly lets a replacement worker start at once
   // instead of waiting out the connection's own timeout.

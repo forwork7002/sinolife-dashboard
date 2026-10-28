@@ -203,7 +203,11 @@ function int(value: unknown): number {
 export class RoistatRepository {
   private readonly tz: string
 
-  constructor(private readonly prisma: PrismaClient) {
+  /** `poolStatementTimeoutMs` — as `InsightsRepository`'s: a limit the pool already sets needs no transaction. */
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly poolStatementTimeoutMs = 0,
+  ) {
     this.tz = env.APP_TIMEZONE
   }
 
@@ -643,7 +647,7 @@ export class RoistatRepository {
 
   /** One statement, under `statementTimeoutMs` (SET LOCAL, its own transaction) when given. */
   private async query<T>(statementTimeoutMs: number | undefined, sql: string, ...values: unknown[]): Promise<T> {
-    if (!statementTimeoutMs) return this.prisma.$queryRawUnsafe<T>(sql, ...values)
+    if (!statementTimeoutMs || statementTimeoutMs <= this.poolStatementTimeoutMs) return this.prisma.$queryRawUnsafe<T>(sql, ...values)
     return this.prisma.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${Math.trunc(statementTimeoutMs)}`)

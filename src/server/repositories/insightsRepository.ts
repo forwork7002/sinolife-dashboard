@@ -1171,7 +1171,16 @@ export interface LeadFakt1ClientRow {
 export class InsightsRepository {
   private readonly tz: string
 
-  constructor(private readonly prisma: PrismaClient) {
+  /**
+   * `poolStatementTimeoutMs`: the limit the client's own pool already sets —
+   * the warm lane's minute (`warmPrisma`). A statement asked for no more than
+   * that runs plainly: on the lane's one connection a transaction of its own
+   * would queue behind the build's other read past Prisma's `maxWait`.
+   */
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly poolStatementTimeoutMs = 0,
+  ) {
     this.tz = env.APP_TIMEZONE
   }
 
@@ -1189,7 +1198,7 @@ export class InsightsRepository {
    * fills the memo at all.
    */
   private async queryWithTimeout<T>(statementTimeoutMs: number | undefined, sql: string, ...values: unknown[]): Promise<T> {
-    if (!statementTimeoutMs) return this.prisma.$queryRawUnsafe<T>(sql, ...values)
+    if (!statementTimeoutMs || statementTimeoutMs <= this.poolStatementTimeoutMs) return this.prisma.$queryRawUnsafe<T>(sql, ...values)
     return this.prisma.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe(`SET LOCAL statement_timeout = ${Math.trunc(statementTimeoutMs)}`)

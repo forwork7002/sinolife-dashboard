@@ -206,7 +206,8 @@ export const leadWatchService = new LeadWatchService(
   builds here is the very answer the screens' services above hand out; only
   the connection it was read on differs.
 */
-const warmInsightsRepository = new InsightsRepository(warmPrisma)
+// The lane already allows a minute: a statement asked for no more runs without a transaction of its own there.
+const warmInsightsRepository = new InsightsRepository(warmPrisma, WARM_STATEMENT_TIMEOUT_MS)
 const warmReklamaRepository = new ReklamaRepository(warmPrisma)
 const warmLeadSourcesService = new LeadSourcesService(
   new LeadSourcesRepository(warmPrisma),
@@ -216,7 +217,6 @@ const warmLeadSourcesService = new LeadSourcesService(
 export const warmServices = {
   rnp: new RnpService(
     warmInsightsRepository,
-    // The lane already allows a minute: the month's registration history needs no transaction of its own there.
     new RnpRepository(warmPrisma, WARM_STATEMENT_TIMEOUT_MS),
     warmReklamaRepository,
     cbuUsdRates,
@@ -224,7 +224,7 @@ export const warmServices = {
   leadSources: warmLeadSourcesService,
   // «Kunlar boʻyicha»'s «Shu oy» (`RoistatService.warm`) — its memos are process-wide too.
   roistat: new RoistatService(
-    new RoistatRepository(warmPrisma),
+    new RoistatRepository(warmPrisma, WARM_STATEMENT_TIMEOUT_MS),
     warmReklamaRepository,
     cbuUsdRates,
     warmInsightsRepository,
