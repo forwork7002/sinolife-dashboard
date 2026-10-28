@@ -46,6 +46,7 @@ import { brandTeams } from '@/server/domain/rnp/rnpSheet'
 import { callFloorApplied } from '@/lib/callQuality'
 import { CUSTOMER_STATES } from '@/lib/customerStates'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
+import { processWide } from '@/server/processWide'
 import {
   type CohortSnapshotReader,
   type StoredCohortAnswer,
@@ -217,7 +218,12 @@ export function resetCohortCaches(): void {
  * calls land through the three-hourly reference pass, and a reader re-asking
  * inside a minute is asking the same question.
  */
-const callActivityCache = ttlCache<Awaited<ReturnType<InsightsRepository['callActivity']>>>(120_000, LIVE_CACHE)
+/* On `globalThis` (2026-10-28): the warm lane builds «Shu oy» / «Oʻtgan oy» into it (`warmCallActivity`). */
+const callActivityCache = processWide('sinolife.insights.callActivityCache', () =>
+  ttlCache<Awaited<ReturnType<InsightsRepository['callActivity']>>>(120_000, LIVE_CACHE),
+)
+
+const callActivityKey = (period: Period): string => `calls|${period.start.toISOString()}|${periodLengthInDays(period)}`
 const logisticsCache = ttlCache<
   [
     Awaited<ReturnType<InsightsRepository['logisticsCohort']>>,
@@ -1675,9 +1681,17 @@ export class InsightsService {
    * compares against a previous period, so «Bugun» and «Shu hafta» resolving to
    * one window on a Monday are one question.
    */
+  /**
+   * «Qoʻngʻiroqlar»'s month read, built by the warm lane (2026-10-28): on the
+   * screens' pool «Shu oy» ran past the 20 s limit twice in a row. Handed out
+   * for `ttlMs` — see `OwnedRefresh`.
+   */
+  async warmCallActivity(period: Period, ttlMs: number): Promise<void> {
+    await callActivityCache.refresh(callActivityKey(period), () => this.repository.callActivity({ period }), { ttlMs })
+  }
+
   async callActivity(period: Period): Promise<CallActivityDto> {
-    const key = `calls|${period.start.toISOString()}|${periodLengthInDays(period)}`
-    const activity = await callActivityCache.get(key, () =>
+    const activity = await callActivityCache.get(callActivityKey(period), () =>
       this.repository.callActivity({ period }),
     )
 

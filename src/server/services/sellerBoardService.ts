@@ -501,7 +501,14 @@ export interface SellerMedalsDto {
  * thirty minutes since the last build shows the previous wall for one poll
  * rather than waiting. So an answer is up to thirty minutes old.
  */
-const SLOW_FACT_CACHE: TtlCacheOptions = { ...LIVE_CACHE, staleMs: 20 * 60_000 }
+/*
+  SIX HOURS OF STALE, NOT TWENTY MINUTES (2026-10-28): past thirty quiet
+  minutes the wall and the medals were dropped, and the next reader built
+  them cold on the 20 s pool — /analytics/sellers?include=medals and
+  ?include=records answered 500 at 08:30:47 UTC. They are monthly facts; the
+  old answer shows at once and ONE rebuild runs behind it.
+*/
+const SLOW_FACT_CACHE: TtlCacheOptions = { ...LIVE_CACHE, staleMs: 6 * 60 * 60_000 }
 
 /**
  * Medal rekord devori bilan bir xil sekin fakt, va uning kogortasi shu

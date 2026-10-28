@@ -153,3 +153,33 @@ describe('withinHours — the warmers’ working day (2026-10-06)', () => {
     expect(withinHours(new Date('2026-10-06T05:00:00Z'), 'Asia/Tashkent', [7, 7])).toBe(false)
   })
 })
+
+describe('inWarmLane — «Лид назорати» goes first (2026-10-28)', () => {
+  it('runs a first job ahead of the ones already waiting, never beside the running one', async () => {
+    const { inWarmLane } = await import('@/server/services/rnpWarmer')
+    const order: string[] = []
+    let releaseMonth!: () => void
+    const month = inWarmLane(
+      () =>
+        new Promise<void>((resolve) => {
+          order.push('month start')
+          releaseMonth = () => {
+            order.push('month end')
+            resolve()
+          }
+        }),
+    )
+    const sales = inWarmLane(async () => void order.push('sales-days'))
+    const watch = inWarmLane(async () => void order.push('lead-watch'), true)
+    await Promise.resolve()
+    releaseMonth()
+    await Promise.all([month, sales, watch])
+    expect(order).toEqual(['month start', 'month end', 'lead-watch', 'sales-days'])
+  })
+
+  it('ticks every twelve minutes, and owns what it builds for two of them', async () => {
+    const { RNP_WARM_EVERY_MS: every, WARM_OWNED_TTL_MS } = await import('@/server/services/rnpWarmer')
+    expect(every).toBe(12 * 60_000)
+    expect(WARM_OWNED_TTL_MS).toBe(24 * 60_000)
+  })
+})

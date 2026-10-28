@@ -364,9 +364,10 @@ describe('RnpService — one memo per process, whichever bundle reads it (2026-1
     expect(await servedAtOnce(read(route, '2027-07'))).toBe(true)
     expect(scanned).toEqual([])
 
-    // Five minutes on, the month is past its TTL: the route's copy rebuilds it behind its reader, and
-    // the closed days' Регистрация (`registrationHistory`, half an hour) is the warmer's read, not a new one.
-    movedNow = tenOnTheFifth + 5 * 60_000
+    // Twenty-five minutes on — two warm ticks (`WARM_OWNED_TTL_MS`, 2026-10-28) — the month is past its TTL: the
+    // route's copy rebuilds it behind its reader, and the closed days' Регистрация (`registrationHistory`, half an
+    // hour) is the warmer's read, not a new one.
+    movedNow = tenOnTheFifth + 25 * 60_000
     await read(route, '2027-08')
     await flush()
     expect(scanned).toEqual(['2027-08'])

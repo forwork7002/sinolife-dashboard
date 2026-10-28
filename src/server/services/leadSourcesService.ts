@@ -79,7 +79,7 @@ import { processWide } from '@/server/processWide'
 
 import { type SideColumnDto, calendarDays, sideColumnsOf } from './reklamaService'
 import { leadBrand } from './rnpService'
-import { OFF_HOURS, WARM_HOURS, type WarmOutcome, withinHours } from './rnpWarmer'
+import { OFF_HOURS, RNP_WARM_EVERY_MS, WARM_HOURS, WARM_OWNED_TTL_MS, type WarmOutcome, withinHours } from './rnpWarmer'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -1392,7 +1392,7 @@ const fillCache = processWide('sinolife.leads.fillCache', () => ttlCache<FormFil
   the grace only bounds how long a deploy waits, and the pacing is what
   leaves the pool to the readers on every tick after.
 */
-export const LEADS_WARM_EVERY_MS = 3 * 60_000
+export const LEADS_WARM_EVERY_MS = RNP_WARM_EVERY_MS
 const LEADS_WARM_PRESETS: readonly PeriodPreset[] = ['today', 'this_month']
 const LEADS_WARM_SCANS_AT_ONCE = 2
 
@@ -1480,9 +1480,17 @@ export class LeadSourcesService {
     if (!withinHours(now, timeZone, WARM_HOURS)) return OFF_HOURS
     // One at a time: two cold months side by side would take the pool from every other screen.
     const windows = LEADS_WARM_PRESETS.map((preset) => resolvePeriod(preset, { timeZone, now }))
+    /*
+      «Shu oy» IS THE WARMER'S, «Bugun» THE READERS' (2026-10-28). The month's
+      scans are handed out for two ticks (`WARM_OWNED_TTL_MS`) and nobody
+      rebuilds them on the screens' connections meanwhile — that rebuild ran
+      past the 20 s limit. A day's scans are small: built here for the first
+      reader of a tick, then a reader's two minutes, as before.
+    */
+    const owned = (period: Period) => (period.preset === 'today' ? undefined : { ttlMs: WARM_OWNED_TTL_MS })
     for (const period of windows) {
-      await registrationCache.refresh(windowKey(period), () => this.repository.registrationDays(period))
-      await scanCache.refresh(windowKey(period), () => this.scans(period, LEADS_WARM_SCANS_AT_ONCE))
+      await registrationCache.refresh(windowKey(period), () => this.repository.registrationDays(period), owned(period))
+      await scanCache.refresh(windowKey(period), () => this.scans(period, LEADS_WARM_SCANS_AT_ONCE), owned(period))
     }
     /*
       «Факт1 мижоз» LAST, AND ITS FAILURE STOPS NOTHING (2026-10-06 review).
@@ -1498,7 +1506,7 @@ export class LeadSourcesService {
     let failure: { error: unknown } | undefined
     for (const period of windows) {
       try {
-        await fakt1Cache.refresh(windowKey(period), () => this.insights.leadFakt1Clients(period))
+        await fakt1Cache.refresh(windowKey(period), () => this.insights.leadFakt1Clients(period), owned(period))
       } catch (error) {
         failure ??= { error }
       }

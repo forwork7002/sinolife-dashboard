@@ -31,7 +31,19 @@
 import { logger } from '@/server/logging/logger'
 import { processWide } from '@/server/processWide'
 
-export const RNP_WARM_EVERY_MS = 4 * 60_000
+/*
+  TWELVE MINUTES, NOT FOUR (2026-10-28). The warm lane ran ~1 450–1 510 s of
+  statements an hour on the one-core database (RNP 23 s median every 4 min,
+  «Lidlar» 36 s every 3, «Kunlar boʻyicha» 20 s every 4), and every screen's
+  own reads waited behind it: «Shu oy» on «Qoʻngʻiroqlar», «Target tahlili»
+  DM and «Reklama samarasi» answered 500 on the 20 s limit twice in a row.
+  The month windows a warmer builds are handed out for two of its ticks
+  (`OwnedRefresh`), so nobody waits on them meanwhile.
+*/
+export const RNP_WARM_EVERY_MS = 12 * 60_000
+
+/** How long an answer a warmer built stays good: two of its ticks, so one late or failed tick shows no reader a cold build. */
+export const WARM_OWNED_TTL_MS = 2 * RNP_WARM_EVERY_MS
 
 /*
   WORKING HOURS ONLY (2026-10-06): Tashkent [7, 23), for both warmers — this
@@ -104,7 +116,7 @@ interface Timers {
 const WARM_LANE = 'sinolife.warmLane'
 
 /** Runs `job` once no other warm-up is running — at once when none is. */
-export function inWarmLane<T>(job: () => Promise<T>): Promise<T> {
+export function inWarmLane<T>(job: () => Promise<T>, first = false): Promise<T> {
   const lane = processWide(WARM_LANE, () => ({ busy: false, waiting: [] as (() => void)[] }))
   return new Promise<T>((resolve, reject) => {
     const run = () => {
@@ -121,8 +133,11 @@ export function inWarmLane<T>(job: () => Promise<T>): Promise<T> {
         else lane.busy = false
       })
     }
-    if (lane.busy) lane.waiting.push(run)
-    else run()
+    // «Лид назорати» (2026-10-28) goes to the front: a day's rows behind a month's scans was a stale live screen.
+    if (lane.busy) {
+      if (first) lane.waiting.unshift(run)
+      else lane.waiting.push(run)
+    } else run()
   })
 }
 
@@ -141,6 +156,8 @@ export function startWarmer(
   everyMs: number,
   timers: Timers = globalThis as unknown as Timers,
   after: Promise<unknown> = Promise.resolve(),
+  /** Ahead of every other warmer waiting for the lane (`inWarmLane`). */
+  first = false,
 ): () => Promise<void> {
   let running: Promise<void> | null = null
   pendingSet().add(name)
@@ -151,7 +168,7 @@ export function startWarmer(
     running = inWarmLane(() => {
       started = Date.now()
       return warm()
-    })
+    }, first)
       .then((outcome) =>
         outcome === OFF_HOURS
           ? logger.debug(`${name} warm skipped — outside working hours`)

@@ -314,3 +314,72 @@ describe('ttlCache.refresh', () => {
     expect(await cache.get('k', async () => 99)).toBe(2)
   })
 })
+
+describe('ttlCache — a warmer that owns a key (2026-10-28)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('lands its answer with its own TTL: readers between two ticks never rebuild', async () => {
+    const cache = ttlCache<number>(120_000, { staleMs: 300_000 })
+    let builds = 0
+    const build = async () => ++builds
+
+    await cache.refresh('month', build, { ttlMs: 24 * 60_000 })
+    vi.advanceTimersByTime(20 * 60_000)
+    // Past the cache's 2 + 5 minutes, inside the warmer's 24: the warm answer, no build.
+    expect(await cache.get('month', build)).toBe(1)
+    expect(builds).toBe(1)
+  })
+
+  it('rebuilds on every tick, even inside its TTL', async () => {
+    const cache = ttlCache<number>(120_000, { staleMs: 300_000 })
+    let builds = 0
+    const build = async () => ++builds
+
+    await cache.refresh('month', build, { ttlMs: 24 * 60_000 })
+    vi.advanceTimersByTime(12 * 60_000)
+    await cache.refresh('month', build, { ttlMs: 24 * 60_000 })
+    expect(builds).toBe(2)
+    expect(await cache.get('month', build)).toBe(2)
+  })
+
+  it('keeps the old answer when its rebuild fails, and rejects to the warmer', async () => {
+    const cache = ttlCache<number>(120_000, { staleMs: 300_000 })
+    await cache.refresh('month', async () => 7, { ttlMs: 24 * 60_000 })
+    await expect(
+      cache.refresh('month', async () => Promise.reject(new Error('57014')), { ttlMs: 24 * 60_000 }),
+    ).rejects.toThrow('57014')
+    expect(await cache.get('month', async () => 99)).toBe(7)
+  })
+
+  it('leaves a key it does not own to the cache’s own TTL', async () => {
+    const cache = ttlCache<number>(120_000)
+    let builds = 0
+    const build = async () => ++builds
+    await cache.refresh('today', build)
+    vi.advanceTimersByTime(121_000)
+    expect(await cache.get('today', build)).toBe(2)
+  })
+
+  it('shares a reader’s first build in flight rather than starting a second beside it', async () => {
+    const cache = ttlCache<number>(120_000, { staleMs: 300_000 })
+    let builds = 0
+    let release!: () => void
+    const slow = () =>
+      new Promise<number>((resolve) => {
+        builds += 1
+        release = () => resolve(builds)
+      })
+    const reader = cache.get('month', slow)
+    const warmer = cache.refresh('month', slow, { ttlMs: 24 * 60_000 })
+    release()
+    await reader
+    await warmer
+    expect(builds).toBe(1)
+  })
+})

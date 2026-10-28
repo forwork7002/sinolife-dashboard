@@ -239,6 +239,18 @@ export const warmServices = {
     new ReferenceRepository(warmPrisma),
     warmLeadSourcesService,
   ),
+  /*
+    The month reads that answered 500 on the screens' 20 s pool (2026-10-28):
+    «Qoʻngʻiroqlar», «Kiruvchi tahlil», «Reklama samarasi» / «Target tahlili»
+    DM — built here (`monthReadsWarmer.ts`) into their process-wide memos.
+  */
+  insights: new InsightsService(warmInsightsRepository),
+  inboundAnalysis: new InboundAnalysisService(
+    new InboundCallsRepository(warmPrisma),
+    new InboundAnalysisRepository(warmPrisma),
+    env.APP_TIMEZONE,
+  ),
+  reklama: new ReklamaService(warmReklamaRepository),
 } as const
 /*
   «Lid kogortasi» (a tab of «Lidlar» since 2026-09-25) — arrival → distribution of routed leads. See leadCohortService.ts.

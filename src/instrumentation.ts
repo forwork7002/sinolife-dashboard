@@ -13,12 +13,14 @@ export async function register(): Promise<void> {
     { env },
     { LEADS_WARM_EVERY_MS },
     { LEAD_WATCH_WARM_EVERY_MS },
+    { monthReadsWarm },
   ] = await Promise.all([
     import('@/server/services/rnpWarmer'),
     import('@/server/services/container'),
     import('@/server/config/env'),
     import('@/server/services/leadSourcesService'),
     import('@/server/services/leadWatchService'),
+    import('@/server/services/monthReadsWarmer'),
   ])
   /*
     On the warm lane's one connection (`warmServices`, container.ts), never
@@ -30,7 +32,18 @@ export async function register(): Promise<void> {
   // After RNP's first build, not beside it: both cold at once would take the pool, /api/health's probe included.
   const leads = startWarmer('leads', () => leadSourcesService.warm(new Date(), env.APP_TIMEZONE), LEADS_WARM_EVERY_MS, undefined, rnp())
   // «Лид назорати» after them, for the same reason: a day's rows, small beside the two above.
-  const leadWatch = startWarmer('lead-watch', () => leadWatchService.warm(new Date(), env.APP_TIMEZONE), LEAD_WATCH_WARM_EVERY_MS, undefined, leads())
+  // First in the lane on every tick after (2026-10-28): a live screen does not wait behind a month's scans.
+  const leadWatch = startWarmer(
+    'lead-watch',
+    () => leadWatchService.warm(new Date(), env.APP_TIMEZONE),
+    LEAD_WATCH_WARM_EVERY_MS,
+    undefined,
+    leads(),
+    true,
+  )
   // «Kunlar boʻyicha»'s «Shu oy» (2026-10-28) last: its FAKT is the RNP sheet's, built first.
-  startWarmer('sales-days', () => roistatService.warm(new Date(), env.APP_TIMEZONE), RNP_WARM_EVERY_MS, undefined, leadWatch())
+  const salesDays = startWarmer('sales-days', () => roistatService.warm(new Date(), env.APP_TIMEZONE), RNP_WARM_EVERY_MS, undefined, leadWatch())
+  // The month reads the screens' 20 s pool could not build (2026-10-28) — «Qoʻngʻiroqlar», «Kiruvchi tahlil», Reklama / DM.
+  const monthReads = monthReadsWarm(warmServices)
+  startWarmer('month-reads', () => monthReads(new Date(), env.APP_TIMEZONE), RNP_WARM_EVERY_MS, undefined, salesDays())
 }

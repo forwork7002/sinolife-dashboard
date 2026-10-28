@@ -59,6 +59,22 @@ interface Entry<T> {
   readonly value: Promise<T>
   /** A rebuild running behind this entry's readers (stale-while-revalidate). */
   rebuilding: Promise<void> | null
+  /** This entry's own TTL — a warmer's (`refresh` with `owned`); the cache's otherwise. */
+  readonly ttlMs?: number
+  /** False while its first build is still in flight. */
+  settled?: boolean
+}
+
+/**
+ * A warmer that OWNS a key (2026-10-28): it rebuilds the key on its own
+ * cadence, and the answer it lands is good for `ttlMs` — longer than the
+ * cache's own TTL, so readers between two ticks are handed the warm answer
+ * and never rebuild it themselves on the screens' connections. On the
+ * one-core database a reader's rebuild of a month's scans ran past the 20 s
+ * limit and failed (57014) while the warm lane built the same thing beside it.
+ */
+export interface OwnedRefresh {
+  readonly ttlMs: number
 }
 
 export interface TtlCache<T> {
@@ -84,8 +100,11 @@ export interface TtlCache<T> {
    * just landed, or a first build is on its way): waits for it and builds
    * nothing. Expired but showable: joins the rebuild a reader started, or
    * starts the one rebuild readers then share, and waits for it.
+   *
+   * With `owned`: always rebuilds (joining one already running), and the
+   * answer it lands is good for `owned.ttlMs` — see `OwnedRefresh`.
    */
-  refresh(key: string, build: () => Promise<T>): Promise<void>
+  refresh(key: string, build: () => Promise<T>, owned?: OwnedRefresh): Promise<void>
   /** Drop everything. For tests, and for a caller that knows it invalidated. */
   clear(): void
   /** How many live entries are held. For tests. */
@@ -133,9 +152,11 @@ export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCa
   const staleMs = options.staleMs ?? 0
   const entries = new Map<string, Entry<T>>()
 
-  const fresh = (key: string, now: number, build: () => Promise<T>): Promise<T> => {
+  const ttlOf = (entry: Entry<T>): number => entry.ttlMs ?? ttlMs
+
+  const fresh = (key: string, now: number, build: () => Promise<T>, ownTtlMs?: number): Promise<T> => {
     const value = build()
-    const entry: Entry<T> = { at: now, value, rebuilding: null }
+    const entry: Entry<T> = { at: now, value, rebuilding: null, ...(ownTtlMs === undefined ? {} : { ttlMs: ownTtlMs }) }
     /*
       A first build still running counts as this key's rebuild: a reader who
       arrives past the TTL while it runs shares it rather than starting a
@@ -155,6 +176,12 @@ export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCa
       entry.rebuilding.catch(() => undefined)
     }
     entries.set(key, entry)
+    void value.then(
+      () => {
+        entry.settled = true
+      },
+      () => undefined,
+    )
     value.catch(() => {
       // Only if it is still OURS. A later build may already have replaced
       // this entry, and deleting that one would evict a good answer.
@@ -168,10 +195,14 @@ export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCa
     whoever comes while it runs shares it. It rejects on failure, the old
     answer kept; each caller decides who hears of that.
   */
-  const rebuild = (key: string, hit: Entry<T>, build: () => Promise<T>): Promise<void> =>
+  const rebuild = (key: string, hit: Entry<T>, build: () => Promise<T>, ownTtlMs?: number): Promise<void> =>
     (hit.rebuilding ??= build().then(
       (value) => {
-        if (entries.get(key) === hit) entries.set(key, { at: Date.now(), value: Promise.resolve(value), rebuilding: null })
+        if (entries.get(key) === hit) {
+          // A warmer's rebuild lands with its own TTL; a reader's with the cache's.
+          const ttl = ownTtlMs === undefined ? {} : { ttlMs: ownTtlMs }
+          entries.set(key, { at: Date.now(), value: Promise.resolve(value), rebuilding: null, settled: true, ...ttl })
+        }
       },
       (error: unknown) => {
         hit.rebuilding = null
@@ -184,7 +215,7 @@ export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCa
       const now = Date.now()
 
       const hit = entries.get(key)
-      if (hit && now - hit.at < ttlMs) return hit.value
+      if (hit && now - hit.at < ttlOf(hit)) return hit.value
 
       /*
         Swept by age rather than by count.
@@ -195,10 +226,10 @@ export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCa
         that runs for weeks between deploys.
       */
       for (const [k, entry] of entries) {
-        if (now - entry.at >= ttlMs + staleMs && !entry.rebuilding) entries.delete(k)
+        if (now - entry.at >= ttlOf(entry) + staleMs && !entry.rebuilding) entries.delete(k)
       }
 
-      if (hit && staleMs > 0 && now - hit.at < ttlMs + staleMs) {
+      if (hit && staleMs > 0 && now - hit.at < ttlOf(hit) + staleMs) {
         /*
           Expired but still showable: hand the old answer out and rebuild ONCE
           behind it. The old value only counts if it resolved — a rejected one
@@ -212,11 +243,25 @@ export function ttlCache<T>(ttlMs: number, options: TtlCacheOptions = {}): TtlCa
       return fresh(key, now, build)
     },
 
-    async refresh(key, build) {
+    async refresh(key, build, owned) {
       const hit = entries.get(key)
+      if (owned) {
+        if (hit === undefined) {
+          await fresh(key, Date.now(), build, owned.ttlMs)
+        } else if (!hit.settled || hit.rebuilding) {
+          // A build already in flight — a reader's first, or a rebuild: shared, and its answer kept as the warmer's.
+          await (hit.rebuilding ?? hit.value)
+          const landed = entries.get(key)
+          if (landed) entries.set(key, { ...landed, ttlMs: owned.ttlMs })
+        } else {
+          // Rebuilt behind the readers, who are shown the old answer meanwhile.
+          await rebuild(key, hit, build, owned.ttlMs)
+        }
+        return
+      }
       const age = hit === undefined ? Infinity : Date.now() - hit.at
-      if (hit === undefined || age >= ttlMs + staleMs) await cache.get(key, build)
-      else if (age < ttlMs) await hit.value
+      if (hit === undefined || age >= ttlOf(hit) + staleMs) await cache.get(key, build)
+      else if (age < ttlOf(hit)) await hit.value
       else await rebuild(key, hit, build)
     },
 

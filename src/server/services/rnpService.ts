@@ -44,7 +44,7 @@ import type {
   RnpTeam,
   RnpWarehouseDayRow,
 } from '@/server/repositories/rnpRepository'
-import { OFF_HOURS, RNP_WARM_EVERY_MS, WARM_HOURS, type WarmOutcome, withinHours } from './rnpWarmer'
+import { OFF_HOURS, WARM_HOURS, WARM_OWNED_TTL_MS, type WarmOutcome, withinHours } from './rnpWarmer'
 
 /** Every day of a `YYYY-MM` month, as `YYYY-MM-DD`. */
 export function monthDays(month: string): string[] {
@@ -121,7 +121,8 @@ interface MonthRows {
   needs a server restart.
 */
 const monthCache = processWide('sinolife.rnp.monthCache', () =>
-  staleWhileRevalidate<MonthRows>(RNP_WARM_EVERY_MS, Date.now, 30 * 60_000, warnRebuild),
+  // Two warm ticks (2026-10-28): the warmer rebuilds it every tick; a reader rebuilds only when it has fallen behind.
+  staleWhileRevalidate<MonthRows>(WARM_OWNED_TTL_MS, Date.now, 30 * 60_000, warnRebuild),
 )
 const pastMonthCache = processWide('sinolife.rnp.pastMonthCache', () =>
   staleWhileRevalidate<MonthRows>(30 * 60_000, Date.now, Infinity, warnRebuild),

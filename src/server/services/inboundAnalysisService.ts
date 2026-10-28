@@ -16,6 +16,8 @@ import { type Period, periodLengthInDays, zonedDateKey } from '@/server/domain/p
 import type { InboundAnalysisRepository } from '@/server/repositories/inboundAnalysisRepository'
 import type { InboundCallsRepository } from '@/server/repositories/inboundCallsRepository'
 import { windowDays } from './inboundCallsService'
+import { processWide } from '@/server/processWide'
+
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 export interface AnalysisDayDto extends AnalysisDay {
@@ -70,7 +72,8 @@ interface Snapshot {
   readonly verdicts: readonly NumberVerdict[]
 }
 
-const reportCache = ttlCache<Snapshot>(120_000, LIVE_CACHE)
+/* On `globalThis` (2026-10-28): the warm lane builds «Shu oy» / «Oʻtgan oy» into it (`warm`). */
+const reportCache = processWide('sinolife.inboundAnalysis.reportCache', () => ttlCache<Snapshot>(120_000, LIVE_CACHE))
 const numbersCache = ttlCache<AnalysisNumbersDto>(120_000, LIVE_CACHE)
 
 /**
@@ -88,6 +91,11 @@ export class InboundAnalysisService {
 
   async report(period: Period, now: Date): Promise<InboundAnalysisDto> {
     return (await this.snapshot(period, now)).dto
+  }
+
+  /** The window's report, built by the warm lane (2026-10-28) and handed out for `ttlMs` — see `OwnedRefresh`. */
+  async warm(period: Period, now: Date, ttlMs: number): Promise<void> {
+    await reportCache.refresh(this.key(period), () => this.build(period, now), { ttlMs })
   }
 
   /** The numbers of the period's two groups, oldest first call first. */

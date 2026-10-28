@@ -607,7 +607,18 @@ Per-screen traps worth knowing before you touch one:
     clocks, failed ×12 on the 20 s timeout and left readers queueing for
     the six screen connections. A rebuild that fails behind a reader
     is logged («rnp rebuild failed; serving the previous answer») — it used
-    to vanish while the old rows were served.
+    to vanish while the old rows were served. **Since 2026-10-28 every
+    12 minutes, not 3–4** (`RNP_WARM_EVERY_MS`: the lane ran ~1 450–1 510 s of
+    statements an hour on the one-core database), and a month window a warmer
+    builds is ITS for two ticks (`ttlCache.refresh(…, { ttlMs })`,
+    `WARM_OWNED_TTL_MS`): readers are handed it and never rebuild it on the
+    20 s pool; «Bugun» stays the readers' two minutes. «Лид назорати» goes
+    first in the lane and owns its answer until a minute past its next
+    2-minute tick. A fifth warmer, «month-reads» (`monthReadsWarmer.ts`),
+    builds «Shu oy» every tick and «Oʻtgan oy» hourly for «Qoʻngʻiroqlar»
+    (`callActivity`), «Kiruvchi tahlil» and «Reklama samarasi» / «Target
+    tahlili» DM (`ReklamaService.warm`) — all four answered 500 on «Shu oy».
+    The medals and the record wall keep their old answer six hours.
   · **«Баҳо» (2026-10-03, the client's scales)**: every ROP block has a grade
     line under «Сумма факт 1 сум» — the day's FAKT 1 graded 2–5 on the team's
     scale (`domain/rnp/rnpGrade.ts`: Collagen первичка 20/35/50 M, Zextra

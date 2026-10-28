@@ -60,6 +60,8 @@ import type {
 } from '@/server/repositories/reklamaRepository'
 
 import { leadBrand } from './rnpService'
+import { processWide } from '@/server/processWide'
+
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -1119,15 +1121,27 @@ const REKLAMA_SOURCE_IDS: readonly string[] = [
   construction — the route refuses a narrowed account — so no scope reaches it.
 */
 
-const leadCache = ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE)
+/* The three on `globalThis` (2026-10-28): the warm lane builds «Shu oy» / «Oʻtgan oy» into them (`warm`). */
+const leadCache = processWide('sinolife.reklama.leadCache', () => ttlCache<LeadStageDayRow[]>(120_000, LIVE_CACHE))
 /** The campaigns' kval: Meta's leads arrive hourly, the deals' stages by the minute — the lead scan's own clock. */
-const campaignLeadCache = ttlCache<Awaited<ReturnType<ReklamaRepository['campaignLeads']>> | undefined>(120_000, LIVE_CACHE)
+const campaignLeadCache = processWide('sinolife.reklama.campaignLeadCache', () =>
+  ttlCache<Awaited<ReturnType<ReklamaRepository['campaignLeads']>> | undefined>(120_000, LIVE_CACHE),
+)
 /*
   «Formalar»' money on the same key and clock (2026-10-24). It had no memo, and
   its form map groups every Meta lead ever read on each load — about 1.4 s and
   a spill to disk per call on production, paid again by every tab and remount.
 */
-const formAdCache = ttlCache<Awaited<ReturnType<ReklamaRepository['formAdDays']>> | undefined>(120_000, LIVE_CACHE)
+const formAdCache = processWide('sinolife.reklama.formAdCache', () =>
+  ttlCache<Awaited<ReturnType<ReklamaRepository['formAdDays']>> | undefined>(120_000, LIVE_CACHE),
+)
+
+/** The calendar days a window covers, in the zone — `load`'s and `warm`'s. */
+function loadWindow(period: Period, timeZone: string): { from: string; to: string } {
+  return { from: zonedDateKey(period.start, timeZone), to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone) }
+}
+
+const loadKey = (period: Period): string => [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
 
 /** Logs a failed per-campaign scan and answers `fallback` in its place. */
 function scanFailed<T>(scan: string, fallback: T) {
@@ -1152,12 +1166,23 @@ export class ReklamaService {
     return targetDm(await this.load(period, timeZone), product)
   }
 
+  /**
+   * The window's three scans, built by the warm lane (2026-10-28) and handed
+   * out for `ttlMs` — see `OwnedRefresh`. On the screens' pool «Shu oy» ran
+   * past the 20 s limit: /reklama/overview and /target/dm answered 500. A
+   * failed scan throws here, for the warmer to log; the old answer stays.
+   */
+  async warm(period: Period, timeZone: string, ttlMs: number): Promise<void> {
+    const { from, to } = loadWindow(period, timeZone)
+    const key = loadKey(period)
+    await leadCache.refresh(key, () => this.repository.leadStageDays(period, REKLAMA_SOURCE_IDS), { ttlMs })
+    await campaignLeadCache.refresh(key, () => this.repository.campaignLeads(period), { ttlMs })
+    await formAdCache.refresh(key, () => this.repository.formAdDays(from, to, period), { ttlMs })
+  }
+
   private async load(period: Period, timeZone: string) {
-    const window = {
-      from: zonedDateKey(period.start, timeZone),
-      to: zonedDateKey(new Date(period.end.getTime() - 1), timeZone),
-    }
-    const key = [period.preset, period.start.toISOString(), periodLengthInDays(period)].join('|')
+    const window = loadWindow(period, timeZone)
+    const key = loadKey(period)
 
     const [leadRows, named, campaignRows, campaignLeadRows, formAdRows, listedForms, importedAt] = await Promise.all([
       leadCache.get(key, () => this.repository.leadStageDays(period, REKLAMA_SOURCE_IDS)),

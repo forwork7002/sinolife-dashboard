@@ -71,9 +71,16 @@ import { LIVE_CACHE, ttlCache } from './ttlCache'
   warmer and the routes are separate bundles in one process.
 */
 const WATCH_TTL_MS = 60_000
+/**
+ * The warmer's answer (2026-10-28): good until a minute past its next tick,
+ * so no reader rebuilds it on the screens' pool between two ticks. The stale
+ * window shrinks to match — warm answer or reader's, nothing shown is older
+ * than `staleAfterMin`.
+ */
+const LEAD_WATCH_OWNED_TTL_MS = LEAD_WATCH_SETTINGS.refreshEveryMs + 60_000
 const watchCache = processWide('sinolife.leadWatch.cache', () =>
   ttlCache<LeadWatchDto>(WATCH_TTL_MS, {
-    staleMs: LEAD_WATCH_SETTINGS.staleAfterMin * 60_000 - WATCH_TTL_MS,
+    staleMs: LEAD_WATCH_SETTINGS.staleAfterMin * 60_000 - LEAD_WATCH_OWNED_TTL_MS,
     onError: LIVE_CACHE.onError,
   }),
 )
@@ -96,6 +103,7 @@ const arrivalCache = processWide('sinolife.leadWatch.arrivalCache', () => ttlCac
 
 /** How often the warmer rebuilds the answer in the working day — the page's own cadence. */
 export const LEAD_WATCH_WARM_EVERY_MS = LEAD_WATCH_SETTINGS.refreshEveryMs
+
 
 const warnLater = (message: string, error: unknown): void =>
   // Loaded when needed: the logger reads the validated environment at import (see `LIVE_CACHE`).
@@ -207,7 +215,14 @@ export class LeadWatchService {
    */
   async warm(now: Date, timeZone: string): Promise<WarmOutcome> {
     if (!withinHours(now, timeZone, WARM_HOURS)) return OFF_HOURS
-    await watchCache.refresh(this.key(now, timeZone), () => this.build(now, timeZone))
+    /*
+      THE WARMER OWNS TODAY'S ANSWER (2026-10-28). With the memo's own 60 s,
+      a reader between two 2-minute ticks rebuilt it on the screens' pool —
+      «memo rebuild failed» (todayLeads, 57014) 20 times in three hours while
+      the warm lane held the database with a month's scans. Its answer is
+      good until just past the next tick; the warmer goes first in the lane.
+    */
+    await watchCache.refresh(this.key(now, timeZone), () => this.build(now, timeZone), { ttlMs: LEAD_WATCH_OWNED_TTL_MS })
   }
 
   private key(now: Date, timeZone: string): string {

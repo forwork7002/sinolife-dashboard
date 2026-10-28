@@ -65,7 +65,7 @@ import {
 import { processWide } from '@/server/processWide'
 
 import { leadBrand } from './rnpService'
-import { OFF_HOURS, WARM_HOURS, type WarmOutcome, withinHours } from './rnpWarmer'
+import { OFF_HOURS, WARM_HOURS, WARM_OWNED_TTL_MS, type WarmOutcome, withinHours } from './rnpWarmer'
 import { LIVE_CACHE, ttlCache } from './ttlCache'
 
 /** The brand and channel rules the cuts label by — RNP's and «Lidlar»'s, never a copy. */
@@ -455,7 +455,8 @@ export class RoistatService {
     for (const preset of WARM_DAYS_PRESETS) {
       const period = resolvePeriod(preset, { timeZone, now })
       try {
-        await daysScanCache.refresh(this.daysKey(period, false), () => this.daysScan(period, now, false))
+        // The warmer's for two ticks (`WARM_OWNED_TTL_MS`): no reader rebuilds a month's scan on the 20 s pool meanwhile.
+        await daysScanCache.refresh(this.daysKey(period, false), () => this.daysScan(period, now, false), { ttlMs: WARM_OWNED_TTL_MS })
       } catch (error) {
         failure ??= { error }
       }
