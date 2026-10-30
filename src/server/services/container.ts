@@ -33,6 +33,7 @@ import { InboundCallsRepository } from '@/server/repositories/inboundCallsReposi
 import { ScopeRepository } from '@/server/repositories/scopeRepository'
 import { CrmEventRepository } from '@/server/repositories/crmEventRepository'
 import { AiRegistratorRepository } from '@/server/repositories/aiRegistratorRepository'
+import { AiRegistratorControlRepository } from '@/server/repositories/aiRegistratorControlRepository'
 import { AlertsService } from '@/server/services/alertsService'
 import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
@@ -57,6 +58,7 @@ import { SverkaService } from './sverkaService'
 import { InboundAnalysisService } from './inboundAnalysisService'
 import { InboundCallsService } from './inboundCallsService'
 import { AiRegistratorService } from './aiRegistratorService'
+import { AiRegistratorControlService } from './aiRegistratorControlService'
 
 const dealRepository = new DealRepository(prisma)
 export const referenceRepository = new ReferenceRepository(prisma)
@@ -88,6 +90,15 @@ export const crmEventRepository = new CrmEventRepository(prisma)
 */
 export const aiRegistratorRepository = new AiRegistratorRepository(prisma)
 export const aiRegistratorService = new AiRegistratorService(aiRegistratorRepository, env.APP_DEFAULT_CURRENCY)
+/*
+  «AI registrator → Boshqaruv» (2026-10-30): the owner's settings the agent
+  reads (`/api/ai-registrator/config`), its reports (`…/status`) and the panel
+  over both. See aiRegistratorControlService.ts.
+*/
+export const aiRegistratorControlService = new AiRegistratorControlService(
+  new AiRegistratorControlRepository(prisma),
+  () => aiRegistratorRepository.roster(),
+)
 
 export const scopeService = new ScopeService(scopeRepository)
 export const kpiService = new KpiService(dealRepository, referenceRepository)

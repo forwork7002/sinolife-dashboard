@@ -17,7 +17,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const store = vi.hoisted(() => ({
   sessions: new Map<string, { id: string; userId: string }>(),
   calls: [] as unknown[],
+  username: null as string | null,
 }))
+
+// «AI registrator → Boshqaruv» reads the founding administrator's e-mail (`auth/aiControl.ts`).
+vi.mock('@/server/config/env', () => ({ env: { ADMIN_EMAIL: 'owner@example.com', LOG_LEVEL: 'error', NODE_ENV: 'test' } }))
 
 vi.mock('@/server/auth/auth', () => ({
   auth: {
@@ -46,6 +50,8 @@ vi.mock('@/server/db/prisma', () => {
         dataScope: 'ALL',
         sections: [],
         wideSections: [],
+        username: store.username,
+        email: 'someone@sinolife.local',
       }),
     },
   }
@@ -63,6 +69,16 @@ beforeEach(() => {
 })
 
 describe('requirePrincipal', () => {
+  it('marks only the adminjon login as the one who runs the AI registrator', async () => {
+    store.username = 'umida'
+    expect((await requirePrincipal(request())).aiControl).toBe(false)
+    store.username = 'adminjon'
+    const principal = await requirePrincipal(request())
+    expect(principal.aiControl).toBe(true)
+    expect(principal.login).toBe('adminjon')
+    store.username = null
+  })
+
   it('admits a live session and carries its id', async () => {
     const principal = await requirePrincipal(request())
     expect(principal.userId).toBe('u-1')

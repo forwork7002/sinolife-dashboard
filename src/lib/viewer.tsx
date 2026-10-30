@@ -40,6 +40,8 @@ export interface Viewer {
    */
   readonly wideSections?: readonly SectionValue[]
   readonly canManageUsers: boolean
+  /** «AI registrator → Boshqaruv» is this account's — the link shows only then. The server gates it again. */
+  readonly aiControl?: boolean
 }
 
 /**

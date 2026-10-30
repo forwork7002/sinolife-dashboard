@@ -16,7 +16,7 @@
 
 import type { Viewer } from '@/lib/viewer'
 import { pagePrincipal } from './pageGuard'
-import { can, type Principal } from './rbac'
+import { can, canControlAi, type Principal } from './rbac'
 
 export function viewerOf(principal: Principal): Viewer {
   return {
@@ -36,6 +36,8 @@ export function viewerOf(principal: Principal): Viewer {
       deactivated account, which a role comparison cannot.
     */
     canManageUsers: can(principal, 'users:manage'),
+    // The one account «AI registrator → Boshqaruv» opens to (`aiControl.ts`).
+    aiControl: canControlAi(principal),
   }
 }
 

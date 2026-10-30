@@ -6,11 +6,13 @@ import { type ReactNode, useMemo, useState } from 'react'
 import { ErrorState, LoadingSkeleton, statusOf } from '@/components/states/States'
 import { ChartCard } from '@/components/ui/Card'
 import { SegmentedControl } from '@/components/ui/Controls'
+import { Button } from '@/components/ui/Button'
 import { StatTile } from '@/components/ui/Stat'
 import { PageShell } from '@/features/shared/PageShell'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { bitrixDealUrl } from '@/features/target/targetApi'
 import { ApiClientError, apiGet } from '@/lib/api'
+import { useServerViewer } from '@/lib/viewer'
 import { formatCompactUzs, formatDateShort, formatDateTime, formatNumber, formatPercent, formatUzs } from '@/lib/format'
 
 import { type AiDrill, AiCallsDrawer, OUTCOME_LABEL, phoneText } from './AiCallsDrawer'
@@ -152,6 +154,8 @@ export function AiRegistratorPage() {
   const [drill, setDrill] = useState<AiDrill | null>(null)
   const period = report.data?.meta.period
   const windowText = period ? spanText(period.start, period.end) : ''
+  // «Boshqaruv» — the owner's one account only (`auth/aiControl.ts`); the page and its API refuse anyone else.
+  const viewer = useServerViewer()
 
   return (
     <PageShell
@@ -160,6 +164,13 @@ export function AiRegistratorPage() {
       accent="var(--series-1)"
       meta={report.data?.meta}
       stale={report.isPlaceholderData}
+      actions={
+        viewer?.aiControl ? (
+          <Button href="/leads/ai-registrator/boshqaruv" variant="primary" size="sm">
+            Boshqaruv →
+          </Button>
+        ) : undefined
+      }
     >
       <div className="flex flex-col gap-6">
         {status === 'error' ? (

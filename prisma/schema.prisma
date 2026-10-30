@@ -2383,6 +2383,70 @@ model AiRegistratorCall {
   @@map("ai_registrator_call")
 }
 
+// ---------------------------------------------------------------------------
+// «AI registrator → Boshqaruv» (2026-10-30) — `domain/aiRegistrator/control.ts`
+//
+// The owner's panel over the agent: who it puts callers through to and how
+// many calls it makes at a time. The agent READS the current row itself
+// (`GET /api/ai-registrator/config`) and REPORTS what it runs
+// (`POST /api/ai-registrator/status`). Three new tables; nothing else is touched.
+// ---------------------------------------------------------------------------
+
+/// The ONE current setting — `id` is always 1. `version` rises by one on
+/// every save, and is what the agent compares to know there is something new.
+model AiRegistratorConfig {
+  id          Int      @id @default(1)
+  version     Int
+  /// Sellers' extensions in the order the agent rings them («122», «120», …).
+  sellers     String[]
+  /// Extensions the owner keeps on the panel but switched OFF — never sent
+  /// to the agent (the contract has no such field); turned back on with one press.
+  parked      String[] @default([])
+  maxCalls    Int
+  maxNew      Int
+  maxRetry    Int
+  /// "refer" | "bridge" — how a sale is handed to the ATS.
+  saleHandoff String
+  updatedAt   DateTime
+  /// Who saved it, as the panel prints it (the login).
+  updatedBy   String
+  updatedById String?
+
+  @@map("ai_registrator_config")
+}
+
+/// Every save, never rewritten: who, when, the whole setting before and
+/// after, and the fields that changed — the audit the owner asked for.
+model AiRegistratorConfigChange {
+  id          Int      @id @default(autoincrement())
+  version     Int      @unique
+  savedAt     DateTime @default(now())
+  savedBy     String
+  savedById   String?
+  /// The setting before this save; null for the first one.
+  before      Json?
+  after       Json
+  /// [{ field, before, after }] — `controlChanges`.
+  changes     Json
+
+  @@index([savedAt])
+  @@map("ai_registrator_config_change")
+}
+
+/// The agent's last report, kept whole — `id` is always 1. `receivedAt` is
+/// OUR clock: the panel's «AI'dan xabar yoʻq» is judged on it, so a report
+/// carrying a skewed `at` cannot look fresh.
+model AiRegistratorStatus {
+  id             Int      @id @default(1)
+  receivedAt     DateTime
+  at             DateTime
+  appliedVersion Int?
+  applyError     String?
+  payload        Json
+
+  @@map("ai_registrator_status")
+}
+
 /// «MIJOZ QAYTISHI», COMPUTED BY THE SYNC WORKER AND STORED (2026-10-24).
 /// The cohort matrix walks the whole won-deal history, and on the one-core,
 /// one-gigabyte database a cold build ran 13–48 s (the brand cuts longest) —

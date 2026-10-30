@@ -76,3 +76,6 @@ bitrix24-final-dup.json
 # Tailwind v4 scans every file git does not ignore for class names.
 docs/superpowers/specs/assets/*/out/
 
+
+# Session notes (ACCOMPLISHMENTS.md) — kept out of the repository, which is public.
+.muxel/

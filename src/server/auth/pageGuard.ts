@@ -38,7 +38,7 @@ import { authPoolStats, poolStats } from '@/server/db/prisma'
 import { SLOW_REQUEST_MS, readSafely } from '@/server/http/slowRequest'
 import { childLogger } from '@/server/logging/logger'
 import { optionalPrincipal } from './session'
-import { can, canSeeSection, type Principal } from './rbac'
+import { can, canControlAi, canSeeSection, type Principal } from './rbac'
 
 const log = childLogger('auth')
 
@@ -154,6 +154,17 @@ export async function requireSection(section: SectionValue): Promise<void> {
  * hands out, and "who may hand out screens" cannot itself be one of them
  * without letting an administrator give that power away by ticking a box.
  */
+/**
+ * «AI registrator → Boshqaruv»: the section first (the panel lives inside
+ * it), then the one named account (`aiControl.ts`). Anyone else is sent to
+ * the report they can read, the way a section they lack sends them on.
+ */
+export async function requireAiControl(): Promise<void> {
+  await requireSection('airegistrator')
+  const principal = await pagePrincipal()
+  if (!principal || !canControlAi(principal)) redirect('/leads/ai-registrator')
+}
+
 export async function requireUserAdmin(): Promise<void> {
   const principal = await pagePrincipal()
 

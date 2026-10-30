@@ -161,6 +161,14 @@ export interface Principal {
    * withholds — the edit controls a company-wide account sees, above all.
    */
   readonly widened?: boolean
+  /**
+   * The one account the owner runs the AI registrator from — «Boshqaruv»
+   * (`auth/aiControl.ts`). Absent is false, so a principal built without it
+   * cannot reach the panel.
+   */
+  readonly aiControl?: boolean
+  /** The login (else the e-mail) — what an audit line records the caller by. */
+  readonly login?: string
 }
 
 /**
@@ -236,6 +244,15 @@ export function widenForSection(
   if (held.length === 0 || !held.every(isWide)) return principal
 
   return { ...principal, dataScope: 'ALL', widened: true }
+}
+
+/**
+ * Whether this caller may open and change «AI registrator → Boshqaruv». Not a
+ * role and not a section: the owner named ONE account («faqat adminjonga
+ * koʻrinadi»), so an administrator who is not it is refused like anyone else.
+ */
+export function canControlAi(principal: Principal): boolean {
+  return principal.isActive && principal.aiControl === true
 }
 
 export function can(principal: Principal, permission: Permission): boolean {

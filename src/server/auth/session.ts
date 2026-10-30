@@ -8,7 +8,9 @@
 import { authPrisma } from '@/server/db/prisma'
 import { DATA_SCOPES, ROLES, type DataScopeValue, type RoleValue } from '@/server/domain/types'
 import { ApiError } from '@/server/http/errors'
+import { env } from '@/server/config/env'
 import { auth } from './auth'
+import { auditLabel, isAiControlAccount } from './aiControl'
 import { type Permission, type Principal, can, sectionsFor, wideSectionsFor } from './rbac'
 
 /**
@@ -73,6 +75,8 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
       dataScope: true,
       sections: true,
       wideSections: true,
+      username: true,
+      email: true,
     },
   })
 
@@ -115,6 +119,9 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
     dataScope,
     sections,
     wideSections: wideSectionsFor(sections, live.wideSections),
+    // «AI registrator → Boshqaruv» — one named account, see `aiControl.ts`.
+    aiControl: isAiControlAccount({ username: live.username ?? null, email: live.email ?? null }, env.ADMIN_EMAIL),
+    login: auditLabel({ username: live.username ?? null, email: live.email ?? null }),
   }
 
   if (!principal.isActive) {

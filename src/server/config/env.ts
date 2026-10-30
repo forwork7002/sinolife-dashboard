@@ -172,6 +172,17 @@ const schema = z
       .optional()
       .transform((v) => (v === '' ? undefined : v)),
     /*
+      The founding administrator's sign-in, the account `db:seed:users`
+      provisions (`prisma/seedUsers.ts` reads it straight from the
+      environment). Read here only by `auth/aiControl.ts`: that account is one
+      of the two «AI registrator → Boshqaruv» opens to. Optional — without it
+      only the `adminjon` login does.
+    */
+    ADMIN_EMAIL: z
+      .string()
+      .optional()
+      .transform((v) => (v === '' || v === 'CHANGE_ME' ? undefined : v?.trim().toLowerCase())),
+    /*
       An HTTP CONNECT relay every portal call goes through — see
       `createPortalFetch` in `bitrix24/portalAddresses.ts` for why. Optional:
       without it the calls leave from this server directly.

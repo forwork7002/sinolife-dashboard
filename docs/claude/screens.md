@@ -55,6 +55,29 @@ not hold it falls through to the first section it does, then to `/account`.
 
 Per-screen traps worth knowing before you touch one:
 
+- **AI registrator → Boshqaruv** (`/leads/ai-registrator/boshqaruv`, 2026-10-30 — the owner: «boshqaruv
+  paneli orqali men kimlarga berishi kerakligini hal qilaman … faqatgina adminjonga koʻrinadi»). The agent's
+  settings: which sellers' extensions it puts callers through to (in ring order), the switched-off ones
+  (`parked`, ISH's own — never sent to the agent), calls at a time 1–8 and of them new / nedozvon, and
+  `saleHandoff` refer|bridge. **ONE ACCOUNT, NOT A ROLE OR A SECTION**: `auth/aiControl.ts` — the login
+  `adminjon` or the founding administrator (`ADMIN_EMAIL`); `requirePrincipal` sets `principal.aiControl`,
+  `canControlAi` gates the page (`requireAiControl`, others are redirected to the report), the v1 API
+  `/leads/ai-registrator/control` (GET + POST, 403 for any other account, an ADMIN included) and the
+  «Boshqaruv →» link. **THE AGENT PULLS** (Eskiz's ports are closed): `GET /api/ai-registrator/config` →
+  the bare contract object `{version, sellers, maxCalls, maxNew, maxRetry, saleHandoff, updatedAt,
+  updatedBy}` (no envelope; 404 before a save), read every 20 s; it reports every 30 s to
+  `POST /api/ai-registrator/status` (only the last kept, `ai_registrator_status`, 64 KB cap; an unknown
+  line/seller state is stored as given). Both bearer `AI_REGISTRATOR_INGEST_TOKEN`, outside `/api/v1`.
+  Every save: `version + 1` and an `ai_registrator_config_change` row (who, when, before / after, the
+  changed fields), in one transaction with the row locked; a save over a newer version (second tab) and a
+  save that changes nothing are refused. The rules are the agent's own `check_config`
+  (`domain/aiRegistrator/control.ts`): 2–6 digits, no repeat, never an AI line (178, 290–297 incl. the
+  owner's 294). The page polls every **15 s** (an exception to the 120 s cadence: «AI qabul qildi: vN»
+  is what the owner waits for, and one account opens it); a report older than 2 min reads «AIʼdan xabar
+  yoʻq». **The seed (migration `20261030150000`) is the owner's 18 of 30.10 14:4x** — 122, 120, 128, 123,
+  131, 127, 111, 112, 108, 109, 107, 114, 115, 117, 134, 136, 135, 141 (never 125 / 129 / 139 / 143: the
+  agent applies whatever is here within 20 s), 4 / 4 / 0, refer; `tests/domain/aiRegistratorControl.test.ts`
+  pins it.
 - **AI registrator** — added 2026-10-22 (the owner: «AI registrator kimga
   ulab berdi, sotuvchi qaysi sdelkalarga oʻtkazdi … AI ulab berishi yaxshimi
   yoki mutaxassisga ulagani yaxshimi»; he reads it for a day or two and
