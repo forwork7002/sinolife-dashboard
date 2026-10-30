@@ -119,7 +119,7 @@ export async function requirePrincipal(request: Request): Promise<Principal> {
     dataScope,
     sections,
     wideSections: wideSectionsFor(sections, live.wideSections),
-    // «AI registrator → Boshqaruv» — one named account, see `aiControl.ts`.
+    // «AI registrator → Boshqaruv» — the named accounts, see `aiControl.ts`.
     aiControl: isAiControlAccount({ username: live.username ?? null, email: live.email ?? null }, env.ADMIN_EMAIL),
     login: auditLabel({ username: live.username ?? null, email: live.email ?? null }),
   }

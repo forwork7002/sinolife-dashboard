@@ -59,8 +59,10 @@ Per-screen traps worth knowing before you touch one:
   paneli orqali men kimlarga berishi kerakligini hal qilaman … faqatgina adminjonga koʻrinadi»). The agent's
   settings: which sellers' extensions it puts callers through to (in ring order), the switched-off ones
   (`parked`, ISH's own — never sent to the agent), calls at a time 1–8 and of them new / nedozvon, and
-  `saleHandoff` refer|bridge. **ONE ACCOUNT, NOT A ROLE OR A SECTION**: `auth/aiControl.ts` — the login
-  `adminjon` or the founding administrator (`ADMIN_EMAIL`); `requirePrincipal` sets `principal.aiControl`,
+  `saleHandoff` refer|bridge. **NAMED ACCOUNTS, NOT A ROLE OR A SECTION**: `auth/aiControl.ts` — the logins
+  in `AI_CONTROL_LOGINS` (`adminjon`; `umida` since 2026-10-30 16:3x — the owner: «faqat administratorga emas
+  umida akkauntida ham … boshqara oʻzgartira kira olishi kerak») or the founding administrator (`ADMIN_EMAIL`);
+  each save's `updatedBy` / audit `savedBy` is the saver's login; `requirePrincipal` sets `principal.aiControl`,
   `canControlAi` gates the page (`requireAiControl`, others are redirected to the report), the v1 API
   `/leads/ai-registrator/control` (GET + POST, 403 for any other account, an ADMIN included) and the
   «Boshqaruv →» link. **THE AGENT PULLS** (Eskiz's ports are closed): `GET /api/ai-registrator/config` →

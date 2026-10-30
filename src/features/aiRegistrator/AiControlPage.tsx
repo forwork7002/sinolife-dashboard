@@ -127,7 +127,8 @@ const sameDraft = (a: Draft, b: Draft) =>
  *
  * POLLS EVERY 15 s, not on the app's 120 s cadence: the agent reads the
  * settings every 20 s and reports every 30 s, and «AI qabul qildi» is the
- * answer the owner waits for after «Saqlash». One account opens this page.
+ * answer the owner waits for after «Saqlash». Only the accounts the owner named
+ * open this page (`auth/aiControl.ts` — adminjon, umida).
  *
  * THE DRAFT IS THE OWNER'S UNTIL SAVED: a poll that brings a new report never
  * overwrites what is being edited — `draft` is null until the first change.

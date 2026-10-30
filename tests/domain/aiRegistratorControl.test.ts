@@ -79,11 +79,15 @@ describe('statusIsStale', () => {
 })
 
 describe('who runs it', () => {
-  it('is the login adminjon or the founding administrator — nobody else', () => {
+  it('is the logins adminjon and umida or the founding administrator — nobody else', () => {
     expect(isAiControlAccount({ username: 'adminjon', email: 'x@sinolife.local' }, undefined)).toBe(true)
     expect(isAiControlAccount({ username: 'AdminJon', email: null }, undefined)).toBe(true)
     expect(isAiControlAccount({ username: null, email: 'Owner@Example.com' }, 'owner@example.com')).toBe(true)
-    expect(isAiControlAccount({ username: 'umida', email: 'umida@sinolife.local' }, 'owner@example.com')).toBe(false)
+    // The owner, 30.10 16:3x: «umida akkauntida ham … boshqara oʻzgartira kira olishi kerak».
+    expect(isAiControlAccount({ username: 'umida', email: 'umida@sinolife.local' }, 'owner@example.com')).toBe(true)
+    expect(isAiControlAccount({ username: ' Umida ', email: null }, undefined)).toBe(true)
+    expect(isAiControlAccount({ username: 'umida2', email: null }, undefined)).toBe(false)
+    expect(isAiControlAccount({ username: 'dilnoza', email: 'umida@sinolife.local' }, undefined)).toBe(false)
     expect(isAiControlAccount({ username: null, email: '' }, '')).toBe(false)
     expect(isAiControlAccount({ username: 'admin', email: 'a@b.c' }, undefined)).toBe(false)
   })

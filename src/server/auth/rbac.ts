@@ -162,8 +162,8 @@ export interface Principal {
    */
   readonly widened?: boolean
   /**
-   * The one account the owner runs the AI registrator from — «Boshqaruv»
-   * (`auth/aiControl.ts`). Absent is false, so a principal built without it
+   * One of the accounts the owner named to run the AI registrator from —
+   * «Boshqaruv» (`auth/aiControl.ts`). Absent is false, so a principal built without it
    * cannot reach the panel.
    */
   readonly aiControl?: boolean
@@ -248,8 +248,9 @@ export function widenForSection(
 
 /**
  * Whether this caller may open and change «AI registrator → Boshqaruv». Not a
- * role and not a section: the owner named ONE account («faqat adminjonga
- * koʻrinadi»), so an administrator who is not it is refused like anyone else.
+ * role and not a section: the owner named the accounts (`auth/aiControl.ts` —
+ * adminjon, umida), so an administrator who is not one of them is refused
+ * like anyone else.
  */
 export function canControlAi(principal: Principal): boolean {
   return principal.isActive && principal.aiControl === true

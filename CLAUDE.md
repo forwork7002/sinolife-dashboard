@@ -247,7 +247,7 @@ Per-page `refetchInterval` overrides were deliberately removed. Three
 exceptions, each with a reason in place: `/meta/alerts` (one request a minute
 for the whole app, keyed constantly), `/meta/filters` (5 min — reference data
 changes on sync), and two that never poll (`refetchInterval: false`, 2026-10-24):
-the ⌘K search and the «ROP» heads list in «+ Yangi hisob». And «AI registrator → Boshqaruv» polls every 15 s (one account; it waits for the agent's «qabul qildi»).
+the ⌘K search and the «ROP» heads list in «+ Yangi hisob». And «AI registrator → Boshqaruv» polls every 15 s (only the named accounts, `auth/aiControl.ts`; it waits for the agent's «qabul qildi»).
 
 **THE REFRESH BUTTON REPORTS, AND A DEPLOY NOW REACHES AN OPEN TAB.** Both
 added 2026-09-14, after the client reported «yangilash ishlamayapti» four times

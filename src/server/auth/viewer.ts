@@ -36,7 +36,7 @@ export function viewerOf(principal: Principal): Viewer {
       deactivated account, which a role comparison cannot.
     */
     canManageUsers: can(principal, 'users:manage'),
-    // The one account «AI registrator → Boshqaruv» opens to (`aiControl.ts`).
+    // The accounts «AI registrator → Boshqaruv» opens to (`aiControl.ts`).
     aiControl: canControlAi(principal),
   }
 }

@@ -154,7 +154,7 @@ export function AiRegistratorPage() {
   const [drill, setDrill] = useState<AiDrill | null>(null)
   const period = report.data?.meta.period
   const windowText = period ? spanText(period.start, period.end) : ''
-  // «Boshqaruv» — the owner's one account only (`auth/aiControl.ts`); the page and its API refuse anyone else.
+  // «Boshqaruv» — only the accounts the owner named (`auth/aiControl.ts`); the page and its API refuse anyone else.
   const viewer = useServerViewer()
 
   return (

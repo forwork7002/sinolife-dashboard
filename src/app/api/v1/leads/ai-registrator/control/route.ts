@@ -10,14 +10,14 @@ export const dynamic = 'force-dynamic'
 
 /**
  * Who reaches this endpoint: the capability, the screen it lives in — and on
- * top of both, the ONE account the owner named («faqat adminjonga
- * koʻrinadi», `auth/aiControl.ts`). Everyone else who holds «AI registrator»
- * reads the report and gets 403 here, an administrator included.
+ * top of both, the accounts the owner named (adminjon, umida — the list is
+ * `auth/aiControl.ts`). Everyone else who holds «AI registrator» reads the
+ * report and gets 403 here, an administrator included.
  */
 const ACCESS = { permission: 'analytics:read:all', section: 'airegistrator' } as const
 
 function assertAiControl(principal: Parameters<typeof canControlAi>[0]): void {
-  if (!canControlAi(principal)) throw ApiError.forbidden('AI registrator boshqaruvi faqat egasining hisobiga ochiq.')
+  if (!canControlAi(principal)) throw ApiError.forbidden('AI registrator boshqaruvi faqat egasi belgilagan hisoblarga ochiq.')
 }
 
 /**

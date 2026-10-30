@@ -6,7 +6,7 @@ import { requireAiControl } from '@/server/auth/pageGuard'
 // Authenticated: never statically prerendered.
 export const dynamic = 'force-dynamic'
 
-/** «AI registrator → Boshqaruv» (2026-10-30) — the owner's own account only (`auth/aiControl.ts`). */
+/** «AI registrator → Boshqaruv» (2026-10-30) — only the accounts the owner named (`auth/aiControl.ts`). */
 export default async function Page() {
   await requireAiControl()
 

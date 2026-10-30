@@ -175,8 +175,8 @@ const schema = z
       The founding administrator's sign-in, the account `db:seed:users`
       provisions (`prisma/seedUsers.ts` reads it straight from the
       environment). Read here only by `auth/aiControl.ts`: that account is one
-      of the two «AI registrator → Boshqaruv» opens to. Optional — without it
-      only the `adminjon` login does.
+      of those «AI registrator → Boshqaruv» opens to. Optional — without it
+      only the named logins (`AI_CONTROL_LOGINS`) do.
     */
     ADMIN_EMAIL: z
       .string()

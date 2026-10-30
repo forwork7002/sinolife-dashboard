@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { isAiControlAccount } from '@/server/auth/aiControl'
 import type { Principal } from '@/server/auth/rbac'
 
 process.env.DATABASE_URL ??= 'postgresql://test@127.0.0.1:5432/test'
@@ -32,6 +33,7 @@ const state = vi.hoisted(() => ({
   config: null as unknown,
   statuses: [] as unknown[],
   saves: [] as unknown[],
+  savers: [] as unknown[],
   fail: false,
   principal: null as unknown,
 }))
@@ -47,8 +49,9 @@ vi.mock('@/server/services/container', () => ({
       state.statuses.push(status)
     },
     panel: async () => ({ config: state.config }),
-    save: async (body: unknown) => {
+    save: async (body: unknown, by: unknown) => {
       state.saves.push(body)
+      state.savers.push(by)
       return state.config
     },
   },
@@ -114,6 +117,7 @@ beforeEach(() => {
   state.config = saved
   state.statuses.length = 0
   state.saves.length = 0
+  state.savers.length = 0
   state.fail = false
   state.principal = null
 })
@@ -206,6 +210,39 @@ describe('/api/v1/leads/ai-registrator/control — the owner\'s account only', (
     expect((await read()).status).toBe(200)
     expect((await write(body)).status).toBe(200)
     expect(state.saves).toHaveLength(1)
+    expect(state.savers).toEqual([{ label: 'adminjon', userId: 'u-1' }])
+  })
+
+  /*
+    The owner, 30.10 16:3x: «umida akkauntida ham koʻrinishi kerak … u ham
+    boshqara oʻzgartira kira olishi kerak». Her account as prod holds it — a
+    SALES login read company-wide, «AI registrator» ticked — with aiControl
+    worked out the way `requirePrincipal` does; a seller held the same way
+    under another login stays out.
+  */
+  const asProd = (login: string): Principal =>
+    principal({
+      userId: `u-${login}`,
+      role: 'SALES',
+      dataScope: 'ALL',
+      sections: ['leads', 'sellers', 'airegistrator', 'rnp'],
+      aiControl: isAiControlAccount({ username: login, email: `${login}@sinolife.local` }, 'owner@example.com'),
+      login,
+    })
+
+  it('opens and saves for umida, and records her as the saver', async () => {
+    state.principal = asProd('umida')
+    expect((await read()).status).toBe(200)
+    expect((await write(body)).status).toBe(200)
+    expect(state.saves).toHaveLength(1)
+    expect(state.savers).toEqual([{ label: 'umida', userId: 'u-umida' }])
+  })
+
+  it('is 403 for another account held exactly like hers', async () => {
+    state.principal = asProd('dilnoza')
+    expect((await read()).status).toBe(403)
+    expect((await write(body)).status).toBe(403)
+    expect(state.saves).toHaveLength(0)
   })
 
   it('refuses a deactivated it', async () => {

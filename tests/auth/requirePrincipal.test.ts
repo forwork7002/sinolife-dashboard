@@ -69,13 +69,17 @@ beforeEach(() => {
 })
 
 describe('requirePrincipal', () => {
-  it('marks only the adminjon login as the one who runs the AI registrator', async () => {
-    store.username = 'umida'
+  it('marks only the adminjon and umida logins as the ones who run the AI registrator', async () => {
+    store.username = 'dilnoza'
     expect((await requirePrincipal(request())).aiControl).toBe(false)
     store.username = 'adminjon'
     const principal = await requirePrincipal(request())
     expect(principal.aiControl).toBe(true)
     expect(principal.login).toBe('adminjon')
+    store.username = 'umida'
+    const umida = await requirePrincipal(request())
+    expect(umida.aiControl).toBe(true)
+    expect(umida.login).toBe('umida')
     store.username = null
   })
 
