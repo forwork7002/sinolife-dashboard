@@ -258,8 +258,18 @@ export class LeadWatchService {
     const inbound: WatchInboundCall[] = inboundRows.map((call) => ({
       phone: call.phone,
       startedAt: call.startedAt,
-      // A second of conversation, as «Qoʻngʻiroqlar» counts a call that got through.
-      talked: call.durationSec > 0,
+      /*
+        A second of conversation, as «Qoʻngʻiroqlar» counts a call that got
+        through — OR THE TELEPHONY'S OWN «CONNECTED» (2026-10-30). A seller's
+        conversation is also logged as an inbound call on the seller: no PBX
+        app (REST_APP_ID empty), CALL_FAILED_CODE 200, 0 s, a minute or two
+        after the outgoing call to the same number from lines 290–297
+        (7–37 min of talk), sometimes with the seller's notes. Read as
+        «nobody answered», 21 of the first 60 «Пропущенные звонки» that day
+        were such records — clients already spoken to, whom nobody would
+        ring back, so the card never went down.
+      */
+      talked: call.durationSec > 0 || call.connected === true,
       customerId: call.customerId,
       operator: call.operator ?? null,
     }))

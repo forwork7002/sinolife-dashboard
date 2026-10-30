@@ -273,7 +273,7 @@ export interface WatchInboundCall {
   /** As the PBX wrote it. */
   readonly phone: string | null
   readonly startedAt: Date
-  /** The call got through: a second of conversation, as «Qoʻngʻiroqlar» counts it. */
+  /** The call got through: a second of conversation, or the telephony's «connected» (CALL_FAILED_CODE 200). */
   readonly talked: boolean
   readonly customerId: string | null
   /** Whose line it rang on. */

@@ -42,6 +42,8 @@ export interface InboundCall {
   readonly day: string
   /** Who the PBX put the call through to; null when it reached nobody's line. */
   readonly operator?: string | null
+  /** The telephony's own verdict: `CALL_FAILED_CODE` 200 (`call_record.connected`). */
+  readonly connected?: boolean
 }
 
 export interface ContactDeal {

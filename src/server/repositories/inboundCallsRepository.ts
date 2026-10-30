@@ -28,6 +28,7 @@ export class InboundCallsRepository {
         customer_id: string | null
         day: string
         operator: string | null
+        connected: boolean
       }[]
     >(
       `
@@ -35,6 +36,7 @@ export class InboundCallsRepository {
         r."phoneNumber" AS phone,
         r."startedAt" AS started_at,
         r."durationSec" AS duration_sec,
+        r."connected" AS connected,
         r."customerId" AS customer_id,
         -- ::text, never a bare ::date: node-postgres builds a DATE at LOCAL midnight.
         (r."startedAt" AT TIME ZONE 'UTC' AT TIME ZONE $3)::date::text AS day,
@@ -56,6 +58,7 @@ export class InboundCallsRepository {
       customerId: r.customer_id,
       day: r.day,
       operator: r.operator,
+      connected: r.connected === true,
     }))
   }
 

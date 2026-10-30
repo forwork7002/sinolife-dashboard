@@ -254,6 +254,22 @@ describe('LeadWatchService', () => {
     return { asked, service: new LeadWatchService(repository, calls, registration, reference, leadSources) }
   }
 
+  it('does not count as missed an inbound call the telephony marked connected, 0 s or not (2026-10-30)', async () => {
+    const now = new Date('2026-10-30T10:00:00.000Z')
+    const { service: s } = service({
+      inbound: [
+        // A seller's logged conversation: no PBX app, CALL_FAILED_CODE 200, 0 s.
+        inboundCall(70, { phone: '+998 00 000 00 05', connected: true }),
+        // The ATS turned the caller away (503): still waiting for a callback.
+        inboundCall(60, { phone: '+998 00 000 00 06', connected: false }),
+      ],
+    })
+    const dto = await s.watch(now, TZ)
+    const missed = dto.issues.find((i) => i.kind === 'missedCalls')!
+    expect(missed.rows.map((r) => r.key)).toEqual(['000000006'])
+    expect(missed.count).toBe(1)
+  })
+
   it('answers the seven checks from one day’s reads', async () => {
     // Its own day key, so no other case's memo is read.
     const now = new Date('2026-10-09T10:00:00.000Z')
