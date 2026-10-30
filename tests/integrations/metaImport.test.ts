@@ -90,6 +90,7 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
     const written: string[] = []
     const prisma = {
       metaAdDaily: {
+        count: async () => 0,
         // Two accounts that have spent before — the ad grain only asks those (and any spending now).
         groupBy: async () => [
           { accountId: '990016692137088', _min: { date: new Date('2026-07-01T00:00:00Z') }, _max: { date: new Date('2026-09-20T00:00:00Z') } },
@@ -103,11 +104,13 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
         createMany: () => 'create',
       },
       metaCampaignDaily: {
+        findMany: async () => [],
         groupBy: async () => [],
         deleteMany: (args: { where: { accountId: string } }) => `delete ${args.where.accountId}`,
         createMany: () => 'create',
       },
       metaAdInsightDaily: {
+        findMany: async () => [],
         groupBy: async () => [],
         deleteMany: (args: { where: { accountId: string } }) => `delete-ads ${args.where.accountId}`,
         createMany: () => 'create',
@@ -298,6 +301,7 @@ describe('importMetaSpend — the account grain starts per account, never at the
     const deleted = new Map<string, string>()
     const prisma = {
       metaAdDaily: {
+        count: async () => 0,
         // The table runs to 05.10; Kamron 3 was refused from 11.09; Kamron 2 is new to the token.
         groupBy: async () => [
           { accountId: '990016692137088', _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-05') } },
@@ -309,8 +313,8 @@ describe('importMetaSpend — the account grain starts per account, never at the
         },
         createMany: () => 'create',
       },
-      metaCampaignDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
-      metaAdInsightDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      metaCampaignDaily: { findMany: async () => [], groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      metaAdInsightDaily: { findMany: async () => [], groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
       $transaction: async () => [],
     } as unknown as PrismaClient
     const fetchMock = vi.fn(async (url: string) => {
@@ -360,9 +364,9 @@ describe('importMetaSpend — the account grain starts per account, never at the
 
   it('logs the history start as the window on the first run, when no account has rows yet', async () => {
     const prisma = {
-      metaAdDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
-      metaCampaignDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
-      metaAdInsightDaily: { groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      metaAdDaily: { count: async () => 0, groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      metaCampaignDaily: { findMany: async () => [], groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
+      metaAdInsightDaily: { findMany: async () => [], groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
       $transaction: async () => [],
     } as unknown as PrismaClient
     vi.stubGlobal(
@@ -566,6 +570,7 @@ describe('importMetaSpend — the history before 2026-07-01 (2026-10-22)', () =>
     const marks = new Map((opts.marks ?? []).map((m) => [m.grain, m.readFrom]))
     const prisma = {
       metaAdDaily: {
+        count: async () => 0,
         groupBy: async () => [{ accountId: ACCOUNT.account_id, _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-21') } }],
         aggregate: async () => ({ _min: { date: opts.firstSpend ? day(opts.firstSpend) : null } }),
         // The newest account-grain day in [gte, lt): every day from the first spend on, unless `spendDays` says which.
@@ -582,11 +587,13 @@ describe('importMetaSpend — the history before 2026-07-01 (2026-10-22)', () =>
         createMany: () => 'create',
       },
       metaCampaignDaily: {
+        findMany: async () => [],
         groupBy: async () => [{ accountId: ACCOUNT.account_id, _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-21') } }],
         deleteMany: () => 'delete',
         createMany: () => 'create',
       },
       metaAdInsightDaily: {
+        findMany: async () => [],
         groupBy: async () => [{ accountId: ACCOUNT.account_id, _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-21') } }],
         deleteMany: () => 'delete',
         createMany: () => 'create',
@@ -741,7 +748,7 @@ describe('importMetaSpend — a quiet account is read a week from the second pas
   it('starts each grain a week before its last good read; a refused account keeps its own last week', async () => {
     const day = (iso: string) => new Date(`${iso}T00:00:00Z`)
     const span = (accountId: string, max: string) => ({ accountId, _min: { date: day('2026-07-01') }, _max: { date: day(max) } })
-    const grain = (rows: ReturnType<typeof span>[]) => ({ groupBy: async () => rows, deleteMany: () => 'delete', createMany: () => 'create' })
+    const grain = (rows: ReturnType<typeof span>[]) => ({ groupBy: async () => rows, count: async () => 0, findMany: async () => [], deleteMany: () => 'delete', createMany: () => 'create' })
     const prisma = {
       // Quiet since 20.08; refused since 10.09.
       metaAdDaily: grain([span('111', '2026-08-20'), span('222', '2026-09-10')]),
@@ -785,7 +792,7 @@ describe('importMetaSpend — four accounts at a time (2026-10-28)', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('reads up to four accounts side by side, never more, and lists refusals in the accounts’ order', async () => {
-    const grain = () => ({ groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' })
+    const grain = () => ({ groupBy: async () => [], count: async () => 0, findMany: async () => [], deleteMany: () => 'delete', createMany: () => 'create' })
     const prisma = {
       metaAdDaily: grain(),
       metaCampaignDaily: grain(),
@@ -817,5 +824,78 @@ describe('importMetaSpend — four accounts at a time (2026-10-28)', () => {
     expect(most).toBeLessThanOrEqual(4)
     expect(r.failed.map((f) => f.split(':')[0])).toEqual(['Acc a2', 'Acc a6'])
     expect(r.accounts).toBe(7)
+  })
+})
+
+describe('importMetaSpend — what Meta no longer answers is kept (2026-10-30, Tursunbek)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  function db(held: { account: number; campaigns: string[]; ads: string[] }) {
+    const deletes: { table: string; where: Record<string, unknown> }[] = []
+    const grain = (table: string, findMany: () => Promise<unknown[]>) => ({
+      groupBy: async () => [{ accountId: '1686836655304575', _min: { date: new Date('2026-10-05T00:00:00Z') }, _max: { date: new Date('2026-10-23T00:00:00Z') } }],
+      count: async () => held.account,
+      findMany,
+      deleteMany: (args: { where: Record<string, unknown> }) => {
+        deletes.push({ table, where: args.where })
+        return 'delete'
+      },
+      createMany: () => 'create',
+    })
+    const prisma = {
+      metaAdDaily: grain('account', async () => []),
+      metaCampaignDaily: grain('campaign', async () => held.campaigns.map((campaignId) => ({ campaignId }))),
+      metaAdInsightDaily: grain('ad', async () => held.ads.map((adId) => ({ adId }))),
+      $transaction: async () => [],
+    } as unknown as PrismaClient
+    return { prisma, deletes }
+  }
+
+  const account = { account_id: '1686836655304575', name: 'Zextra 2 (Tursunbek TARGETOLOG)' }
+
+  it('writes and deletes nothing when an account that holds spend answers empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.includes('/me/adaccounts')
+          ? new Response(JSON.stringify({ data: [account] }))
+          : new Response(JSON.stringify({ data: [] })),
+      ),
+    )
+    const { prisma, deletes } = db({ account: 19, campaigns: ['c-old'], ads: ['a-old'] })
+    const r = await importMetaSpend(prisma, 'token', '2026-10-30')
+    expect(deletes.filter((d) => d.table === 'account')).toEqual([])
+    // The finer grains delete only what Meta answered for — here nothing.
+    expect(deletes.filter((d) => d.table !== 'account').map((d) => d.where.campaignId ?? d.where.adId)).toEqual([{ in: [] }, { in: [] }])
+    expect(r.kept).toEqual([
+      'Zextra 2 (Tursunbek TARGETOLOG): 19 kun',
+      'Zextra 2 (Tursunbek TARGETOLOG): 1 kampaniya',
+      'Zextra 2 (Tursunbek TARGETOLOG): 1 eʼlon',
+    ])
+  })
+
+  it('replaces the window of the campaigns and ads Meta did answer for, and keeps the others', async () => {
+    const day = { date_start: '2026-10-29', spend: '1.00', impressions: '10', clicks: '1' }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url.includes('/me/adaccounts')) return new Response(JSON.stringify({ data: [account] }))
+        const level = new URL(url).searchParams.get('level')
+        if (level === 'campaign') return new Response(JSON.stringify({ data: [{ ...day, campaign_id: 'c-live', campaign_name: 'Live' }] }))
+        if (level === 'ad') {
+          return new Response(
+            JSON.stringify({ data: [{ ...day, campaign_id: 'c-live', campaign_name: 'Live', adset_id: 's1', adset_name: 'S', ad_id: 'a-live', ad_name: 'A', reach: '5' }] }),
+          )
+        }
+        return new Response(JSON.stringify({ data: [day] }))
+      }),
+    )
+    const { prisma, deletes } = db({ account: 19, campaigns: ['c-deleted'], ads: ['a-deleted'] })
+    const r = await importMetaSpend(prisma, 'token', '2026-10-30')
+    // The account answered: its window is replaced, as before.
+    expect(deletes.filter((d) => d.table === 'account')).toHaveLength(1)
+    expect(deletes.find((d) => d.table === 'campaign')!.where.campaignId).toEqual({ in: ['c-live'] })
+    expect(deletes.find((d) => d.table === 'ad')!.where.adId).toEqual({ in: ['a-live'] })
+    expect(r.kept).toEqual(['Zextra 2 (Tursunbek TARGETOLOG): 1 kampaniya', 'Zextra 2 (Tursunbek TARGETOLOG): 1 eʼlon'])
   })
 })

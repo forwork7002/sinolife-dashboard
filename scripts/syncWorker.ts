@@ -1422,6 +1422,7 @@ async function main() {
           `  (${((Date.now() - metaStarted) / 1000).toFixed(1)}s)`,
       )
       if (r.wide.length > 0) console.log(`  ${stamp()} meta keng oyna (7 kundan uzun): ${r.wide.join(' · ')}`)
+      if (r.kept.length > 0) console.log(`  ${stamp()} meta javob bermadi — eski maʼlumot saqlandi: ${r.kept.join(' · ')}`)
       for (const refused of r.failed) console.warn(`  ${stamp()} meta akkaunt oʻqilmadi — ${refused}`)
       complete = r.failed.every((f) => f.includes(' · eski tarix: '))
     } catch (error) {

@@ -206,7 +206,12 @@
   re-reads a week of every form Meta counts more leads on than we hold
   (closed ones too — `importMetaLeads` `deep`) and re-checks the forms of ads
   that spent in the last 3 days (`importMetaAdForms` `recheck`); it counts as
-  the night's only when every account was read.
+  the night's only when every account was read. **What Meta no longer answers
+  is kept (2026-10-30)**: a targetolog who leaves takes his access (Tursunbek's
+  «Zextra», `#200 … has NOT grant ads_read`) or deletes campaigns. An account
+  read that comes back empty over days that hold spend deletes nothing; the
+  campaign and ad grains replace only the campaigns / ads Meta answered for.
+  The log names what stayed: «meta javob bermadi — eski maʼlumot saqlandi».
 - **Roistat is on the wall clock too (2026-10-22)**: `SYNC_ROISTAT_MIN` (60)
   since the newest `marketing_snapshot.importedAt`. It was `tick % 60` — two
   hours at 120 s, and never on a day of deploys under two hours apart.

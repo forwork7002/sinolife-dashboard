@@ -299,6 +299,12 @@ export interface MetaImportResult {
    * 2026-10-28) a quiet account re-read every pass. The worker logs them.
    */
   readonly wide: readonly string[]
+  /**
+   * «<account>: N kun / kampaniya / eʼlon» — what a read left in place because
+   * Meta no longer answered for it (2026-10-30): deleted, or access taken
+   * away. The worker logs them.
+   */
+  readonly kept: readonly string[]
 }
 
 export interface MetaImportOptions {
@@ -392,6 +398,7 @@ export async function importMetaSpend(
   let earliest = today
   const windowStart = refreshFloor(today, refreshDays)
   const wide: string[] = []
+  const kept: string[] = []
   /*
     FOUR ACCOUNTS AT A TIME (2026-10-28). One after another, 28 accounts' three
     grains were ~84 Graph calls end to end: 136 s a pass on a week's window,
@@ -401,7 +408,8 @@ export async function importMetaSpend(
     gathered in the accounts' own order, so the log reads as it did.
   */
   const outcomes = await mapAtMost(accounts, META_ACCOUNTS_AT_ONCE, async (account) => {
-    const out = { rows: 0, campaignRows: 0, adRows: 0, failed: [] as string[], wide: [] as string[], read: false }
+    const out = { rows: 0, campaignRows: 0, adRows: 0, failed: [] as string[], wide: [] as string[], kept: [] as string[], read: false }
+    const keep = (note: string) => void out.kept.push(note)
     let spentNow = false
     try {
       const from = fromOf(account.account_id)
@@ -410,7 +418,7 @@ export async function importMetaSpend(
       const campaignFrom = bounded(`campaign:${account.account_id}`, campaignFromOf(account.account_id))
       const first = from < campaignFrom ? from : campaignFrom
       if (first < windowStart) out.wide.push(`${account.name} ${first}`)
-      const imported = await importAccount(prisma, token, account, { from, campaignFrom, today })
+      const imported = await importAccount(prisma, token, account, { from, campaignFrom, today }, keep)
       out.rows = imported.rows
       out.campaignRows = imported.campaignRows
       out.read = true
@@ -444,7 +452,7 @@ export async function importMetaSpend(
       try {
         const adFrom = bounded(`ad:${account.account_id}`, adFromOf(account.account_id))
         if (adFrom < windowStart) out.wide.push(`${account.name} · eʼlon ${adFrom}`)
-        out.adRows = await importAccountAds(prisma, token, account, { from: adFrom, today })
+        out.adRows = await importAccountAds(prisma, token, account, { from: adFrom, today }, keep)
         options.readThrough?.set(`ad:${account.account_id}`, today)
       } catch (error) {
         out.failed.push(`${account.name} · eʼlon darajasi: ${(error as Error).message}`)
@@ -460,6 +468,7 @@ export async function importMetaSpend(
     adRows += out.adRows
     failed.push(...out.failed)
     wide.push(...out.wide)
+    kept.push(...out.kept)
     if (!out.read) {
       unread += 1
       continue
@@ -500,6 +509,7 @@ export async function importMetaSpend(
     since: since ?? earliest,
     until: today,
     wide,
+    kept,
     historyRows,
     historyPending,
   }
@@ -545,10 +555,11 @@ async function importAccount(
   token: string,
   account: Account,
   window: { from: string; campaignFrom: string; today: string },
+  keep?: (note: string) => void,
 ): Promise<{ rows: number; campaignRows: number }> {
   const { from, campaignFrom, today } = window
-  const rows = await importAccountGrain(prisma, token, account, { from, until: today })
-  const campaignRows = await importCampaignGrain(prisma, token, account, { from: campaignFrom, until: today })
+  const rows = await importAccountGrain(prisma, token, account, { from, until: today }, keep)
+  const campaignRows = await importCampaignGrain(prisma, token, account, { from: campaignFrom, until: today }, keep)
   return { rows, campaignRows }
 }
 
@@ -558,6 +569,7 @@ async function importAccountGrain(
   token: string,
   account: Account,
   window: { from: string; until: string },
+  keep?: (note: string) => void,
 ): Promise<number> {
   const { from, until } = window
 
@@ -574,13 +586,30 @@ async function importAccountGrain(
     )}`,
   )
 
-  // One statement per account: replace the window, so a day Meta has since
-  // zeroed (a refunded spend) does not linger from the previous run.
+  const range = { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${until}T00:00:00Z`) }
+  /*
+    WHAT META NO LONGER ANSWERS IS KEPT (2026-10-30). A targetolog who leaves
+    takes his access with him — Tursunbek's «Zextra» answered «#200 … has NOT
+    grant ads_read» that day, its 05.10 spend still ours — and an account or
+    a campaign he deletes can come back as an empty answer, not a refusal.
+    Replacing the window with nothing would wipe the history the dashboard
+    already holds. So an empty answer over a window that holds spend writes
+    nothing and deletes nothing; any answer at all replaces the window, so a
+    day Meta has since zeroed (a refunded spend) does not linger.
+  */
+  if (insights.length === 0) {
+    const held = await prisma.metaAdDaily.count({ where: { accountId: account.account_id, date: range, spendMicroUsd: { gt: 0n } } })
+    if (held > 0) {
+      keep?.(`${account.name}: ${held} kun`)
+      return 0
+    }
+  }
+
   await prisma.$transaction([
     prisma.metaAdDaily.deleteMany({
       where: {
         accountId: account.account_id,
-        date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${until}T00:00:00Z`) },
+        date: range,
       },
     }),
     prisma.metaAdDaily.createMany({
@@ -604,6 +633,7 @@ async function importCampaignGrain(
   token: string,
   account: Account,
   window: { from: string; until: string },
+  keep?: (note: string) => void,
 ): Promise<number> {
   const { from, until } = window
 
@@ -630,11 +660,26 @@ async function importCampaignGrain(
     )
   }
 
+  /*
+    Only the campaigns Meta answered for are replaced (2026-10-30): one it no
+    longer reports — deleted, or behind access since taken away — keeps the
+    days the dashboard already holds. See `importAccountGrain`.
+  */
+  const range = { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${until}T00:00:00Z`) }
+  const answered = [...new Set(campaigns.flatMap((row) => (row.campaign_id ? [row.campaign_id] : [])))]
+  const held = await prisma.metaCampaignDaily.findMany({
+    where: { accountId: account.account_id, date: range, spendMicroUsd: { gt: 0n }, campaignId: { notIn: answered } },
+    distinct: ['campaignId'],
+    select: { campaignId: true },
+  })
+  if (held.length > 0) keep?.(`${account.name}: ${held.length} kampaniya`)
+
   await prisma.$transaction([
     prisma.metaCampaignDaily.deleteMany({
       where: {
         accountId: account.account_id,
-        date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${until}T00:00:00Z`) },
+        date: range,
+        campaignId: { in: answered },
       },
     }),
     prisma.metaCampaignDaily.createMany({
@@ -781,6 +826,7 @@ async function importAccountAds(
   token: string,
   account: Account,
   window: { from: string; today: string },
+  keep?: (note: string) => void,
 ): Promise<number> {
   const { from, today } = window
 
@@ -806,11 +852,21 @@ async function importAccountAds(
   }
 
   const data = ads.flatMap((row) => adInsightRow(account, row) ?? [])
+  // Only the ads Meta answered for are replaced (2026-10-30) — see `importCampaignGrain`.
+  const range = { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${today}T00:00:00Z`) }
+  const answered = [...new Set(data.map((row) => row.adId))]
+  const held = await prisma.metaAdInsightDaily.findMany({
+    where: { accountId: account.account_id, date: range, spendMicroUsd: { gt: 0n }, adId: { notIn: answered } },
+    distinct: ['adId'],
+    select: { adId: true },
+  })
+  if (held.length > 0) keep?.(`${account.name}: ${held.length} eʼlon`)
   await prisma.$transaction([
     prisma.metaAdInsightDaily.deleteMany({
       where: {
         accountId: account.account_id,
-        date: { gte: new Date(`${from}T00:00:00Z`), lte: new Date(`${today}T00:00:00Z`) },
+        date: range,
+        adId: { in: answered },
       },
     }),
     prisma.metaAdInsightDaily.createMany({ data }),
