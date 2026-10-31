@@ -597,6 +597,8 @@ describe('withTargetologLeads — the cards\' kval, kval % and FAKT 1 clients', 
     expect(sobirjon.qualifiedPercent).toBeCloseTo(36, 6)
     expect(sobirjon.costPerQualifiedUsd).toBeCloseTo(140.5 / 18, 6)
     expect(sobirjon.costPerClientUsd).toBeCloseTo(140.5 / 6, 6)
+    // «Konversiya sotuv»: transactions over kval.
+    expect(sobirjon.salesConversionPercent).toBeCloseTo((6 / 18) * 100, 6)
   })
 
   it('cuts to one product\'s forms, as the card\'s money is cut to its accounts', () => {
@@ -609,6 +611,8 @@ describe('withTargetologLeads — the cards\' kval, kval % and FAKT 1 clients', 
     expect(kamron).toMatchObject({ formUsd: 0, leads: 0, qualified: 0, qualifiedPercent: null, clients: 0 })
     expect(kamron.costPerQualifiedUsd).toBeNull()
     expect(kamron.costPerClientUsd).toBeNull()
+    // No kval: no conversion rather than 0 %.
+    expect(kamron.salesConversionPercent).toBeNull()
   })
 
   it('leaves the clients unread, never 0, when the phone match did not answer', () => {
@@ -617,7 +621,7 @@ describe('withTargetologLeads — the cards\' kval, kval % and FAKT 1 clients', 
       { owners: forms.owners.map((o) => ({ ...o, fakt1Clients: null })), fakt1Targetologs: null },
       'all',
     )
-    expect(card(unread, 'Sobirjon')).toMatchObject({ qualified: 18, clients: null, costPerClientUsd: null })
+    expect(card(unread, 'Sobirjon')).toMatchObject({ qualified: 18, clients: null, costPerClientUsd: null, salesConversionPercent: null })
     expect(card(withTargetologLeads(overview, { ...forms, fakt1Targetologs: null, owners: forms.owners.map((o) => ({ ...o, fakt1Clients: null })) }, 'Zextra'), 'Sobirjon')!.clients).toBeNull()
   })
 

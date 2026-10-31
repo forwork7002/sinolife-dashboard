@@ -210,6 +210,13 @@ export interface TargetologBitrixDto {
   /** formUsd ÷ clients. */
   readonly costPerClientUsd: number | null
   /**
+   * «Konversiya sotuv» (the client, 2026-10-31: «Tranzaksiya / kval lid soni»):
+   * clients ÷ qualified — the card's FAKT 1 transactions over its kval, as
+   * RNP's «Конверсия от квал %» divides new transactions by kval. Null with
+   * no kval or the phone match unread.
+   */
+  readonly salesConversionPercent: number | null
+  /**
    * «Qamrov»: the form leads that reached Bitrix24 ÷ Meta's form leads, «Lidlar»'s
    * `reachPercent` summed over the person's rows — the deals the «Таргетолог»
    * field alone filed here passed through no Meta form, so they are left out.
@@ -826,6 +833,7 @@ export function withTargetologLeads(
             costPerQualifiedUsd: formUsd > 0 ? ratio(formUsd, acc.success) : null,
             clients,
             costPerClientUsd: formUsd > 0 && clients !== null ? ratio(formUsd, clients) : null,
+            salesConversionPercent: clients === null ? null : percent(clients, acc.success),
             reachPercent: percent(acc.formLeads, acc.metaLeads),
           },
         }

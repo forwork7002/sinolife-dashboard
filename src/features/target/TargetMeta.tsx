@@ -162,7 +162,9 @@ const OWNER_COLUMNS: readonly Column<MetaOwnerDto>[] = [
  * «Targetologlar»'s figures (`bitrix`, 2026-10-13) — the leads their forms
  * opened, the kval, kval % and FAKT 1 clients, each kval and client priced on
  * «Rasxod $», never on the headline (DM, SMS and HR money brings no form
- * lead). «1 klik narxi» made way for them at the client's word. A person who
+ * lead). «1 klik narxi» made way for them at the client's word. «Konversiya
+ * sotuv» (2026-10-31, the client: «Tranzaksiya / kval lid soni») fills the
+ * last cell: FAKT 1 clients ÷ kval lid, computed on the server. A person who
  * runs both products gets a thin split bar, so Sobirjon's Zextra and Collagen
  * are one card and still two numbers. Biggest spender first, as the server
  * sent them.
@@ -304,6 +306,12 @@ function TargetologCards({
             <Metric label="CTR" value={formatPercent(p.ctrPercent)} />
             <Metric label="Koʻrsatishlar" value={formatNumber(p.impressions)} />
             <Metric label="1 000 koʻrsatish" value={usd(p.cpmUsd)} />
+            <Metric
+              label="Konversiya sotuv"
+              value={formatPercent(p.bitrix?.salesConversionPercent ?? null)}
+              strong
+              hint="Tranzaksiya ÷ Kval lid: Mijoz (FAKT 1) ÷ Kval lid — kval lidlarning necha foizi FAKT 1 buyurtma bergan"
+            />
           </dl>
         </Card>
       ))}
