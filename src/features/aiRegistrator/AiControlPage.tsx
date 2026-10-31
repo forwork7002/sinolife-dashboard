@@ -1,14 +1,28 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { type ReactNode, useState, useSyncExternalStore } from 'react'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { Callout } from '@/components/ui/Callout'
 import { ChartCard } from '@/components/ui/Card'
 import { StatTile, StatusChip } from '@/components/ui/Stat'
+import {
+  type AiStatus,
+  type Tone,
+  isFresh,
+  limitsMismatch,
+  limitsText,
+  lineViews,
+  nowRow,
+  productLabel,
+  recentViews,
+  sellerLook,
+  shortName,
+} from '@/features/aiRegistrator/aiLiveLogic'
 import { PageShell } from '@/features/shared/PageShell'
+import { bitrixDealUrl } from '@/features/target/targetApi'
 import { ApiClientError, apiGet, apiWrite } from '@/lib/api'
 import { formatClock, formatDateTime, formatNumber } from '@/lib/format'
 
@@ -25,38 +39,7 @@ interface AiControlDto {
     readonly updatedAt: string
     readonly updatedBy: string
   } | null
-  readonly status: {
-    readonly receivedAt: string
-    readonly stale: boolean
-    readonly report: {
-      readonly at: string
-      readonly appliedVersion: number | null
-      readonly applyError: string | null
-      readonly limits: {
-        readonly calls?: number | null
-        readonly maxNew?: number | null
-        readonly maxRetry?: number | null
-        readonly saleHandoff?: string | null
-        readonly maxSipLegs?: number | null
-        readonly fused?: boolean | null
-      }
-      readonly lines: Readonly<Record<string, string>>
-      readonly sellers: readonly {
-        readonly ext: string
-        readonly name: string | null
-        readonly state: string
-        readonly inList: boolean
-        readonly transfersToday: number
-      }[]
-      readonly today: {
-        readonly calls: number
-        readonly answered: number
-        readonly transferred: number
-        readonly transferFailed: number
-        readonly atsRejected: number
-      }
-    }
-  } | null
+  readonly status: AiStatus | null
   readonly names: Readonly<Record<string, string>>
   readonly rules: {
     readonly aiLines: readonly string[]
@@ -72,6 +55,12 @@ interface AiControlDto {
   }[]
 }
 
+/* Mirrors `AiLiveDto` — the 5 s read, `?part=live`. */
+interface AiLiveDto {
+  readonly status: AiStatus | null
+  readonly staleAfterSec: number
+}
+
 type Handoff = 'refer' | 'bridge'
 
 interface Draft {
@@ -83,20 +72,11 @@ interface Draft {
   readonly saleHandoff: Handoff
 }
 
-type Tone = 'good' | 'warning' | 'critical' | 'neutral'
-
-const SELLER_STATE: Readonly<Record<string, { readonly label: string; readonly tone: Tone }>> = {
-  free: { label: 'Boʻsh', tone: 'good' },
-  busy: { label: 'Band', tone: 'warning' },
-  offline: { label: 'Liniyada yoʻq', tone: 'critical' },
-  unknown: { label: 'Nomaʼlum', tone: 'neutral' },
-}
-
-const LINE_STATE: Readonly<Record<string, { readonly label: string; readonly tone: Tone }>> = {
-  free: { label: 'Boʻsh', tone: 'good' },
-  call: { label: 'Qoʻngʻiroqda', tone: 'warning' },
-  seller_talk: { label: 'Sotuvchi bilan', tone: 'warning' },
-  not_registered: { label: 'Roʻyxatdan oʻtmagan', tone: 'critical' },
+const TONE_COLOR: Readonly<Record<Tone, string>> = {
+  good: 'var(--status-good)',
+  warning: 'var(--status-warning)',
+  critical: 'var(--status-critical)',
+  neutral: 'var(--ink-muted)',
 }
 
 const EXTENSION = /^\d{2,6}$/
@@ -118,6 +98,51 @@ const sameDraft = (a: Draft, b: Draft) =>
   a.maxRetry === b.maxRetry &&
   a.saleHandoff === b.saleHandoff
 
+/*
+  ONE CLOCK for the page's timers («AI ↔ Aziz · 0:42» counts every second):
+  every reader subscribes to the same store, the store owns the one interval,
+  and it stops when the last reader leaves — `useMinuteNow`'s pattern at a
+  second. 0 on the server: a time printed there would be the server's.
+*/
+let secondNow = 0
+let secondTimer: ReturnType<typeof setInterval> | null = null
+const secondListeners = new Set<() => void>()
+
+function secondTick(): void {
+  secondNow = Date.now()
+  for (const listener of secondListeners) listener()
+}
+
+function subscribeSecond(listener: () => void): () => void {
+  secondListeners.add(listener)
+  if (secondTimer === null) {
+    secondNow = Date.now()
+    secondTimer = setInterval(secondTick, 1_000)
+  }
+  return () => {
+    secondListeners.delete(listener)
+    if (secondListeners.size === 0 && secondTimer !== null) {
+      clearInterval(secondTimer)
+      secondTimer = null
+    }
+  }
+}
+
+function secondSnapshot(): number {
+  if (secondNow === 0) secondNow = Date.now()
+  return secondNow
+}
+
+/**
+ * The server's «now», ticking every second: the browser clock moved by how far
+ * it was off at the last poll. The epoch on the server — no data is there to
+ * time either, the page renders its skeleton.
+ */
+function useServerNow(skewMs: number): Date {
+  const now = useSyncExternalStore(subscribeSecond, secondSnapshot, () => 0)
+  return new Date(now + skewMs)
+}
+
 /**
  * «AI registrator → Boshqaruv» (the owner, 2026-10-30: «boshqaruv paneli
  * orqali men kimlarga berishi kerakligini hal qilaman … faqatgina adminjonga
@@ -125,10 +150,15 @@ const sameDraft = (a: Draft, b: Draft) =>
  * through to, how many calls it makes at a time, how a sale is handed to the
  * ATS — and, beside the saved version, whether the agent took it.
  *
- * POLLS EVERY 15 s, not on the app's 120 s cadence: the agent reads the
- * settings every 20 s and reports every 30 s, and «AI qabul qildi» is the
- * answer the owner waits for after «Saqlash». Only the accounts the owner named
- * open this page (`auth/aiControl.ts` — adminjon, umida).
+ * AND WHAT IT DOES NOW (2026-10-31, the owner: «qaysi SIP'lardan, kim kimga
+ * ulanayapti, real vaqtda»): whether the AI answers at all, each AI line's
+ * call, the sellers it rings, the last put-throughs — `aiLiveLogic.ts`.
+ *
+ * TWO READS. The last report alone (`?part=live`, one row by its key) every
+ * 5 s while the tab is in view — the agent reports every 5 s while a line is
+ * busy; the settings, the audit and the roster's names every minute, and at
+ * once after «Saqlash». The database has one core. Only the accounts the
+ * owner named open this page (`auth/aiControl.ts` — adminjon, umida).
  *
  * THE DRAFT IS THE OWNER'S UNTIL SAVED: a poll that brings a new report never
  * overwrites what is being edited — `draft` is null until the first change.
@@ -138,8 +168,15 @@ export function AiControlPage() {
   const query = useQuery({
     queryKey: ['ai-registrator-control'],
     queryFn: ({ signal }) => apiGet<AiControlDto>('/leads/ai-registrator/control', {}, signal),
-    refetchInterval: 15_000,
-    staleTime: 10_000,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+  const liveQuery = useQuery({
+    queryKey: ['ai-registrator-control', 'live'],
+    queryFn: ({ signal }) => apiGet<AiLiveDto>('/leads/ai-registrator/control', { part: 'live' }, signal),
+    refetchInterval: 5_000,
+    refetchIntervalInBackground: false,
+    staleTime: 4_000,
   })
   const data = query.data?.data
   const [draft, setDraft] = useState<Draft | null>(null)
@@ -171,10 +208,20 @@ export function AiControlPage() {
     save.reset()
   }
 
+  // The 5 s read wins over the minute one: both are the same row, the newer read is the truer picture.
+  const live = liveQuery.data
+  const status = live ? live.data.status : (data?.status ?? null)
+  const staleAfterSec = live?.data.staleAfterSec ?? data?.rules.staleAfterSec ?? 90
+  const skewMs = live ? new Date(live.meta.generatedAt).getTime() - liveQuery.dataUpdatedAt : 0
+  const reported = new Map((status?.report.sellers ?? []).map((s) => [s.ext, s.name]))
+  const nameOf = (ext: string): string | null => reported.get(ext)?.trim() || data?.names[ext] || null
+  const now = useServerNow(skewMs)
+  const fresh = isFresh(status, now, staleAfterSec)
+
   return (
     <PageShell
       title="AI registrator · Boshqaruv"
-      description="AI qiziqqan mijozni qaysi sotuvchilarga (ichki SIP raqamlarga) ulaydi, bir vaqtda nechta qoʻngʻiroq qiladi va sotuv ATSga qanday topshiriladi. Saqlangach AI 20 soniya ichida oʻqiydi va qabul qilganini shu yerda koʻrsatadi. Faqat sizning hisobingizga koʻrinadi."
+      description="AI hozir nima qilyapti — har bir AI liniyasi kim bilan gaplashyapti, qaysi sotuvchiga ulayapti — har 5 soniyada yangilanadi. Pastda: AI qiziqqan mijozni qaysi sotuvchilarga (ichki SIP raqamlarga) ulaydi, bir vaqtda nechta qoʻngʻiroq qiladi va sotuv ATSga qanday topshiriladi; saqlangach AI 20 soniya ichida oʻqiydi. Faqat sizning hisobingizga koʻrinadi."
       accent="var(--series-1)"
       period={false}
       actions={
@@ -196,21 +243,32 @@ export function AiControlPage() {
         )
       ) : (
         <div className="flex flex-col gap-6">
-          <AckBar data={data} saved={saved} asOf={query.data?.meta.generatedAt ?? null} />
-          <SaveBar
-            dirty={dirty}
-            pending={save.isPending}
-            error={save.error instanceof Error ? save.error.message : null}
-            onSave={() => editing && save.mutate(editing)}
-            onCancel={() => {
-              setDraft(null)
-              save.reset()
-            }}
-            problem={editing.sellers.length === 0 ? 'Kamida bitta sotuvchi yoqiq boʻlsin.' : null}
+          <LiveBoard
+            status={status}
+            saved={data.config}
+            staleAfterSec={staleAfterSec}
+            now={now}
+            updatedAt={live?.meta.generatedAt ?? query.data?.meta.generatedAt ?? null}
+            updateFailed={liveQuery.isError}
+            nameOf={nameOf}
           />
-          <Sellers data={data} draft={editing} onChange={change} />
-          <Limits data={data} draft={editing} onChange={change} />
-          <Live data={data} />
+          <section aria-label="Boshqaruv" className="flex flex-col gap-4">
+            <h2 className="eyebrow">Boshqaruv — sotuvchilar va limitlar</h2>
+            <AckBar data={data} status={status} saved={saved} />
+            <SaveBar
+              dirty={dirty}
+              pending={save.isPending}
+              error={save.error instanceof Error ? save.error.message : null}
+              onSave={() => editing && save.mutate(editing)}
+              onCancel={() => {
+                setDraft(null)
+                save.reset()
+              }}
+              problem={editing.sellers.length === 0 ? 'Kamida bitta sotuvchi yoqiq boʻlsin.' : null}
+            />
+            <Sellers data={data} status={fresh ? status : null} draft={editing} onChange={change} />
+            <Limits data={data} draft={editing} onChange={change} />
+          </section>
           <History data={data} />
         </div>
       )}
@@ -219,11 +277,9 @@ export function AiControlPage() {
 }
 
 /** Saved vN — and whether the agent took it, in green, amber or red. */
-function AckBar({ data, saved, asOf }: { readonly data: AiControlDto; readonly saved: number | null; readonly asOf: string | null }) {
+function AckBar({ data, status, saved }: { readonly data: AiControlDto; readonly status: AiStatus | null; readonly saved: number | null }) {
   const config = data.config!
-  const status = data.status
   const report = status?.report
-  const minutes = status && asOf ? Math.max(0, Math.round((new Date(asOf).getTime() - new Date(status.receivedAt).getTime()) / 60_000)) : 0
 
   let ack: { tone: Tone; text: string }
   if (!status || !report) ack = { tone: 'warning', text: 'AIʼdan hali xabar kelmagan' }
@@ -232,24 +288,17 @@ function AckBar({ data, saved, asOf }: { readonly data: AiControlDto; readonly s
   else ack = { tone: 'warning', text: `AI hali qabul qilmadi — hozir ${report.appliedVersion === null ? 'oʻz sozlamasi' : `v${report.appliedVersion}`} ishlayapti` }
 
   return (
-    <section aria-label="Saqlangan sozlama va AI javobi" className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" style={{ color: 'var(--ink-secondary)' }}>
-        <span>
-          Saqlangan: <strong style={{ color: 'var(--ink-primary)' }}>v{config.version}</strong> · {formatDateTime(config.updatedAt)} · {config.updatedBy}
+    <section aria-label="Saqlangan sozlama va AI javobi" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm" style={{ color: 'var(--ink-secondary)' }}>
+      <span>
+        Saqlangan: <strong style={{ color: 'var(--ink-primary)' }}>v{config.version}</strong> · {formatDateTime(config.updatedAt)} · {config.updatedBy}
+      </span>
+      <span aria-live="polite">
+        <StatusChip tone={ack.tone}>{ack.text}</StatusChip>
+      </span>
+      {saved !== null && saved === config.version && ack.tone !== 'good' && (
+        <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+          v{saved} saqlandi — AI 20 soniya ichida oʻqiydi
         </span>
-        <span aria-live="polite">
-          <StatusChip tone={ack.tone}>{ack.text}</StatusChip>
-        </span>
-        {saved !== null && saved === config.version && ack.tone !== 'good' && (
-          <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-            v{saved} saqlandi — AI 20 soniya ichida oʻqiydi
-          </span>
-        )}
-      </div>
-      {status?.stale && (
-        <Callout>
-          <strong>AIʼdan xabar yoʻq</strong> — oxirgi xabar {formatClock(status.receivedAt)} da ({formatNumber(minutes)} daqiqa oldin). AI server toʻxtagan yoki ISHga ulana olmayapti; quyidagi holat eskirgan.
-        </Callout>
       )}
     </section>
   )
@@ -292,15 +341,26 @@ interface SellerRow {
   readonly on: boolean
   readonly order: number | null
   readonly name: string
-  readonly state: string | null
+  readonly look: { readonly tone: Tone; readonly label: string } | null
+  readonly product: string | null
   readonly transfersToday: number | null
 }
 
-function Sellers({ data, draft, onChange }: { readonly data: AiControlDto; readonly draft: Draft; readonly onChange: (next: Partial<Draft>) => void }) {
+/** `status` is the agent's last report while it is fresh, else null — an old picture shows no state. */
+function Sellers({
+  data,
+  status,
+  draft,
+  onChange,
+}: {
+  readonly data: AiControlDto
+  readonly status: AiStatus | null
+  readonly draft: Draft
+  readonly onChange: (next: Partial<Draft>) => void
+}) {
   const [input, setInput] = useState('')
   const [inputError, setInputError] = useState<string | null>(null)
-  const reported = new Map((data.status?.report.sellers ?? []).map((s) => [s.ext, s]))
-  const live = data.status !== null && !data.status.stale
+  const reported = new Map((status?.report.sellers ?? data.status?.report.sellers ?? []).map((s) => [s.ext, s]))
 
   const row = (ext: string, on: boolean, order: number | null): SellerRow => {
     const r = reported.get(ext)
@@ -309,7 +369,8 @@ function Sellers({ data, draft, onChange }: { readonly data: AiControlDto; reado
       on,
       order,
       name: r?.name?.trim() || data.names[ext] || '—',
-      state: live && r ? r.state : null,
+      look: status && r ? sellerLook(r) : null,
+      product: productLabel(r?.product),
       transfersToday: r ? r.transfersToday : null,
     }
   }
@@ -383,13 +444,14 @@ function Sellers({ data, draft, onChange }: { readonly data: AiControlDto; reado
         </form>
 
         <div className="overflow-x-auto">
-          <table aria-label="Sotuvchilar" className="w-full min-w-[720px] text-xs tabular-nums">
+          <table aria-label="Sotuvchilar" className="w-full min-w-[780px] text-xs tabular-nums">
             <thead>
               <tr style={{ color: 'var(--ink-muted)' }}>
                 <th className="py-1 pr-3 text-left font-medium">Tartib</th>
                 <th className="py-1 pr-3 text-left font-medium">Ichki raqam</th>
                 <th className="py-1 pr-3 text-left font-medium">Ism</th>
                 <th className="py-1 pr-3 text-left font-medium">Holat</th>
+                <th className="py-1 pr-3 text-left font-medium">Mahsulot</th>
                 <th className="py-1 pr-3 text-right font-medium">Bugun ulandi</th>
                 <th className="py-1 pr-3 text-left font-medium">AI ulaydimi</th>
                 <th className="py-1 text-right font-medium">Amal</th>
@@ -397,7 +459,6 @@ function Sellers({ data, draft, onChange }: { readonly data: AiControlDto; reado
             </thead>
             <tbody>
               {rows.map((r) => {
-                const state = r.state ? (SELLER_STATE[r.state] ?? { label: r.state, tone: 'neutral' as const }) : null
                 return (
                   <tr key={r.ext} className="border-t" style={{ borderColor: 'var(--grid)', opacity: r.on ? 1 : 0.6 }}>
                     <td className="py-1.5 pr-3">{r.order ?? '—'}</td>
@@ -405,7 +466,8 @@ function Sellers({ data, draft, onChange }: { readonly data: AiControlDto; reado
                       {r.ext}
                     </td>
                     <td className="py-1.5 pr-3">{r.name}</td>
-                    <td className="py-1.5 pr-3">{state ? <StatusChip tone={state.tone}>{state.label}</StatusChip> : <span style={{ color: 'var(--ink-muted)' }}>—</span>}</td>
+                    <td className="py-1.5 pr-3">{r.look ? <StatusChip tone={r.look.tone}>{r.look.label}</StatusChip> : <span style={{ color: 'var(--ink-muted)' }}>—</span>}</td>
+                    <td className="py-1.5 pr-3">{r.product ?? <span style={{ color: 'var(--ink-muted)' }}>—</span>}</td>
                     <td className="py-1.5 pr-3 text-right">{r.transfersToday === null ? '—' : formatNumber(r.transfersToday)}</td>
                     <td className="py-1.5 pr-3">
                       <button
@@ -533,59 +595,282 @@ function Limits({ data, draft, onChange }: { readonly data: AiControlDto; readon
   )
 }
 
-/** What the agent runs now: its lines, the limits it applied, the day's numbers. */
-function Live({ data }: { readonly data: AiControlDto }) {
-  const report = data.status?.report
-  const stale = !data.status || data.status.stale
-  const tone = (t: Tone): Tone => (stale ? 'neutral' : t)
-  const l = report?.limits
+/** A small coloured word beside a line or a seller: the product, «SINOV». */
+function Badge({ children, tone = 'neutral' }: { readonly children: ReactNode; readonly tone?: Tone }) {
+  const color = TONE_COLOR[tone]
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-1.5 py-px text-[10px] font-semibold tracking-wide uppercase"
+      style={{ background: `color-mix(in oklab, ${color} 14%, transparent)`, color: tone === 'neutral' ? 'var(--ink-secondary)' : color }}
+    >
+      {children}
+    </span>
+  )
+}
+
+/** «Bitim 12345 ↗» — the deal's own page in Bitrix24. */
+function DealLink({ deal }: { readonly deal: number | null }) {
+  if (deal === null) return null
+  return (
+    <a href={bitrixDealUrl(String(deal))} target="_blank" rel="noreferrer" className="underline underline-offset-2" style={{ color: 'var(--ink-secondary)' }}>
+      Bitim {deal} ↗
+    </a>
+  )
+}
+
+export interface LiveBoardProps {
+  readonly status: AiStatus | null
+  /** The saved form's limits — «Saqlangan: 4/4/0» beside what the agent applies. */
+  readonly saved: { readonly maxCalls: number; readonly maxNew: number; readonly maxRetry: number } | null
+  readonly staleAfterSec: number
+  readonly now: Date
+  readonly updatedAt: string | null
+  readonly updateFailed: boolean
+  readonly nameOf: (ext: string) => string | null
+}
+
+/** The live half of the page: «Hozir», the AI's lines, its sellers, the last put-throughs. */
+export function LiveBoard(props: LiveBoardProps) {
+  const { status, staleAfterSec, now, nameOf } = props
+  const fresh = isFresh(status, now, staleAfterSec)
+  const report = status?.report ?? null
+  return (
+    <section aria-label="AI hozir" className="flex flex-col gap-4">
+      <NowCard {...props} />
+      {report && (
+        <>
+          <LinesCard report={report} fresh={fresh} receivedAt={status!.receivedAt} now={now} nameOf={nameOf} />
+          <SellersNow report={report} fresh={fresh} />
+          <RecentCard report={report} nameOf={nameOf} />
+        </>
+      )}
+    </section>
+  )
+}
+
+/** Is the AI there at all — green, grey or red — the day's numbers and the limits it applies. */
+function NowCard({ status, saved, staleAfterSec, now, updatedAt, updateFailed }: LiveBoardProps) {
+  const row = nowRow(status, now, staleAfterSec)
+  const report = status?.report ?? null
+  const limits = report ? limitsText(report.limits) : null
+  const mismatch = report ? limitsMismatch(saved, report) : null
+  const color = TONE_COLOR[row.tone]
   return (
     <ChartCard
-      title="AI hozir"
-      hint={data.status ? `AIning oxirgi xabari: ${formatClock(data.status.receivedAt)}${stale ? ' — eskirgan' : ''} · har 30 soniyada yangilanadi` : 'AIdan hali xabar kelmagan'}
+      title="Hozir"
+      hint="AI oʻz holatini band liniya boʻlsa har 5 soniyada, aks holda har 30 soniyada yuboradi · sahifa har 5 soniyada yangilanadi"
+      action={
+        <span className="shrink-0 text-[11px] tabular-nums" style={{ color: updateFailed ? 'var(--status-critical)' : 'var(--ink-muted)' }} aria-live="polite">
+          {updateFailed ? 'Yangilanmadi' : 'Yangilandi'}
+          {updatedAt ? `: ${formatClock(updatedAt)}` : ''}
+        </span>
+      }
     >
-      {!report ? (
+      <div className="flex flex-col gap-4">
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[var(--radius-panel-sm)] border px-3 py-2.5"
+          style={{ borderColor: `color-mix(in oklab, ${color} 45%, transparent)`, background: `color-mix(in oklab, ${color} 10%, transparent)` }}
+        >
+          <span aria-hidden className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+          <strong className="text-base" style={{ color: row.tone === 'neutral' ? 'var(--ink-primary)' : color }}>
+            {row.text}
+          </strong>
+          {row.detail && (
+            <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+              {row.detail}
+            </span>
+          )}
+        </div>
+        {report && (
+          <>
+            {!isFresh(status, now, staleAfterSec) && (
+              <span className="eyebrow">Raqamlar AIning oxirgi xabaridan — {formatDateTime(status!.receivedAt)}</span>
+            )}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              <StatTile label="Bugun qoʻngʻiroq" value={report.today.calls} unit="count" compact />
+              <StatTile label="Mijoz koʻtardi" value={report.today.answered} unit="count" compact />
+              <StatTile label="Sotuvchiga ulandi" value={report.today.transferred} unit="count" tone="good" compact />
+              <StatTile label="Ulanmadi" value={report.today.transferFailed} unit="count" tone={report.today.transferFailed > 0 ? 'critical' : 'neutral'} compact />
+              <StatTile label="ATS rad etdi" value={report.today.atsRejected} unit="count" tone={report.today.atsRejected > 0 ? 'warning' : 'neutral'} compact />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="eyebrow">AI qoʻllagan limitlar</span>
+              <span className="text-lg font-semibold tabular-nums" style={{ color: 'var(--ink-primary)' }}>
+                {limits ?? '—'}
+              </span>
+              {report.limits.fused && (
+                <span className="text-xs font-medium" style={{ color: 'var(--status-warning)' }}>
+                  Ehtiyot rejimi: ovoz yoʻqolgani uchun AI bittadan qoʻngʻiroq qilyapti
+                </span>
+              )}
+              {mismatch && (
+                <span className="text-xs" style={{ color: 'var(--status-warning)' }}>
+                  {mismatch}
+                </span>
+              )}
+              <span className="text-[11px]" style={{ color: 'var(--ink-muted)' }}>
+                sotuv: {report.limits.saleHandoff ?? '—'} · SIP oyoqlari ≤ {report.limits.maxSipLegs ?? '—'}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    </ChartCard>
+  )
+}
+
+/** One card per AI line (MicroSIP): free, dialing, AI ↔ client, waiting for a seller, ringing one, with one. */
+function LinesCard({
+  report,
+  fresh,
+  receivedAt,
+  now,
+  nameOf,
+}: {
+  readonly report: AiStatus['report']
+  readonly fresh: boolean
+  readonly receivedAt: string
+  readonly now: Date
+  readonly nameOf: (ext: string) => string | null
+}) {
+  // A stale picture keeps the moment it was taken: its timers stop there.
+  const views = lineViews(report, nameOf, fresh ? now : new Date(receivedAt))
+  return (
+    <ChartCard
+      title="Liniyalar (MicroSIP)"
+      hint={fresh ? 'AIning har bir liniyasi hozir nima qilyapti · vaqt shu holat boshlanganidan beri' : `Eskirgan — AIning oxirgi xabari ${formatClock(receivedAt)}`}
+    >
+      {views.length === 0 ? (
         <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-          AI server hali holat yubormagan.
+          AI liniyalar haqida xabar bermagan.
         </p>
       ) : (
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-            <StatTile label="Bugun qoʻngʻiroq" value={report.today.calls} unit="count" compact />
-            <StatTile label="Mijoz koʻtardi" value={report.today.answered} unit="count" compact />
-            <StatTile label="Sotuvchiga ulandi" value={report.today.transferred} unit="count" tone="good" compact />
-            <StatTile label="Ulanmadi" value={report.today.transferFailed} unit="count" tone={report.today.transferFailed > 0 ? 'critical' : 'neutral'} compact />
-            <StatTile label="ATS rad etdi" value={report.today.atsRejected} unit="count" tone={report.today.atsRejected > 0 ? 'warning' : 'neutral'} compact />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="eyebrow">AI liniyalari</span>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(report.lines).length === 0 ? (
-                <span className="text-xs" style={{ color: 'var(--ink-muted)' }}>
-                  —
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" style={{ opacity: fresh ? 1 : 0.55 }}>
+          {views.map((v) => {
+            const color = TONE_COLOR[v.tone]
+            const product = productLabel(v.product)
+            return (
+              <li
+                key={v.line}
+                aria-label={`Liniya ${v.line}`}
+                className="flex min-w-0 flex-col gap-1 rounded-[var(--radius-panel-sm)] border border-l-4 px-3 py-2"
+                style={{ borderColor: 'var(--border)', borderLeftColor: color, background: 'var(--surface)' }}
+              >
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-sm font-semibold tabular-nums" style={{ color: 'var(--ink-primary)' }}>
+                    {v.line}
+                  </span>
+                  {product && <Badge>{product}</Badge>}
+                  {v.test && <Badge tone="warning">SINOV</Badge>}
+                </div>
+                <span className="text-xs leading-snug font-medium break-words tabular-nums" style={{ color: v.tone === 'neutral' ? 'var(--ink-secondary)' : color }}>
+                  {v.text}
                 </span>
-              ) : (
-                Object.entries(report.lines)
-                  .sort(([a], [b]) => a.localeCompare(b))
-                  .map(([line, state]) => {
-                    const s = LINE_STATE[state] ?? { label: state, tone: 'neutral' as const }
+                {v.deal !== null && (
+                  <span className="text-[11px]">
+                    <DealLink deal={v.deal} />
+                  </span>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </ChartCard>
+  )
+}
+
+/** The sellers the AI puts through to, by product: ringing (AI), on a call, free, off the line. */
+function SellersNow({ report, fresh }: { readonly report: AiStatus['report']; readonly fresh: boolean }) {
+  const sellers = report.sellers.filter((s) => s.inList)
+  const groups = [...new Set(sellers.map((s) => productLabel(s.product) ?? ''))]
+  const ringing = sellers.filter((s) => s.aiRinging).length
+  return (
+    <ChartCard
+      title="Sotuvchilar hozir"
+      hint={
+        fresh
+          ? `Sariq — AI hozir shu sotuvchiga jiringlatmoqda${ringing > 0 ? ` (${ringing})` : ''} · qizil — gaplashyapti · yashil — boʻsh · kulrang — liniyada yoʻq`
+          : 'Eskirgan — AI javob bermayapti, holatlar koʻrsatilmaydi'
+      }
+    >
+      {sellers.length === 0 ? (
+        <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+          AI sotuvchilar haqida xabar bermagan.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {groups.map((group) => (
+            <div key={group || 'none'} className="flex flex-col gap-1.5">
+              {groups.length > 1 && <span className="eyebrow">{group || 'Mahsulot nomaʼlum'}</span>}
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {sellers
+                  .filter((s) => (productLabel(s.product) ?? '') === group)
+                  .map((s) => {
+                    const look = fresh ? sellerLook(s) : { tone: 'neutral' as const, label: '—' }
+                    const color = TONE_COLOR[look.tone]
                     return (
-                      <StatusChip key={line} tone={tone(s.tone)}>
-                        {line}: {s.label}
-                      </StatusChip>
+                      <li
+                        key={s.ext}
+                        aria-label={`Sotuvchi ${s.ext}`}
+                        className="flex min-w-0 items-center gap-2 rounded-[var(--radius-panel-sm)] border px-2.5 py-1.5"
+                        style={{
+                          borderColor: look.tone === 'neutral' ? 'var(--border)' : `color-mix(in oklab, ${color} 45%, transparent)`,
+                          background: look.tone === 'neutral' ? 'var(--surface)' : `color-mix(in oklab, ${color} 9%, transparent)`,
+                        }}
+                      >
+                        <span aria-hidden className="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} />
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-xs" style={{ color: 'var(--ink-primary)' }}>
+                            <strong className="tabular-nums">{s.ext}</strong> {shortName(s.ext, s.name) ?? ''}
+                          </span>
+                          <span className="text-[11px]" style={{ color: look.tone === 'neutral' ? 'var(--ink-muted)' : color }}>
+                            {look.label} · bugun {formatNumber(s.transfersToday)} ta ulandi
+                          </span>
+                        </div>
+                        {groups.length === 1 && productLabel(s.product) && <Badge>{productLabel(s.product)}</Badge>}
+                      </li>
                     )
-                  })
-              )}
+                  })}
+              </ul>
             </div>
-          </div>
-          <p className="text-xs" style={{ color: 'var(--ink-secondary)' }}>
-            AI qoʻllagan limitlar: bir vaqtda <strong>{l?.calls ?? '—'}</strong> · yangi <strong>{l?.maxNew ?? '—'}</strong> · nedozvon{' '}
-            <strong>{l?.maxRetry ?? '—'}</strong> · sotuv <strong>{l?.saleHandoff ?? '—'}</strong> · SIP oyoqlari ≤ <strong>{l?.maxSipLegs ?? '—'}</strong>
-            {l?.fused && (
-              <span style={{ color: 'var(--status-critical)' }}> · ehtiyot rejimi: ovoz yoʻqolgani uchun bittadan qoʻngʻiroq</span>
-            )}
-          </p>
+          ))}
         </div>
+      )}
+    </ChartCard>
+  )
+}
+
+/** «10:42 · 291 → 120 (Dilnoza) · Kollagen · Aziz — ulandi»: the agent's last put-throughs and ends. */
+function RecentCard({ report, nameOf }: { readonly report: AiStatus['report']; readonly nameOf: (ext: string) => string | null }) {
+  const rows = recentViews(report, nameOf)
+  return (
+    <ChartCard title="Soʻnggi ulanishlar" hint="Yangisi tepada · AI server qayta ishga tushsa roʻyxat boshidan boshlanadi">
+      {!report.live ? (
+        <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+          AI bu maʼlumotni hali yubormayapti.
+        </p>
+      ) : rows.length === 0 ? (
+        <p className="text-xs" style={{ color: 'var(--ink-muted)' }}>
+          Hali ulanish yoʻq — AI mijozni sotuvchiga ulaganda shu yerda chiqadi.
+        </p>
+      ) : (
+        <ul className="flex flex-col text-xs">
+          {rows.map((r) => (
+            <li key={r.key} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t py-1.5 first:border-t-0" style={{ borderColor: 'var(--grid)' }}>
+              <span className="tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                {r.time}
+              </span>
+              <span aria-hidden className="inline-block h-2 w-2 shrink-0 self-center rounded-full" style={{ background: TONE_COLOR[r.tone] }} />
+              <span className="min-w-0 flex-1 break-words" style={{ color: r.tone === 'neutral' ? 'var(--ink-secondary)' : 'var(--ink-primary)' }}>
+                {r.text}
+              </span>
+              {r.test && <Badge tone="warning">SINOV</Badge>}
+              <DealLink deal={r.deal} />
+            </li>
+          ))}
+        </ul>
       )}
     </ChartCard>
   )

@@ -13,10 +13,11 @@ import {
 } from '@/server/domain/aiRegistrator/control'
 import { floorNumberOf, indexByFloorNumber } from '@/server/domain/employees/floorNumber'
 import { ApiError } from '@/server/http/errors'
-import type { AiStatusPush, ControlSave } from '@/server/integrations/aiRegistrator/control'
+import { type AiStatusPush, type ControlSave, aiStatusSchema } from '@/server/integrations/aiRegistrator/control'
 import {
   type AiRegistratorControlRepository,
   type StoredConfig,
+  type StoredStatus,
   StaleVersionError,
 } from '@/server/repositories/aiRegistratorControlRepository'
 
@@ -33,13 +34,15 @@ export interface AgentConfigDto {
 }
 
 /** Mirrored by `AiControlDto` in `src/features/aiRegistrator/AiControlPage.tsx` — nothing checks the mirror. */
+export interface AiStatusDto {
+  readonly receivedAt: string
+  readonly stale: boolean
+  readonly report: AiStatusPush
+}
+
 export interface AiControlDto {
   readonly config: (AgentConfigDto & { readonly parked: readonly string[] }) | null
-  readonly status: {
-    readonly receivedAt: string
-    readonly stale: boolean
-    readonly report: AiStatusPush
-  } | null
+  readonly status: AiStatusDto | null
   /** Every extension the panel shows, to the employee whose name carries it («122» → «122 Dilnoza …»). */
   readonly names: Readonly<Record<string, string>>
   readonly rules: {
@@ -56,7 +59,29 @@ export interface AiControlDto {
   }[]
 }
 
+/** The 5 s read of «Boshqaruv» — the agent's last report and nothing else. Mirrored in `AiControlPage.tsx`. */
+export interface AiLiveDto {
+  readonly status: AiStatusDto | null
+  readonly staleAfterSec: number
+}
+
 const HISTORY = 20
+
+/**
+ * A report stored before the panel knew a field (`live`, a seller's product)
+ * reads as the agent sends it now — `live: null`, `aiRinging: false` — so the
+ * page never meets a half-shaped row. One that no longer parses at all is
+ * passed on as stored, as before.
+ */
+function statusDto(status: StoredStatus | null, now: Date): AiStatusDto | null {
+  if (!status) return null
+  const parsed = aiStatusSchema.safeParse(status.payload)
+  return {
+    receivedAt: status.receivedAt.toISOString(),
+    stale: statusIsStale(status.receivedAt, now),
+    report: parsed.success ? parsed.data : status.payload,
+  }
+}
 
 const FIELD_LABEL: Readonly<Record<string, string>> = {
   maxCalls: 'Bir vaqtda',
@@ -109,6 +134,15 @@ export class AiRegistratorControlService {
     await this.repository.putStatus(status, now)
   }
 
+  /**
+   * What the page polls every 5 s: the one status row by its key. The panel's
+   * other reads (settings, audit, the roster for names) stay on its slower
+   * cadence — the database has one core (2026-10-31).
+   */
+  async live(now: Date): Promise<AiLiveDto> {
+    return { status: statusDto(await this.repository.status(), now), staleAfterSec: STATUS_STALE_MS / 1000 }
+  }
+
   async panel(now: Date): Promise<AiControlDto> {
     const [config, status, changes, roster] = await Promise.all([
       this.repository.config(),
@@ -130,9 +164,7 @@ export class AiRegistratorControlService {
 
     return {
       config: config ? { ...agentConfig(config), parked: config.parked } : null,
-      status: status
-        ? { receivedAt: status.receivedAt.toISOString(), stale: statusIsStale(status.receivedAt, now), report: status.payload }
-        : null,
+      status: statusDto(status, now),
       names,
       rules: { aiLines: AI_OWN_LINES, maxCalls: MAX_CALLS_LIMIT, maxSellers: MAX_SELLERS, staleAfterSec: STATUS_STALE_MS / 1000 },
       history: changes.map((c) => ({

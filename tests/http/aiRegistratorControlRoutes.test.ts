@@ -49,6 +49,7 @@ vi.mock('@/server/services/container', () => ({
       state.statuses.push(status)
     },
     panel: async () => ({ config: state.config }),
+    live: async () => ({ status: null, staleAfterSec: 90 }),
     save: async (body: unknown, by: unknown) => {
       state.saves.push(body)
       state.savers.push(by)
@@ -174,6 +175,26 @@ describe('POST /api/ai-registrator/status — what the agent reports', () => {
     state.fail = true
     expect((await push(JSON.stringify(report()))).status).toBe(503)
   })
+
+  /* 2026-10-31: the live part is the newest — one wrong element of it is dropped, never the report. */
+  it('stores a report whose live part is partly wrong, and one with no live part at all', async () => {
+    const since = '2026-10-31T05:42:00+00:00'
+    const live = {
+      lines: [
+        { line: '291', deal: 1001, product: 'Kollagen', client: 'Aziz', test: false, state: 'talking', since, seller: null },
+        { line: '292', deal: 'x', state: 'talking', since },
+      ],
+      recent: [{ at: since, line: '293', deal: 1002, product: 'Zekstra', client: 'Bobur', test: true, what: 'connected', seller: '120' }],
+    }
+    expect((await push(JSON.stringify(report({ live })))).status).toBe(200)
+    expect((await push(JSON.stringify(report({ live: 'garbage' })))).status).toBe(200)
+    expect((await push(JSON.stringify(report()))).status).toBe(200)
+    const [first, second, third] = state.statuses as { live: { lines: { line: string }[]; recent: unknown[] } | null }[]
+    expect(first?.live?.lines.map((l) => l.line)).toEqual(['291'])
+    expect(first?.live?.recent).toHaveLength(1)
+    expect(second?.live).toBeNull()
+    expect(third?.live).toBeNull()
+  })
 })
 
 describe('/api/v1/leads/ai-registrator/control — the owner\'s account only', () => {
@@ -201,6 +222,7 @@ describe('/api/v1/leads/ai-registrator/control — the owner\'s account only', (
   it('is 403 for it without the section, and 401 signed out', async () => {
     state.principal = principal({ aiControl: true, sections: ['leads'] })
     expect((await read()).status).toBe(403)
+    expect((await control.GET(new Request('http://localhost:3000/api/v1/leads/ai-registrator/control?part=live'))).status).toBe(403)
     state.principal = null
     expect((await read()).status).toBe(401)
   })
@@ -208,6 +230,11 @@ describe('/api/v1/leads/ai-registrator/control — the owner\'s account only', (
   it('opens and saves for it', async () => {
     state.principal = principal({ aiControl: true, login: 'adminjon' })
     expect((await read()).status).toBe(200)
+    // The page's 5 s poll: the last report alone, behind the same door.
+    const live = await control.GET(new Request('http://localhost:3000/api/v1/leads/ai-registrator/control?part=live'))
+    expect(live.status).toBe(200)
+    expect((await live.json()).data).toEqual({ status: null, staleAfterSec: 90 })
+    expect((await control.GET(new Request('http://localhost:3000/api/v1/leads/ai-registrator/control?part=all'))).status).toBe(400)
     expect((await write(body)).status).toBe(200)
     expect(state.saves).toHaveLength(1)
     expect(state.savers).toEqual([{ label: 'adminjon', userId: 'u-1' }])

@@ -70,10 +70,10 @@ describe('controlChanges — the audit', () => {
 })
 
 describe('statusIsStale', () => {
-  it('is stale after two minutes and with no report at all', () => {
+  it('is stale after ninety seconds and with no report at all', () => {
     const now = new Date('2026-10-30T10:00:00Z')
     expect(statusIsStale(new Date('2026-10-30T09:58:30Z'), now)).toBe(false)
-    expect(statusIsStale(new Date('2026-10-30T09:57:59Z'), now)).toBe(true)
+    expect(statusIsStale(new Date('2026-10-30T09:58:29Z'), now)).toBe(true)
     expect(statusIsStale(null, now)).toBe(true)
   })
 })

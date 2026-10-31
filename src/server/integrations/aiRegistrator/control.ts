@@ -4,12 +4,20 @@
  *
  *   GET  /api/ai-registrator/config  → { version, sellers, maxCalls, maxNew,
  *        maxRetry, saleHandoff, updatedAt, updatedBy }   (404 until saved)
- *   POST /api/ai-registrator/status  ← what the agent runs, every 30 s
+ *   POST /api/ai-registrator/status  ← what the agent runs, every 5 s while a
+ *        line is busy, else every 30 s
  *
  * The STATUS is validated for shape and bounded in size, and kept as sent:
  * a line state or a seller state the agent learns tomorrow («seller_talk»
  * arrived before this was written) must still be stored and shown as given,
  * not refused — the same rule `ingest.ts` keeps for an outcome.
+ *
+ * `live` (2026-10-31, the owner: «qaysi SIP'lardan, kim kimga ulanayapti,
+ * real vaqtda») is who each AI line talks to now and the last put-throughs —
+ * `ai_registrator/app/telephony/live.py`. It is the newest part of the
+ * report, so it is the part that may not fail it: an element the agent got
+ * wrong is dropped, a `live` that is not one at all reads as null, and the
+ * limits, lines and sellers beside it are stored as ever.
  */
 
 import { z } from 'zod'
@@ -20,6 +28,58 @@ const instant = z.iso.datetime({ offset: true })
 const word = z.string().trim().regex(/^[a-z_]{1,32}$/)
 const count = z.number().int().min(0).max(1_000_000)
 const ext = z.string().trim().min(1).max(20)
+
+/** A line state or an outcome the agent may coin later — shown raw until the panel learns it. */
+const liveWord = z.string().trim().regex(/^[a-z][a-z0-9_]{0,39}$/)
+const deal = z.number().int().min(0).nullable().default(null)
+const product = z.string().trim().max(40).nullable().default(null)
+
+/**
+ * The client's first name, as the agent takes it from Bitrix24 — with every
+ * digit dropped: the repo is public and a phone number never reaches the
+ * panel, even one typed into a name field.
+ */
+const clientName = z.string().transform((s) => s.replace(/[\d+]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60))
+
+/** One AI line's call now: dialing → talking → transfer → ringing_seller → with_seller. */
+const liveCall = z.object({
+  line: ext,
+  deal,
+  product,
+  client: clientName.default(''),
+  test: z.boolean().default(false),
+  state: liveWord,
+  since: instant,
+  seller: ext.nullable().default(null),
+  connected: z.boolean().optional(),
+})
+
+/** A call put through to a seller («connected»), or one that ended after the client answered. */
+const liveEvent = z.object({
+  at: instant,
+  line: ext,
+  deal,
+  product,
+  client: clientName.default(''),
+  test: z.boolean().default(false),
+  what: liveWord,
+  seller: ext.nullable().default(null),
+})
+
+/** Each element on its own, at most `max` of them: one that is wrong is dropped, never the report it came in. */
+function each<T extends z.ZodType>(schema: T, max: number) {
+  return z.array(z.unknown()).transform((items) =>
+    items.slice(0, max).flatMap((item) => {
+      const parsed = schema.safeParse(item)
+      return parsed.success ? [parsed.data as z.output<T>] : []
+    }),
+  )
+}
+
+const liveSchema = z.object({
+  lines: each(liveCall, 32).default([]),
+  recent: each(liveEvent, 50).default([]),
+})
 
 export const aiStatusSchema = z.object({
   at: instant,
@@ -44,10 +104,14 @@ export const aiStatusSchema = z.object({
         state: word.default('unknown'),
         inList: z.boolean().default(true),
         transfersToday: count.default(0),
+        // Whose seller this is, and whether one of the AI's calls rings them now — a nicety, never a refusal.
+        product: product.catch(null),
+        aiRinging: z.boolean().default(false).catch(false),
       }),
     )
     .max(200)
     .default([]),
+  live: liveSchema.nullable().default(null).catch(null),
   today: z
     .object({
       calls: count.default(0),

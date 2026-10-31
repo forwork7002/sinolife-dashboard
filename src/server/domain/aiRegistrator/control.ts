@@ -132,11 +132,12 @@ export function sellersDelta(before: readonly string[], after: readonly string[]
 }
 
 /**
- * The agent reports every 30 s; a report older than this means it has stopped
- * (or cannot reach us), and the panel says «AI'dan xabar yoʻq» rather than
- * show the last picture as if it were live.
+ * The agent reports every 5 s while a line is busy and every 30 s otherwise;
+ * three idle reports missed means it has stopped (or cannot reach us), and the
+ * panel says «AI javob bermayapti» rather than show the last picture as if it
+ * were live (2026-10-31: «≤ 60–90 s»).
  */
-export const STATUS_STALE_MS = 2 * 60_000
+export const STATUS_STALE_MS = 90_000
 
 export function statusIsStale(receivedAt: Date | null, now: Date): boolean {
   return receivedAt === null || now.getTime() - receivedAt.getTime() > STATUS_STALE_MS

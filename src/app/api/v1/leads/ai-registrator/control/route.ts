@@ -22,11 +22,14 @@ function assertAiControl(principal: Parameters<typeof canControlAi>[0]): void {
 
 /**
  * «AI registrator → Boshqaruv»: the saved settings, the agent's last report
- * (stale after two minutes), the extensions' names and the audit of saves.
+ * (stale after ninety seconds), the extensions' names and the audit of saves.
+ * `?part=live` is the page's 5 s poll — the last report alone, one row read.
  */
-export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
+export const GET = getHandler(ACCESS, z.object({ part: z.enum(['live']).optional() }), async (ctx) => {
   assertAiControl(ctx.principal)
-  return { data: await aiRegistratorControlService.panel(ctx.now) }
+  return {
+    data: ctx.query.part === 'live' ? await aiRegistratorControlService.live(ctx.now) : await aiRegistratorControlService.panel(ctx.now),
+  }
 })
 
 /** «Saqlash» — the next version, its audit row; the agent picks it up on its next read. */
