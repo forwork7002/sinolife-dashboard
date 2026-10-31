@@ -31,21 +31,73 @@ describe('microUsd — Meta\'s dollar strings, without a float in between', () =
 })
 
 describe('metaLeads — Meta\'s own lead count', () => {
+  const UMAR_64 = '990016692137088'
+  const ZEXTRA_AI = '1426259419634277'
+  const COLLAGEN_AI = '1052133867828964'
+
   it('reads the `lead` action and ignores the rest', () => {
     expect(
-      metaLeads({
-        date_start: '2026-08-01',
-        actions: [
-          { action_type: 'link_click', value: '500' },
-          { action_type: 'lead', value: '86' },
-          { action_type: 'onsite_conversion.lead_grouped', value: '86' },
-        ],
-      }),
+      metaLeads(
+        {
+          date_start: '2026-08-01',
+          actions: [
+            { action_type: 'link_click', value: '500' },
+            { action_type: 'lead', value: '86' },
+            { action_type: 'onsite_conversion.lead_grouped', value: '86' },
+          ],
+        },
+        UMAR_64,
+      ),
     ).toBe(86)
   })
 
   it('is zero on a day with no leads', () => {
-    expect(metaLeads({ date_start: '2026-08-01' })).toBe(0)
+    expect(metaLeads({ date_start: '2026-08-01' }, UMAR_64)).toBe(0)
+    expect(metaLeads({ date_start: '2026-08-01' }, ZEXTRA_AI)).toBe(0)
+  })
+
+  it('counts the AI targetolog\'s form leads once — not again as the Conversions API «Lead» it echoes (2026-10-31)', () => {
+    // «Zextra AI Targetolog» on 31.10, as Meta answered it: lead 501 = form 255 + pixel 246.
+    const echoed = {
+      date_start: '2026-10-31',
+      actions: [
+        { action_type: 'lead', value: '501' },
+        { action_type: 'onsite_conversion.lead_grouped', value: '255' },
+        { action_type: 'offsite_conversion.fb_pixel_lead', value: '246' },
+        { action_type: 'onsite_web_lead', value: '246' },
+      ],
+    }
+    expect(metaLeads(echoed, ZEXTRA_AI)).toBe(255)
+    expect(
+      metaLeads(
+        {
+          date_start: '2026-10-31',
+          actions: [
+            { action_type: 'lead', value: '44' },
+            { action_type: 'onsite_conversion.lead_grouped', value: '22' },
+            { action_type: 'offsite_conversion.fb_pixel_lead', value: '22' },
+          ],
+        },
+        COLLAGEN_AI,
+      ),
+    ).toBe(22)
+    // Any other account keeps Meta's `lead`: a person's website leads are real leads.
+    expect(metaLeads(echoed, UMAR_64)).toBe(501)
+  })
+
+  it('keeps `lead` on an AI row without form leads — a site campaign\'s leads are the pixel\'s', () => {
+    expect(
+      metaLeads(
+        {
+          date_start: '2026-10-31',
+          actions: [
+            { action_type: 'lead', value: '7' },
+            { action_type: 'offsite_conversion.fb_pixel_lead', value: '7' },
+          ],
+        },
+        COLLAGEN_AI,
+      ),
+    ).toBe(7)
   })
 })
 

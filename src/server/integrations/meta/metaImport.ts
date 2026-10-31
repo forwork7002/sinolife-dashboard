@@ -40,7 +40,7 @@
 
 import type { PrismaClient } from '@/generated/prisma/client'
 
-import { META_ACCOUNT_OWNERS } from './accounts'
+import { LEAD_ECHO_ACCOUNTS, META_ACCOUNT_OWNERS } from './accounts'
 
 export const GRAPH = 'https://graph.facebook.com/v21.0'
 
@@ -113,10 +113,25 @@ export function microUsd(spend: string | undefined): bigint {
   return BigInt(whole || '0') * 1_000_000n + BigInt((fraction + '000000').slice(0, 6))
 }
 
-/** Meta's own lead count — the `lead` action, which already sums its sources. */
-export function metaLeads(row: InsightRow): number {
-  const lead = row.actions?.find((a) => a.action_type === 'lead')
-  return lead ? Number(lead.value) : 0
+/**
+ * Meta's own lead count — the `lead` action, which already sums its sources.
+ *
+ * EXCEPT ON AN ACCOUNT THAT ECHOES ITS LEADS (`LEAD_ECHO_ACCOUNTS`, 2026-10-31):
+ * there `lead` holds every form lead twice, the fill and the Conversions API
+ * «Lead» the AI targetolog sends back for it, and its card read 539 Facebook
+ * form leads against 269 in Bitrix24 — «Qamrov» 49.9 %, «1 lead narxi» half
+ * the real one. On such an account a row with form leads counts them alone
+ * (`onsite_conversion.lead_grouped`), as the AI targetolog's own dashboard
+ * does (`meta_reader.pick_leads`); a row without them — a site campaign —
+ * keeps `lead`. The account is a required argument so no grain forgets it.
+ */
+export function metaLeads(row: InsightRow, accountId: string): number {
+  const count = (type: string) => Number(row.actions?.find((a) => a.action_type === type)?.value ?? 0)
+  if (LEAD_ECHO_ACCOUNTS.has(accountId)) {
+    const form = count('onsite_conversion.lead_grouped')
+    if (form > 0) return form
+  }
+  return count('lead')
 }
 
 /**
@@ -620,7 +635,7 @@ async function importAccountGrain(
         spendMicroUsd: microUsd(row.spend),
         impressions: BigInt(row.impressions ?? '0'),
         clicks: BigInt(row.clicks ?? '0'),
-        leads: metaLeads(row),
+        leads: metaLeads(row, account.account_id),
       })),
     }),
   ])
@@ -695,7 +710,7 @@ async function importCampaignGrain(
           spendMicroUsd: microUsd(row.spend),
           impressions: BigInt(row.impressions ?? '0'),
           clicks: BigInt(row.clicks ?? '0'),
-          leads: metaLeads(row),
+          leads: metaLeads(row, account.account_id),
           conversations: metaConversations(row),
         })),
     }),
@@ -816,7 +831,7 @@ export function adInsightRow(account: Account, row: InsightRow) {
     // Per day: summing it over a window overstates unique reach (schema.prisma).
     reach: BigInt(row.reach || '0'),
     clicks: BigInt(row.clicks || '0'),
-    leads: metaLeads(row),
+    leads: metaLeads(row, account.account_id),
   }
 }
 

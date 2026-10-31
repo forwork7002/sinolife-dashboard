@@ -118,6 +118,21 @@ export function ownerOf(accountId: string, accountName: string): MetaAccountOwne
 }
 
 /**
+ * The accounts whose form leads reach Meta a second time — the AI
+ * targetolog's two. Its integration sends a Conversions API «Lead» for every
+ * lead it takes off a form, and Meta files that as a pixel lead INSIDE the
+ * `lead` action, beside the fill it echoes. Read live on 2026-10-31: «Zextra
+ * AI Targetolog» answered `lead` 501 = form 255 + pixel 246 that day, «Collagen
+ * AI Targetolog» 44 = 22 + 22; over 25–31.10 the other fourteen accounts'
+ * `lead` was their form leads alone, pixel 0. Unlike the owners above this is
+ * read at IMPORT (`metaLeads`): the stored count is the corrected one.
+ */
+export const LEAD_ECHO_ACCOUNTS: ReadonlySet<string> = new Set([
+  '1052133867828964', // Collagen AI Targetolog
+  '1426259419634277', // Zextra (AI BM)
+])
+
+/**
  * Which of the client's sheets a campaign's money belongs on.
  *
  *   form   — «Отчёт Т», the targetolog's lead-form campaigns (OUTCOME_LEADS).

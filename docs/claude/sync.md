@@ -212,6 +212,13 @@
   read that comes back empty over days that hold spend deletes nothing; the
   campaign and ad grains replace only the campaigns / ads Meta answered for.
   The log names what stayed: «meta javob bermadi — eski maʼlumot saqlandi».
+  **The AI targetolog's leads are counted once (2026-10-31)**: its two
+  accounts (`LEAD_ECHO_ACCOUNTS`) send a Conversions API «Lead» back for every
+  form lead, and Meta's `lead` action counts it again as a pixel lead (31.10:
+  501 = 255 + 246). `metaLeads` stores `onsite_conversion.lead_grouped` there
+  whenever a row has any; every other account keeps `lead`. The fix reaches
+  stored days through the re-reads above — the last week at once, 37 days by
+  the next night (the AI accounts' first spend is 2026-09-29).
 - **Roistat is on the wall clock too (2026-10-22)**: `SYNC_ROISTAT_MIN` (60)
   since the newest `marketing_snapshot.importedAt`. It was `tick % 60` — two
   hours at 120 s, and never on a day of deploys under two hours apart.
