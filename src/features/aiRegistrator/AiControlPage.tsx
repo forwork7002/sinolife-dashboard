@@ -6,9 +6,10 @@ import { useState, useSyncExternalStore } from 'react'
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { Callout } from '@/components/ui/Callout'
-import { ChartCard } from '@/components/ui/Card'
+import { Card, ChartCard } from '@/components/ui/Card'
 import { StatusChip } from '@/components/ui/Stat'
-import { LiveBoard, ProductPill, StatePill } from '@/features/aiRegistrator/AiLiveBoard'
+import { ChevronGlyph } from '@/components/ui/Icons'
+import { HowItWorks, LiveBoard, ProductPill, StatePill } from '@/features/aiRegistrator/AiLiveBoard'
 import { type AiStatus, type Product, type Tone, isFresh, productOf, sellerLook } from '@/features/aiRegistrator/aiLiveLogic'
 import { PageShell } from '@/features/shared/PageShell'
 import { ApiClientError, apiGet, apiWrite } from '@/lib/api'
@@ -162,6 +163,8 @@ export function AiControlPage() {
   const data = query.data?.data
   const [draft, setDraft] = useState<Draft | null>(null)
   const [saved, setSaved] = useState<number | null>(null)
+  // The settings are folded under the live part (31.10: «tartibliroq»); a draft survives folding — it lives here.
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const base = data?.config ? draftOf(data.config) : null
   const editing = draft ?? base
@@ -202,7 +205,7 @@ export function AiControlPage() {
   return (
     <PageShell
       title="AI registrator · Boshqaruv"
-      description="AI qoʻngʻiroqlari jonli: kim kim bilan gaplashyapti va qaysi sotuvchiga ulanyapti — har 5 soniyada yangilanadi."
+      description={null}
       accent="var(--series-1)"
       period={false}
       actions={
@@ -223,7 +226,7 @@ export function AiControlPage() {
           <LoadingSkeleton rows={6} />
         )
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           <LiveBoard
             status={status}
             saved={data.config}
@@ -233,26 +236,45 @@ export function AiControlPage() {
             updateFailed={liveQuery.isError}
             nameOf={nameOf}
           />
-          <section aria-label="Boshqaruv" className="flex flex-col gap-4">
-            <h2 className="text-[19px] font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
-              Boshqaruv — sotuvchilar va limitlar
-            </h2>
-            <AckBar data={data} status={status} saved={saved} />
-            <SaveBar
-              dirty={dirty}
-              pending={save.isPending}
-              error={save.error instanceof Error ? save.error.message : null}
-              onSave={() => editing && save.mutate(editing)}
-              onCancel={() => {
-                setDraft(null)
-                save.reset()
-              }}
-              problem={editing.sellers.length === 0 ? 'Kamida bitta sotuvchi yoqiq boʻlsin.' : null}
-            />
-            <Sellers data={data} status={fresh ? status : null} draft={editing} onChange={change} />
-            <Limits data={data} draft={editing} onChange={change} />
+          <section aria-label="Sozlamalar" className="flex flex-col gap-4">
+            <Card>
+              <button
+                type="button"
+                aria-expanded={settingsOpen}
+                aria-controls="ai-control-settings"
+                onClick={() => setSettingsOpen(!settingsOpen)}
+                className="focusable flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left sm:px-5"
+              >
+                <ChevronGlyph direction={settingsOpen ? 'down' : 'right'} size={14} />
+                <span className="text-[17px] font-semibold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
+                  Sozlamalar — sotuvchilar roʻyxati va limitlar
+                </span>
+                <span className="text-[13px]" style={{ color: dirty ? 'var(--status-warning)' : 'var(--ink-secondary)' }}>
+                  {dirty ? 'saqlanmagan oʻzgarish bor' : `v${data.config?.version ?? '—'}`}
+                </span>
+              </button>
+            </Card>
+            {settingsOpen && (
+              <div id="ai-control-settings" className="flex flex-col gap-4">
+                <AckBar data={data} status={status} saved={saved} />
+                <SaveBar
+                  dirty={dirty}
+                  pending={save.isPending}
+                  error={save.error instanceof Error ? save.error.message : null}
+                  onSave={() => editing && save.mutate(editing)}
+                  onCancel={() => {
+                    setDraft(null)
+                    save.reset()
+                  }}
+                  problem={editing.sellers.length === 0 ? 'Kamida bitta sotuvchi yoqiq boʻlsin.' : null}
+                />
+                <Sellers data={data} status={fresh ? status : null} draft={editing} onChange={change} />
+                <Limits data={data} draft={editing} onChange={change} />
+                <History data={data} />
+              </div>
+            )}
           </section>
-          <History data={data} />
+          <HowItWorks />
         </div>
       )}
     </PageShell>

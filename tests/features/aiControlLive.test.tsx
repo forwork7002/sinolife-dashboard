@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AiReport, AiStatus } from '@/features/aiRegistrator/aiLiveLogic'
@@ -84,63 +84,63 @@ const card = (label: string) => screen.getByRole('listitem', { name: label })
 const group = (label: string) => screen.getByRole('region', { name: label })
 
 describe('LiveBoard', () => {
-  it('leads with the AI working, the busy lines and the limit it applies beside the saved one', () => {
+  it('leads with one status line: the AI working, the busy lines, the limit, the time — the saved limits under it', () => {
     render(<LiveBoard {...props()} />)
     expect(screen.getByRole('status').textContent).toBe('AI ishlayapti')
-    expect(screen.getByText('5/8')).toBeTruthy()
-    expect(screen.getByText('= 4 yangi lid + 2 nedozvon')).toBeTruthy()
+    const line = screen.getByRole('status').parentElement!.textContent
+    expect(line).toContain('5/8 band')
+    expect(line).toContain('limit 6 (4 yangi + 2 nedozvon)')
+    expect(line).toContain('yangilandi 10:00:41')
     expect(screen.getByText('Saqlangan: 4/4/0 · AI qoʻllagani: 6/4/2 (v3)')).toBeTruthy()
-    expect(screen.getByText('Yangilandi 10:00:41')).toBeTruthy()
-    expect(screen.getByText('Bu sahifa qanday ishlaydi?')).toBeTruthy()
   })
 
-  it('shows the day as a funnel with its percentages, and explains the ATS figure', () => {
+  it('gives every AI line one row: who, what, which seller, how long', () => {
     render(<LiveBoard {...props()} />)
-    const funnel = screen.getByRole('list', { name: 'Bugungi voronka' })
-    expect(funnel.textContent).toContain('55%')
-    expect(funnel.textContent).toContain('koʻtarganlarning 32%')
+    const row = (line: string) => card(`Liniya ${line}`)
+    expect(within(row('290')).getByText('Mijozga terilmoqda')).toBeTruthy()
+    expect(within(row('290')).getByText('Aziz')).toBeTruthy()
+    expect(within(row('291')).getByText('Mijoz bilan gaplashyapti')).toBeTruthy()
+    expect(within(row('291')).getByText('00:42')).toBeTruthy()
+    expect(within(row('291')).getByRole('link', { name: 'Sdelka 1002 — Bitrix24' }).getAttribute('href')).toBe('https://obey.bitrix24.kz/crm/deal/details/1002/')
+    expect(within(row('292')).getByText('Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda')).toBeTruthy()
+    expect(within(row('292')).getByText('Sinov')).toBeTruthy()
+    expect(within(row('292')).getByText('Zextra')).toBeTruthy()
+    expect(within(row('293')).getByText('Sotuvchiga ulanyapti')).toBeTruthy()
+    expect(within(row('293')).getByText('122 Malika')).toBeTruthy()
+    expect(within(row('295')).getByText('Sotuvchi bilan')).toBeTruthy()
+    expect(within(row('295')).getByText('120 Dilnoza')).toBeTruthy()
+    expect(within(row('178')).getByText('Boʻsh')).toBeTruthy()
+    expect(within(row('296')).getByText('ATSʼda roʻyxatda emas')).toBeTruthy()
+  })
+
+  it('orders the rows so they stand still: Collagen\'s by number, then Zextra\'s', () => {
+    render(<LiveBoard {...props()} />)
+    const lines = screen.getAllByRole('listitem', { name: /^Liniya / }).map((li) => li.getAttribute('aria-label'))
+    expect(lines).toEqual(['Liniya 178', 'Liniya 290', 'Liniya 291', 'Liniya 293', 'Liniya 295', 'Liniya 296', 'Liniya 297', 'Liniya 292'])
+  })
+
+  it('lists the last put-throughs under the lines, newest first', () => {
+    render(<LiveBoard {...props()} />)
+    const rows = screen.getByRole('heading', { name: 'Soʻnggi ulanishlar' }).closest('section')!.querySelectorAll('ul > li')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.textContent).toContain('120 Dilnoza')
+    expect(rows[1]!.textContent).toContain('Gaplashmay qoʻydi')
+  })
+
+  it('says the day in one line, with its percentages and the ATS figure explained', () => {
+    render(<LiveBoard {...props()} />)
+    const day = screen.getByText('Qoʻngʻiroq').closest('p')!.textContent
+    expect(day).toContain('Koʻtardi22(55%)')
+    expect(day).toContain('Ulandi7(32%)')
     expect(screen.getByRole('button', { name: 'ATS rad etdi — izoh' })).toBeTruthy()
-  })
-
-  it('draws every busy line as a card: state, timer, client, deal, the seller it reaches', () => {
-    render(<LiveBoard {...props()} />)
-    expect(within(card('Liniya 290')).getByText('Mijozga terilmoqda')).toBeTruthy()
-    expect(within(card('Liniya 291')).getByText('Mijoz bilan gaplashyapti')).toBeTruthy()
-    expect(within(card('Liniya 291')).getByText('00:42')).toBeTruthy()
-    expect(within(card('Liniya 291')).getByText('Bobur')).toBeTruthy()
-    expect(within(card('Liniya 292')).getByText('Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda')).toBeTruthy()
-    expect(within(card('Liniya 292')).getByText('Sinov')).toBeTruthy()
-    expect(within(card('Liniya 292')).getByText('Zextra')).toBeTruthy()
-    expect(within(card('Liniya 293')).getByText('Sotuvchiga ulanyapti')).toBeTruthy()
-    expect(within(card('Liniya 293')).getByText('122 Malika')).toBeTruthy()
-    expect(within(card('Liniya 295')).getByText('Sotuvchi bilan')).toBeTruthy()
-    expect(within(card('Liniya 295')).getByText('120 Dilnoza')).toBeTruthy()
-    const link = within(card('Liniya 291')).getByRole('link', { name: /Sdelka #1002/ })
-    expect(link.getAttribute('href')).toBe('https://obey.bitrix24.kz/crm/deal/details/1002/')
-  })
-
-  it('keeps the free lines in one row and the unregistered one in red', () => {
-    render(<LiveBoard {...props()} />)
-    expect(screen.getByText('178 · 297')).toBeTruthy()
-    expect(screen.getByText('296 — ATSʼda roʻyxatda emas')).toBeTruthy()
-    expect(screen.queryByRole('listitem', { name: 'Liniya 178' })).toBeNull()
   })
 
   it('groups the sellers by what they do, the AI ringing first, names without the extension', () => {
     render(<LiveBoard {...props()} />)
     expect(within(group('Jiringlamoqda (AI) · 1')).getByRole('listitem', { name: 'Sotuvchi 122' })).toBeTruthy()
-    expect(within(group('Gaplashyapti · 1')).getByRole('listitem', { name: 'Sotuvchi 120' }).textContent).toContain('120 · Dilnoza')
-    expect(within(group('Gaplashyapti · 1')).getByText('Karimova · bugun 2 ta ulandi')).toBeTruthy()
+    expect(within(group('Gaplashyapti · 1')).getByRole('listitem', { name: 'Sotuvchi 120' }).textContent).toBe('120Dilnoza· 2')
     expect(within(group('Boʻsh · 1')).getByRole('listitem', { name: 'Sotuvchi 128' })).toBeTruthy()
     expect(within(group('Liniyada yoʻq · 1')).getByRole('listitem', { name: 'Sotuvchi 131' })).toBeTruthy()
-  })
-
-  it('lists the last put-throughs, newest first', () => {
-    render(<LiveBoard {...props()} />)
-    const rows = screen.getByText('Ulandi').closest('ul')!.querySelectorAll(':scope > li')
-    expect(rows).toHaveLength(2)
-    expect(rows[0]!.textContent).toContain('120 Dilnoza')
-    expect(rows[1]!.textContent).toContain('Gaplashmay qoʻydi')
   })
 
   it('takes the report on prod today — no live part — and a silent AI out of hours', () => {
@@ -148,8 +148,7 @@ describe('LiveBoard', () => {
     render(<LiveBoard {...props({ status: status({ report: old, receivedAt: at('18:31') }), now: new Date(at('20:00')) })} />)
     expect(screen.getByRole('status').textContent).toContain('Ish vaqti emas (09:00–18:30)')
     expect(within(card('Liniya 290')).getByText('Qoʻngʻiroqda')).toBeTruthy()
-    expect(within(card('Liniya 290')).getByText('Mijoz va sotuvchi tafsiloti AI serveri yangilangach koʻrinadi')).toBeTruthy()
-    expect(screen.getByText(/Ulanishlar lentasi AI serveri yangilangach toʻladi — bugun hozircha/).textContent).toContain('7 ta ulandi')
+    expect(screen.getByText(/AI serveri bu roʻyxatni hali yubormayapti — bugun jami 7 ta ulandi/)).toBeTruthy()
     expect(group('Holat nomaʼlum · 4')).toBeTruthy()
   })
 
@@ -181,8 +180,14 @@ describe('AiControlPage — two reads, the management kept', () => {
         <AiControlPage />
       </QueryClientProvider>,
     )
-    expect(await screen.findByRole('button', { name: 'Saqlash' })).toBeTruthy()
+    // The settings are folded under the live part; opened, they work as before.
+    const fold = await screen.findByRole('button', { name: /Sozlamalar — sotuvchilar roʻyxati va limitlar/ })
+    expect(fold.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByRole('button', { name: 'Saqlash' })).toBeNull()
+    fireEvent.click(fold)
+    expect(screen.getByRole('button', { name: 'Saqlash' })).toBeTruthy()
     expect(screen.getByRole('table', { name: 'Sotuvchilar' })).toBeTruthy()
+    expect(screen.getByText('Bu sahifa qanday ishlaydi?')).toBeTruthy()
     expect(asked.some((u) => String(u).endsWith('/api/v1/leads/ai-registrator/control?part=live'))).toBe(true)
     expect(asked.some((u) => String(u).endsWith('/api/v1/leads/ai-registrator/control'))).toBe(true)
     vi.unstubAllGlobals()

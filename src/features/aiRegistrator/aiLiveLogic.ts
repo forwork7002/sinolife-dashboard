@@ -177,6 +177,16 @@ export function limitsSplit(limits: AiLimits): string | null {
   return text && i >= 0 ? text.slice(i + 3) : null
 }
 
+/** «limit 5 (4 yangi + 1 nedozvon)» — the status line's word for what the agent applies. */
+export function limitShort(limits: AiLimits): string | null {
+  if (limits.calls == null) return null
+  const split = [
+    limits.maxNew != null && limits.maxNew > 0 ? `${limits.maxNew} yangi` : null,
+    limits.maxRetry != null && limits.maxRetry > 0 ? `${limits.maxRetry} nedozvon` : null,
+  ].filter(Boolean)
+  return split.length > 0 ? `limit ${limits.calls} (${split.join(' + ')})` : `limit ${limits.calls}`
+}
+
 /**
  * «Saqlangan: 4/4/0 · AI qoʻllagani: 6/4/2 (v7)» when the saved form and the
  * applied limits differ — the agent still on its own setting, or on an older
@@ -250,9 +260,11 @@ const MAP_STATE: Readonly<Record<string, { readonly label: string; readonly tone
   seller_talk: { label: 'Mijoz sotuvchi bilan', tone: 'good' },
 }
 
-export interface BusyLine {
+export interface LineRow {
   readonly line: string
-  /** True: the agent said who and whom; false: only that the line is on a call. */
+  /** busy: on a call (a live call, or `call` / `seller_talk` in the map); the rest one dim row each. */
+  readonly kind: 'busy' | 'free' | 'unregistered' | 'other'
+  /** True: the agent said who and whom; false: only the line map's word. */
   readonly live: boolean
   readonly state: string
   readonly label: string
@@ -260,58 +272,71 @@ export interface BusyLine {
   readonly since: string | null
   readonly client: string | null
   readonly deal: number | null
+  /** The call's product, else the one this line was last seen with — its group. */
   readonly product: Product | null
   readonly test: boolean
   readonly seller: { readonly ext: string; readonly label: string } | null
 }
 
-export interface Board {
-  /** On a call, in number order — the big cards. */
-  readonly busy: readonly BusyLine[]
-  /** Free, in number order — one dim row. */
-  readonly free: readonly string[]
-  /** Not registered on the ATS — the one real problem a line has. */
-  readonly unregistered: readonly string[]
-  /** A word the panel does not know yet, raw. */
-  readonly other: readonly { readonly line: string; readonly word: string }[]
-}
-
 const byNumber = (a: string, b: string) => Number(a) - Number(b) || a.localeCompare(b)
 
-/** Every AI line — the line map and the live calls together — sorted into the board. */
-export function boardOf(report: AiReport, nameOf: (ext: string) => string | null): Board {
+/**
+ * Which product each AI line serves, as far as the report shows: its live
+ * call, else its newest put-through, else what was learnt before. Zextra's
+ * lines are the agent's own setting (`ZEXTRA_EXTENSIONS`) and never sent, so
+ * the panel learns them from the calls and keeps them — a row that found its
+ * group stays there between polls.
+ */
+export function learnProducts(report: AiReport, known: ReadonlyMap<string, Product>): Map<string, Product> {
+  const next = new Map(known)
+  for (const e of [...(report.live?.recent ?? [])].reverse()) {
+    const p = productOf(e.product)
+    if (p) next.set(e.line, p)
+  }
+  for (const c of report.live?.lines ?? []) {
+    const p = productOf(c.product)
+    if (p) next.set(c.line, p)
+  }
+  return next
+}
+
+/**
+ * Every AI line, one row each, in an order that stands still: Collagen's lines
+ * (and any not yet known) by number, then Zextra's by number. A line on a call
+ * says who, which seller and how long; the others one word.
+ */
+export function lineRows(report: AiReport, nameOf: (ext: string) => string | null, products: ReadonlyMap<string, Product>): LineRow[] {
   const calls = new Map((report.live?.lines ?? []).map((c) => [c.line, c]))
-  const lines = [...new Set([...Object.keys(report.lines), ...calls.keys()])].sort(byNumber)
-  const busy: BusyLine[] = []
-  const free: string[] = []
-  const unregistered: string[] = []
-  const other: { line: string; word: string }[] = []
-  for (const line of lines) {
+  const lines = [...new Set([...Object.keys(report.lines), ...calls.keys()])]
+  const rows = lines.map((line): LineRow => {
     const call = calls.get(line)
+    const product = productOf(call?.product) ?? products.get(line) ?? null
     if (call) {
       const look = CALL_STATE[call.state] ?? { label: call.state, tone: 'neutral' as const }
-      busy.push({
+      return {
         line,
+        kind: 'busy',
         live: true,
         state: call.state,
         ...look,
         since: call.since,
         client: call.client || null,
         deal: call.deal,
-        product: productOf(call.product),
+        product,
         test: call.test,
         seller: call.seller ? { ext: call.seller, label: sellerLabel(call.seller, nameOf) } : null,
-      })
-      continue
+      }
     }
     const word = report.lines[line] ?? 'unknown'
+    const idle = { line, live: false, state: word, since: null, client: null, deal: null, product, test: false, seller: null }
     const mapped = MAP_STATE[word]
-    if (mapped) busy.push({ line, live: false, state: word, ...mapped, since: null, client: null, deal: null, product: null, test: false, seller: null })
-    else if (word === 'free') free.push(line)
-    else if (word === 'not_registered') unregistered.push(line)
-    else other.push({ line, word })
-  }
-  return { busy, free, unregistered, other }
+    if (mapped) return { ...idle, kind: 'busy', ...mapped }
+    if (word === 'free') return { ...idle, kind: 'free', label: 'Boʻsh', tone: 'neutral' }
+    if (word === 'not_registered') return { ...idle, kind: 'unregistered', label: 'ATSʼda roʻyxatda emas', tone: 'critical' }
+    return { ...idle, kind: 'other', label: word, tone: 'neutral' }
+  })
+  const zextra = (r: LineRow) => (r.product === 'Zextra' ? 1 : 0)
+  return rows.sort((a, b) => zextra(a) - zextra(b) || byNumber(a.line, b.line))
 }
 
 /* ── Sellers ──────────────────────────────────────────────────────────── */

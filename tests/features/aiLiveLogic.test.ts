@@ -5,12 +5,14 @@ import {
   type AiStatus,
   type LiveCall,
   type ReportSeller,
-  boardOf,
   elapsedText,
+  learnProducts,
+  limitShort,
   limitsMismatch,
   limitsSplit,
   limitsText,
   lineCount,
+  lineRows,
   nowRow,
   percent,
   productOf,
@@ -102,6 +104,9 @@ describe('the hero', () => {
     expect(limitsText({ calls: 4, maxNew: 4, maxRetry: 0 })).toBe('Bir vaqtda 4 = 4 yangi lid')
     expect(limitsText({ calls: null })).toBeNull()
     expect(limitsSplit({ calls: 3 })).toBeNull()
+    expect(limitShort(report().limits)).toBe('limit 6 (4 yangi + 2 nedozvon)')
+    expect(limitShort({ calls: 4, maxNew: 4, maxRetry: 0 })).toBe('limit 4 (4 yangi)')
+    expect(limitShort({ calls: null })).toBeNull()
     expect(limitsMismatch({ maxCalls: 4, maxNew: 4, maxRetry: 0 }, report())).toBe('Saqlangan: 4/4/0 · AI qoʻllagani: 6/4/2 (v3)')
     expect(limitsMismatch({ maxCalls: 4, maxNew: 4, maxRetry: 0 }, report({ appliedVersion: null }))).toMatch(/\(oʻz sozlamasi\)$/)
     expect(limitsMismatch({ maxCalls: 6, maxNew: 4, maxRetry: 2 }, report())).toBeNull()
@@ -114,11 +119,12 @@ describe('the hero', () => {
   })
 })
 
-describe('the board', () => {
-  const one = (c: Partial<LiveCall>) => boardOf(report({ lines: {}, live: { lines: [call(c)], recent: [] } }), nameOf).busy[0]!
+describe('the lines', () => {
+  const none = new Map()
+  const one = (c: Partial<LiveCall>) => lineRows(report({ lines: {}, live: { lines: [call(c)], recent: [] } }), nameOf, none)[0]!
 
   it('says each live state in the floor\'s words', () => {
-    expect(one({ state: 'dialing' })).toMatchObject({ label: 'Mijozga terilmoqda', tone: 'neutral', live: true })
+    expect(one({ state: 'dialing' })).toMatchObject({ kind: 'busy', label: 'Mijozga terilmoqda', tone: 'neutral', live: true })
     expect(one({ state: 'talking' })).toMatchObject({ label: 'Mijoz bilan gaplashyapti', tone: 'active', client: 'Aziz', deal: 1001, product: 'Collagen' })
     expect(one({ state: 'transfer' })).toMatchObject({ label: 'Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda', tone: 'warning' })
     expect(one({ state: 'ringing_seller', seller: '122' })).toMatchObject({ label: 'Sotuvchiga ulanyapti', seller: { ext: '122', label: '122 Sevara' } })
@@ -128,25 +134,54 @@ describe('the board', () => {
     expect(one({ product: 'Zekstra', client: '', test: true })).toMatchObject({ product: 'Zextra', client: null, test: true })
   })
 
-  it('sorts the lines: busy cards, the free row, the unregistered in red, an unknown word raw — in number order', () => {
-    const board = boardOf(report({ lines: { ...report().lines, '294': 'odd_word' } }), nameOf)
-    expect(board.busy.map((l) => [l.line, l.label])).toEqual([
-      ['291', 'Mijoz bilan gaplashyapti'],
-      ['292', 'Mijozga terilmoqda'],
-      ['295', 'Mijoz sotuvchi bilan'],
+  it('gives every line its own row — free dim, unregistered the one red, an unknown word raw — in number order', () => {
+    const rows = lineRows(report({ lines: { ...report().lines, '294': 'odd_word' } }), nameOf, none)
+    expect(rows.map((r) => [r.line, r.kind, r.label])).toEqual([
+      ['178', 'free', 'Boʻsh'],
+      ['290', 'free', 'Boʻsh'],
+      ['291', 'busy', 'Mijoz bilan gaplashyapti'],
+      ['292', 'busy', 'Mijozga terilmoqda'],
+      ['293', 'free', 'Boʻsh'],
+      ['294', 'other', 'odd_word'],
+      ['295', 'busy', 'Mijoz sotuvchi bilan'],
+      ['296', 'unregistered', 'ATSʼda roʻyxatda emas'],
+      ['297', 'free', 'Boʻsh'],
     ])
-    expect(board.busy[2]).toMatchObject({ live: false, since: null, client: null })
-    expect(board.free).toEqual(['178', '290', '293', '297'])
-    expect(board.unregistered).toEqual(['296'])
-    expect(board.other).toEqual([{ line: '294', word: 'odd_word' }])
+    expect(rows.find((r) => r.line === '296')?.tone).toBe('critical')
+    expect(rows.filter((r) => r.tone === 'critical')).toHaveLength(1)
   })
 
-  it('reads an agent before live: a line on a call is a card that says so', () => {
-    const board = boardOf(report({ live: null }), nameOf)
-    expect(board.busy.map((l) => [l.line, l.label, l.live])).toEqual([
-      ['291', 'Qoʻngʻiroqda', false],
-      ['292', 'Qoʻngʻiroqda', false],
-      ['295', 'Mijoz sotuvchi bilan', false],
+  it('reads an agent before live: a line on a call says so, with no detail', () => {
+    const rows = lineRows(report({ live: null }), nameOf, none).filter((r) => r.kind === 'busy')
+    expect(rows.map((r) => [r.line, r.label, r.live, r.since])).toEqual([
+      ['291', 'Qoʻngʻiroqda', false, null],
+      ['292', 'Qoʻngʻiroqda', false, null],
+      ['295', 'Mijoz sotuvchi bilan', false, null],
+    ])
+  })
+
+  it('keeps Zextra\'s lines together after Collagen\'s, idle ones too once their product is known', () => {
+    const r = report({
+      lines: { '178': 'free', '290': 'free', '291': 'free', '298': 'free', '299': 'free' },
+      live: {
+        lines: [call({ line: '299', product: 'Zekstra' })],
+        recent: [{ at: at('09:50').toISOString(), line: '298', deal: 7, product: 'Zekstra', client: 'Bobur', test: false, what: 'connected', seller: '131' }],
+      },
+    })
+    const learnt = learnProducts(r, new Map([['291', 'Collagen']]))
+    expect([...learnt].sort()).toEqual([
+      ['291', 'Collagen'],
+      ['298', 'Zextra'],
+      ['299', 'Zextra'],
+    ])
+    expect(lineRows(r, nameOf, learnt).map((row) => row.line)).toEqual(['178', '290', '291', '298', '299'])
+    // Between calls the remembered product holds the row in its group.
+    const idle = report({ lines: { '178': 'free', '298': 'free', '299': 'free', '300': 'free' }, live: { lines: [], recent: [] } })
+    expect(lineRows(idle, nameOf, learnt).map((row) => [row.line, row.product])).toEqual([
+      ['178', null],
+      ['300', null],
+      ['298', 'Zextra'],
+      ['299', 'Zextra'],
     ])
   })
 
