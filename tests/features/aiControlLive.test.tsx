@@ -4,7 +4,8 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AiReport, AiStatus } from '@/features/aiRegistrator/aiLiveLogic'
-import { AiControlPage, LiveBoard, type LiveBoardProps } from '@/features/aiRegistrator/AiControlPage'
+import { AiControlPage } from '@/features/aiRegistrator/AiControlPage'
+import { LiveBoard, type LiveBoardProps } from '@/features/aiRegistrator/AiLiveBoard'
 
 /**
  * «AI registrator → Boshqaruv» live board (2026-10-31): every line state on
@@ -44,7 +45,7 @@ const report: AiReport = {
   limits: { calls: 6, maxNew: 4, maxRetry: 2, saleHandoff: 'refer', maxSipLegs: 10, fused: false },
   lines: { '178': 'free', '290': 'call', '291': 'call', '292': 'call', '293': 'call', '295': 'call', '296': 'not_registered', '297': 'free' },
   sellers: [
-    { ext: '120', name: 'Dilnoza', state: 'busy', inList: true, transfersToday: 2, product: 'Kollagen', aiRinging: false },
+    { ext: '120', name: '120 Dilnoza Karimova 120', state: 'busy', inList: true, transfersToday: 2, product: 'Kollagen', aiRinging: false },
     { ext: '122', name: 'Malika', state: 'free', inList: true, transfersToday: 1, product: 'Kollagen', aiRinging: true },
     { ext: '128', name: 'Sevara', state: 'free', inList: true, transfersToday: 0, product: 'Kollagen', aiRinging: false },
     { ext: '131', name: 'Kamola', state: 'offline', inList: true, transfersToday: 0, product: 'Zekstra', aiRinging: false },
@@ -74,49 +75,72 @@ const props = (over: Partial<LiveBoardProps> = {}): LiveBoardProps => ({
   now: new Date(at('10:00', '42')),
   updatedAt: at('10:00', '41'),
   updateFailed: false,
-  nameOf: (ext) => ({ '120': 'Dilnoza', '122': 'Malika' })[ext] ?? null,
+  nameOf: (ext: string) => ({ '120': '120 Dilnoza Karimova 120', '122': 'Malika' } as Record<string, string>)[ext] ?? null,
   ...over,
 })
 
 const card = (label: string) => screen.getByRole('listitem', { name: label })
 
+const group = (label: string) => screen.getByRole('region', { name: label })
+
 describe('LiveBoard', () => {
-  it('says the AI works, the day\'s numbers and the limits it applies beside the saved ones', () => {
+  it('leads with the AI working, the busy lines and the limit it applies beside the saved one', () => {
     render(<LiveBoard {...props()} />)
-    expect(screen.getByRole('status').textContent).toContain('AI ishlayapti · 5 liniya band / 8')
-    expect(screen.getByText('Yangilandi: 10:00:41')).toBeTruthy()
-    expect(screen.getByText('Bir vaqtda 6 = 4 yangi lid + 2 nedozvon')).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toBe('AI ishlayapti')
+    expect(screen.getByText('5/8')).toBeTruthy()
+    expect(screen.getByText('= 4 yangi lid + 2 nedozvon')).toBeTruthy()
     expect(screen.getByText('Saqlangan: 4/4/0 · AI qoʻllagani: 6/4/2 (v3)')).toBeTruthy()
+    expect(screen.getByText('Yangilandi 10:00:41')).toBeTruthy()
+    expect(screen.getByText('Bu sahifa qanday ishlaydi?')).toBeTruthy()
   })
 
-  it('draws every line state on its card, the test call and the deal link', () => {
+  it('shows the day as a funnel with its percentages, and explains the ATS figure', () => {
     render(<LiveBoard {...props()} />)
-    expect(within(card('Liniya 178')).getByText('Boʻsh')).toBeTruthy()
-    expect(within(card('Liniya 290')).getByText('Mijozga terilmoqda · Aziz · 0:42')).toBeTruthy()
-    expect(within(card('Liniya 291')).getByText('AI ↔ Bobur · Kollagen · 0:42')).toBeTruthy()
-    expect(within(card('Liniya 292')).getByText('Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda · 0:42')).toBeTruthy()
-    expect(within(card('Liniya 292')).getByText('SINOV')).toBeTruthy()
+    const funnel = screen.getByRole('list', { name: 'Bugungi voronka' })
+    expect(funnel.textContent).toContain('55%')
+    expect(funnel.textContent).toContain('koʻtarganlarning 32%')
+    expect(screen.getByRole('button', { name: 'ATS rad etdi — izoh' })).toBeTruthy()
+  })
+
+  it('draws every busy line as a card: state, timer, client, deal, the seller it reaches', () => {
+    render(<LiveBoard {...props()} />)
+    expect(within(card('Liniya 290')).getByText('Mijozga terilmoqda')).toBeTruthy()
+    expect(within(card('Liniya 291')).getByText('Mijoz bilan gaplashyapti')).toBeTruthy()
+    expect(within(card('Liniya 291')).getByText('00:42')).toBeTruthy()
+    expect(within(card('Liniya 291')).getByText('Bobur')).toBeTruthy()
+    expect(within(card('Liniya 292')).getByText('Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda')).toBeTruthy()
+    expect(within(card('Liniya 292')).getByText('Sinov')).toBeTruthy()
     expect(within(card('Liniya 292')).getByText('Zextra')).toBeTruthy()
-    expect(within(card('Liniya 293')).getByText('Sotuvchi 122 (Malika) ga jiringlayapti · 0:42')).toBeTruthy()
-    expect(within(card('Liniya 295')).getByText('Sotuvchi 120 (Dilnoza) bilan ulandi · 0:42')).toBeTruthy()
-    expect(within(card('Liniya 296')).getByText('ATSʼda roʻyxatda emas')).toBeTruthy()
-    const link = within(card('Liniya 291')).getByRole('link', { name: /Bitim 1002/ })
+    expect(within(card('Liniya 293')).getByText('Sotuvchiga ulanyapti')).toBeTruthy()
+    expect(within(card('Liniya 293')).getByText('122 Malika')).toBeTruthy()
+    expect(within(card('Liniya 295')).getByText('Sotuvchi bilan')).toBeTruthy()
+    expect(within(card('Liniya 295')).getByText('120 Dilnoza')).toBeTruthy()
+    const link = within(card('Liniya 291')).getByRole('link', { name: /Sdelka #1002/ })
     expect(link.getAttribute('href')).toBe('https://obey.bitrix24.kz/crm/deal/details/1002/')
   })
 
-  it('colours the sellers: the AI ringing first, then talking, free, off the line — by product', () => {
+  it('keeps the free lines in one row and the unregistered one in red', () => {
     render(<LiveBoard {...props()} />)
-    expect(within(card('Sotuvchi 122')).getByText(/AI jiringlatmoqda/)).toBeTruthy()
-    expect(within(card('Sotuvchi 120')).getByText(/Gaplashyapti · bugun 2 ta ulandi/)).toBeTruthy()
-    expect(within(card('Sotuvchi 128')).getByText(/Boʻsh/)).toBeTruthy()
-    expect(within(card('Sotuvchi 131')).getByText(/Liniyada yoʻq/)).toBeTruthy()
-    expect(screen.getByText('Zextra', { selector: '.eyebrow' })).toBeTruthy()
+    expect(screen.getByText('178 · 297')).toBeTruthy()
+    expect(screen.getByText('296 — ATSʼda roʻyxatda emas')).toBeTruthy()
+    expect(screen.queryByRole('listitem', { name: 'Liniya 178' })).toBeNull()
+  })
+
+  it('groups the sellers by what they do, the AI ringing first, names without the extension', () => {
+    render(<LiveBoard {...props()} />)
+    expect(within(group('Jiringlamoqda (AI) · 1')).getByRole('listitem', { name: 'Sotuvchi 122' })).toBeTruthy()
+    expect(within(group('Gaplashyapti · 1')).getByRole('listitem', { name: 'Sotuvchi 120' }).textContent).toContain('120 · Dilnoza')
+    expect(within(group('Gaplashyapti · 1')).getByText('Karimova · bugun 2 ta ulandi')).toBeTruthy()
+    expect(within(group('Boʻsh · 1')).getByRole('listitem', { name: 'Sotuvchi 128' })).toBeTruthy()
+    expect(within(group('Liniyada yoʻq · 1')).getByRole('listitem', { name: 'Sotuvchi 131' })).toBeTruthy()
   })
 
   it('lists the last put-throughs, newest first', () => {
     render(<LiveBoard {...props()} />)
-    expect(screen.getByText('295 → 120 (Dilnoza) · Kollagen · Nodira — ulandi')).toBeTruthy()
-    expect(screen.getByText('291 · Olim — gaplashmay qoʻydi')).toBeTruthy()
+    const rows = screen.getByText('Ulandi').closest('ul')!.querySelectorAll(':scope > li')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]!.textContent).toContain('120 Dilnoza')
+    expect(rows[1]!.textContent).toContain('Gaplashmay qoʻydi')
   })
 
   it('takes the report on prod today — no live part — and a silent AI out of hours', () => {
@@ -124,8 +148,9 @@ describe('LiveBoard', () => {
     render(<LiveBoard {...props({ status: status({ report: old, receivedAt: at('18:31') }), now: new Date(at('20:00')) })} />)
     expect(screen.getByRole('status').textContent).toContain('Ish vaqti emas (09:00–18:30)')
     expect(within(card('Liniya 290')).getByText('Qoʻngʻiroqda')).toBeTruthy()
-    expect(screen.getByText('AI bu maʼlumotni hali yubormayapti.')).toBeTruthy()
-    expect(screen.getByText(/Eskirgan — AI javob bermayapti/)).toBeTruthy()
+    expect(within(card('Liniya 290')).getByText('Mijoz va sotuvchi tafsiloti AI serveri yangilangach koʻrinadi')).toBeTruthy()
+    expect(screen.getByText(/Ulanishlar lentasi AI serveri yangilangach toʻladi — bugun hozircha/).textContent).toContain('7 ta ulandi')
+    expect(group('Holat nomaʼlum · 4')).toBeTruthy()
   })
 
   it('is red when the AI is silent within the day', () => {

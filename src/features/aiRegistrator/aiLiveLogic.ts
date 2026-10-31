@@ -13,7 +13,13 @@ import { APP_TIME_ZONE, formatDateTime, formatTime, tashkentDay } from '@/lib/fo
  * `aiRinging` are optional: a row stored before they existed reads without.
  */
 
-export type Tone = 'good' | 'warning' | 'critical' | 'neutral'
+/**
+ * The board's colours, by meaning. Red is for a real problem only (a line the
+ * ATS does not know) — a seller on a call is the floor working, `active`
+ * (the owner, 31.10: «qizil — faqat haqiqiy muammo uchun»); a failed put-
+ * through is a warning in orange, `caution`, not an alarm.
+ */
+export type Tone = 'good' | 'warning' | 'critical' | 'neutral' | 'active' | 'caution'
 
 export interface LiveCall {
   readonly line: string
@@ -113,20 +119,26 @@ function whenText(iso: string, now: Date): string {
   return tashkentDay(new Date(iso)) === tashkentDay(now) ? formatTime(iso) : formatDateTime(iso)
 }
 
-const IDLE_WORDS = new Set(['free', 'not_registered', 'unknown'])
+/** The line map's words for a line on a call — the AI's own, or handed to a seller over a bridge. */
+const BUSY_WORDS = new Set(['call', 'seller_talk'])
 
 /** Every AI line the report names — the line map and the live calls together — and how many are on a call. */
 export function lineCount(report: AiReport): { readonly busy: number; readonly total: number } {
   const calls = new Set((report.live?.lines ?? []).map((c) => c.line))
   const all = new Set([...Object.keys(report.lines), ...calls])
   let busy = 0
-  for (const line of all) if (calls.has(line) || !IDLE_WORDS.has(report.lines[line] ?? 'unknown')) busy += 1
+  for (const line of all) if (calls.has(line) || BUSY_WORDS.has(report.lines[line] ?? '')) busy += 1
   return { busy, total: all.size }
+}
+
+/** «31%» of a whole, «—» of nothing. */
+export function percent(part: number, whole: number): string {
+  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : '—'
 }
 
 export interface NowRow {
   readonly tone: Tone
-  readonly text: string
+  readonly title: string
   readonly detail: string | null
 }
 
@@ -136,18 +148,15 @@ export interface NowRow {
  * day it is the alarm (red) — the agent stopped or cannot reach the dashboard.
  */
 export function nowRow(status: AiStatus | null, now: Date, staleAfterSec: number): NowRow {
-  if (status && isFresh(status, now, staleAfterSec)) {
-    const { busy, total } = lineCount(status.report)
-    return { tone: 'good', text: total > 0 ? `AI ishlayapti · ${busy} liniya band / ${total}` : 'AI ishlayapti', detail: null }
-  }
+  if (status && isFresh(status, now, staleAfterSec)) return { tone: 'good', title: 'AI ishlayapti', detail: null }
   const last = status ? `oxirgi xabar ${whenText(status.receivedAt, now)}` : null
   switch (workPhase(now)) {
     case 'off':
-      return { tone: 'neutral', text: 'Ish vaqti emas (09:00–18:30)', detail: last }
+      return { tone: 'neutral', title: 'Ish vaqti emas (09:00–18:30)', detail: last }
     case 'lunch':
-      return { tone: 'neutral', text: 'Tushlik (12:30–13:30)', detail: last }
+      return { tone: 'neutral', title: 'Tushlik 12:30–13:30', detail: last }
     default:
-      return { tone: 'critical', text: `AI javob bermayapti — ${last ?? 'hali xabar kelmagan'}`, detail: null }
+      return { tone: 'critical', title: `AI javob bermayapti — ${last ?? 'hali xabar kelmagan'}`, detail: null }
   }
 }
 
@@ -159,6 +168,13 @@ export function limitsText(limits: AiLimits): string | null {
     limits.maxRetry != null && limits.maxRetry > 0 ? `${limits.maxRetry} nedozvon` : null,
   ].filter(Boolean)
   return split.length > 0 ? `Bir vaqtda ${limits.calls} = ${split.join(' + ')}` : `Bir vaqtda ${limits.calls}`
+}
+
+/** «4 yangi lid + 2 nedozvon» — how the calls at a time split, or null when they do not. */
+export function limitsSplit(limits: AiLimits): string | null {
+  const text = limitsText(limits)
+  const i = text?.indexOf(' = ') ?? -1
+  return text && i >= 0 ? text.slice(i + 3) : null
 }
 
 /**
@@ -179,100 +195,130 @@ export function limitsMismatch(
   return `Saqlangan: ${form.join('/')} · AI qoʻllagani: ${applied.join('/')} (${version})`
 }
 
-/* ── Lines ──────────────────────────────────────────────────────────────── */
+/* ── Lines ──────────────────────────────────────────────────────────── */
 
-/** «0:42», «12:03», «1:02:03» since an instant. */
+/** «00:42», «12:03», «1:02:03» since an instant — the board's big timer. */
 export function elapsedText(sinceIso: string, now: Date): string {
   const total = Math.max(0, Math.floor((now.getTime() - new Date(sinceIso).getTime()) / 1000))
   const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
+  const m = String(Math.floor((total % 3600) / 60)).padStart(2, '0')
   const s = String(total % 60).padStart(2, '0')
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`
+  return h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`
 }
 
-const PRODUCT_LABEL: Readonly<Record<string, string>> = { Kollagen: 'Kollagen', Zekstra: 'Zextra' }
+export type Product = 'Collagen' | 'Zextra'
 
-export function productLabel(product: string | null | undefined): string | null {
-  return product ? (PRODUCT_LABEL[product] ?? product) : null
+/** The agent says «Kollagen» / «Zekstra»; the dashboard's names are Collagen and Zextra (`targetTheme.ts`). */
+const PRODUCT_OF: Readonly<Record<string, Product>> = { Kollagen: 'Collagen', Collagen: 'Collagen', Zekstra: 'Zextra', Zextra: 'Zextra' }
+
+export function productOf(product: string | null | undefined): Product | null {
+  return product ? (PRODUCT_OF[product] ?? null) : null
 }
 
 /**
- * A seller's name without the extension it starts with: the roster spells
- * «122 Dilnoza …», and «Sotuvchi 122 (122 Dilnoza)» says the number twice.
+ * A seller's name as the floor says it: «Dilshoda», surname apart. Bitrix24
+ * spells them «122 Dilshoda Quldosheva 122», «131 Namozjon -131 Shamsiyev» —
+ * the extension and its dashes are dropped wherever they stand, and any other
+ * bare number with them.
  */
-export function shortName(ext: string, name: string | null | undefined): string | null {
-  const n = name?.trim() ?? ''
-  const rest = n.startsWith(ext) ? n.slice(ext.length).replace(/^[\s.,:;\-–—]+/, '') : n
-  return rest === '' ? null : rest
+export function sellerName(ext: string, raw: string | null | undefined): { readonly first: string | null; readonly last: string | null } {
+  const words = (raw ?? '')
+    .split(/\s+/)
+    .map((w) => w.replace(/^[-–—.,:;]+|[-–—.,:;]+$/g, ''))
+    .filter((w) => w !== '' && w !== ext && !/^\d+$/.test(w))
+  return { first: words[0] ?? null, last: words.length > 1 ? words.slice(1).join(' ') : null }
 }
 
-/** «120 (Dilnoza)», or «120» when nobody's name is known. */
+/** «122 Dilshoda», or «122» when nobody's name is known. */
 export function sellerLabel(ext: string, nameOf: (ext: string) => string | null): string {
-  const name = shortName(ext, nameOf(ext))
-  return name ? `${ext} (${name})` : ext
+  const { first } = sellerName(ext, nameOf(ext))
+  return first ? `${ext} ${first}` : ext
 }
 
-/** The line map's words, for a line with no live call behind it (an agent before `live`, or between calls). */
-const LINE_WORD: Readonly<Record<string, { readonly tone: Tone; readonly text: string }>> = {
-  free: { tone: 'good', text: 'Boʻsh' },
-  call: { tone: 'warning', text: 'Qoʻngʻiroqda' },
-  seller_talk: { tone: 'warning', text: 'Mijoz sotuvchi bilan gaplashyapti' },
-  not_registered: { tone: 'critical', text: 'ATSʼda roʻyxatda emas' },
-  unknown: { tone: 'neutral', text: 'Nomaʼlum' },
+/** What a busy line does, in the floor's words. */
+const CALL_STATE: Readonly<Record<string, { readonly label: string; readonly tone: Tone }>> = {
+  dialing: { label: 'Mijozga terilmoqda', tone: 'neutral' },
+  talking: { label: 'Mijoz bilan gaplashyapti', tone: 'active' },
+  transfer: { label: 'Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda', tone: 'warning' },
+  ringing_seller: { label: 'Sotuvchiga ulanyapti', tone: 'warning' },
+  with_seller: { label: 'Sotuvchi bilan', tone: 'good' },
 }
 
-export interface LineView {
+/** The line map alone, for an agent before `live` (ai_registrator e07df24 reaches the server after 18:30, 31.10). */
+const MAP_STATE: Readonly<Record<string, { readonly label: string; readonly tone: Tone }>> = {
+  call: { label: 'Qoʻngʻiroqda', tone: 'active' },
+  seller_talk: { label: 'Mijoz sotuvchi bilan', tone: 'good' },
+}
+
+export interface BusyLine {
   readonly line: string
+  /** True: the agent said who and whom; false: only that the line is on a call. */
+  readonly live: boolean
+  readonly state: string
+  readonly label: string
   readonly tone: Tone
-  readonly text: string
-  readonly busy: boolean
-  readonly product: string | null
+  readonly since: string | null
+  readonly client: string | null
   readonly deal: number | null
+  readonly product: Product | null
   readonly test: boolean
+  readonly seller: { readonly ext: string; readonly label: string } | null
 }
 
-function callText(call: LiveCall, nameOf: (ext: string) => string | null, now: Date): { tone: Tone; text: string } {
-  const t = elapsedText(call.since, now)
-  const client = call.client || 'mijoz'
-  const seller = call.seller ? sellerLabel(call.seller, nameOf) : null
-  switch (call.state) {
-    case 'dialing':
-      return { tone: 'neutral', text: `Mijozga terilmoqda${call.client ? ` · ${call.client}` : ''} · ${t}` }
-    case 'talking':
-      return { tone: 'warning', text: [`AI ↔ ${client}`, productLabel(call.product), t].filter(Boolean).join(' · ') }
-    case 'transfer':
-      return { tone: 'warning', text: `Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda · ${t}` }
-    case 'ringing_seller':
-      return { tone: 'warning', text: `Sotuvchi ${seller ?? '?'} ga jiringlayapti · ${t}` }
-    case 'with_seller':
-      return { tone: 'good', text: `Sotuvchi ${seller ?? '?'} bilan ulandi · ${t}` }
-    default:
-      return { tone: 'neutral', text: `${call.state} · ${t}` }
-  }
+export interface Board {
+  /** On a call, in number order — the big cards. */
+  readonly busy: readonly BusyLine[]
+  /** Free, in number order — one dim row. */
+  readonly free: readonly string[]
+  /** Not registered on the ATS — the one real problem a line has. */
+  readonly unregistered: readonly string[]
+  /** A word the panel does not know yet, raw. */
+  readonly other: readonly { readonly line: string; readonly word: string }[]
 }
 
-/** One card per AI line — the line map and the live calls together, in number order. */
-export function lineViews(report: AiReport, nameOf: (ext: string) => string | null, now: Date): LineView[] {
+const byNumber = (a: string, b: string) => Number(a) - Number(b) || a.localeCompare(b)
+
+/** Every AI line — the line map and the live calls together — sorted into the board. */
+export function boardOf(report: AiReport, nameOf: (ext: string) => string | null): Board {
   const calls = new Map((report.live?.lines ?? []).map((c) => [c.line, c]))
-  const lines = [...new Set([...Object.keys(report.lines), ...calls.keys()])].sort(
-    (a, b) => Number(a) - Number(b) || a.localeCompare(b),
-  )
-  return lines.map((line) => {
+  const lines = [...new Set([...Object.keys(report.lines), ...calls.keys()])].sort(byNumber)
+  const busy: BusyLine[] = []
+  const free: string[] = []
+  const unregistered: string[] = []
+  const other: { line: string; word: string }[] = []
+  for (const line of lines) {
     const call = calls.get(line)
     if (call) {
-      return { line, ...callText(call, nameOf, now), busy: true, product: call.product, deal: call.deal, test: call.test }
+      const look = CALL_STATE[call.state] ?? { label: call.state, tone: 'neutral' as const }
+      busy.push({
+        line,
+        live: true,
+        state: call.state,
+        ...look,
+        since: call.since,
+        client: call.client || null,
+        deal: call.deal,
+        product: productOf(call.product),
+        test: call.test,
+        seller: call.seller ? { ext: call.seller, label: sellerLabel(call.seller, nameOf) } : null,
+      })
+      continue
     }
     const word = report.lines[line] ?? 'unknown'
-    const look = LINE_WORD[word] ?? { tone: 'neutral' as const, text: word }
-    return { line, ...look, busy: !IDLE_WORDS.has(word), product: null, deal: null, test: false }
-  })
+    const mapped = MAP_STATE[word]
+    if (mapped) busy.push({ line, live: false, state: word, ...mapped, since: null, client: null, deal: null, product: null, test: false, seller: null })
+    else if (word === 'free') free.push(line)
+    else if (word === 'not_registered') unregistered.push(line)
+    else other.push({ line, word })
+  }
+  return { busy, free, unregistered, other }
 }
 
-/* ── Sellers ────────────────────────────────────────────────────────────── */
+/* ── Sellers ──────────────────────────────────────────────────────────── */
 
 const SELLER_WORD: Readonly<Record<string, { readonly tone: Tone; readonly label: string }>> = {
   free: { tone: 'good', label: 'Boʻsh' },
-  busy: { tone: 'critical', label: 'Gaplashyapti' },
+  busy: { tone: 'active', label: 'Gaplashyapti' },
   offline: { tone: 'neutral', label: 'Liniyada yoʻq' },
   unknown: { tone: 'neutral', label: 'Nomaʼlum' },
 }
@@ -283,30 +329,79 @@ export function sellerLook(seller: Pick<ReportSeller, 'state' | 'aiRinging'>): {
   return SELLER_WORD[seller.state] ?? { tone: 'neutral', label: seller.state }
 }
 
-/* ── The feed ───────────────────────────────────────────────────────────── */
-
-const WHAT_LABEL: Readonly<Record<string, string>> = { connected: 'ulandi', ended: 'tugadi', ...OUTCOME_LABEL }
-
-export function whatLabel(what: string): string {
-  const label = WHAT_LABEL[what]
-  return label ? label.charAt(0).toLocaleLowerCase('uz') + label.slice(1) : what
+export interface SellerItem {
+  readonly ext: string
+  readonly first: string | null
+  readonly last: string | null
+  readonly transfersToday: number
+  readonly product: Product | null
 }
 
-export interface RecentView {
+export interface SellerGroup {
+  readonly key: 'ringing' | 'busy' | 'free' | 'offline' | 'unknown'
+  readonly label: string
+  readonly tone: Tone
+  readonly sellers: readonly SellerItem[]
+}
+
+/**
+ * The sellers by what they do now, in the order the eye needs them: the AI
+ * ringing one, on a call, free, off the line — every group drawn even when
+ * empty, so the columns stand still between polls. A report that is no
+ * longer fresh says nothing about now: every seller is «holat nomaʼlum».
+ */
+export function sellerGroups(sellers: readonly ReportSeller[], fresh: boolean): SellerGroup[] {
+  const item = (s: ReportSeller): SellerItem => ({ ext: s.ext, ...sellerName(s.ext, s.name), transfersToday: s.transfersToday, product: productOf(s.product) })
+  const listed = sellers.filter((s) => s.inList)
+  if (!fresh) return [{ key: 'unknown', label: 'Holat nomaʼlum', tone: 'neutral', sellers: listed.map(item) }]
+  const keyOf = (s: ReportSeller): SellerGroup['key'] =>
+    s.aiRinging ? 'ringing' : s.state === 'busy' ? 'busy' : s.state === 'free' ? 'free' : s.state === 'offline' ? 'offline' : 'unknown'
+  const groups: SellerGroup[] = [
+    { key: 'ringing', label: 'Jiringlamoqda (AI)', tone: 'warning', sellers: [] },
+    { key: 'busy', label: 'Gaplashyapti', tone: 'active', sellers: [] },
+    { key: 'free', label: 'Boʻsh', tone: 'good', sellers: [] },
+    { key: 'offline', label: 'Liniyada yoʻq', tone: 'neutral', sellers: [] },
+  ]
+  const unknown = listed.filter((s) => keyOf(s) === 'unknown')
+  const filled = groups.map((g) => ({ ...g, sellers: listed.filter((s) => keyOf(s) === g.key).map(item) }))
+  return unknown.length > 0 ? [...filled, { key: 'unknown', label: 'Nomaʼlum', tone: 'neutral', sellers: unknown.map(item) }] : filled
+}
+
+/* ── The feed ───────────────────────────────────────────────────────── */
+
+const WHAT_LABEL: Readonly<Record<string, string>> = { connected: 'Ulandi', ended: 'Tugadi', ...OUTCOME_LABEL }
+
+/** The agent's word for how a call ended, as the call drawer says it; a new word raw. */
+export function whatLabel(what: string): string {
+  return WHAT_LABEL[what] ?? what
+}
+
+export interface RecentRow {
   readonly key: string
   readonly time: string
-  readonly text: string
-  readonly tone: Tone
+  readonly line: string
+  readonly client: string | null
   readonly deal: number | null
+  readonly product: Product | null
   readonly test: boolean
+  readonly seller: string | null
+  /** Put through to a seller — the one green row. */
+  readonly ok: boolean
+  readonly result: string
 }
 
-/** «10:42 · 291 → 120 (Dilnoza) · Kollagen · Aziz — ulandi», newest first as the agent keeps them. */
-export function recentViews(report: AiReport, nameOf: (ext: string) => string | null): RecentView[] {
-  return (report.live?.recent ?? []).map((e, i) => {
-    const route = e.seller ? `${e.line} → ${sellerLabel(e.seller, nameOf)}` : e.line
-    const text = [route, productLabel(e.product), e.client || null].filter(Boolean).join(' · ')
-    const tone: Tone = e.what === 'connected' ? 'good' : e.what === 'transfer_failed' ? 'critical' : 'neutral'
-    return { key: `${e.at}-${e.line}-${i}`, time: formatTime(e.at), text: `${text} — ${whatLabel(e.what)}`, tone, deal: e.deal, test: e.test }
-  })
+/** The last put-throughs and the ends after an answer, newest first as the agent keeps them. */
+export function recentRows(report: AiReport, nameOf: (ext: string) => string | null): RecentRow[] {
+  return (report.live?.recent ?? []).map((e, i) => ({
+    key: `${e.at}-${e.line}-${i}`,
+    time: formatTime(e.at),
+    line: e.line,
+    client: e.client || null,
+    deal: e.deal,
+    product: productOf(e.product),
+    test: e.test,
+    seller: e.seller ? sellerLabel(e.seller, nameOf) : null,
+    ok: e.what === 'connected',
+    result: whatLabel(e.what),
+  }))
 }

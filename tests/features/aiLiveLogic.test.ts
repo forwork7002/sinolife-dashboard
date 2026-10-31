@@ -4,15 +4,20 @@ import {
   type AiReport,
   type AiStatus,
   type LiveCall,
+  type ReportSeller,
+  boardOf,
   elapsedText,
   limitsMismatch,
+  limitsSplit,
   limitsText,
   lineCount,
-  lineViews,
   nowRow,
-  recentViews,
+  percent,
+  productOf,
+  recentRows,
+  sellerGroups,
   sellerLook,
-  shortName,
+  sellerName,
   workPhase,
 } from '@/features/aiRegistrator/aiLiveLogic'
 
@@ -50,7 +55,7 @@ const report = (over: Partial<AiReport> = {}): AiReport => ({
 
 const status = (receivedAt: Date, over: Partial<AiReport> = {}): AiStatus => ({ receivedAt: receivedAt.toISOString(), stale: false, report: report(over) })
 
-const NAMES: Record<string, string> = { '120': '120 Dilnoza', '122': 'Malika' }
+const NAMES: Record<string, string> = { '120': '120 Malika Karimova 120', '122': 'Sevara', '131': '131 Bobur -131 Aliyev' }
 const nameOf = (ext: string) => NAMES[ext] ?? null
 
 describe('work hours, Tashkent', () => {
@@ -67,97 +72,150 @@ describe('work hours, Tashkent', () => {
   })
 })
 
-describe('«Hozir»', () => {
-  it('is green with the busy lines while the report is fresh — at any hour', () => {
-    expect(nowRow(status(at('10:00')), at('10:01', '30'), 90)).toEqual({ tone: 'good', text: 'AI ishlayapti · 3 liniya band / 8', detail: null })
+describe('the hero', () => {
+  it('is green while the report is fresh — at any hour', () => {
+    expect(nowRow(status(at('10:00')), at('10:01', '30'), 90)).toEqual({ tone: 'good', title: 'AI ishlayapti', detail: null })
     expect(nowRow(status(at('21:00')), at('21:00', '20'), 90).tone).toBe('good')
   })
 
   it('is grey outside the day and at lunch when the AI is silent', () => {
-    expect(nowRow(status(at('18:31')), at('20:00'), 90)).toEqual({ tone: 'neutral', text: 'Ish vaqti emas (09:00–18:30)', detail: 'oxirgi xabar 18:31' })
-    expect(nowRow(status(at('12:31')), at('12:45'), 90)).toMatchObject({ tone: 'neutral', text: 'Tushlik (12:30–13:30)' })
-    expect(nowRow(null, at('07:00'), 90)).toEqual({ tone: 'neutral', text: 'Ish vaqti emas (09:00–18:30)', detail: null })
+    expect(nowRow(status(at('18:31')), at('20:00'), 90)).toEqual({ tone: 'neutral', title: 'Ish vaqti emas (09:00–18:30)', detail: 'oxirgi xabar 18:31' })
+    expect(nowRow(status(at('12:31')), at('12:45'), 90)).toMatchObject({ tone: 'neutral', title: 'Tushlik 12:30–13:30' })
+    expect(nowRow(null, at('07:00'), 90)).toEqual({ tone: 'neutral', title: 'Ish vaqti emas (09:00–18:30)', detail: null })
   })
 
   it('is red within the day when the AI is silent', () => {
-    expect(nowRow(status(at('10:00')), at('10:01', '31'), 90)).toEqual({ tone: 'critical', text: 'AI javob bermayapti — oxirgi xabar 10:00', detail: null })
-    expect(nowRow(null, at('10:00'), 90).text).toBe('AI javob bermayapti — hali xabar kelmagan')
+    expect(nowRow(status(at('10:00')), at('10:01', '31'), 90)).toEqual({ tone: 'critical', title: 'AI javob bermayapti — oxirgi xabar 10:00', detail: null })
+    expect(nowRow(null, at('10:00'), 90).title).toBe('AI javob bermayapti — hali xabar kelmagan')
     // Yesterday's last word carries its day.
-    expect(nowRow(status(new Date('2026-10-30T18:00:00+05:00')), at('09:30'), 90).text).toBe('AI javob bermayapti — oxirgi xabar 30-okt, 18:00')
+    expect(nowRow(status(new Date('2026-10-30T18:00:00+05:00')), at('09:30'), 90).title).toBe('AI javob bermayapti — oxirgi xabar 30-okt, 18:00')
   })
 
-  it('counts a line busy on a live call or on the map, free and unregistered not', () => {
+  it('counts a line busy on a live call or on a call in the map — free, unregistered and unknown words not', () => {
     expect(lineCount(report())).toEqual({ busy: 3, total: 8 })
-    expect(lineCount(report({ live: null, lines: { '290': 'free', '291': 'call' } }))).toEqual({ busy: 1, total: 2 })
+    expect(lineCount(report({ live: null, lines: { '290': 'free', '291': 'call', '292': 'odd_word' } }))).toEqual({ busy: 1, total: 3 })
   })
 
   it('says the applied limits and where they differ from the saved form', () => {
     expect(limitsText(report().limits)).toBe('Bir vaqtda 6 = 4 yangi lid + 2 nedozvon')
+    expect(limitsSplit(report().limits)).toBe('4 yangi lid + 2 nedozvon')
     expect(limitsText({ calls: 4, maxNew: 4, maxRetry: 0 })).toBe('Bir vaqtda 4 = 4 yangi lid')
     expect(limitsText({ calls: null })).toBeNull()
+    expect(limitsSplit({ calls: 3 })).toBeNull()
     expect(limitsMismatch({ maxCalls: 4, maxNew: 4, maxRetry: 0 }, report())).toBe('Saqlangan: 4/4/0 · AI qoʻllagani: 6/4/2 (v3)')
     expect(limitsMismatch({ maxCalls: 4, maxNew: 4, maxRetry: 0 }, report({ appliedVersion: null }))).toMatch(/\(oʻz sozlamasi\)$/)
     expect(limitsMismatch({ maxCalls: 6, maxNew: 4, maxRetry: 2 }, report())).toBeNull()
   })
+
+  it('gives the funnel its percentages, «—» over nothing', () => {
+    expect(percent(148, 472)).toBe('31%')
+    expect(percent(44, 148)).toBe('30%')
+    expect(percent(0, 0)).toBe('—')
+  })
 })
 
-describe('line cards', () => {
-  const now = at('10:00', '42')
-  const one = (c: Partial<LiveCall>, lines: Record<string, string> = {}) =>
-    lineViews(report({ lines, live: { lines: [call(c)], recent: [] } }), nameOf, now)[0]!
+describe('the board', () => {
+  const one = (c: Partial<LiveCall>) => boardOf(report({ lines: {}, live: { lines: [call(c)], recent: [] } }), nameOf).busy[0]!
 
-  it('says each live state in the floor\'s words, with the time in it', () => {
-    expect(one({ state: 'dialing' }).text).toBe('Mijozga terilmoqda · Aziz · 0:42')
-    expect(one({ state: 'talking' })).toMatchObject({ text: 'AI ↔ Aziz · Kollagen · 0:42', tone: 'warning', deal: 1001 })
-    expect(one({ state: 'transfer' }).text).toBe('Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda · 0:42')
-    expect(one({ state: 'ringing_seller', seller: '122' }).text).toBe('Sotuvchi 122 (Malika) ga jiringlayapti · 0:42')
-    expect(one({ state: 'with_seller', seller: '120' })).toMatchObject({ text: 'Sotuvchi 120 (Dilnoza) bilan ulandi · 0:42', tone: 'good' })
-    expect(one({ state: 'with_seller', seller: '131' }).text).toBe('Sotuvchi 131 bilan ulandi · 0:42')
-    expect(one({ state: 'parked_music' }).text).toBe('parked_music · 0:42')
-    expect(one({ state: 'talking', product: 'Zekstra', client: '' }).text).toBe('AI ↔ mijoz · Zextra · 0:42')
-    expect(one({ test: true }).test).toBe(true)
+  it('says each live state in the floor\'s words', () => {
+    expect(one({ state: 'dialing' })).toMatchObject({ label: 'Mijozga terilmoqda', tone: 'neutral', live: true })
+    expect(one({ state: 'talking' })).toMatchObject({ label: 'Mijoz bilan gaplashyapti', tone: 'active', client: 'Aziz', deal: 1001, product: 'Collagen' })
+    expect(one({ state: 'transfer' })).toMatchObject({ label: 'Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda', tone: 'warning' })
+    expect(one({ state: 'ringing_seller', seller: '122' })).toMatchObject({ label: 'Sotuvchiga ulanyapti', seller: { ext: '122', label: '122 Sevara' } })
+    expect(one({ state: 'with_seller', seller: '120' })).toMatchObject({ label: 'Sotuvchi bilan', tone: 'good', seller: { label: '120 Malika' } })
+    expect(one({ state: 'with_seller', seller: '141' }).seller?.label).toBe('141')
+    expect(one({ state: 'parked_music' })).toMatchObject({ label: 'parked_music', tone: 'neutral' })
+    expect(one({ product: 'Zekstra', client: '', test: true })).toMatchObject({ product: 'Zextra', client: null, test: true })
   })
 
-  it('reads the line map where no live call stands behind it', () => {
-    const views = lineViews(report({ live: null }), nameOf, now)
-    const text = Object.fromEntries(views.map((v) => [v.line, v.text]))
-    expect(text).toMatchObject({ '178': 'Boʻsh', '291': 'Qoʻngʻiroqda', '295': 'Mijoz sotuvchi bilan gaplashyapti', '296': 'ATSʼda roʻyxatda emas' })
-    expect(views.find((v) => v.line === '296')?.tone).toBe('critical')
-    expect(lineViews(report({ live: null, lines: { '290': 'odd_word' } }), nameOf, now)[0]?.text).toBe('odd_word')
+  it('sorts the lines: busy cards, the free row, the unregistered in red, an unknown word raw — in number order', () => {
+    const board = boardOf(report({ lines: { ...report().lines, '294': 'odd_word' } }), nameOf)
+    expect(board.busy.map((l) => [l.line, l.label])).toEqual([
+      ['291', 'Mijoz bilan gaplashyapti'],
+      ['292', 'Mijozga terilmoqda'],
+      ['295', 'Mijoz sotuvchi bilan'],
+    ])
+    expect(board.busy[2]).toMatchObject({ live: false, since: null, client: null })
+    expect(board.free).toEqual(['178', '290', '293', '297'])
+    expect(board.unregistered).toEqual(['296'])
+    expect(board.other).toEqual([{ line: '294', word: 'odd_word' }])
   })
 
-  it('shows every line of either, in number order', () => {
-    const views = lineViews(report({ lines: { '297': 'free', '178': 'free' }, live: { lines: [call({ line: '290' })], recent: [] } }), nameOf, now)
-    expect(views.map((v) => v.line)).toEqual(['178', '290', '297'])
+  it('reads an agent before live: a line on a call is a card that says so', () => {
+    const board = boardOf(report({ live: null }), nameOf)
+    expect(board.busy.map((l) => [l.line, l.label, l.live])).toEqual([
+      ['291', 'Qoʻngʻiroqda', false],
+      ['292', 'Qoʻngʻiroqda', false],
+      ['295', 'Mijoz sotuvchi bilan', false],
+    ])
   })
 
-  it('counts minutes and hours', () => {
-    expect(elapsedText(at('10:00').toISOString(), at('10:00', '08'))).toBe('0:08')
+  it('counts the timer in minutes and seconds, hours when it runs that long', () => {
+    expect(elapsedText(at('10:00').toISOString(), at('10:00', '08'))).toBe('00:08')
     expect(elapsedText(at('10:00').toISOString(), at('10:12', '03'))).toBe('12:03')
     expect(elapsedText(at('10:00').toISOString(), at('11:02', '03'))).toBe('1:02:03')
-    expect(elapsedText(at('10:00').toISOString(), at('09:59'))).toBe('0:00')
+    expect(elapsedText(at('10:00').toISOString(), at('09:59'))).toBe('00:00')
   })
 })
 
 describe('sellers', () => {
-  it('puts the AI ringing first, then on a call, free, off the line', () => {
+  const seller = (over: Partial<ReportSeller>): ReportSeller => ({ ext: '120', name: 'Malika', state: 'free', inList: true, transfersToday: 0, product: 'Kollagen', aiRinging: false, ...over })
+
+  it('puts the AI ringing first, then on a call, free, off the line — red never for a call', () => {
     expect(sellerLook({ state: 'free', aiRinging: true })).toEqual({ tone: 'warning', label: 'AI jiringlatmoqda' })
     expect(sellerLook({ state: 'busy', aiRinging: true }).label).toBe('AI jiringlatmoqda')
-    expect(sellerLook({ state: 'busy' })).toEqual({ tone: 'critical', label: 'Gaplashyapti' })
+    expect(sellerLook({ state: 'busy' })).toEqual({ tone: 'active', label: 'Gaplashyapti' })
     expect(sellerLook({ state: 'free', aiRinging: false })).toEqual({ tone: 'good', label: 'Boʻsh' })
     expect(sellerLook({ state: 'offline' })).toEqual({ tone: 'neutral', label: 'Liniyada yoʻq' })
     expect(sellerLook({ state: 'away' })).toEqual({ tone: 'neutral', label: 'away' })
   })
 
-  it('drops the extension a roster name starts with', () => {
-    expect(shortName('120', '120 Dilnoza')).toBe('Dilnoza')
-    expect(shortName('120', '120')).toBeNull()
-    expect(shortName('120', 'Malika')).toBe('Malika')
-    expect(shortName('120', null)).toBeNull()
+  it('groups them in four columns that stand still, ringing first, with their counts', () => {
+    const groups = sellerGroups(
+      [
+        seller({ ext: '120', state: 'busy', aiRinging: true }),
+        seller({ ext: '122', state: 'busy' }),
+        seller({ ext: '123', state: 'free', product: 'Zekstra' }),
+        seller({ ext: '124', state: 'offline' }),
+        seller({ ext: '125', state: 'busy', inList: false }),
+      ],
+      true,
+    )
+    expect(groups.map((g) => [g.label, g.sellers.map((s) => s.ext)])).toEqual([
+      ['Jiringlamoqda (AI)', ['120']],
+      ['Gaplashyapti', ['122']],
+      ['Boʻsh', ['123']],
+      ['Liniyada yoʻq', ['124']],
+    ])
+    expect(groups[2]?.sellers[0]?.product).toBe('Zextra')
+    expect(sellerGroups([seller({ state: 'away' })], true).at(-1)).toMatchObject({ key: 'unknown', label: 'Nomaʼlum' })
+    expect(sellerGroups([seller({ state: 'free' })], true).map((g) => g.key)).toEqual(['ringing', 'busy', 'free', 'offline'])
+  })
+
+  it('says nothing about now from a stale report', () => {
+    expect(sellerGroups([seller({ ext: '120', aiRinging: true }), seller({ ext: '122', state: 'busy' })], false)).toEqual([
+      expect.objectContaining({ key: 'unknown', label: 'Holat nomaʼlum', sellers: [expect.objectContaining({ ext: '120' }), expect.objectContaining({ ext: '122' })] }),
+    ])
+  })
+
+  it('drops the extension and its dashes from a Bitrix24 name, wherever they stand', () => {
+    expect(sellerName('122', '122 Malika Karimova 122')).toEqual({ first: 'Malika', last: 'Karimova' })
+    expect(sellerName('131', '131 Bobur -131 Aliyev')).toEqual({ first: 'Bobur', last: 'Aliyev' })
+    expect(sellerName('111', 'Oʻgʻiloy Nasriddinova 111')).toEqual({ first: 'Oʻgʻiloy', last: 'Nasriddinova' })
+    expect(sellerName('120', 'Sevara')).toEqual({ first: 'Sevara', last: null })
+    expect(sellerName('120', '120')).toEqual({ first: null, last: null })
+    expect(sellerName('120', null)).toEqual({ first: null, last: null })
+  })
+
+  it('names the products as the dashboard does', () => {
+    expect(productOf('Kollagen')).toBe('Collagen')
+    expect(productOf('Zekstra')).toBe('Zextra')
+    expect(productOf('Omega')).toBeNull()
+    expect(productOf(null)).toBeNull()
   })
 })
 
-describe('«Soʻnggi ulanishlar»', () => {
+describe('the feed', () => {
   it('says who was put through to whom, and how the others ended', () => {
     const r = report({
       live: {
@@ -170,19 +228,16 @@ describe('«Soʻnggi ulanishlar»', () => {
         ],
       },
     })
-    const rows = recentViews(r, nameOf)
-    expect(rows.map((x) => `${x.time} · ${x.text}`)).toEqual([
-      '10:42 · 291 → 120 (Dilnoza) · Kollagen · Aziz — ulandi',
-      '10:40 · 293 · Bobur — gaplashmay qoʻydi',
-      '10:39 · 290 → 122 (Malika) · Zextra — qiziqdi, sotuvchi javob bermadi',
-      '10:38 · 178 — brand_new',
+    expect(recentRows(r, nameOf).map(({ key: _k, ...row }) => row)).toEqual([
+      { time: '10:42', line: '291', client: 'Aziz', deal: 1001, product: 'Collagen', test: false, seller: '120 Malika', ok: true, result: 'Ulandi' },
+      { time: '10:40', line: '293', client: 'Bobur', deal: 1002, product: null, test: true, seller: null, ok: false, result: 'Gaplashmay qoʻydi' },
+      { time: '10:39', line: '290', client: null, deal: null, product: 'Zextra', test: false, seller: '122 Sevara', ok: false, result: 'Qiziqdi, sotuvchi javob bermadi' },
+      { time: '10:38', line: '178', client: null, deal: null, product: null, test: false, seller: null, ok: false, result: 'brand_new' },
     ])
-    expect(rows.map((x) => x.tone)).toEqual(['good', 'neutral', 'critical', 'neutral'])
-    expect(rows[1]).toMatchObject({ test: true, deal: 1002 })
   })
 
   it('is empty for an agent before live', () => {
-    expect(recentViews(report({ live: null }), nameOf)).toEqual([])
-    expect(recentViews(report({ live: undefined }), nameOf)).toEqual([])
+    expect(recentRows(report({ live: null }), nameOf)).toEqual([])
+    expect(recentRows(report({ live: undefined }), nameOf)).toEqual([])
   })
 })
