@@ -15,6 +15,7 @@ import {
   WATCH_ISSUE_KINDS,
   arrivalPercent,
   buildLeadWatch,
+  narrowLeadWatchInput,
   channelStopIssue,
   chatsIssue,
   flowHours,
@@ -776,5 +777,78 @@ describe('the whole answer', () => {
       noProject: 'warn',
     })
     expect(dto.critical).toBe(2)
+  })
+})
+
+describe('the brand switch (2026-10-31 — «Zextradan ham collagenda ham filtr yoq»)', () => {
+  const call = (phone: string, minutes: number, customerId: string) => ({
+    phone,
+    startedAt: ago(minutes),
+    talked: false,
+    customerId,
+    operator: 'Sevara',
+  })
+  const whole = input({
+    leads: [
+      lead({ brand: 'Collagen', ropAssigned: false, createdAt: ago(40) }),
+      lead({ brand: 'Collagen', ropAssigned: false, createdAt: ago(35) }),
+      lead({ brand: 'Zextra', ropAssigned: false, createdAt: ago(45) }),
+      lead({ brand: null, ropAssigned: false, projectFilled: false, createdAt: ago(50) }),
+    ],
+    chats: [
+      { key: 'c1', dealId: '1', title: 'A', channel: 'smm', brand: 'Zextra', owner: 'S', rop: null, openedAt: ago(90), line: 'x' },
+    ],
+    inbound: [call('+998 90 000 00 01', 60, 'k-col'), call('+998 90 000 00 02', 60, 'k-zex'), call('+998 90 000 00 03', 60, 'k-none')],
+    contacts: new Map([
+      ['k-col', { name: 'Col', dealId: '11', brand: 'Collagen' as const }],
+      ['k-zex', { name: 'Zex', dealId: '12', brand: 'Zextra' as const }],
+      ['k-none', { name: 'None', dealId: '13', brand: null }],
+    ]),
+  })
+  const count = (brand: 'all' | 'Collagen' | 'Zextra' | 'none', kind: string) =>
+    buildLeadWatch(whole, brand).issues.find((i) => i.kind === kind)!.count
+
+  it('keeps each card to its brand', () => {
+    expect(count('Collagen', 'unassigned')).toBe(2)
+    expect(count('Zextra', 'unassigned')).toBe(1)
+    expect(count('none', 'unassigned')).toBe(1)
+    expect(buildLeadWatch(whole, 'Zextra').issues.find((i) => i.kind === 'unassigned')!.rows.every((r) => r.brand === 'Zextra')).toBe(true)
+    expect(count('Collagen', 'chats')).toBe(0)
+    expect(count('Zextra', 'chats')).toBe(1)
+    // A caller's brand is their latest deal's.
+    expect(count('Collagen', 'missedCalls')).toBe(1)
+    expect(count('Zextra', 'missedCalls')).toBe(1)
+    expect(count('none', 'missedCalls')).toBe(1)
+    expect(count('none', 'noProject')).toBe(1)
+    expect(count('Collagen', 'noProject')).toBe(0)
+  })
+
+  it('adds up: Collagen + Zextra + Brendsiz = Hammasi, card by card', () => {
+    for (const kind of ['unassigned', 'idle', 'chats', 'missedCalls', 'noProject']) {
+      expect(count('Collagen', kind) + count('Zextra', kind) + count('none', kind)).toBe(count('all', kind))
+    }
+  })
+
+  it('narrows the intake chart and the hand-out to the brand', () => {
+    const split = {
+      total: 40,
+      planned: false,
+      rops: [
+        { rop: 'Azizbek', received: 31, planLeads: null, brand: 'Collagen' as const },
+        { rop: 'Timur', received: 9, planLeads: null, brand: 'Zextra' as const },
+      ],
+    }
+    const narrowed = narrowLeadWatchInput(input({ split, leads: whole.leads }), 'Zextra')
+    expect(narrowed.split).toEqual({ total: 9, planned: false, rops: [split.rops[1]] })
+    expect(narrowed.leads.map((l) => l.brand)).toEqual(['Zextra'])
+    const intake = (b: 'all' | 'Zextra') =>
+      buildLeadWatch(whole, b).flow.hours.reduce((sum, h) => sum + Object.values(h.counts).reduce((a, n) => a + n, 0), 0)
+    expect(intake('Zextra')).toBe(1)
+    expect(intake('all')).toBe(4)
+  })
+
+  it('leaves «Hammasi» exactly as it was', () => {
+    expect(buildLeadWatch(whole, 'all')).toEqual(buildLeadWatch(whole))
+    expect(narrowLeadWatchInput(whole, 'all')).toBe(whole)
   })
 })

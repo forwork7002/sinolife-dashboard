@@ -43,6 +43,7 @@ import {
   type WatchTone,
 } from './leadWatchLogic'
 import { useLeadWatch } from './leadWatchQueries'
+import type { DashboardBrand } from '@/features/shared/useDashboardFilters'
 
 /**
  * «Лид назорати» — what is going wrong with leads RIGHT NOW, at the top of
@@ -53,10 +54,12 @@ import { useLeadWatch } from './leadWatchQueries'
  * clock and draws its own error line, so it cannot take the page's figures
  * down and the page cannot take it down.
  *
- * ALWAYS TODAY, ALWAYS THE WHOLE COMPANY. The period control and the brand
- * switch above it do not reach it — a stuck lead is stuck whatever window the
- * reader is studying — and the caption says so, because a block that ignores
- * the filters beside it without saying so reads as a bug.
+ * ALWAYS TODAY; OF THE BRAND THE SWITCH ABOVE IT PICKS (2026-10-31). The
+ * period control does not reach it — a stuck lead is stuck whatever window
+ * the reader is studying — and the caption says so, because a block that
+ * ignores a filter beside it without saying so reads as a bug. The brand
+ * switch did not either, until the client found Collagen and Zextra showing
+ * the same numbers: now it narrows every card («Hammasi» is the company).
  *
  * Recharts is behind `next/dynamic` like every chart in the product
  * (`cohortChartChunk.test.ts` says why).
@@ -97,10 +100,17 @@ const TONE_GLYPH: Readonly<Record<WatchTone, (props: GlyphProps) => ReactNode>> 
 }
 
 const muted = { color: 'var(--ink-muted)' } as const
+
+/** The brand switch's names, as its own buttons read. */
+const BRAND_LABEL: Readonly<Record<Exclude<DashboardBrand, 'all'>, string>> = {
+  Collagen: 'Collagen',
+  Zextra: 'Zextra',
+  none: 'Brendsiz',
+}
 const everyMinutes = Math.round(LEAD_WATCH_SETTINGS.refreshEveryMs / 60_000)
 
-export function LeadWatch({ enabled = true }: { enabled?: boolean }) {
-  const query = useLeadWatch(enabled)
+export function LeadWatch({ enabled = true, brand = 'all' }: { enabled?: boolean; brand?: DashboardBrand }) {
+  const query = useLeadWatch(enabled, brand)
   const now = useMinuteNow()
   const [openKind, setOpenKind] = useState<WatchIssueKind | null>(null)
 
@@ -109,7 +119,13 @@ export function LeadWatch({ enabled = true }: { enabled?: boolean }) {
 
   return (
     <section aria-labelledby="lead-watch-title" className="flex min-w-0 flex-col gap-3">
-      <Header dto={status === 'ready' ? dto : undefined} now={now} failing={query.isError} loading={status === 'loading'} />
+      <Header
+        dto={status === 'ready' ? dto : undefined}
+        now={now}
+        failing={query.isError}
+        loading={status === 'loading'}
+        brand={brand}
+      />
 
       {status === 'loading' ? (
         <WatchSkeleton />
@@ -133,11 +149,13 @@ function Header({
   now,
   failing,
   loading,
+  brand,
 }: {
   dto: LeadWatchDto | undefined
   now: number
   failing: boolean
   loading: boolean
+  brand: DashboardBrand
 }) {
   const freshness = dto ? freshnessOf(dto, now, failing) : null
   const verdict = dto ? verdictOf(dto.issues) : null
@@ -191,8 +209,8 @@ function Header({
         )}
       </div>
       <p className="text-[11px]" style={muted}>
-        Bugun, butun kompaniya boʻyicha — yuqoridagi davr va brend filtri bu blokka taʼsir qilmaydi. Har {everyMinutes}{' '}
-        daqiqada yangilanadi.
+        {brand === 'all' ? 'Bugun, butun kompaniya boʻyicha' : `Bugun, faqat ${BRAND_LABEL[brand]} boʻyicha`} — yuqoridagi davr
+        bu blokka taʼsir qilmaydi, brend filtri taʼsir qiladi. Har {everyMinutes} daqiqada yangilanadi.
       </p>
     </header>
   )

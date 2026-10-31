@@ -176,9 +176,20 @@ describe('the block', () => {
     expect(screen.queryAllByRole('button', { name: /Joyida/ })).toEqual([])
   })
 
-  it('says the period and the brand do not reach it', async () => {
+  it('says the period does not reach it and the brand does (2026-10-31)', async () => {
     mount(<LeadWatch />)
-    expect(await screen.findByText(/butun kompaniya boʻyicha — yuqoridagi davr va brend filtri bu blokka taʼsir qilmaydi/)).toBeTruthy()
+    expect(await screen.findByText(/butun kompaniya boʻyicha — yuqoridagi davr\s+bu blokka taʼsir qilmaydi, brend filtri taʼsir qiladi/)).toBeTruthy()
+  })
+
+  it('asks for the brand the switch picks, and names it', async () => {
+    const asked: string[] = []
+    answer = (url) => {
+      asked.push(url)
+      return envelope(BUSY)
+    }
+    mount(<LeadWatch brand="Zextra" />)
+    expect(await screen.findByText(/Bugun, faqat Zextra boʻyicha/)).toBeTruthy()
+    expect(asked.some((url) => url.includes('/leads/watch?brand=Zextra'))).toBe(true)
   })
 
   it('fails on its own: one compact line and a retry that asks again', async () => {

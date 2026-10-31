@@ -54,7 +54,7 @@ import { useCriticalTitle, useLeadWatchCritical } from './leadWatchQueries'
  * period.
  *
  * «Лид назорати» (2026-10-09) opens «Lid manbalari»: what is stuck right now
- * — today, the whole company, whatever the period and brand say — on its own
+ * — today, whatever the period says, of the brand the switch picks — on its own
  * request and its own two-minute clock (`LeadWatch.tsx`). It is mounted only
  * while that tab is shown, so it asks only then.
  *
@@ -152,7 +152,7 @@ export function LeadsPage() {
         ) : (
           <>
             {/* «Лид назорати» — above everything, on its own request: see LeadWatch. */}
-            <LeadWatch />
+            <LeadWatch brand={filters.brand} />
             {status === 'error' ? (
               <>
                 <Card className="p-5">

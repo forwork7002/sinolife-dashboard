@@ -26,6 +26,7 @@ import { LEAD_SOURCE_VOCABULARY, LEAD_TILE_SOURCES, REGISTRATION_DUPLICATE_STAGE
 import {
   type FeedHourRow,
   type LeadWatchDto,
+  type LeadWatchInput,
   type LeadWatchSettings,
   type LeadWatchSummaryDto,
   type WatchArrival,
@@ -42,6 +43,7 @@ import {
 import { formNameOf, leadChannel, leadTile } from '@/server/domain/leads/leadSources'
 import { resolvePeriod, trailingDays, zonedDateKey } from '@/server/domain/period/period'
 import { buildLeadSplit } from '@/server/domain/registration/leadSplit'
+import type { BrandFilter } from '@/server/domain/types'
 import { teamBrand } from '@/server/domain/rnp/rnpSheet'
 import type { InboundCallsRepository } from '@/server/repositories/inboundCallsRepository'
 import type { LeadWatchRepository, WatchChatRow, WatchFeedHourRow, WatchLeadRow } from '@/server/repositories/leadWatchRepository'
@@ -78,8 +80,13 @@ const WATCH_TTL_MS = 60_000
  * than `staleAfterMin`.
  */
 const LEAD_WATCH_OWNED_TTL_MS = LEAD_WATCH_SETTINGS.refreshEveryMs + 60_000
+/*
+  THE READS ARE KEPT, NOT THE ANSWER (2026-10-31): the brand switch narrows
+  them (`buildLeadWatch(input, brand)`), and each brand's answer is computed
+  from the same reads — no query per brand, nothing a brand could disagree on.
+*/
 const watchCache = processWide('sinolife.leadWatch.cache', () =>
-  ttlCache<LeadWatchDto>(WATCH_TTL_MS, {
+  ttlCache<LeadWatchInput>(WATCH_TTL_MS, {
     staleMs: LEAD_WATCH_SETTINGS.staleAfterMin * 60_000 - LEAD_WATCH_OWNED_TTL_MS,
     onError: LIVE_CACHE.onError,
   }),
@@ -161,6 +168,8 @@ export function watchHistory(rows: readonly WatchFeedHourRow[]): FeedHourRow[] {
       channel: watch,
       feed: watchFeed(channel, form, row.sourceId, row.source, leadBrand(row.sourceId, row.formTitle)),
       leads: row.leads,
+      // The brand switch's: the week is grouped by form and source, so «Проект» cannot be read here.
+      brand: leadBrand(row.sourceId, row.formTitle),
     })
   }
   return history
@@ -197,8 +206,8 @@ export class LeadWatchService {
   ) {}
 
   /** `GET /leads/watch` — the memoised snapshot. */
-  watch(now: Date, timeZone: string): Promise<LeadWatchDto> {
-    return watchCache.get(this.key(now, timeZone), () => this.build(now, timeZone))
+  async watch(now: Date, timeZone: string, brand: BrandFilter = 'all'): Promise<LeadWatchDto> {
+    return buildLeadWatch(await watchCache.get(this.key(now, timeZone), () => this.read(now, timeZone)), brand)
   }
 
   /** `GET /leads/watch/summary` — the same snapshot's count of red cards, for the sidebar badge. */
@@ -222,14 +231,15 @@ export class LeadWatchService {
       the warm lane held the database with a month's scans. Its answer is
       good until just past the next tick; the warmer goes first in the lane.
     */
-    await watchCache.refresh(this.key(now, timeZone), () => this.build(now, timeZone), { ttlMs: LEAD_WATCH_OWNED_TTL_MS })
+    await watchCache.refresh(this.key(now, timeZone), () => this.read(now, timeZone), { ttlMs: LEAD_WATCH_OWNED_TTL_MS })
   }
 
   private key(now: Date, timeZone: string): string {
     return `${zonedDateKey(now, timeZone)}|${timeZone}`
   }
 
-  private async build(now: Date, timeZone: string): Promise<LeadWatchDto> {
+  /** Today's reads, whole — every brand's answer is built from them (`watch`). */
+  private async read(now: Date, timeZone: string): Promise<LeadWatchInput> {
     const today = resolvePeriod('today', { timeZone, now })
     const day = zonedDateKey(now, timeZone)
     // `historyDays` whole days before today: [the first of them, today's first instant).
@@ -315,7 +325,7 @@ export class LeadWatchService {
       rops: card.rops.map((r) => ({ rop: r.rop, received: r.received, planLeads: r.planLeads, brand: teamBrand(r.rop) })),
     }
 
-    return buildLeadWatch({
+    return {
       now,
       timeZone,
       settings: this.settings,
@@ -328,7 +338,7 @@ export class LeadWatchService {
       arrivals,
       split: watchSplit,
       feedsAsOf: { deals: dealsAsOf, calls: clocks.calls, chats: clocks.chats },
-    })
+    }
   }
 
   /**

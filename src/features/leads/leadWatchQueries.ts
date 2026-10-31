@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
 import { apiGet, type ApiSuccess } from '@/lib/api'
+import type { DashboardBrand } from '@/features/shared/useDashboardFilters'
 import { LEAD_WATCH_SETTINGS } from '@/lib/leadWatchSettings'
 
 import type { LeadWatchDto, LeadWatchSummaryDto } from './leadWatchApi'
@@ -31,13 +32,18 @@ const CLOCK = {
   staleTime: LEAD_WATCH_SETTINGS.refreshEveryMs,
 } as const
 
-/** The whole block. Asked only while it is on screen. */
-export function useLeadWatch(enabled: boolean) {
+/**
+ * The whole block, of one brand or of all (2026-10-31 — the page's brand
+ * switch). Asked only while it is on screen.
+ */
+export function useLeadWatch(enabled: boolean, brand: DashboardBrand = 'all') {
   const client = useQueryClient()
   return useQuery({
-    queryKey: WATCH_KEY,
+    queryKey: [...WATCH_KEY, brand],
     queryFn: async ({ signal }) => {
-      const answer = await apiGet<LeadWatchDto>('/leads/watch', {}, signal)
+      const answer = await apiGet<LeadWatchDto>('/leads/watch', brand === 'all' ? {} : { brand }, signal)
+      // The badge is the whole company's: one brand's count is not handed to it.
+      if (brand !== 'all') return answer
       /*
         The sidebar badge and the tab title read the summary; the block has
         just read the same number with everything under it. Handing it over

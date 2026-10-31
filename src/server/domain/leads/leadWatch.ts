@@ -5,8 +5,12 @@
  * DTO out — no framework, no database, no clock of its own.
  *
  * Asked for on 2026-10-09. The screens beside it count what HAPPENED over a
- * period; this one says what is WAITING right now, so it has no period and no
- * brand switch — always today, in the app's time zone, the whole company.
+ * period; this one says what is WAITING right now, so it has no period —
+ * always today, in the app's time zone. THE BRAND SWITCH APPLIES SINCE
+ * 2026-10-31 (the client: «qolib ketgan lidlarda Zextradan ham collagenda ham
+ * filtr yo'q, bir xil ko'rsatyapdi»): `buildLeadWatch(input, brand)` keeps the
+ * rows of that brand on every check, by `brandMatches` — Collagen + Zextra +
+ * Brendsiz add up to «Hammasi», as on the rest of «Lidlar».
  *
  * WHO IS WATCHED. Every deal-based check reads one population: deals in
  * Регистрация created today, still OPEN, and not «Исход» — an operator's own
@@ -31,6 +35,7 @@
 import type { LeadWatchSettings as SettingsFile } from '@/lib/leadWatchSettings'
 
 import { phoneKey } from '../calls/inboundCalls'
+import { type BrandFilter, brandMatches } from '../types'
 import { zonedHour, zonedHourStart } from '../period/period'
 import type { LeadChannel, LeadTile } from './leadSources'
 
@@ -250,6 +255,12 @@ export interface FeedHourRow {
   readonly channel: WatchChannel
   readonly feed: WatchFeed | null
   readonly leads: number
+  /**
+   * The brand its form or source names (`leadBrand` without «Проект» — the
+   * week's rows are grouped by form and source only), for the brand switch.
+   * Absent: the feed's.
+   */
+  readonly brand?: WatchBrand | null
 }
 
 /** An open-line chat a person holds open, with the deal it belongs to. */
@@ -600,12 +611,15 @@ export function missedCallsIssue(
   contacts: ReadonlyMap<string, WatchContact>,
   now: Date,
   settings: LeadWatchSettings,
+  /** The brand switch: a caller's brand is known only here, off their latest deal. */
+  brandFilter: BrandFilter = 'all',
 ): LeadWatchIssueDto {
   return waitingIssue(
     'missedCalls',
-    missedCallers(inbound, outbound).map((caller) => {
+    missedCallers(inbound, outbound).flatMap((caller) => {
       const contact = caller.customerId === null ? undefined : contacts.get(caller.customerId)
       const brand = contact?.brand ?? null
+      if (!brandMatches(brandFilter, brand)) return []
       return {
         row: {
           key: caller.key,
@@ -934,8 +948,36 @@ export function oldestFeed(feeds: LeadWatchInput['feedsAsOf']): Date | null {
   return new Date(Math.min(deals.getTime(), calls.getTime(), chats.getTime()))
 }
 
-/** «Лид назорати», whole: always all seven issues, in `WATCH_ISSUE_KINDS`' order. */
-export function buildLeadWatch(input: LeadWatchInput): LeadWatchDto {
+/**
+ * The watch's inputs narrowed to one side of the brand switch (2026-10-31):
+ * each lead, chat, targetolog and ROP team by its own brand, the week's
+ * intake by its form's or source's. The missed calls are narrowed in
+ * `missedCallsIssue`, where a caller's brand is first known. A team's
+ * hand-out is weighed against its own brand's teams.
+ */
+export function narrowLeadWatchInput(input: LeadWatchInput, brand: BrandFilter): LeadWatchInput {
+  if (brand === 'all') return input
+  const keep = (b: WatchBrand | null | undefined) => brandMatches(brand, b)
+  const split =
+    input.split === null
+      ? null
+      : (() => {
+          const rops = input.split.rops.filter((r) => keep(r.brand))
+          return { ...input.split, rops, total: rops.reduce((sum, r) => sum + r.received, 0) }
+        })()
+  return {
+    ...input,
+    leads: input.leads.filter((l) => keep(l.brand)),
+    history: input.history.filter((h) => keep(h.brand === undefined ? (h.feed?.brand ?? null) : h.brand)),
+    chats: input.chats.filter((c) => keep(c.brand)),
+    arrivals: input.arrivals.filter((a) => keep(a.brand)),
+    split,
+  }
+}
+
+/** «Лид назорати», whole: always all seven issues, in `WATCH_ISSUE_KINDS`' order — of one brand, or of all. */
+export function buildLeadWatch(whole: LeadWatchInput, brand: BrandFilter = 'all'): LeadWatchDto {
+  const input = narrowLeadWatchInput(whole, brand)
   const { now, timeZone, settings, leads } = input
   const channelStop = channelStopIssue(leads, input.history, input.arrivals, now, timeZone, settings)
 
@@ -943,7 +985,7 @@ export function buildLeadWatch(input: LeadWatchInput): LeadWatchDto {
     unassigned: unassignedIssue(leads, now, settings),
     idle: idleIssue(leads, now, settings),
     chats: chatsIssue(input.chats, now, settings),
-    missedCalls: missedCallsIssue(input.inbound, input.outbound, input.contacts, now, settings),
+    missedCalls: missedCallsIssue(input.inbound, input.outbound, input.contacts, now, settings, brand),
     channelStop: channelStop.issue,
     uneven: unevenIssue(input.split, settings),
     noProject: noProjectIssue(leads, settings),

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { getHandler } from '@/server/http/handler'
+import { brandFilter } from '@/server/http/queryParams'
 import { leadWatchService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +24,8 @@ const ACCESS = { permission: 'analytics:read:all', section: 'leads' } as const
  * filters the rows it was sent, and a hand-typed `?preset=` is ignored
  * rather than answered with a 400.
  */
-export const GET = getHandler(ACCESS, z.object({}), async (ctx) => {
-  const data = await leadWatchService.watch(ctx.now, ctx.timeZone)
+// The brand switch narrows the block since 2026-10-31; the period never does — it is always today.
+export const GET = getHandler(ACCESS, z.object({ brand: brandFilter }), async (ctx) => {
+  const data = await leadWatchService.watch(ctx.now, ctx.timeZone, ctx.query.brand)
   return { data }
 })

@@ -145,8 +145,10 @@ describe('watchHistory', () => {
         channel: 'generated',
         feed: { key: 'form|Sinolife (UMAR) 777', name: 'Sinolife (UMAR) 777', channel: 'generated', brand: 'Collagen' },
         leads: 6,
+        brand: 'Collagen',
       },
-      { day: '2026-10-08', hour: 15, channel: 'inbound', feed: null, leads: 4 },
+      // The brand switch's own brand: a feedless row is the brandless slice's.
+      { day: '2026-10-08', hour: 15, channel: 'inbound', feed: null, leads: 4, brand: null },
     ])
   })
 })
@@ -268,6 +270,20 @@ describe('LeadWatchService', () => {
     const missed = dto.issues.find((i) => i.kind === 'missedCalls')!
     expect(missed.rows.map((r) => r.key)).toEqual(['000000006'])
     expect(missed.count).toBe(1)
+  })
+
+  it('answers every brand from the same reads (2026-10-31)', async () => {
+    const now = new Date('2026-10-31T10:00:00.000Z')
+    const { service: s, asked } = service({ leads: [leadRow({ createdAt: ago(45) })] })
+    const all = await s.watch(now, TZ)
+    const zextra = await s.watch(now, TZ, 'Zextra')
+    // One read of the day, whichever brand asked.
+    expect(asked.windows).toHaveLength(1)
+    const unassigned = (dto: typeof all) => dto.issues.find((i) => i.kind === 'unassigned')!.count
+    expect(unassigned(all)).toBe(1)
+    expect(unassigned(zextra) + unassigned(await s.watch(now, TZ, 'Collagen')) + unassigned(await s.watch(now, TZ, 'none'))).toBe(1)
+    // The badge stays the whole company's.
+    expect((await s.summary(now, TZ)).critical).toBe(all.critical)
   })
 
   it('answers the seven checks from one day’s reads', async () => {
