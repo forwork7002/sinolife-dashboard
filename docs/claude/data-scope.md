@@ -156,3 +156,55 @@ Still company-only, and still refusing:
 logistics, margin, cohort, concentration and **marketing** (the ad sheets have
 no employee dimension to narrow by at all).
 
+---
+
+## Scope mechanics — from CLAUDE.md «Data scope: ALL, TEAM, OWN»
+
+> CLAUDE.md'dan 2026-11-01 da so'zma-so'z ko'chirildi (ixchamlash). Qoidalar o'zgarmagan.
+
+CLAUDE.md keeps the three levels, the shape of `ctx.scope` and PRIMARY membership; this is how
+they are resolved.
+
+- **The subtree is resolved per request, in `ScopeRepository.teamEmployeeIds`,
+  and only HEADSHIP descends.** The recursion walks down from every department
+  whose `headId` is this person (`UNION`, not `UNION ALL`, so a `parentId`
+  cycle terminates); the person's own `employee."departmentId"` is then unioned
+  in **flat**. Both arms are needed and neither is redundant: «Навоий» names a
+  head whose own units are elsewhere, so reading membership alone hands that
+  man his own team and not the branch he runs — while letting a membership
+  descend would hand an ordinary registrar filed in «Тошкент онлайн» the nine
+  teams beneath it. Then everyone whose **primary** `departmentId` is in that
+  set. Granting TEAM to whoever heads the ROOT is the same as granting ALL.
+  **Since 2026-10-19 the descent stops at a «(ROP)» team when it STARTED at
+  one** (`"fromTeam"`): «Malika(ROP)» is the portal parent of Afruzaxon /
+  Sadriddin / Asliddin(ROP), and Malika read 47 people instead of her 7. A
+  non-team anchor (a branch, «Зехтра отдел продаж») still descends fully;
+  the other twelve TEAM accounts measured unchanged. A member who HEADS a
+  unit outside the scope is left out too («192 Charos», filed in
+  «Malika(ROP)», heads «Зехтра отдел продаж»): Malika reads 264–269 only.
+  **AND «Malika» IS HER PEOPLE ON EVERY SCREEN (2026-10-19, `ROSTER_TEAMS`
+  in `domain/employees/roles.ts`, `InsightsRepository.teamSql`)**: a deal
+  sold by someone filed in unit 94 (less a head of another unit) is «Malika»
+  whatever «Организация сотрудника» says; a deal labelled «Charos(ROP)» /
+  «Malika(ROP)» sold by anyone else goes to that seller's own unit. Every
+  team reader goes through `teamSql` (the queue's `classified.rop`, which
+  Logistika, /rnp, the sellers' teams and payroll read; `dealTeamSql`;
+  Roistat; the cohort `?rop=`; /rnp calls). Portal, deals created 01–19.10:
+  162 (305.5 mln) were split «Charos» / «Malika» and are one «Malika» now; 3
+  (4.7 mln, Charos 192 ×2, Javohir 150) leave her.
+- **`ScopeService` memoises the subtree for 60 s, keyed by employee id.** The
+  key is the whole question; a key that omitted it would serve one account
+  another's scope. A rejection is never cached.
+- **`rowScopeFor(principal, teamEmployeeIds)` THROWS** if a TEAM principal
+  arrives with nothing resolved. Widening there would be a silent leak, so it
+  refuses to answer.
+- (eskirgan — keyingi bandning oxirgi gapi: `commandCentreService` va uning `unscoped()`i
+  2026-09-10 tozalashida ketgan — `git log -S'unscoped()' -- src` → b5b2ad21 (2026-09-11);
+  2026-11-01 da `grep -rn 'commandCentreService\|unscoped(' src tests` = 0. Endi «hammasi»ni bir
+  necha servis ochiq yozadi: `restrictToEmployeeIds: null` (`alertsService`, `sverkaService`,
+  `payrollService`). Bandning qolgani to'g'ri: `ScopedWindow`ning maydoni majburiy —
+  `branches.ts` 44–46.)
+- **`ScopedWindow` (branches.ts) has a REQUIRED `restrictToEmployeeIds`**, so a
+  bare `Period` will not type-check into the confirmation queries. That is what
+  forces every caller to say whose rows it wants; `commandCentreService`'s
+  `unscoped()` is the one place that says "everybody" out loud.

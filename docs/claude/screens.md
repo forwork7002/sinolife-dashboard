@@ -2044,3 +2044,8 @@ Per-screen traps worth knowing before you touch one:
 
 ---
 
+## Screen index — from CLAUDE.md
+
+> CLAUDE.md'dan 2026-11-01 da so'zma-so'z ko'chirildi (ixchamlash). Qoidalar o'zgarmagan.
+
+Screens: Savdo dinamikasi `/analytics/sales` · Mijoz qaytishi `/analytics/cohort` · Qoʻngʻiroqlar `/customers` · Reklama samarasi `/marketing` · Lidlar `/leads` · AI registrator `/leads/ai-registrator` · RNP jadvali `/rnp` · Target tahlili `/target` · Roistat `/roistat` · Yalpi marja `/margin` · Logistika `/logistics` · Sverka `/sverka` · Tasdiqlash navbati `/confirmation` · Sotuvchilar oyligi `/payroll` · Sotuvchilar reytingi `/sellers` · KPI rejalari `/kpi` · Struktura `/structure`.

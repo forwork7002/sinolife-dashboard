@@ -955,3 +955,21 @@ sweep is at most nightly since 2026-10-14, see «THE SWEEP RUNS AT NIGHT».)
 
 ---
 
+## Commands, and the unreachable portal — from CLAUDE.md
+
+> CLAUDE.md'dan 2026-11-01 da so'zma-so'z ko'chirildi (ixchamlash). Qoidalar o'zgarmagan.
+
+From «Commands» in CLAUDE.md:
+
+```bash
+npm run bitrix:worker                  # the production sync loop, one tick a minute
+npm run bitrix:import                  # one incremental pass by hand
+npm run bitrix:import -- --full --reset
+npm run bitrix:resync -- STAGES DEALS  # one entity, after a mapping fix
+npm run db:seed:users -- --reset-password
+```
+
+From «The sync pipeline» in CLAUDE.md — its last rule, whole; the full account is
+«SERVER CANNOT REACH THE PORTAL» above:
+
+- **Server cannot reach the portal** — «aloqa yoʻq» on the chip, `UND_ERR_CONNECT_TIMEOUT` in the log; fronts that drop us are skipped, one request per connection and every batch sized to `RESPONSE_BUDGET_BYTES` (the route freezes a connection after ~20 KB), probed every tick; since 2026-10-20 the portal filters DigitalOcean itself — `BITRIX24_PROXY_URL` sends the calls through a relay outside it; the 5-step diagnosis is there
