@@ -461,6 +461,15 @@ against production. The DEALS row's `o‘rt s` must read ~1–2, not ~32, and it
 `sek/10daq` single digits, not 145. If it creeps back up, read the chain width
 first.
 
+**THE MEASURED RUNGS BILL THE PORTAL'S `time.duration`, NOT THE WALL — 2026-11-02**
+(`billedSeconds`, `portalMeter.ts`). The portal now sends a `time` block (`duration`,
+and `operating` on plain methods — not on a batch's commands, so a chained walk still
+falls to the measured fallback). Through the Eskiz relay at ~15 KB/s a 50-deal read the
+portal ran in ~2 s took up to 25 s on the wall; billed by the wall the meter paced and
+then waited the window out, and the worker crawled (no DEALS pass for 16 minutes, the
+chip «18 daqiqa oldin»). A slow wire spends nothing of the portal's basket, so the
+answer's `duration` is billed whenever it is there, the wall-clock only without it.
+
 **THE GAUGE WAS ALWAYS ON THE WIRE AND NOTHING EVER READ IT — `portalMeter.ts`,
 2026-09-16.** Every successful Bitrix24 answer carries `time.operating` (seconds
 of operating time this method has already spent in the current basket, against

@@ -77,7 +77,7 @@ import {
 import { RateLimiter, backoffDelayMs, sleep } from './rateLimiter'
 import { createPortalFetch } from './portalAddresses'
 import { PortalGate } from './portalGate'
-import { PortalMeter, type PortalTime } from './portalMeter'
+import { billedSeconds, PortalMeter, type PortalTime } from './portalMeter'
 import { PortalBudget } from './portalBudget'
 import { SELF_LIMIT_CODE } from './refusal'
 import { classifyRefusal } from './refusal'
@@ -852,8 +852,11 @@ export class Bitrix24CrmProvider implements CrmProvider {
           seconds a tick got `obey.bitrix24.kz` blocked three mornings running.
           Successes only: a refusal returns in milliseconds and would drag the
           measurement down exactly when the portal is under strain.
+          The portal's own `time.duration` is billed when the answer carries it
+          (`billedSeconds`, 2026-11-02): through a slow relay the wall-clock is
+          mostly wire, and billing the wire paced the worker to a crawl.
         */
-        this.meter.recordDuration(metered, (Date.now() - sentAt) / 1000, at)
+        this.meter.recordDuration(metered, billedSeconds((Date.now() - sentAt) / 1000, payload.time), at)
         return payload
       } catch (error) {
         lastError = error

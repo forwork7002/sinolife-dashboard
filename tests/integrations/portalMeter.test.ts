@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { Bitrix24CrmProvider } from '@/server/integrations/crm/bitrix24/Bitrix24CrmProvider'
 import {
+  billedSeconds,
   HARD_FRACTION,
   MEASURED_HARD_S,
   MEASURED_SOFT_S,
@@ -219,5 +220,62 @@ describe('the measured fallback, on a portal that reports nothing', () => {
     expect(crm.meter.measuredSeconds('crm.stagehistory.list', now)).toBeGreaterThan(0)
     expect(crm.meter.measuredSeconds('batch', now)).toBe(0)
     expect(crm.meter.stats().peak[0]?.method).toBe('crm.stagehistory.list')
+  })
+})
+
+/**
+ * 2026-11-02, the relay's line at ~15 KB/s: the portal ran a 50-deal read in
+ * ~2 s (`time.duration`) that took up to 25 s on the wall. Billing the wall
+ * paced the worker to a crawl (no DEALS pass for 16 minutes); only the portal's
+ * own execution time spends its basket.
+ */
+describe('billed seconds — the portal\'s execution, not the wire (2026-11-02)', () => {
+  const NOW = new Date('2026-11-02T12:00:00Z')
+  const at = (secondsLater: number) => new Date(NOW.getTime() + secondsLater * 1000)
+
+  it('bills the portal\'s duration when the answer carries one, never more than the wall', () => {
+    expect(billedSeconds(24.7, { duration: 1.9 })).toBe(1.9)
+    expect(billedSeconds(1.0, { duration: 3 })).toBe(1.0)
+    expect(billedSeconds(0.5, { duration: 0 })).toBe(0)
+  })
+
+  it('falls back to the wall-clock without a usable duration', () => {
+    expect(billedSeconds(12, undefined)).toBe(12)
+    expect(billedSeconds(12, {})).toBe(12)
+    expect(billedSeconds(12, { duration: Number.NaN })).toBe(12)
+    expect(billedSeconds(12, { duration: -1 })).toBe(12)
+  })
+
+  it('lets a slow relay through that the wall-clock would have held — the afternoon replayed', () => {
+    const byWall = new PortalMeter()
+    const byPortal = new PortalMeter()
+    let wallHeld = false
+    // A DEALS pass every two minutes, six requests of ~20 s wall / ~2 s portal each.
+    for (let tick = 0; tick < 5; tick++) {
+      for (let request = 0; request < 6; request++) {
+        const now = at(tick * 120 + request * 20)
+        if (byWall.waitMs('crm.deal.list', now) > 0) wallHeld = true
+        expect(byPortal.waitMs('crm.deal.list', now)).toBe(0)
+        byWall.recordDuration('crm.deal.list', billedSeconds(20, undefined), now)
+        byPortal.recordDuration('crm.deal.list', billedSeconds(20, { duration: 2 }), now)
+      }
+    }
+    expect(wallHeld).toBe(true)
+  })
+
+  it('is what the provider bills: a slow answer reporting a quick execution costs the execution', async () => {
+    const fetchImpl = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150))
+      return new Response(JSON.stringify({ result: { result: { c0: { items: [] } } }, time: { duration: 0.01 } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    }) as unknown as typeof fetch
+
+    const crm = new Bitrix24CrmProvider({ webhookUrl: 'https://portal/rest/1/tok/', fetchImpl })
+    await crm.fetchStageHistory()
+    const billed = crm.meter.measuredSeconds('crm.stagehistory.list', new Date())
+    expect(billed).toBeGreaterThan(0)
+    expect(billed).toBeLessThan(0.1)
   })
 })

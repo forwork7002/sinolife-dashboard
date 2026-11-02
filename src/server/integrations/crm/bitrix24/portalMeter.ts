@@ -86,6 +86,30 @@ export const HARD_FRACTION = 0.85
 export const MEASURED_SOFT_S = 60
 export const MEASURED_HARD_S = 120
 
+/**
+ * The seconds a successful call is billed against the measured rungs: the
+ * portal's own `time.duration` when the answer carries one, else our wall-clock.
+ *
+ * THE ROUND TRIP STOPPED BEING NOISE ON 2026-11-02. Since 2026-10-20 every call
+ * goes through the Eskiz relay (`BITRIX24_PROXY_URL`), and that afternoon the
+ * relay's line slowed to ~15 KB/s: a 50-deal `crm.deal.list` the portal ran in
+ * 1.5–2.3 s (`time.duration`, the same through the relay and direct) took
+ * 3–25 s on the wall. Billed by the wall, `crm.contact.list` read 106.8 s of
+ * «our» ten minutes, the meter paced and then waited the window out, and the
+ * worker crawled — no DEALS pass for 16 minutes and the header chip «18 daqiqa
+ * oldin». The rungs exist to keep the PORTAL's basket clear, and only the
+ * portal's execution time spends it; a slow wire spends nothing of it. The
+ * answer's `duration` is that execution time (a batch's covers every command
+ * it carried), so it is what is billed whenever it is there — never more than
+ * the wall, so a skewed clock cannot inflate it. The wall-clock remains the
+ * fallback for an answer without it, which is what the rungs were set on.
+ */
+export function billedSeconds(wallSeconds: number, time: PortalTime | undefined): number {
+  const duration = time?.duration
+  if (typeof duration === 'number' && Number.isFinite(duration) && duration >= 0) return Math.min(wallSeconds, duration)
+  return wallSeconds
+}
+
 /** The `time` block Bitrix24 attaches to every answer. */
 export interface PortalTime {
   readonly operating?: number
