@@ -578,7 +578,46 @@ async function importAccount(
   return { rows, campaignRows }
 }
 
-/** The account grain for one account, `[from, until]`, replacing that window. */
+/** Bound values per delete — far under Postgres' 32 767, so a July backfill of a busy account still goes in one transaction. */
+const PAIR_BATCH = 5_000
+
+/**
+ * The (day, id) pairs Meta answered for, grouped by day and cut into batches
+ * of at most `max` bound values — the only rows a finer grain may delete
+ * before writing them again (2026-11-02, see `importAccountGrain`). Each batch
+ * is one `deleteMany` with one `OR` arm per day. An empty answer is `[]`, and
+ * no delete is sent at all.
+ */
+export function answeredByDay(
+  rows: readonly { date: Date; id: string }[],
+  max: number = PAIR_BATCH,
+): { date: Date; ids: string[] }[][] {
+  const byDay = new Map<number, Set<string>>()
+  for (const row of rows) {
+    const day = row.date.getTime()
+    byDay.set(day, (byDay.get(day) ?? new Set<string>()).add(row.id))
+  }
+  const batches: { date: Date; ids: string[] }[][] = []
+  let batch: { date: Date; ids: string[] }[] = []
+  let size = 0
+  for (const [day, set] of byDay) {
+    const ids = [...set]
+    for (let i = 0; i < ids.length; i += max - 1) {
+      const part = { date: new Date(day), ids: ids.slice(i, i + max - 1) }
+      if (batch.length > 0 && size + part.ids.length + 1 > max) {
+        batches.push(batch)
+        batch = []
+        size = 0
+      }
+      batch.push(part)
+      size += part.ids.length + 1
+    }
+  }
+  if (batch.length > 0) batches.push(batch)
+  return batches
+}
+
+/** The account grain for one account, `[from, until]` — only the days Meta answered are rewritten. */
 async function importAccountGrain(
   prisma: PrismaClient,
   token: string,
@@ -608,23 +647,31 @@ async function importAccountGrain(
     grant ads_read» that day, its 05.10 spend still ours — and an account or
     a campaign he deletes can come back as an empty answer, not a refusal.
     Replacing the window with nothing would wipe the history the dashboard
-    already holds. So an empty answer over a window that holds spend writes
-    nothing and deletes nothing; any answer at all replaces the window, so a
-    day Meta has since zeroed (a refunded spend) does not linger.
+    already holds.
+
+    AND SINCE 2026-11-02 ONLY WHAT META ANSWERED IS REWRITTEN, here and in the
+    two finer grains — the owner, after Tursunbek removed us from both his
+    accounts: «fb maʼlumotlari tursin va oʻchib ketmasin, saqlasin butun
+    umr». Until then any answer at all replaced the whole window, so a
+    partial one erased the days it left out. Now a row is deleted only to be
+    written again from Meta's own row for the same day; a day Meta stays
+    silent about is never deleted. The price, taken knowingly: a day Meta
+    later drops to nothing (a fully refunded spend) keeps its old figure
+    instead of vanishing — a day Meta CORRECTS still comes back as a row and
+    is rewritten. Nothing else in the app deletes these tables.
   */
-  if (insights.length === 0) {
-    const held = await prisma.metaAdDaily.count({ where: { accountId: account.account_id, date: range, spendMicroUsd: { gt: 0n } } })
-    if (held > 0) {
-      keep?.(`${account.name}: ${held} kun`)
-      return 0
-    }
-  }
+  const answeredDays = [...new Set(insights.map((row) => row.date_start))].map((day) => new Date(`${day}T00:00:00Z`))
+  const held = await prisma.metaAdDaily.count({
+    where: { accountId: account.account_id, date: { ...range, notIn: answeredDays }, spendMicroUsd: { gt: 0n } },
+  })
+  if (held > 0) keep?.(`${account.name}: ${held} kun`)
+  if (insights.length === 0) return 0
 
   await prisma.$transaction([
     prisma.metaAdDaily.deleteMany({
       where: {
         accountId: account.account_id,
-        date: range,
+        date: { in: answeredDays },
       },
     }),
     prisma.metaAdDaily.createMany({
@@ -642,7 +689,7 @@ async function importAccountGrain(
   return insights.length
 }
 
-/** The campaign grain for one account, `[from, until]`, replacing that window. */
+/** The campaign grain for one account, `[from, until]` — only the (campaign, day) pairs Meta answered are rewritten. */
 async function importCampaignGrain(
   prisma: PrismaClient,
   token: string,
@@ -689,31 +736,35 @@ async function importCampaignGrain(
   })
   if (held.length > 0) keep?.(`${account.name}: ${held.length} kampaniya`)
 
+  const data = campaigns
+    .filter((row) => row.campaign_id)
+    .map((row) => ({
+      accountId: account.account_id,
+      accountName: account.name,
+      campaignId: row.campaign_id!,
+      campaignName: row.campaign_name ?? '',
+      objective: row.objective ?? '',
+      date: new Date(`${row.date_start}T00:00:00Z`),
+      spendMicroUsd: microUsd(row.spend),
+      impressions: BigInt(row.impressions ?? '0'),
+      clicks: BigInt(row.clicks ?? '0'),
+      leads: metaLeads(row, account.account_id),
+      conversations: metaConversations(row),
+    }))
+  // Only the (campaign, day) pairs Meta answered (2026-11-02) — a day it left out of a campaign it did report stays too.
+  const pairs = answeredByDay(data.map((row) => ({ date: row.date, id: row.campaignId })))
+
+  if (pairs.length === 0) return campaigns.length
   await prisma.$transaction([
-    prisma.metaCampaignDaily.deleteMany({
-      where: {
-        accountId: account.account_id,
-        date: range,
-        campaignId: { in: answered },
-      },
-    }),
-    prisma.metaCampaignDaily.createMany({
-      data: campaigns
-        .filter((row) => row.campaign_id)
-        .map((row) => ({
+    ...pairs.map((batch) =>
+      prisma.metaCampaignDaily.deleteMany({
+        where: {
           accountId: account.account_id,
-          accountName: account.name,
-          campaignId: row.campaign_id!,
-          campaignName: row.campaign_name ?? '',
-          objective: row.objective ?? '',
-          date: new Date(`${row.date_start}T00:00:00Z`),
-          spendMicroUsd: microUsd(row.spend),
-          impressions: BigInt(row.impressions ?? '0'),
-          clicks: BigInt(row.clicks ?? '0'),
-          leads: metaLeads(row, account.account_id),
-          conversations: metaConversations(row),
-        })),
-    }),
+          OR: batch.map((pair) => ({ date: pair.date, campaignId: { in: pair.ids } })),
+        },
+      }),
+    ),
+    prisma.metaCampaignDaily.createMany({ data }),
   ])
   return campaigns.length
 }
@@ -835,7 +886,7 @@ export function adInsightRow(account: Account, row: InsightRow) {
   }
 }
 
-/** The ad grain for one account, `[from, today]`, replacing that window. */
+/** The ad grain for one account, `[from, today]` — only the (ad, day) pairs Meta answered are rewritten. */
 async function importAccountAds(
   prisma: PrismaClient,
   token: string,
@@ -876,14 +927,18 @@ async function importAccountAds(
     select: { adId: true },
   })
   if (held.length > 0) keep?.(`${account.name}: ${held.length} eʼlon`)
+  // Only the (ad, day) pairs Meta answered (2026-11-02) — see `importCampaignGrain`.
+  const pairs = answeredByDay(data.map((row) => ({ date: row.date, id: row.adId })))
+  if (pairs.length === 0) return 0
   await prisma.$transaction([
-    prisma.metaAdInsightDaily.deleteMany({
-      where: {
-        accountId: account.account_id,
-        date: range,
-        adId: { in: answered },
-      },
-    }),
+    ...pairs.map((batch) =>
+      prisma.metaAdInsightDaily.deleteMany({
+        where: {
+          accountId: account.account_id,
+          OR: batch.map((pair) => ({ date: pair.date, adId: { in: pair.ids } })),
+        },
+      }),
+    ),
     prisma.metaAdInsightDaily.createMany({ data }),
   ])
   return data.length

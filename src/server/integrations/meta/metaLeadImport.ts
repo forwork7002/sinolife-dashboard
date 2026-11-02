@@ -224,13 +224,22 @@ export async function importMetaLeads(
 
     /*
       The page's list as it stands now — `getAll` answered the whole list or
-      threw above, so a form gone from it is gone from the page and its row
-      goes too. A failed write costs the list, never the leads below.
+      threw above, so a form gone from it is gone from the page. Its row is
+      KEPT and marked `DELETED` (2026-11-02, the owner: «fb maʼlumotlari
+      tursin va oʻchib ketmasin, saqlasin butun umr») — it was deleted until
+      then. «Formalar» leaves a `DELETED` form out exactly as it left out a
+      missing one, so the live list reads the same; the row keeps the form's
+      name and page for the leads and spend already filed under it. A form
+      that comes back is upserted over the mark. A failed write costs the
+      list, never the leads below.
     */
     const listedAt = new Date()
     try {
       await prisma.$transaction([
-        prisma.metaLeadForm.deleteMany({ where: { pageId: page.id, id: { notIn: pageForms.map((form) => form.id) } } }),
+        prisma.metaLeadForm.updateMany({
+          where: { pageId: page.id, id: { notIn: pageForms.map((form) => form.id) }, status: { not: 'DELETED' } },
+          data: { status: 'DELETED' },
+        }),
         ...pageForms.map((form) => {
           const row = metaLeadFormRow(page, form, listedAt)
           return prisma.metaLeadForm.upsert({ where: { id: row.id }, create: row, update: row })

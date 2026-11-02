@@ -106,7 +106,11 @@ describe('importMetaLeads', () => {
   const formTable = (listed: Record<string, unknown>[] = [], dropped: unknown[] = []) => ({
     $transaction: async (ops: unknown[]) => ops,
     metaLeadForm: {
-      deleteMany: (args: unknown) => {
+      // Since 2026-11-02 a form gone from the page is marked, never deleted.
+      deleteMany: () => {
+        throw new Error('meta_lead_form is never deleted (2026-11-02)')
+      },
+      updateMany: (args: unknown) => {
         dropped.push(args)
         return args
       },
@@ -223,8 +227,10 @@ describe('importMetaLeads', () => {
     })
     // Meta left the two out: no date, no count — never a zero.
     expect(listed[2]).toMatchObject({ status: 'ARCHIVED', createdTime: null, leadsCount: null })
-    // A form gone from the page's whole list is gone from the table — that page's alone.
-    expect(dropped).toEqual([{ where: { pageId: 'p1', id: { notIn: ['f-new', 'f-seen', 'f-old'] } } }])
+    // A form gone from the page's whole list is KEPT and marked DELETED — that page's alone (2026-11-02).
+    expect(dropped).toEqual([
+      { where: { pageId: 'p1', id: { notIn: ['f-new', 'f-seen', 'f-old'] }, status: { not: 'DELETED' } }, data: { status: 'DELETED' } },
+    ])
   })
 
   it('reads the leads even when the form list cannot be written', async () => {

@@ -208,9 +208,16 @@
   that spent in the last 3 days (`importMetaAdForms` `recheck`); it counts as
   the night's only when every account was read. **What Meta no longer answers
   is kept (2026-10-30)**: a targetolog who leaves takes his access (Tursunbek's
-  «Zextra», `#200 … has NOT grant ads_read`) or deletes campaigns. An account
-  read that comes back empty over days that hold spend deletes nothing; the
-  campaign and ad grains replace only the campaigns / ads Meta answered for.
+  «Zextra», `#200 … has NOT grant ads_read`) or deletes campaigns. **Since
+  2026-11-02 no Meta row is ever deleted except to be rewritten from Meta's
+  own row for the same day** (the owner, after Tursunbek removed us from both
+  his accounts: «fb maʼlumotlari tursin va oʻchib ketmasin, saqlasin butun
+  umr»): the account grain rewrites only the days Meta answered, the campaign
+  and ad grains only the (id, day) pairs (`answeredByDay`, ≤ 5 000 bound values
+  per delete), so a partial answer no longer erases the days it left out; a
+  day Meta drops to nothing (a fully refunded spend) keeps its old figure. A
+  form gone from its page is marked `DELETED` in `meta_lead_form`, never
+  deleted; `meta_lead` is insert-only. Nothing else deletes these tables.
   The log names what stayed: «meta javob bermadi — eski maʼlumot saqlandi».
   **The AI targetolog's leads are counted once (2026-10-31)**: its two
   accounts (`LEAD_ECHO_ACCOUNTS`) send a Conversions API «Lead» back for every

@@ -4,6 +4,7 @@ import type { PrismaClient } from '@/generated/prisma/client'
 
 import {
   adInsightRow,
+  answeredByDay,
   backfillSlice,
   dateSlices,
   grainStarts,
@@ -176,13 +177,19 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
   }
 
   const refusal = { error: { message: 'There have been too many calls to this ad-account.', code: 80004 } }
+  // One day at every grain: since 2026-11-02 only what Meta answers is rewritten, so an empty answer writes nothing.
+  const oneDay = {
+    data: [
+      { date_start: '2026-09-22', spend: '1.00', impressions: '10', clicks: '1', campaign_id: 'c1', campaign_name: 'C', adset_id: 's1', adset_name: 'S', ad_id: 'a1', ad_name: 'A' },
+    ],
+  }
 
   it('falls back to the known accounts when Meta refuses to list them — 2026-09-23', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
         if (url.includes('/me/adaccounts')) return new Response(JSON.stringify(refusal), { status: 400 })
-        return new Response(JSON.stringify({ data: [] }), { status: 200 })
+        return new Response(JSON.stringify(oneDay), { status: 200 })
       }),
     )
     const { prisma, written } = fakePrisma()
@@ -210,7 +217,7 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
           )
         }
         if (url.includes('act_1356045995688768')) return new Response(JSON.stringify(refusal), { status: 400 })
-        return new Response(JSON.stringify({ data: [] }))
+        return new Response(JSON.stringify(oneDay))
       }),
     )
     const { prisma, written } = fakePrisma()
@@ -239,7 +246,7 @@ describe('importMetaSpend — one refused account does not stop the rest', () =>
         if (url.includes('act_1356045995688768') && url.includes('level=ad&')) {
           return new Response(JSON.stringify(refusal), { status: 400 })
         }
-        return new Response(JSON.stringify({ data: [] }))
+        return new Response(JSON.stringify(oneDay))
       }),
     )
     const { prisma, written } = fakePrisma()
@@ -350,19 +357,20 @@ describe('importMetaSpend — the account grain starts per account, never at the
 
   it('reads a new account from the history start and a long-refused one from its own last week', async () => {
     const day = (iso: string) => new Date(`${iso}T00:00:00Z`)
-    const deleted = new Map<string, string>()
+    const checked = new Map<string, string>()
     const prisma = {
       metaAdDaily: {
-        count: async () => 0,
+        // The days held in the window that Meta left out are counted — over exactly the window read.
+        count: async (args: { where: { accountId: string; date: { gte: Date } } }) => {
+          checked.set(args.where.accountId, args.where.date.gte.toISOString().slice(0, 10))
+          return 0
+        },
         // The table runs to 05.10; Kamron 3 was refused from 11.09; Kamron 2 is new to the token.
         groupBy: async () => [
           { accountId: '990016692137088', _min: { date: day('2026-07-01') }, _max: { date: day('2026-10-05') } },
           { accountId: '1356045995688768', _min: { date: day('2026-07-01') }, _max: { date: day('2026-09-10') } },
         ],
-        deleteMany: (args: { where: { accountId: string; date: { gte: Date } } }) => {
-          deleted.set(args.where.accountId, args.where.date.gte.toISOString().slice(0, 10))
-          return 'delete'
-        },
+        deleteMany: () => 'delete',
         createMany: () => 'create',
       },
       metaCampaignDaily: { findMany: async () => [], groupBy: async () => [], deleteMany: () => 'delete', createMany: () => 'create' },
@@ -402,8 +410,8 @@ describe('importMetaSpend — the account grain starts per account, never at the
         ['act_1075542260705572', '2026-07-01'], // no rows yet: the whole history
       ]),
     )
-    // Each account's window is the one replaced.
-    expect(deleted).toEqual(
+    // Each account's window is the one checked for the days Meta left out.
+    expect(checked).toEqual(
       new Map([
         ['990016692137088', '2026-09-28'],
         ['1356045995688768', '2026-09-03'],
@@ -916,9 +924,8 @@ describe('importMetaSpend — what Meta no longer answers is kept (2026-10-30, T
     )
     const { prisma, deletes } = db({ account: 19, campaigns: ['c-old'], ads: ['a-old'] })
     const r = await importMetaSpend(prisma, 'token', '2026-10-30')
-    expect(deletes.filter((d) => d.table === 'account')).toEqual([])
-    // The finer grains delete only what Meta answered for — here nothing.
-    expect(deletes.filter((d) => d.table !== 'account').map((d) => d.where.campaignId ?? d.where.adId)).toEqual([{ in: [] }, { in: [] }])
+    // No grain deletes anything: Meta answered nothing (since 2026-11-02 not even an empty delete is sent).
+    expect(deletes).toEqual([])
     expect(r.kept).toEqual([
       'Zextra 2 (Tursunbek TARGETOLOG): 19 kun',
       'Zextra 2 (Tursunbek TARGETOLOG): 1 kampaniya',
@@ -926,7 +933,7 @@ describe('importMetaSpend — what Meta no longer answers is kept (2026-10-30, T
     ])
   })
 
-  it('replaces the window of the campaigns and ads Meta did answer for, and keeps the others', async () => {
+  it('rewrites only the days, campaigns and ads Meta answered for, and keeps every other held row (2026-11-02)', async () => {
     const day = { date_start: '2026-10-29', spend: '1.00', impressions: '10', clicks: '1' }
     vi.stubGlobal(
       'fetch',
@@ -944,10 +951,59 @@ describe('importMetaSpend — what Meta no longer answers is kept (2026-10-30, T
     )
     const { prisma, deletes } = db({ account: 19, campaigns: ['c-deleted'], ads: ['a-deleted'] })
     const r = await importMetaSpend(prisma, 'token', '2026-10-30')
-    // The account answered: its window is replaced, as before.
-    expect(deletes.filter((d) => d.table === 'account')).toHaveLength(1)
-    expect(deletes.find((d) => d.table === 'campaign')!.where.campaignId).toEqual({ in: ['c-live'] })
-    expect(deletes.find((d) => d.table === 'ad')!.where.adId).toEqual({ in: ['a-live'] })
-    expect(r.kept).toEqual(['Zextra 2 (Tursunbek TARGETOLOG): 1 kampaniya', 'Zextra 2 (Tursunbek TARGETOLOG): 1 eʼlon'])
+    // The account answered one day of the window: that day alone is rewritten, the 19 held days stay.
+    const day29 = new Date('2026-10-29T00:00:00Z')
+    expect(deletes.filter((d) => d.table === 'account').map((d) => d.where)).toEqual([
+      { accountId: account.account_id, date: { in: [day29] } },
+    ])
+    expect(deletes.find((d) => d.table === 'campaign')!.where).toEqual({
+      accountId: account.account_id,
+      OR: [{ date: day29, campaignId: { in: ['c-live'] } }],
+    })
+    expect(deletes.find((d) => d.table === 'ad')!.where).toEqual({
+      accountId: account.account_id,
+      OR: [{ date: day29, adId: { in: ['a-live'] } }],
+    })
+    expect(r.kept).toEqual([
+      'Zextra 2 (Tursunbek TARGETOLOG): 19 kun',
+      'Zextra 2 (Tursunbek TARGETOLOG): 1 kampaniya',
+      'Zextra 2 (Tursunbek TARGETOLOG): 1 eʼlon',
+    ])
+  })
+})
+
+describe('answeredByDay — the only (day, id) pairs a grain may delete (2026-11-02)', () => {
+  const d = (iso: string) => new Date(`${iso}T00:00:00Z`)
+
+  it('groups the answered ids under their day, each once, in one batch', () => {
+    expect(
+      answeredByDay([
+        { date: d('2026-10-29'), id: 'c1' },
+        { date: d('2026-10-29'), id: 'c2' },
+        { date: d('2026-10-30'), id: 'c1' },
+        { date: d('2026-10-29'), id: 'c1' },
+      ]),
+    ).toEqual([
+      [
+        { date: d('2026-10-29'), ids: ['c1', 'c2'] },
+        { date: d('2026-10-30'), ids: ['c1'] },
+      ],
+    ])
+  })
+
+  it('is empty for an empty answer', () => {
+    expect(answeredByDay([])).toEqual([])
+  })
+
+  it('keeps every batch within its bound values, a day split across batches losing no id', () => {
+    const rows = [
+      ...['a', 'b', 'c', 'd', 'e'].map((id) => ({ date: d('2026-10-29'), id })),
+      ...['f', 'g'].map((id) => ({ date: d('2026-10-30'), id })),
+    ]
+    const batches = answeredByDay(rows, 4)
+    // A date plus its ids is what each arm binds.
+    for (const batch of batches) expect(batch.reduce((n, pair) => n + pair.ids.length + 1, 0)).toBeLessThanOrEqual(4)
+    const pairs = batches.flat().flatMap((pair) => pair.ids.map((id) => `${pair.date.toISOString().slice(0, 10)} ${id}`))
+    expect(pairs.sort()).toEqual(rows.map((r) => `${r.date.toISOString().slice(0, 10)} ${r.id}`).sort())
   })
 })
