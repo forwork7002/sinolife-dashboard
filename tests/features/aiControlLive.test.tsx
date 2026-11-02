@@ -5,11 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { AiReport, AiStatus } from '@/features/aiRegistrator/aiLiveLogic'
 import { AiControlPage } from '@/features/aiRegistrator/AiControlPage'
-import { LiveBoard, type LiveBoardProps } from '@/features/aiRegistrator/AiLiveBoard'
+import { AiNowPanel, type NowPanelProps } from '@/features/aiRegistrator/AiNowPanel'
 
 /**
- * «AI registrator → Boshqaruv» live board (2026-10-31): every line state on
- * its card, the sellers in their colours, the feed — and the page's two reads.
+ * «Hozir · jonli» (the owner's design canvas, 2026-11-02): one lane per AI
+ * line, the sellers as chips, the live feed, why it is not dialling — and
+ * Boshqaruv's two reads with its settings. Fake names and deals only.
  * Fake names and deals only.
  */
 
@@ -53,13 +54,13 @@ const report: AiReport = {
   live: {
     lines: [
       { line: '290', deal: 1001, product: 'Kollagen', client: 'Aziz', test: false, state: 'dialing', since, seller: null },
-      { line: '291', deal: 1002, product: 'Kollagen', client: 'Bobur', test: false, state: 'talking', since, seller: null },
+      { line: '291', deal: 1002, product: 'Kollagen', client: 'Bobur', test: false, state: 'talking', since, seller: null, started: at('09:59', '50') },
       { line: '292', deal: 1003, product: 'Zekstra', client: 'Jasur', test: true, state: 'transfer', since, seller: null },
       { line: '293', deal: 1004, product: 'Kollagen', client: 'Laylo', test: false, state: 'ringing_seller', since, seller: '122' },
       { line: '295', deal: 1005, product: 'Kollagen', client: 'Nodira', test: false, state: 'with_seller', since, seller: '120', connected: true },
     ],
     recent: [
-      { at: at('09:58'), line: '295', deal: 1005, product: 'Kollagen', client: 'Nodira', test: false, what: 'connected', seller: '120' },
+      { at: at('09:58'), line: '295', deal: 1005, product: 'Kollagen', client: 'Nodira', test: false, what: 'connected', seller: '120', started: at('09:57', '18') },
       { at: at('09:55'), line: '291', deal: 1006, product: null, client: 'Olim', test: true, what: 'hung_up_early', seller: null },
     ],
   },
@@ -68,7 +69,7 @@ const report: AiReport = {
 
 const status = (over: Partial<AiStatus> = {}): AiStatus => ({ receivedAt: at('10:00', '40'), stale: false, report, ...over })
 
-const props = (over: Partial<LiveBoardProps> = {}): LiveBoardProps => ({
+const props = (over: Partial<NowPanelProps> = {}): NowPanelProps => ({
   status: status(),
   saved: { maxCalls: 4, maxNew: 4, maxRetry: 0 },
   staleAfterSec: 90,
@@ -79,98 +80,109 @@ const props = (over: Partial<LiveBoardProps> = {}): LiveBoardProps => ({
   ...over,
 })
 
-const card = (label: string) => screen.getByRole('listitem', { name: label })
+const lane = (line: string) => screen.getByRole('listitem', { name: `Liniya ${line}` })
 
-const group = (label: string) => screen.getByRole('region', { name: label })
-
-describe('LiveBoard', () => {
-  it('leads with one status line: the AI working, the busy lines, the limit, the time — the saved limits under it', () => {
-    render(<LiveBoard {...props()} />)
-    expect(screen.getByRole('status').textContent).toBe('AI ishlayapti')
-    const line = screen.getByRole('status').parentElement!.textContent
-    expect(line).toContain('5/8 band')
-    expect(line).toContain('limit 6 (4 yangi + 2 nedozvon)')
-    expect(line).toContain('yangilandi 10:00:41')
-    expect(screen.getByText('Saqlangan: 4/4/0 · AI qoʻllagani: 6/4/2 (v3)')).toBeTruthy()
+describe('AiNowPanel', () => {
+  it('leads with LIVE and one sentence counted from the lanes, the busy lines, the limit and the time', () => {
+    render(<AiNowPanel {...props()} />)
+    expect(screen.getByRole('status').textContent).toBe('LIVE')
+    expect(screen.getByText('1 ta terilmoqda · AI 1 kishi bilan gaplashyapti · 2 ta ulanmoqda · 1 ta sotuvchida')).toBeTruthy()
+    expect(screen.getByText('yangilandi 10:00:41')).toBeTruthy()
   })
 
-  it('gives every AI line one row: who, what, which seller, how long', () => {
-    render(<LiveBoard {...props()} />)
-    const row = (line: string) => card(`Liniya ${line}`)
-    expect(within(row('290')).getByText('Mijozga terilmoqda')).toBeTruthy()
-    expect(within(row('290')).getByText('Aziz')).toBeTruthy()
-    expect(within(row('291')).getByText('Mijoz bilan gaplashyapti')).toBeTruthy()
-    expect(within(row('291')).getByText('00:42')).toBeTruthy()
-    expect(within(row('291')).getByRole('link', { name: 'Sdelka 1002 — Bitrix24' }).getAttribute('href')).toBe('https://obey.bitrix24.kz/crm/deal/details/1002/')
-    expect(within(row('292')).getByText('Mijoz kutyapti — boʻsh sotuvchi qidirilmoqda')).toBeTruthy()
-    expect(within(row('292')).getByText('Sinov')).toBeTruthy()
-    expect(within(row('292')).getByText('Zextra')).toBeTruthy()
-    expect(within(row('293')).getByText('Sotuvchiga ulanyapti')).toBeTruthy()
-    expect(within(row('293')).getByText('122 Malika')).toBeTruthy()
-    expect(within(row('295')).getByText('Sotuvchi bilan')).toBeTruthy()
-    expect(within(row('295')).getByText('120 Dilnoza')).toBeTruthy()
-    expect(within(row('178')).getByText('Boʻsh')).toBeTruthy()
-    expect(within(row('296')).getByText('ATSʼda roʻyxatda emas')).toBeTruthy()
+  it('draws every AI line as a lane — its phase, who, whom, and the call\'s own start for the timer', () => {
+    render(<AiNowPanel {...props()} />)
+    expect(lane('290').getAttribute('data-phase')).toBe('dial')
+    expect(within(lane('290')).getByText('Terilmoqda')).toBeTruthy()
+    expect(within(lane('290')).getByText('Aziz')).toBeTruthy()
+    expect(lane('291').getAttribute('data-phase')).toBe('ai')
+    // `started` 09:59:50 → 52 s at 10:00:42, not `since` 10:00:00.
+    expect(within(lane('291')).getByText('00:52')).toBeTruthy()
+    expect(lane('292').getAttribute('data-phase')).toBe('queue')
+    expect(within(lane('292')).getByText('Sinov')).toBeTruthy()
+    expect(lane('293').getAttribute('data-phase')).toBe('xfer')
+    expect(within(lane('293')).getByText('Malika')).toBeTruthy()
+    expect(lane('295').getAttribute('data-phase')).toBe('ok')
+    expect(lane('178').getAttribute('data-phase')).toBe('idle')
+    expect(lane('296').getAttribute('data-phase')).toBe('bad')
+    expect(within(lane('296')).getByText('ATS bilmaydi')).toBeTruthy()
   })
 
-  it('orders the rows so they stand still: Collagen\'s by number, then Zextra\'s', () => {
-    render(<LiveBoard {...props()} />)
-    const lines = screen.getAllByRole('listitem', { name: /^Liniya / }).map((li) => li.getAttribute('aria-label'))
-    expect(lines).toEqual(['Liniya 178', 'Liniya 290', 'Liniya 291', 'Liniya 293', 'Liniya 295', 'Liniya 296', 'Liniya 297', 'Liniya 292'])
+  it('shows a line the map has on a call with no live record — a test call — as a busy lane', () => {
+    const r: AiReport = { ...report, lines: { ...report.lines, '294': 'call' } }
+    render(<AiNowPanel {...props({ status: status({ report: r }) })} />)
+    expect(lane('294').getAttribute('data-phase')).toBe('ai')
   })
 
-  it('lists the last put-throughs under the lines, newest first', () => {
-    render(<LiveBoard {...props()} />)
-    const rows = screen.getByRole('heading', { name: 'Soʻnggi ulanishlar' }).closest('section')!.querySelectorAll('ul > li')
+  it('puts the sellers on one row, the AI-ringing one first; a busy one with the AI client and a timer', () => {
+    const r: AiReport = { ...report, sellers: report.sellers.map((s) => (s.ext === '120' ? { ...s, since: at('09:58', '10'), word: 'On the phone' } : s)) }
+    render(<AiNowPanel {...props({ status: status({ report: r }) })} />)
+    const chips = within(screen.getByRole('region', { name: 'Sotuvchilar hozir' })).getAllByRole('listitem')
+    expect(chips[0]!.getAttribute('aria-label')).toBe('Sotuvchi 122')
+    const busy = screen.getByRole('listitem', { name: 'Sotuvchi 120' })
+    expect(busy.getAttribute('data-state')).toBe('busy')
+    expect(busy.textContent).toContain('AI mijozi bilan')
+    expect(busy.textContent).toContain('02:32')
+  })
+
+  it('lists the last put-throughs, and how long into the call the put-through came', () => {
+    render(<AiNowPanel {...props()} />)
+    const rows = screen.getByRole('region', { name: 'Soʻnggi ulanishlar' }).querySelectorAll('ul > li')
     expect(rows).toHaveLength(2)
-    expect(rows[0]!.textContent).toContain('120 Dilnoza')
+    expect(rows[0]!.textContent).toContain('42 s da ulandi')
     expect(rows[1]!.textContent).toContain('Gaplashmay qoʻydi')
   })
 
-  it('says the day in one line, with its percentages and the ATS figure explained', () => {
-    render(<LiveBoard {...props()} />)
-    const day = screen.getByText('Qoʻngʻiroq').closest('p')!.textContent
-    expect(day).toContain('Koʻtardi22(55%)')
-    expect(day).toContain('Ulandi7(32%)')
-    expect(screen.getByRole('button', { name: 'ATS rad etdi — izoh' })).toBeTruthy()
+  it('draws the live feed only when the agent sends events, counting «Koʻtarmadi»', () => {
+    const { unmount } = render(<AiNowPanel {...props()} />)
+    expect(screen.queryByRole('region', { name: 'Jonli lenta' })).toBeNull()
+    unmount()
+    const events = [
+      { at: at('10:00', '30'), line: '290', deal: 1001, product: 'Kollagen', client: 'Aziz', test: false, what: 'dial', seller: null },
+      { at: at('10:00', '10'), line: '297', deal: 1007, product: null, client: 'Sardor', test: false, what: 'no_answer', seller: null },
+      { at: at('09:59'), line: '178', deal: 1008, product: null, client: 'Umid', test: false, what: 'ats_rejected', seller: null },
+    ]
+    render(<AiNowPanel {...props({ status: status({ report: { ...report, live: { ...report.live!, events } } }) })} />)
+    const feed = screen.getByRole('region', { name: 'Jonli lenta' })
+    expect(feed.textContent).toContain('soʻnggi 3 ta voqea · 1 tasi koʻtarmadi')
+    expect(feed.textContent).toContain('Terilmoqda')
+    expect(feed.textContent).toContain('Koʻtarmadi')
+    expect(feed.textContent).toContain('Boshqa / ATS rad etdi')
   })
 
-  it('groups the sellers by what they do, the AI ringing first, names without the extension', () => {
-    render(<LiveBoard {...props()} />)
-    expect(within(group('Jiringlamoqda (AI) · 1')).getByRole('listitem', { name: 'Sotuvchi 122' })).toBeTruthy()
-    expect(within(group('Gaplashyapti · 1')).getByRole('listitem', { name: 'Sotuvchi 120' }).textContent).toBe('120Dilnoza· 2')
-    expect(within(group('Boʻsh · 1')).getByRole('listitem', { name: 'Sotuvchi 128' })).toBeTruthy()
-    expect(within(group('Liniyada yoʻq · 1')).getByRole('listitem', { name: 'Sotuvchi 131' })).toBeTruthy()
+  it('says why the agent is not dialling, from its flags', () => {
+    render(<AiNowPanel {...props({ status: status({ report: { ...report, flags: { no_free_specialist: true, credits_out: false } } }) })} />)
+    expect(screen.getByRole('note', { name: 'Nega termayapti' }).textContent).toContain('Hamma sotuvchi band')
+    expect(screen.getByRole('note', { name: 'Nega termayapti' }).textContent).not.toContain('kredit')
   })
 
-  it('takes the report on prod today — no live part — and a silent AI out of hours', () => {
+  it('takes a report with no live part, and a silent AI out of hours', () => {
     const old: AiReport = { ...report, live: null, sellers: report.sellers.map(({ product: _p, aiRinging: _r, ...s }) => s) }
-    render(<LiveBoard {...props({ status: status({ report: old, receivedAt: at('18:31') }), now: new Date(at('20:00')) })} />)
+    render(<AiNowPanel {...props({ status: status({ report: old, receivedAt: at('18:31') }), now: new Date(at('20:00')) })} />)
     expect(screen.getByRole('status').textContent).toContain('Ish vaqti emas (09:00–18:30)')
-    expect(within(card('Liniya 290')).getByText('Qoʻngʻiroqda')).toBeTruthy()
-    expect(screen.getByText(/AI serveri bu roʻyxatni hali yubormayapti — bugun jami 7 ta ulandi/)).toBeTruthy()
-    expect(group('Holat nomaʼlum · 4')).toBeTruthy()
+    expect(lane('290').getAttribute('data-phase')).toBe('ai')
+    expect(screen.getByRole('listitem', { name: 'Sotuvchi 120' }).getAttribute('data-state')).toBe('unknown')
   })
 
   it('is red when the AI is silent within the day', () => {
-    render(<LiveBoard {...props({ now: new Date(at('10:05')) })} />)
+    render(<AiNowPanel {...props({ now: new Date(at('10:05')) })} />)
     expect(screen.getByRole('status').textContent).toContain('AI javob bermayapti — oxirgi xabar 10:00')
   })
 })
 
-describe('AiControlPage — two reads, the management kept', () => {
-  it('polls the last report alone beside the panel, and keeps «Saqlash»', async () => {
-    const asked: unknown[] = []
+describe('AiControlPage — the design\'s Boshqaruv, two reads', () => {
+  it('shows the status card, the live lines, the sellers, limits and hand-off, and saves from the bar', async () => {
+    const asked: { url: string; body?: unknown }[] = []
     const panel = {
-      config: { version: 3, sellers: ['120', '122'], parked: [], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer', updatedAt: at('09:00'), updatedBy: 'adminjon' },
+      config: { version: 3, sellers: ['120', '122'], parked: ['128'], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer', updatedAt: at('09:00'), updatedBy: 'adminjon' },
       status: status(),
       names: {},
       rules: { aiLines: ['178', '290'], maxCalls: 8, maxSellers: 60, staleAfterSec: 90 },
-      history: [],
+      history: [{ version: 3, savedAt: at('09:00'), savedBy: 'adminjon', lines: ['Bir vaqtda: 6 → 4'] }],
     }
-    const fetchMock = vi.fn(async (url: string) => {
-      asked.push(url)
-      const body = url.includes('part=live') ? { status: status(), staleAfterSec: 90 } : panel
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      asked.push({ url, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      const body = init?.method === 'POST' ? { version: 4 } : url.includes('part=live') ? { status: status(), staleAfterSec: 90 } : panel
       return new Response(JSON.stringify({ data: body, meta: { generatedAt: at('10:00', '41') } }), { status: 200, headers: { 'content-type': 'application/json' } })
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -180,16 +192,22 @@ describe('AiControlPage — two reads, the management kept', () => {
         <AiControlPage />
       </QueryClientProvider>,
     )
-    // The settings are folded under the live part; opened, they work as before.
-    const fold = await screen.findByRole('button', { name: /Sozlamalar — sotuvchilar roʻyxati va limitlar/ })
-    expect(fold.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('button', { name: 'Saqlash' })).toBeNull()
-    fireEvent.click(fold)
-    expect(screen.getByRole('button', { name: 'Saqlash' })).toBeTruthy()
-    expect(screen.getByRole('table', { name: 'Sotuvchilar' })).toBeTruthy()
-    expect(screen.getByText('Bu sahifa qanday ishlaydi?')).toBeTruthy()
-    expect(asked.some((u) => String(u).endsWith('/api/v1/leads/ai-registrator/control?part=live'))).toBe(true)
-    expect(asked.some((u) => String(u).endsWith('/api/v1/leads/ai-registrator/control'))).toBe(true)
+    expect(await screen.findByText('Dilnoza ishlayapti')).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'AI liniyalari (SIP)' })).toBeTruthy()
+    const table = screen.getByRole('table', { name: 'Sotuvchilar' })
+    expect(within(table).getByText('Oʻchirib qoʻyilganlar · 1')).toBeTruthy()
+    // No order: the agent picks by its own `transferOrder`.
+    expect(screen.queryByRole('button', { name: '120 — yuqoriga' })).toBeNull()
+    expect(screen.getByRole('img', { name: /Bir vaqtda 4 ta qoʻngʻiroq: yangi lidlarga koʻpi bilan 4 ta, nedozvonga koʻpi bilan 0 ta/ })).toBeTruthy()
+    const saveButton = screen.getByRole('button', { name: 'Saqlash' })
+    expect(saveButton.hasAttribute('disabled')).toBe(true)
+    fireEvent.click(screen.getByRole('switch', { name: '128 — AI ulashi' }))
+    expect(saveButton.hasAttribute('disabled')).toBe(false)
+    fireEvent.click(saveButton)
+    await screen.findByText('Oʻzgarish yoʻq')
+    const post = asked.find((a) => a.body !== undefined)
+    expect(post?.body).toMatchObject({ baseVersion: 3, sellers: ['120', '122', '128'], parked: [] })
+    expect(asked.some((a) => a.url.endsWith('/api/v1/leads/ai-registrator/control?part=live'))).toBe(true)
     vi.unstubAllGlobals()
   })
 })

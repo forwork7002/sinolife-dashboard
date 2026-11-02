@@ -156,6 +156,14 @@ export interface AiCallRowDto {
   readonly seller: string | null
   /** Every extension tried, in order, each with the seller it resolves to. */
   readonly attempts: readonly AiAttemptDto[]
+  /** The AI line, product and client's first name the agent sent (2026-11-02); null on older calls. */
+  readonly line: string | null
+  readonly product: string | null
+  readonly client: string | null
+  /** «Keyin qayta uriniladi» — only while the agent says the lead is queued. */
+  readonly nextAttemptAt: string | null
+  /** queued / exhausted / done, as the agent sent it. */
+  readonly leadStatus: string | null
   /** What the agent wrote down, field by field, as given. */
   readonly notes: readonly { readonly key: string; readonly value: string }[]
   /** The Регистрация deal now; null until the sync has read it. */
@@ -297,6 +305,11 @@ export class AiRegistratorService {
             freedAt: a.freedAt?.toISOString() ?? null,
             doing: doingOf(a),
           })),
+          line: call.line ?? null,
+          product: call.product ?? null,
+          client: call.client ?? null,
+          leadStatus: call.leadStatus ?? null,
+          nextAttemptAt: call.leadStatus === 'queued' && call.nextAttemptAt ? call.nextAttemptAt.toISOString() : null,
           notes: notesOf(call.result),
           lead: lead ? { pipeline: lead.pipeline, stage: lead.stage, status: lead.status } : null,
           verdict: deal?.verdict ?? null,

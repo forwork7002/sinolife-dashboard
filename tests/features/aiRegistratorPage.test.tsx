@@ -53,6 +53,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
   return {
     ...actual,
     apiGet: async (path: string, params: Record<string, unknown>) => {
+      if (path === '/leads/ai-registrator/live') return { data: { status: null, staleAfterSec: 90 }, meta: { generatedAt: '2026-10-22T07:00:00.000Z' } }
       if (path === '/leads/ai-registrator/calls') {
         asked.push(params)
         return { data: CALLS, meta: {} }
@@ -180,8 +181,10 @@ describe('AiRegistratorPage', () => {
   it('sets the AI path beside the registrars and says the sample is too small to decide', async () => {
     renderPage()
     const table = await screen.findByRole('table', { name: 'AI ulab berdi vs oddiy registrator' })
-    const ai = within(table).getByRole('rowheader', { name: 'AI → sotuvchi (jonli ulash)' }).closest('tr')!
-    expect(within(ai).getByText('66.7%')).toBeTruthy()
+    // Metrics are the rows, the AI path the first column (the design canvas, 02.11).
+    expect(within(table).getByRole('columnheader', { name: 'AI → sotuvchi' })).toBeTruthy()
+    const ordered = within(table).getByRole('rowheader', { name: 'Buyurtma' }).closest('tr')!
+    expect(ordered.textContent).toContain('66.7%')
     expect(screen.getByText(/Xulosa uchun hali erta/)).toBeTruthy()
   })
 
@@ -238,7 +241,7 @@ describe('AiRegistratorPage — every number opens its calls', () => {
     expect(asked.at(-1)).toMatchObject({ kind: 'seller', seller: 'e115' })
     fireEvent.click(screen.getByRole('button', { name: 'Yopish' }))
 
-    const tries = screen.getByRole('table', { name: 'Ulash urinishlari' })
+    const tries = screen.getByRole('list', { name: 'Ulash urinishlari' })
     fireEvent.click(within(tries).getByRole('button', { name: '4' }))
     await screen.findByRole('dialog')
     expect(asked.at(-1)).toMatchObject({ kind: 'ext', ext: '115' })

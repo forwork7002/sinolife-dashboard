@@ -47,6 +47,8 @@ export const AI_OUTCOMES = [
   'wrong_number',
   'voicemail',
   'hung_up_early',
+  // The ATS refused the call before it rang (ca9c52a) — «Boshqa / ATS» on the screen.
+  'ats_rejected',
   'error',
 ] as const
 export type AiOutcome = (typeof AI_OUTCOMES)[number]
@@ -153,6 +155,12 @@ export interface AiCall {
   readonly transferAttempts: readonly TransferAttempt[]
   readonly result: Readonly<Record<string, unknown>> | null
   readonly isTest: boolean
+  /** What the agent sends since 2026-11-02 (ca9c52a); absent on older rows and hand-built calls. */
+  readonly line?: string | null
+  readonly product?: string | null
+  readonly client?: string | null
+  readonly leadStatus?: string | null
+  readonly nextAttemptAt?: Date | null
 }
 
 /**

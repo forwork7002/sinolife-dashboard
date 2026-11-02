@@ -6,6 +6,10 @@ import {
   type LiveCall,
   type ReportSeller,
   elapsedText,
+  feedNoAnswer,
+  feedRows,
+  flagReasons,
+  laneOf,
   learnProducts,
   limitShort,
   limitsMismatch,
@@ -13,13 +17,16 @@ import {
   limitsText,
   lineCount,
   lineRows,
+  liveHeadline,
   nowRow,
   percent,
   productOf,
   recentRows,
+  sellerChips,
   sellerGroups,
   sellerLook,
   sellerName,
+  transferOrderText,
   workPhase,
 } from '@/features/aiRegistrator/aiLiveLogic'
 
@@ -264,15 +271,84 @@ describe('the feed', () => {
       },
     })
     expect(recentRows(r, nameOf).map(({ key: _k, ...row }) => row)).toEqual([
-      { time: '10:42', line: '291', client: 'Aziz', deal: 1001, product: 'Collagen', test: false, seller: '120 Malika', ok: true, result: 'Ulandi' },
-      { time: '10:40', line: '293', client: 'Bobur', deal: 1002, product: null, test: true, seller: null, ok: false, result: 'Gaplashmay qoʻydi' },
-      { time: '10:39', line: '290', client: null, deal: null, product: 'Zextra', test: false, seller: '122 Sevara', ok: false, result: 'Qiziqdi, sotuvchi javob bermadi' },
-      { time: '10:38', line: '178', client: null, deal: null, product: null, test: false, seller: null, ok: false, result: 'brand_new' },
+      { time: '10:42', line: '291', client: 'Aziz', deal: 1001, product: 'Collagen', test: false, seller: '120 Malika', ok: true, result: 'Ulandi', waitedSec: null },
+      { time: '10:40', line: '293', client: 'Bobur', deal: 1002, product: null, test: true, seller: null, ok: false, result: 'Gaplashmay qoʻydi', waitedSec: null },
+      { time: '10:39', line: '290', client: null, deal: null, product: 'Zextra', test: false, seller: '122 Sevara', ok: false, result: 'Qiziqdi, sotuvchi javob bermadi', waitedSec: null },
+      { time: '10:38', line: '178', client: null, deal: null, product: null, test: false, seller: null, ok: false, result: 'brand_new', waitedSec: null },
     ])
   })
 
   it('is empty for an agent before live', () => {
     expect(recentRows(report({ live: null }), nameOf)).toEqual([])
     expect(recentRows(report({ live: undefined }), nameOf)).toEqual([])
+  })
+})
+
+describe('the design canvas (2026-11-02)', () => {
+  const noNames = () => null
+  it('paints each lane by its state, and says one sentence counted from the lanes', () => {
+    const r = report({
+      live: {
+        lines: [call({ line: '290', state: 'dialing' }), call({ line: '291' }), call({ line: '292', state: 'ringing_seller', seller: '120' })],
+        recent: [],
+      },
+    })
+    const lanes = lineRows(r, () => '120 Malika', new Map()).map(laneOf)
+    const by = new Map(lineRows(r, () => '120 Malika', new Map()).map((row, i) => [row.line, lanes[i]!]))
+    expect(by.get('290')).toEqual({ phase: 'dial', label: 'Terilmoqda', sentence: 'AI Azizga qoʻngʻiroq qilyapti' })
+    expect(by.get('292')!.sentence).toBe('Azizni Malikaga ulayapti')
+    expect(by.get('295')!.phase).toBe('ok')
+    expect(by.get('296')!.phase).toBe('bad')
+    expect(by.get('178')!.phase).toBe('idle')
+    expect(liveHeadline(lanes)).toBe('1 ta terilmoqda · AI 1 kishi bilan gaplashyapti · 1 ta ulanmoqda · 1 ta sotuvchida')
+    expect(liveHeadline([])).toBe('Hozir jimjit — AI navbatdagi lidni kutyapti')
+  })
+
+  it('times a lane from the whole call\'s start when the agent sends it', () => {
+    const rows = lineRows(report({ live: { lines: [call({ started: at('09:59').toISOString() })], recent: [] } }), noNames, new Map())
+    expect(rows.find((x) => x.line === '291')!.started).toBe(at('09:59').toISOString())
+  })
+
+  it('reads the feed from live.events, its steps and its ends, and counts «Koʻtarmadi» without the tests', () => {
+    const r = report({
+      live: {
+        lines: [],
+        recent: [],
+        events: [
+          { at: at('10:01').toISOString(), line: '291', deal: 1, product: null, client: 'Aziz', test: false, what: 'talking', seller: null },
+          { at: at('10:00').toISOString(), line: '292', deal: 2, product: null, client: 'Bobur', test: false, what: 'no_answer', seller: null },
+          { at: at('09:59').toISOString(), line: '293', deal: 3, product: null, client: 'Jasur', test: true, what: 'no_answer', seller: null },
+          { at: at('09:58').toISOString(), line: '290', deal: 4, product: null, client: '', test: false, what: 'connected', seller: '120' },
+        ],
+      },
+    })
+    expect(feedRows(r, noNames).map((f) => [f.label, f.tone])).toEqual([
+      ['AI gaplashyapti', 'active'],
+      ['Koʻtarmadi', 'caution'],
+      ['Koʻtarmadi', 'caution'],
+      ['Ulandi', 'good'],
+    ])
+    expect(feedNoAnswer(r)).toBe(1)
+    expect(feedRows(report(), noNames)).toEqual([])
+  })
+
+  it('says why the agent is not dialling, and the transfer order in words', () => {
+    expect(flagReasons({ held: true, credits_out: false, legs_full: true })).toEqual(['AI toʻxtatib qoʻyilgan', 'ATS liniyalari toʻla'])
+    expect(flagReasons(null)).toEqual([])
+    expect(transferOrderText('random')).toBe('tasodifiy tartibda')
+    expect(transferOrderText(undefined)).toBeNull()
+  })
+
+  it('tells a busy seller with the AI\'s client from one on their own call', () => {
+    const sellers = [
+      { ext: '120', name: 'Malika', state: 'busy', inList: true, transfersToday: 1, since: at('09:58', '30').toISOString() },
+      { ext: '122', name: 'Sevara', state: 'busy', inList: true, transfersToday: 0, since: at('09:30').toISOString() },
+      { ext: '128', name: 'Kamola', state: 'busy', inList: true, transfersToday: 0 },
+    ]
+    const live = { lines: [], recent: [{ at: at('09:58').toISOString(), line: '290', deal: 1, product: null, client: '', test: false, what: 'connected', seller: '120' }] }
+    const notes = new Map(sellerChips(sellers, true, live).map((c) => [c.ext, c.note]))
+    expect(notes.get('120')).toBe('AI mijozi bilan')
+    expect(notes.get('122')).toBe('oʻz qoʻngʻirogʻida')
+    expect(notes.get('128')).toBe('band')
   })
 })

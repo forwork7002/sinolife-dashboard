@@ -2375,6 +2375,16 @@ model AiRegistratorCall {
   result           Json?
   /// The agent's own test calls (its admin's phone): stored, never counted.
   isTest           Boolean   @default(false)
+  /// The AI line that made the call («290»); null on a push from before 2026-11-02.
+  aiLine           String?
+  /// The lead's product as the agent saw it («Collagen», «Zextra»).
+  product          String?
+  /// The client's first name, digits stripped — never a phone.
+  clientName       String?
+  /// The lead after this call: queued (another try is planned), exhausted (no more tries), done.
+  leadStatus       String?
+  /// When the agent means to try again; read only while `leadStatus` is queued.
+  nextAttemptAt    DateTime?
   receivedAt       DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

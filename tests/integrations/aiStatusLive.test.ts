@@ -143,3 +143,32 @@ describe('the 5 s read', () => {
     expect((await service.live(new Date('2026-10-31T05:44:00Z'))).status?.stale).toBe(true)
   })
 })
+
+describe('the 2026-11-02 contract (ai_registrator ca9c52a) — optional, never a refusal', () => {
+  it('keeps started, events, the presence word and since, the flags and the transfer order', () => {
+    const parsed = aiStatusSchema.parse(
+      report({
+        limits: { calls: 4, transferOrder: 'fewest' },
+        sellers: [{ ext: '120', name: 'Malika', state: 'busy', word: 'On the phone', since: '2026-10-31T05:41:00+00:00' }],
+        live: { lines: [call({ started: '2026-10-31T05:41:30+00:00' })], recent: [event({ started: '2026-10-31T05:39:20+00:00' })], events: [event({ what: 'no_answer' })] },
+        flags: { held: false, no_free_specialist: true, active_calls: 2 },
+      }),
+    )
+    expect(parsed.limits.transferOrder).toBe('fewest')
+    expect(parsed.sellers[0]).toMatchObject({ word: 'On the phone', since: '2026-10-31T05:41:00+00:00' })
+    expect(parsed.live?.lines[0]?.started).toBe('2026-10-31T05:41:30+00:00')
+    expect(parsed.live?.recent[0]?.started).toBe('2026-10-31T05:39:20+00:00')
+    expect(parsed.live?.events.map((e) => e.what)).toEqual(['no_answer'])
+    expect(parsed.flags).toMatchObject({ held: false, no_free_specialist: true, active_calls: 2 })
+  })
+
+  it('reads an older agent — none of them sent — and drops a wrong one without failing the report', () => {
+    const old = aiStatusSchema.parse(report())
+    expect(old.flags).toBeNull()
+    expect(old.live?.events ?? []).toEqual([])
+    const wrong = aiStatusSchema.parse(report({ flags: 'yes', sellers: [{ ext: '120', since: 'soon' }], live: { lines: [call({ started: 'later' })], recent: [] } }))
+    expect(wrong.flags).toBeNull()
+    expect(wrong.sellers[0]?.since).toBeUndefined()
+    expect(wrong.live?.lines[0]?.started).toBeUndefined()
+  })
+})

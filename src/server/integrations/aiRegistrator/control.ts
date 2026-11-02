@@ -18,6 +18,12 @@
  * report, so it is the part that may not fail it: an element the agent got
  * wrong is dropped, a `live` that is not one at all reads as null, and the
  * limits, lines and sellers beside it are stored as ever.
+ *
+ * 2026-11-02 (ai_registrator ca9c52a) — all OPTIONAL, each falling back on its
+ * own: `live.lines[].started` (the whole call's start, the lane's timer),
+ * `live.events[]` (the last ≤50 things that happened, newest first — the live
+ * feed), `sellers[].word` / `since` (the ATS presence word and since when),
+ * `flags` (why the agent is not dialling) and `limits.transferOrder`.
  */
 
 import { z } from 'zod'
@@ -52,6 +58,7 @@ const liveCall = z.object({
   since: instant,
   seller: ext.nullable().default(null),
   connected: z.boolean().optional(),
+  started: instant.optional().catch(undefined),
 })
 
 /** A call put through to a seller («connected»), or one that ended after the client answered. */
@@ -64,6 +71,7 @@ const liveEvent = z.object({
   test: z.boolean().default(false),
   what: liveWord,
   seller: ext.nullable().default(null),
+  started: instant.optional().catch(undefined),
 })
 
 /** Each element on its own, at most `max` of them: one that is wrong is dropped, never the report it came in. */
@@ -79,6 +87,21 @@ function each<T extends z.ZodType>(schema: T, max: number) {
 const liveSchema = z.object({
   lines: each(liveCall, 32).default([]),
   recent: each(liveEvent, 50).default([]),
+  events: each(liveEvent, 50).default([]),
+})
+
+const flag = z.boolean().optional().catch(undefined)
+
+/** Why the agent is not dialling now — each a yes / no; `active_calls` a count. */
+const flagsSchema = z.object({
+  held: flag,
+  ats_paused: flag,
+  credits_out: flag,
+  no_specialist: flag,
+  no_free_specialist: flag,
+  legs_full: flag,
+  fused: flag,
+  active_calls: count.optional().catch(undefined),
 })
 
 export const aiStatusSchema = z.object({
@@ -93,6 +116,7 @@ export const aiStatusSchema = z.object({
       saleHandoff: z.string().max(20).nullable().optional(),
       maxSipLegs: count.nullable().optional(),
       fused: z.boolean().nullable().optional(),
+      transferOrder: z.string().trim().max(20).nullable().optional().catch(undefined),
     })
     .default({}),
   lines: z.record(ext, word).default({}),
@@ -107,11 +131,15 @@ export const aiStatusSchema = z.object({
         // Whose seller this is, and whether one of the AI's calls rings them now — a nicety, never a refusal.
         product: product.catch(null),
         aiRinging: z.boolean().default(false).catch(false),
+        // The ATS presence word («On the phone», «Ringing») and since when — the seller's timer.
+        word: z.string().trim().max(40).nullable().optional().catch(undefined),
+        since: instant.nullable().optional().catch(undefined),
       }),
     )
     .max(200)
     .default([]),
   live: liveSchema.nullable().default(null).catch(null),
+  flags: flagsSchema.nullable().default(null).catch(null),
   today: z
     .object({
       calls: count.default(0),

@@ -44,6 +44,11 @@ export class AiRegistratorRepository {
       transferAttempts: call.transferAttempts.length > 0 ? (call.transferAttempts as Prisma.InputJsonValue) : Prisma.DbNull,
       result: call.result ? (call.result as Prisma.InputJsonValue) : Prisma.DbNull,
       isTest: call.isTest,
+      aiLine: call.extension,
+      product: call.product,
+      clientName: call.client,
+      leadStatus: call.leadStatus,
+      nextAttemptAt: call.nextAttemptAt ? new Date(call.nextAttemptAt) : null,
     }
     await this.prisma.aiRegistratorCall.upsert({
       where: { callId: call.callId },
@@ -92,6 +97,11 @@ export class AiRegistratorRepository {
       transferAttempts: readTransferAttempts(r.transferAttempts),
       result: typeof r.result === 'object' && r.result !== null && !Array.isArray(r.result) ? (r.result as Record<string, unknown>) : null,
       isTest: r.isTest,
+      line: r.aiLine,
+      product: r.product,
+      client: r.clientName,
+      leadStatus: r.leadStatus,
+      nextAttemptAt: r.nextAttemptAt,
     }))
   }
 

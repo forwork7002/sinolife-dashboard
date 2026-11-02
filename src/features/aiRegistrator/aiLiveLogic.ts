@@ -31,6 +31,8 @@ export interface LiveCall {
   readonly since: string
   readonly seller: string | null
   readonly connected?: boolean
+  /** The whole call's start (2026-11-02); `since` is when its current state began. */
+  readonly started?: string
 }
 
 export interface LiveEvent {
@@ -42,6 +44,7 @@ export interface LiveEvent {
   readonly test: boolean
   readonly what: string
   readonly seller: string | null
+  readonly started?: string
 }
 
 export interface ReportSeller {
@@ -52,6 +55,9 @@ export interface ReportSeller {
   readonly transfersToday: number
   readonly product?: string | null
   readonly aiRinging?: boolean
+  /** The ATS presence word and since when (2026-11-02). */
+  readonly word?: string | null
+  readonly since?: string | null
 }
 
 export interface AiLimits {
@@ -61,6 +67,19 @@ export interface AiLimits {
   readonly saleHandoff?: string | null
   readonly maxSipLegs?: number | null
   readonly fused?: boolean | null
+  readonly transferOrder?: string | null
+}
+
+/** Why the agent is not dialling (2026-11-02) — each a yes / no. */
+export interface AiFlags {
+  readonly held?: boolean
+  readonly ats_paused?: boolean
+  readonly credits_out?: boolean
+  readonly no_specialist?: boolean
+  readonly no_free_specialist?: boolean
+  readonly legs_full?: boolean
+  readonly fused?: boolean
+  readonly active_calls?: number
 }
 
 export interface AiReport {
@@ -70,7 +89,8 @@ export interface AiReport {
   readonly limits: AiLimits
   readonly lines: Readonly<Record<string, string>>
   readonly sellers: readonly ReportSeller[]
-  readonly live?: { readonly lines: readonly LiveCall[]; readonly recent: readonly LiveEvent[] } | null
+  readonly live?: { readonly lines: readonly LiveCall[]; readonly recent: readonly LiveEvent[]; readonly events?: readonly LiveEvent[] } | null
+  readonly flags?: AiFlags | null
   readonly today: {
     readonly calls: number
     readonly answered: number
@@ -270,6 +290,8 @@ export interface LineRow {
   readonly label: string
   readonly tone: Tone
   readonly since: string | null
+  /** The whole call's start when the agent sends it (2026-11-02) — the lane's timer; else `since`. */
+  readonly started: string | null
   readonly client: string | null
   readonly deal: number | null
   /** The call's product, else the one this line was last seen with — its group. */
@@ -320,6 +342,7 @@ export function lineRows(report: AiReport, nameOf: (ext: string) => string | nul
         state: call.state,
         ...look,
         since: call.since,
+        started: call.started ?? null,
         client: call.client || null,
         deal: call.deal,
         product,
@@ -328,7 +351,7 @@ export function lineRows(report: AiReport, nameOf: (ext: string) => string | nul
       }
     }
     const word = report.lines[line] ?? 'unknown'
-    const idle = { line, live: false, state: word, since: null, client: null, deal: null, product, test: false, seller: null }
+    const idle = { line, live: false, state: word, since: null, started: null, client: null, deal: null, product, test: false, seller: null }
     const mapped = MAP_STATE[word]
     if (mapped) return { ...idle, kind: 'busy', ...mapped }
     if (word === 'free') return { ...idle, kind: 'free', label: 'Boʻsh', tone: 'neutral' }
@@ -413,6 +436,14 @@ export interface RecentRow {
   /** Put through to a seller — the one green row. */
   readonly ok: boolean
   readonly result: string
+  /** Seconds from the call's start to the put-through, when the agent sends the start. */
+  readonly waitedSec: number | null
+}
+
+const secondsBetween = (from: string | undefined, to: string): number | null => {
+  if (!from) return null
+  const ms = new Date(to).getTime() - new Date(from).getTime()
+  return Number.isFinite(ms) && ms >= 0 ? Math.round(ms / 1000) : null
 }
 
 /** The last put-throughs and the ends after an answer, newest first as the agent keeps them. */
@@ -428,5 +459,222 @@ export function recentRows(report: AiReport, nameOf: (ext: string) => string | n
     seller: e.seller ? sellerLabel(e.seller, nameOf) : null,
     ok: e.what === 'connected',
     result: whatLabel(e.what),
+    waitedSec: e.what === 'connected' ? secondsBetween(e.started, e.at) : null,
   }))
+}
+
+/* ── «Jonli lenta» — `live.events`, every step of every call (2026-11-02) ── */
+
+/** The steps of a call that is still going; every other word is how a call ended (`OUTCOME_LABEL`). */
+const STEP_LABEL: Readonly<Record<string, string>> = {
+  dial: 'Terilmoqda',
+  dialing: 'Terilmoqda',
+  talking: 'AI gaplashyapti',
+  transfer: 'Sotuvchi qidirilyapti',
+  ringing_seller: 'Sotuvchiga ulanmoqda',
+  connected: 'Ulandi',
+}
+
+/** What a step reads as: going (blue), put through (green), a dead end (orange), a refusal by the ATS (red). */
+const FEED_TONE: Readonly<Record<string, Tone>> = {
+  connected: 'good',
+  interested_transferred: 'good',
+  interested_callback: 'active',
+  transfer_failed: 'caution',
+  no_answer: 'caution',
+  busy: 'caution',
+  unreachable: 'caution',
+  voicemail: 'caution',
+  hung_up_early: 'caution',
+  not_interested: 'neutral',
+  ats_rejected: 'critical',
+  error: 'critical',
+}
+
+export interface FeedRow {
+  readonly key: string
+  readonly time: string
+  readonly line: string
+  readonly client: string | null
+  readonly deal: number | null
+  readonly product: Product | null
+  readonly test: boolean
+  readonly seller: string | null
+  readonly label: string
+  readonly tone: Tone
+}
+
+/** The agent's last ≤50 events, newest first as it keeps them; empty from an agent that does not send them. */
+export function feedRows(report: AiReport, nameOf: (ext: string) => string | null): FeedRow[] {
+  return (report.live?.events ?? []).map((e, i) => ({
+    key: `${e.at}-${e.line}-${e.what}-${i}`,
+    time: formatTime(e.at),
+    line: e.line,
+    client: e.client || null,
+    deal: e.deal,
+    product: productOf(e.product),
+    test: e.test,
+    seller: e.seller ? sellerLabel(e.seller, nameOf) : null,
+    label: STEP_LABEL[e.what] ?? whatLabel(e.what),
+    tone: STEP_LABEL[e.what] && e.what !== 'connected' ? 'active' : (FEED_TONE[e.what] ?? 'neutral'),
+  }))
+}
+
+/** «Koʻtarmadi» among the events the agent still keeps — the feed's own count, not the day's. */
+export function feedNoAnswer(report: AiReport): number {
+  return (report.live?.events ?? []).filter((e) => e.what === 'no_answer' && !e.test).length
+}
+
+/* ── Why the agent is not dialling — `flags` (2026-11-02) ───────────────── */
+
+const FLAG_TEXT: readonly (readonly [keyof AiFlags, string])[] = [
+  ['held', 'AI toʻxtatib qoʻyilgan'],
+  ['ats_paused', 'ATS pauzada'],
+  ['credits_out', 'Ovoz kreditlari tugagan'],
+  ['no_specialist', 'Roʻyxatda ulanadigan sotuvchi yoʻq'],
+  ['no_free_specialist', 'Hamma sotuvchi band — AI yangi qoʻngʻiroqni kutyapti'],
+  ['legs_full', 'ATS liniyalari toʻla'],
+  ['fused', 'Ehtiyot rejimi: ovoz yoʻqolgani uchun AI bittadan qoʻngʻiroq qilyapti'],
+]
+
+/** Each reason the agent gave for not dialling, in its words — empty when it gave none. */
+export function flagReasons(flags: AiFlags | null | undefined): string[] {
+  if (!flags) return []
+  return FLAG_TEXT.filter(([key]) => flags[key] === true).map(([, text]) => text)
+}
+
+/** `limits.transferOrder` in words — shown only; the order is the agent's own setting. */
+export function transferOrderText(order: string | null | undefined): string | null {
+  if (!order) return null
+  if (order === 'random') return 'tasodifiy tartibda'
+  if (order === 'fewest') return 'bugun eng kam ulangan sotuvchidan boshlab'
+  return order
+}
+
+/* ── «Hozir · jonli» — the lane each line draws (2026-11-02) ─────────────── */
+
+/**
+ * The owner's design canvas («Hisobot — jonli monitoring», 02.11: «koʻrinishi
+ * menga yoqdi»): one lane per AI line — client, wire, AI, wire, seller — the
+ * wires painted by what the line does. `.ai-lane[data-phase]` in globals.css.
+ * Only what the agent reports: a line without a live call is free, on a call
+ * by the map's word alone, or unknown to the ATS.
+ */
+export type LanePhase = 'idle' | 'dial' | 'ai' | 'queue' | 'xfer' | 'ok' | 'bad'
+
+const LANE_OF_STATE: Readonly<Record<string, LanePhase>> = {
+  dialing: 'dial',
+  talking: 'ai',
+  transfer: 'queue',
+  ringing_seller: 'xfer',
+  with_seller: 'ok',
+  call: 'ai',
+  seller_talk: 'ok',
+  not_registered: 'bad',
+}
+
+export interface Lane {
+  readonly phase: LanePhase
+  /** The pill — the state in two or three words. */
+  readonly label: string
+  /** The sentence beside it: who, doing what, with whom. */
+  readonly sentence: string
+}
+
+/** The seller's first name, else the extension — «Dilshoda», «122». */
+const sellerShort = (seller: LineRow['seller']) => (seller ? (seller.label.split(' ').slice(1).join(' ') || seller.ext) : 'sotuvchi')
+
+export function laneOf(row: LineRow): Lane {
+  const phase = LANE_OF_STATE[row.state] ?? 'idle'
+  const who = row.client ?? 'Mijoz'
+  if (!row.live) {
+    if (row.kind === 'free') return { phase, label: 'Boʻsh', sentence: 'Navbatdagi lidni kutyapti' }
+    if (row.kind === 'unregistered') return { phase, label: 'ATS bilmaydi', sentence: 'Liniya ATSʼda roʻyxatda emas — MicroSIP ulanmagan' }
+    if (row.kind === 'busy') return { phase, label: row.label, sentence: 'AI qoʻngʻiroqda — kim bilanligini yubormadi (sinov qoʻngʻirogʻi ham shunday koʻrinadi)' }
+    return { phase, label: row.label, sentence: '' }
+  }
+  switch (row.state) {
+    case 'dialing':
+      return { phase, label: 'Terilmoqda', sentence: `AI ${who}ga qoʻngʻiroq qilyapti` }
+    case 'talking':
+      return { phase, label: 'AI gaplashyapti', sentence: `AI ${who} bilan suhbatlashyapti` }
+    case 'transfer':
+      return { phase, label: 'Sotuvchi kutilmoqda', sentence: `${who} tayyor — boʻsh sotuvchi qidirilyapti` }
+    case 'ringing_seller':
+      return { phase, label: 'Ulanmoqda', sentence: `${who}ni ${sellerShort(row.seller)}ga ulayapti` }
+    case 'with_seller':
+      return { phase, label: 'Ulandi', sentence: `${sellerShort(row.seller)} ${who} bilan gaplashyapti` }
+    default:
+      return { phase, label: row.label, sentence: '' }
+  }
+}
+
+/**
+ * The panel's one sentence: «2 ta terilmoqda · AI 1 kishi bilan gaplashyapti ·
+ * 1 ta ulanmoqda · 1 ta sotuvchida», or that it is quiet. Counted from the
+ * lanes, so the sentence and the lanes never disagree.
+ */
+export function liveHeadline(lanes: readonly Lane[]): string {
+  const n = (p: LanePhase) => lanes.filter((l) => l.phase === p).length
+  const parts = [
+    n('dial') ? `${n('dial')} ta terilmoqda` : null,
+    n('ai') ? `AI ${n('ai')} kishi bilan gaplashyapti` : null,
+    n('queue') + n('xfer') ? `${n('queue') + n('xfer')} ta ulanmoqda` : null,
+    n('ok') ? `${n('ok')} ta sotuvchida` : null,
+  ].filter((p): p is string => p !== null)
+  return parts.length > 0 ? parts.join(' · ') : 'Hozir jimjit — AI navbatdagi lidni kutyapti'
+}
+
+export interface SellerChip {
+  readonly ext: string
+  readonly first: string | null
+  readonly state: SellerGroup['key']
+  readonly note: string
+  readonly transfersToday: number
+  readonly product: Product | null
+  /** Since when the ATS has the seller in this state (2026-11-02) — the chip's timer. */
+  readonly since: string | null
+}
+
+/** A put-through counts as «this busy» when it landed within this of the seller's `since`. */
+const WITH_AI_CLIENT_MS = 90_000
+
+const CHIP_NOTE: Readonly<Record<SellerGroup['key'], string>> = {
+  ringing: 'jiringlayapti',
+  busy: 'band',
+  free: 'boʻsh',
+  offline: 'oflayn',
+  unknown: 'nomaʼlum',
+}
+
+/**
+ * Whom a busy seller talks to: the AI's client when one of its lines is with
+ * them now, or a put-through to them landed around the moment their «busy»
+ * began; else their own call. Only with `since` — without it, just «band».
+ */
+function busyNote(seller: ReportSeller, live: AiReport['live']): string {
+  if (!seller.since) return CHIP_NOTE.busy
+  if ((live?.lines ?? []).some((c) => c.seller === seller.ext && c.state === 'with_seller')) return 'AI mijozi bilan'
+  const since = new Date(seller.since).getTime()
+  const near = (live?.recent ?? []).some((e) => e.what === 'connected' && e.seller === seller.ext && Math.abs(new Date(e.at).getTime() - since) <= WITH_AI_CLIENT_MS)
+  return near ? 'AI mijozi bilan' : 'oʻz qoʻngʻirogʻida'
+}
+
+/** The sellers in the agent's list as one row of chips, the AI-ringing one first, the offline ones last. */
+export function sellerChips(sellers: readonly ReportSeller[], fresh: boolean, live: AiReport['live'] = null): SellerChip[] {
+  const byExt = new Map(sellers.map((s) => [s.ext, s]))
+  return sellerGroups(sellers, fresh).flatMap((g) =>
+    g.sellers.map((s) => {
+      const raw = byExt.get(s.ext)
+      return {
+        ext: s.ext,
+        first: s.first,
+        state: g.key,
+        note: g.key === 'busy' && raw ? busyNote(raw, live) : CHIP_NOTE[g.key],
+        transfersToday: s.transfersToday,
+        product: s.product,
+        since: fresh ? (raw?.since ?? null) : null,
+      }
+    }),
+  )
 }

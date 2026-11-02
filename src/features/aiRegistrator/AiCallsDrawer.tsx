@@ -38,6 +38,12 @@ interface CallRow {
     readonly freedAt?: string | null
     readonly doing?: SellerDoing | null
   }[]
+  /** Sent by the agent since 2026-11-02; null on older calls — then not drawn. */
+  readonly line?: string | null
+  readonly product?: string | null
+  readonly client?: string | null
+  readonly leadStatus?: string | null
+  readonly nextAttemptAt?: string | null
   readonly notes: readonly { readonly key: string; readonly value: string }[]
   readonly lead: { readonly pipeline: string | null; readonly stage: string | null; readonly status: string } | null
   readonly verdict: Verdict | null
@@ -78,6 +84,7 @@ export const OUTCOME_LABEL: Readonly<Record<string, string>> = {
   wrong_number: 'Notoʻgʻri raqam',
   voicemail: 'Avtojavobchi',
   hung_up_early: 'Gaplashmay qoʻydi',
+  ats_rejected: 'Boshqa / ATS rad etdi',
   error: 'Texnik xato',
 }
 
@@ -86,6 +93,7 @@ const OUTCOME_TONE: Readonly<Record<string, string>> = {
   interested_transferred: 'var(--status-good)',
   transfer_failed: 'var(--status-critical)',
   interested_callback: 'var(--status-warning)',
+  ats_rejected: 'var(--status-critical)',
   error: 'var(--status-critical)',
 }
 
@@ -190,6 +198,7 @@ const NOTE_LABEL: Readonly<Record<string, string>> = {
   interest: 'Qiziqish',
   reason: 'Sabab',
   callback_at: 'Qayta qoʻngʻiroq',
+  ai_call_back_at: 'AI kelishgan qayta qoʻngʻiroq',
   callback_time: 'Qayta qoʻngʻiroq',
   language: 'Til',
   gender: 'Jinsi',
@@ -418,7 +427,17 @@ function CallCard({ row }: { row: CallRow }) {
           {row.answeredAt ? `gaplashdi ${duration(row.durationSec)}` : 'koʻtarilmadi'}
           {row.attempt !== null ? ` · ${row.attempt}-urinish` : ''}
         </span>
+        {(row.line || row.product || row.client) && (
+          <span style={{ color: 'var(--ink-secondary)' }}>
+            {[row.client, row.product, row.line ? `AI liniya ${row.line}` : null].filter(Boolean).join(' · ')}
+          </span>
+        )}
       </div>
+      {(row.nextAttemptAt || row.leadStatus === 'exhausted') && (
+        <div className="mt-1 font-medium" style={{ color: row.nextAttemptAt ? 'var(--ink-secondary)' : 'var(--ink-muted)' }}>
+          {row.nextAttemptAt ? `Keyin qayta uriniladi: ${formatDateTime(row.nextAttemptAt)}` : 'Urinishlar tugadi — AI bu lidga boshqa qoʻngʻiroq qilmaydi'}
+        </div>
+      )}
 
       <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span style={muted}>Lid:</span>
@@ -488,6 +507,8 @@ function CallCard({ row }: { row: CallRow }) {
                   <a href={n.value} target="_blank" rel="noreferrer" className="underline underline-offset-2">
                     ochish
                   </a>
+                ) : /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(n.value) && !Number.isNaN(Date.parse(n.value)) ? (
+                  formatDateTime(n.value)
                 ) : (
                   (NOTE_VALUE[n.value.toLowerCase()] ?? n.value)
                 )}
