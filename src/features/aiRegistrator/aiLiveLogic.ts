@@ -678,3 +678,50 @@ export function sellerChips(sellers: readonly ReportSeller[], fresh: boolean, li
     }),
   )
 }
+
+/**
+ * «Yangi» 0 and «nedozvon» 0 together is NOT a stop (the agent, ai_registrator
+ * 164f2c1, 2026-11-02): to the agent it means «no split» — it dials ANY lead,
+ * at the full «bir vaqtda». An owner who sets both to 0 to pause it would get
+ * the opposite, so the agent refuses it and the panel does not let it be
+ * saved. Mirrors `controlProblems` in `@/server/domain/aiRegistrator/control`
+ * (the client may not import it) — edit both.
+ */
+export const BOTH_ZERO_PROBLEM =
+  'Yangi lid va nedozvon ikkalasi birga 0 boʻlmaydi: bu AIni toʻxtatmaydi, aksincha boʻlinmasdan istalgan lidga teradi. Kamida bittasi 1 yoki koʻp boʻlsin.'
+
+export function limitsProblem(maxNew: number, maxRetry: number): string | null {
+  return maxNew === 0 && maxRetry === 0 ? BOTH_ZERO_PROBLEM : null
+}
+
+/**
+ * The calls the agent can actually have at a time: the two shares are caps,
+ * so when together they fall short of «bir vaqtda» the rest stand idle —
+ * 4 / 0 / 2 is 2 calls, not 4 (the owner, 2026-11-02). Both 0 is refused, and
+ * shown as 0 here rather than as the any-lead it would mean to the agent.
+ */
+export function effectiveCalls(maxCalls: number, maxNew: number, maxRetry: number): number {
+  return Math.max(0, Math.min(maxCalls, maxNew + maxRetry))
+}
+
+/**
+ * Did the agent take the SAVED version — `appliedVersion` against the
+ * config's, `applyError` in red when it refused it. One reading for the status
+ * card and the limits section, so the two never disagree.
+ */
+export function appliedAck(
+  status: AiStatus | null,
+  savedVersion: number,
+): { readonly tone: 'good' | 'warning' | 'critical'; readonly text: string; readonly reason: string | null } {
+  const report = status?.report
+  if (!status || !report) return { tone: 'warning', text: 'AIʼdan hali xabar kelmagan', reason: null }
+  if (report.applyError && report.appliedVersion !== savedVersion) {
+    return { tone: 'critical', text: `AI rad etdi v${savedVersion}`, reason: report.applyError }
+  }
+  if (report.appliedVersion === savedVersion) return { tone: 'good', text: `AI qoʻlladi ✓ v${savedVersion}`, reason: null }
+  return {
+    tone: 'warning',
+    text: `AI hali qoʻllamadi — hozir ${report.appliedVersion === null ? 'oʻz sozlamasi' : `v${report.appliedVersion}`} ishlayapti`,
+    reason: null,
+  }
+}

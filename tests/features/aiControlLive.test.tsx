@@ -211,3 +211,66 @@ describe('AiControlPage — the design\'s Boshqaruv, two reads', () => {
     vi.unstubAllGlobals()
   })
 })
+
+/**
+ * «Limitlar» (the owner, 2026-11-02): «yangi» 0 and «nedozvon» 0 together is
+ * not a stop but «any lead», so the panel will not let it be saved; shares
+ * that fall short of «bir vaqtda» leave grey idle slots and «amalda N ta»;
+ * and the section says whether the agent applied the saved version.
+ */
+describe('AiControlPage — Limitlar', () => {
+  const renderWith = async (limits: { maxCalls: number; maxNew: number; maxRetry: number }, st: AiStatus) => {
+    const panel = {
+      config: { version: 15, sellers: ['120', '122'], parked: [], ...limits, saleHandoff: 'refer', updatedAt: at('10:57'), updatedBy: 'adminjon' },
+      status: st,
+      names: {},
+      rules: { aiLines: ['178', '290'], maxCalls: 8, maxSellers: 60, staleAfterSec: 90 },
+      history: [],
+    }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const body = url.includes('part=live') ? { status: st, staleAfterSec: 90 } : panel
+        return new Response(JSON.stringify({ data: body, meta: { generatedAt: at('10:58') } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }),
+    )
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <AiControlPage />
+      </QueryClientProvider>,
+    )
+    return screen.findByRole('region', { name: 'Limitlar' })
+  }
+  const applied = (over: Partial<AiReport>) => status({ report: { ...report, ...over } })
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('greys the slots the shares never fill and says «amalda 2 ta» for 4 / 0 / 2', async () => {
+    const section = await renderWith({ maxCalls: 4, maxNew: 0, maxRetry: 2 }, applied({ appliedVersion: 15, limits: { calls: 4, maxNew: 0, maxRetry: 2 } }))
+    const bar = within(section).getByRole('img', { name: /Amalda bir vaqtda 2 ta qoʻngʻiroq \(4 ta qoʻyilgan\)/ })
+    expect([...bar.querySelectorAll('[data-slot]')].map((e) => e.getAttribute('data-slot'))).toEqual(['retry', 'retry', 'idle', 'idle'])
+    expect(within(section).getByText('amalda 2 ta')).toBeTruthy()
+    // «yangi» is 0, so «nedozvon» may not go below 1 — and the panel says why.
+    expect(within(section).getByRole('button', { name: 'Shundan nedozvonga — kamaytirish' }).hasAttribute('disabled')).toBe(false)
+    fireEvent.click(within(section).getByRole('button', { name: 'Shundan nedozvonga — kamaytirish' }))
+    expect(within(section).getByRole('button', { name: 'Shundan nedozvonga — kamaytirish' }).hasAttribute('disabled')).toBe(true)
+    expect(within(section).getByText(/ikkalasi birga 0 boʻlmaydi — bu AIni toʻxtatmaydi, aksincha istalgan lidga teradi/)).toBeTruthy()
+    // The saved v15 is what the agent runs.
+    expect(within(section).getByText('AI qoʻlladi ✓ v15')).toBeTruthy()
+    expect(within(section).getByText('Hozir AIda: bir vaqtda 4, yangi 0, nedozvon 2')).toBeTruthy()
+  })
+
+  it('will not save 0 and 0, and shows the agent\'s refusal in red', async () => {
+    const section = await renderWith(
+      { maxCalls: 4, maxNew: 0, maxRetry: 0 },
+      applied({ appliedVersion: 14, applyError: 'yangi va nedozvon ikkalasi 0 bo‘lmaydi' }),
+    )
+    expect(within(section).getByRole('img', { name: /ikkalasi 0 — AI bu sozlamani rad etadi/ })).toBeTruthy()
+    expect(within(section).getByText('AI rad etdi v15')).toBeTruthy()
+    expect(within(section).getByText('Sabab: yangi va nedozvon ikkalasi 0 bo‘lmaydi')).toBeTruthy()
+    // Raising one share makes it savable; the bar names the problem until then.
+    expect(screen.getByRole('region', { name: 'Saqlash' }).textContent).toContain('ikkalasi birga 0 boʻlmaydi')
+    fireEvent.click(within(section).getByRole('button', { name: 'Shundan yangi lidlarga — oshirish' }))
+    expect(screen.getByRole('button', { name: 'Saqlash' }).hasAttribute('disabled')).toBe(false)
+  })
+})

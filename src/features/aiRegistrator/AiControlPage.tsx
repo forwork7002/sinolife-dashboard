@@ -10,7 +10,20 @@ import { Card } from '@/components/ui/Card'
 import { StatusChip } from '@/components/ui/Stat'
 import { AiNowPanel, ProductPill, StatePill, TONE_COLOR, inked } from '@/features/aiRegistrator/AiNowPanel'
 import { useServerNow } from '@/features/aiRegistrator/aiClock'
-import { type AiStatus, type Product, type Tone, elapsedText, isFresh, nowRow, productOf, sellerLook, transferOrderText } from '@/features/aiRegistrator/aiLiveLogic'
+import {
+  type AiStatus,
+  type Product,
+  type Tone,
+  appliedAck,
+  effectiveCalls,
+  elapsedText,
+  isFresh,
+  limitsProblem,
+  nowRow,
+  productOf,
+  sellerLook,
+  transferOrderText,
+} from '@/features/aiRegistrator/aiLiveLogic'
 import { PageShell } from '@/features/shared/PageShell'
 import { ApiClientError, apiGet, apiWrite } from '@/lib/api'
 import { formatClock, formatDateTime, formatNumber } from '@/lib/format'
@@ -166,7 +179,7 @@ export function AiControlPage() {
   const nameOf = (ext: string): string | null => reported.get(ext)?.trim() || data?.names[ext] || null
   const now = useServerNow(skewMs)
   const fresh = isFresh(status, now, staleAfterSec)
-  const problem = editing && editing.sellers.length === 0 ? 'Kamida bitta sotuvchi yoqiq boʻlsin.' : null
+  const problem = !editing ? null : editing.sellers.length === 0 ? 'Kamida bitta sotuvchi yoqiq boʻlsin.' : limitsProblem(editing.maxNew, editing.maxRetry)
 
   return (
     <PageShell
@@ -216,7 +229,7 @@ export function AiControlPage() {
             <Sellers data={data} status={fresh ? status : null} draft={editing} onChange={change} now={now} />
           </Step>
           <Step n={3} title="Limitlar" lead="Bir vaqtda nechta qoʻngʻiroq va ulardan nechtasi yangi lidlarga, nechtasi nedozvonga.">
-            <Limits data={data} draft={editing} onChange={change} />
+            <Limits data={data} draft={editing} onChange={change} status={status} />
           </Step>
           <Step n={4} title="Sotuvni ATSga topshirish">
             <Handoff draft={editing} onChange={change} />
@@ -258,7 +271,7 @@ function Step({ n, title, lead, children }: { readonly n: number; readonly title
   )
 }
 
-/** «Dilnoza ishlayapti · Sozlama v12 · saqlandi … · AI qabul qildi» — the page's first card. */
+/** «Dilnoza ishlayapti · Sozlama v12 · saqlandi … · AI qoʻlladi ✓» — the page's first card. */
 function StatusCard({
   data,
   status,
@@ -273,15 +286,14 @@ function StatusCard({
   readonly staleAfterSec: number
 }) {
   const config = data.config!
-  const report = status?.report
   const head = nowRow(status, now, staleAfterSec)
   const headColor = head.tone === 'neutral' ? 'var(--ink-muted)' : TONE_COLOR[head.tone]
 
-  let ack: { tone: 'good' | 'warning' | 'critical'; text: string }
-  if (!status || !report) ack = { tone: 'warning', text: 'AIʼdan hali xabar kelmagan' }
-  else if (report.applyError && report.appliedVersion !== config.version) ack = { tone: 'critical', text: `AI rad etdi v${config.version}: ${report.applyError}` }
-  else if (report.appliedVersion === config.version) ack = { tone: 'good', text: `AI qabul qildi: v${config.version}, ${formatClock(status.receivedAt)}` }
-  else ack = { tone: 'warning', text: `AI hali qabul qilmadi — hozir ${report.appliedVersion === null ? 'oʻz sozlamasi' : `v${report.appliedVersion}`} ishlayapti` }
+  const applied = appliedAck(status, config.version)
+  const ack = {
+    tone: applied.tone,
+    text: applied.reason ? `${applied.text}: ${applied.reason}` : applied.tone === 'good' && status ? `${applied.text}, ${formatClock(status.receivedAt)}` : applied.text,
+  }
 
   return (
     <Card className="flex flex-wrap items-center gap-x-5 gap-y-3 p-4 sm:p-5">
@@ -582,47 +594,105 @@ const RETRY_COLOR = 'var(--status-warning)'
 
 /**
  * The slots the limits make, one box per call at a time: the new-lead share
- * first, then the retry share, the rest open to either. The two shares are
- * caps, not reservations — together they may reach past the total.
+ * first, then the retry share. The two shares are caps, not reservations —
+ * together they may reach past the total, and then the AI splits by its queue.
+ * When together they fall SHORT of it, the rest are grey and idle: the agent
+ * never fills them, so 4 / 0 / 2 is «amalda 2 ta» (the owner, 2026-11-02).
  */
 function Slots({ draft }: { readonly draft: Draft }) {
+  const used = effectiveCalls(draft.maxCalls, draft.maxNew, draft.maxRetry)
   const fresh = Math.min(draft.maxNew, draft.maxCalls)
   const retry = Math.min(draft.maxRetry, draft.maxCalls - fresh)
-  const slots = Array.from({ length: draft.maxCalls }, (_, i) => (i < fresh ? 'new' : i < fresh + retry ? 'retry' : 'any'))
+  const slots = Array.from({ length: draft.maxCalls }, (_, i) => (i < fresh ? 'new' : i < fresh + retry ? 'retry' : 'idle'))
   const overlap = draft.maxNew + draft.maxRetry > draft.maxCalls
-  const text =
-    `Bir vaqtda ${draft.maxCalls} ta qoʻngʻiroq: yangi lidlarga koʻpi bilan ${draft.maxNew} ta, nedozvonga koʻpi bilan ${draft.maxRetry} ta` +
-    (overlap ? ' — ikkalasi birga umumiydan koʻp, AI navbatga qarab boʻladi.' : draft.maxNew + draft.maxRetry < draft.maxCalls ? ` — ${draft.maxCalls - draft.maxNew - draft.maxRetry} ta oʻrin ishlatilmaydi.` : '.')
+  const bothZero = limitsProblem(draft.maxNew, draft.maxRetry) !== null
+  const split = `yangi lidlarga koʻpi bilan ${draft.maxNew} ta, nedozvonga koʻpi bilan ${draft.maxRetry} ta`
+  const text = bothZero
+    ? 'Yangi lid va nedozvon ikkalasi 0 — AI bu sozlamani rad etadi.'
+    : used < draft.maxCalls
+      ? `Amalda bir vaqtda ${used} ta qoʻngʻiroq (${draft.maxCalls} ta qoʻyilgan): ${split} — qolgan ${draft.maxCalls - used} ta oʻrin ishlatilmaydi.`
+      : `Bir vaqtda ${draft.maxCalls} ta qoʻngʻiroq: ${split}` + (overlap ? ' — ikkalasi birga umumiydan koʻp, AI navbatga qarab boʻladi.' : '.')
+  const tone = bothZero ? 'var(--status-critical)' : overlap || used < draft.maxCalls ? 'var(--status-warning)' : null
   return (
     <div className="flex flex-col gap-2">
-      <div role="img" aria-label={text} className="flex flex-wrap gap-1.5">
-        {slots.map((k, i) => (
-          <span
-            key={i}
-            className="h-7 w-10 rounded-[6px] border"
-            style={{
-              background: k === 'new' ? `color-mix(in oklab, ${NEW_COLOR} 35%, transparent)` : k === 'retry' ? `color-mix(in oklab, ${RETRY_COLOR} 35%, transparent)` : 'var(--surface-sunken)',
-              borderColor: k === 'new' ? NEW_COLOR : k === 'retry' ? RETRY_COLOR : 'var(--border)',
-            }}
-          />
-        ))}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div role="img" aria-label={text} className="flex flex-wrap gap-1.5">
+          {slots.map((k, i) => (
+            <span
+              key={i}
+              data-slot={k}
+              className={`h-7 w-10 rounded-[6px] border ${k === 'idle' ? 'border-dashed' : ''}`}
+              style={{
+                background: k === 'new' ? `color-mix(in oklab, ${NEW_COLOR} 35%, transparent)` : k === 'retry' ? `color-mix(in oklab, ${RETRY_COLOR} 35%, transparent)` : 'var(--surface-sunken)',
+                borderColor: k === 'new' ? NEW_COLOR : k === 'retry' ? RETRY_COLOR : 'var(--border)',
+                opacity: k === 'idle' ? 0.6 : 1,
+              }}
+            />
+          ))}
+        </div>
+        <span className="text-[15px] font-bold tabular-nums" style={{ color: bothZero ? inked('var(--status-critical)') : 'var(--ink-primary)' }}>
+          amalda {used} ta
+        </span>
       </div>
-      <p className="text-[13px]" style={{ color: overlap ? inked('var(--status-warning)') : 'var(--ink-secondary)' }}>
+      <p className="text-[13px]" style={{ color: tone ? inked(tone) : 'var(--ink-secondary)' }}>
         {text}
       </p>
     </div>
   )
 }
 
-function Limits({ data, draft, onChange }: { readonly data: AiControlDto; readonly draft: Draft; readonly onChange: (next: Partial<Draft>) => void }) {
+/**
+ * Did the agent take the saved limits: «AI qoʻlladi ✓» with what it now runs,
+ * the refusal in red with the agent's own reason, or still waiting. About the
+ * SAVED version — an unsaved draft is not the agent's yet.
+ */
+function LimitsAck({ status, version }: { readonly status: AiStatus | null; readonly version: number }) {
+  const ack = appliedAck(status, version)
+  const l = status?.report.limits
+  const running = ack.tone === 'good' && l?.calls != null ? `Hozir AIda: bir vaqtda ${l.calls}, yangi ${l.maxNew ?? '—'}, nedozvon ${l.maxRetry ?? '—'}` : null
+  return (
+    <p aria-live="polite" className="flex flex-wrap items-center gap-2 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+      <StatusChip tone={ack.tone}>{ack.text}</StatusChip>
+      {ack.reason ? (
+        <span role="alert" style={{ color: inked('var(--status-critical)') }}>
+          Sabab: {ack.reason}
+        </span>
+      ) : (
+        running && <span>{running}</span>
+      )}
+    </p>
+  )
+}
+
+function Limits({
+  data,
+  draft,
+  status,
+  onChange,
+}: {
+  readonly data: AiControlDto
+  readonly draft: Draft
+  readonly status: AiStatus | null
+  readonly onChange: (next: Partial<Draft>) => void
+}) {
+  // Neither share may reach 0 while the other is 0: together they would read as «stop» and mean «any lead».
+  const newMin = draft.maxRetry === 0 ? 1 : 0
+  const retryMin = draft.maxNew === 0 ? 1 : 0
+  const bothZero = limitsProblem(draft.maxNew, draft.maxRetry)
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap gap-3">
         <Stepper label="Bir vaqtda" hint={`1 dan ${data.rules.maxCalls} gacha`} value={draft.maxCalls} min={1} max={data.rules.maxCalls} onChange={(v) => onChange({ maxCalls: v })} />
-        <Stepper label="Shundan yangi lidlarga" hint={`0 dan ${draft.maxCalls} gacha`} value={draft.maxNew} min={0} max={draft.maxCalls} color={NEW_COLOR} onChange={(v) => onChange({ maxNew: v })} />
-        <Stepper label="Shundan nedozvonga" hint={`0 dan ${draft.maxCalls} gacha`} value={draft.maxRetry} min={0} max={draft.maxCalls} color={RETRY_COLOR} onChange={(v) => onChange({ maxRetry: v })} />
+        <Stepper label="Shundan yangi lidlarga" hint={`${newMin} dan ${draft.maxCalls} gacha`} value={draft.maxNew} min={newMin} max={draft.maxCalls} color={NEW_COLOR} onChange={(v) => onChange({ maxNew: v })} />
+        <Stepper label="Shundan nedozvonga" hint={`${retryMin} dan ${draft.maxCalls} gacha`} value={draft.maxRetry} min={retryMin} max={draft.maxCalls} color={RETRY_COLOR} onChange={(v) => onChange({ maxRetry: v })} />
       </div>
+      {(bothZero || newMin === 1 || retryMin === 1) && (
+        <p className="max-w-3xl text-[13px]" role={bothZero ? 'alert' : undefined} style={{ color: bothZero ? inked('var(--status-critical)') : 'var(--ink-muted)' }}>
+          {bothZero ?? 'Yangi lid va nedozvon ikkalasi birga 0 boʻlmaydi — bu AIni toʻxtatmaydi, aksincha istalgan lidga teradi. Shuning uchun biri 0 boʻlsa, ikkinchisi kamida 1.'}
+        </p>
+      )}
       <Slots draft={draft} />
+      {data.config && <LimitsAck status={status} version={data.config.version} />}
     </div>
   )
 }

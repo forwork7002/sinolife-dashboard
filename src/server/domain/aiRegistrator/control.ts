@@ -9,7 +9,7 @@
  * the outside, so the agent reads `GET /api/ai-registrator/config` itself,
  * applies a new `version` without a restart, and reports what it runs every
  * 30 s to `POST /api/ai-registrator/status`. The panel shows both: what was
- * saved, and what the agent says it applied («AI qabul qildi: vN»).
+ * saved, and what the agent says it applied («AI qoʻlladi ✓ vN»).
  *
  * THE RULES BELOW ARE THE AGENT'S OWN (`ai_registrator/app/control.py`
  * `check_config`), checked here first so the owner is told at «Saqlash», not
@@ -91,6 +91,12 @@ export function controlProblems(settings: ControlSettings): string[] {
   }
   if (!Number.isInteger(maxRetry) || maxRetry < 0 || maxRetry > maxCalls) {
     problems.push('Nedozvon qoʻngʻiroqlari 0 dan bir vaqtdagi qoʻngʻiroqlar sonigacha boʻlsin.')
+  }
+  // 0 and 0 is not «stop»: to the agent it is «no split», any lead at the full
+  // count (ai_registrator 164f2c1, 2026-11-02 — it refuses it now). Mirrored as
+  // `limitsProblem` in `@/features/aiRegistrator/aiLiveLogic` — edit both.
+  if (maxNew === 0 && maxRetry === 0) {
+    problems.push('Yangi lid va nedozvon ikkalasi birga 0 boʻlmaydi: bu AIni toʻxtatmaydi, aksincha istalgan lidga teradi — kamida bittasi 1 yoki koʻp boʻlsin.')
   }
   if (!SALE_HANDOFFS.includes(settings.saleHandoff)) problems.push('Sotuvni topshirish usuli refer yoki bridge boʻlsin.')
 

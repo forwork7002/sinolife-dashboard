@@ -74,8 +74,14 @@ Per-screen traps worth knowing before you touch one:
   changed fields), in one transaction with the row locked; a save over a newer version (second tab) and a
   save that changes nothing are refused. The rules are the agent's own `check_config`
   (`domain/aiRegistrator/control.ts`): 2–6 digits, no repeat, never an AI line (178, 290–297 incl. the
-  owner's 294). The page polls every **15 s** (an exception to the 120 s cadence: «AI qabul qildi: vN»
-  is what the owner waits for, and one account opens it); a report older than 2 min reads «AIʼdan xabar
+  owner's 294). **New 0 AND nedozvon 0 together is refused** (2026-11-02, the agent since ai_registrator
+  164f2c1): to the agent it is «no split — any lead at the full count», never «stop»; the steppers will not
+  take the second share to 0 and say why, `controlProblems` refuses it server-side (mirrored as
+  `limitsProblem` in `aiLiveLogic.ts` — edit both). The shares are caps, so calls at a time is really
+  `min(maxCalls, maxNew + maxRetry)` (4 / 0 / 2 → «amalda 2 ta», the unused slots grey and dashed —
+  `effectiveCalls`). «AI qoʻlladi ✓ vN» / «AI rad etdi vN» + the agent's `applyError` (`appliedAck`) is
+  shown on the status card and again under the limits. The page polls every **15 s** (an exception to the
+  120 s cadence: «AI qoʻlladi ✓ vN» is what the owner waits for, and one account opens it); a report older than 2 min reads «AIʼdan xabar
   yoʻq». **The seed (migration `20261030150000`) is the owner's 18 of 30.10 14:4x** — 122, 120, 128, 123,
   131, 127, 111, 112, 108, 109, 107, 114, 115, 117, 134, 136, 135, 141 (never 125 / 129 / 139 / 143: the
   agent applies whatever is here within 20 s), 4 / 4 / 0, refer; `tests/domain/aiRegistratorControl.test.ts`

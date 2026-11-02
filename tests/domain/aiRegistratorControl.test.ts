@@ -47,6 +47,9 @@ describe('controlProblems', () => {
     expect(controlProblems({ ...ok, maxCalls: 2, maxNew: 3 }).join(' ')).toMatch(/Yangi/)
     expect(controlProblems({ ...ok, maxRetry: 5 }).join(' ')).toMatch(/Nedozvon/)
     expect(controlProblems({ ...ok, saleHandoff: 'x' as 'refer' }).join(' ')).toMatch(/refer yoki bridge/)
+    // 0 and 0 reads as «stop» but the agent dials any lead — refused on both sides (2026-11-02).
+    expect(controlProblems({ ...ok, maxNew: 0, maxRetry: 0 }).join(' ')).toMatch(/ikkalasi birga 0/)
+    expect(controlProblems({ ...ok, maxNew: 0, maxRetry: 2 })).toEqual([])
   })
 
   it('refuses an extension both on and off', () => {
