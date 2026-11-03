@@ -835,4 +835,66 @@ describe('«ROP otchet» (moved here from «Lidlar», 2026-10-07)', () => {
     fireEvent.click(tabs.getByRole('button', { name: 'RNP jadvali' }))
     await waitFor(() => expect(screen.getByRole('region', { name: 'RNP jadvali' })).toBeTruthy())
   })
+
+  describe('«ROP» cuts it to one team (2026-11-03)', () => {
+    const twoTeams = {
+      ...report,
+      groups: [
+        report.groups[0]!,
+        {
+          rop: 'Charos',
+          sellers: [{ employeeId: 'e3', fullName: 'Malika Karimova', isHead: false, onRoster: true, ...cells(5, 0) }],
+          total: cells(5, 0),
+        },
+      ],
+      total: cells(17, 4_800_000),
+    }
+
+    async function openReport() {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (url: string) => ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: String(url).includes('/registration/report') ? twoTeams : fixture,
+            meta: { dataSource: 'DEMO', generatedAt: '2026-10-07T06:00:00.000Z' },
+          }),
+        })),
+      )
+      await draw()
+      fireEvent.click(within(screen.getByRole('group', { name: 'Qaysi jadval' })).getByRole('button', { name: 'ROP otchet' }))
+      await waitFor(() => expect(screen.getByText('Malika Karimova')).toBeTruthy())
+    }
+    const ropSelect = () => screen.getByRole('combobox', { name: 'ROP' }) as HTMLSelectElement
+
+    it('offers every team under its shown name and opens on all of them', async () => {
+      await openReport()
+      expect([...ropSelect().options].map((o) => o.text)).toEqual(['Barchasi', 'Asliddin', 'Malika'])
+      expect(ropSelect().value).toBe('')
+      expect(screen.getByText('Sardor Davlatov')).toBeTruthy()
+      expect(screen.getByText('Jami · barcha guruhlar')).toBeTruthy()
+    })
+
+    it('shows the picked team alone, without the company foot, and keeps it in the URL', async () => {
+      await openReport()
+      fireEvent.change(ropSelect(), { target: { value: 'Charos' } })
+      await waitFor(() => expect(screen.queryByText('Sardor Davlatov')).toBeNull())
+      expect(screen.getByText('Malika Karimova')).toBeTruthy()
+      expect(screen.getByText('Malika guruhi')).toBeTruthy()
+      expect(screen.queryByText('Jami · barcha guruhlar')).toBeNull()
+      expect(new URL(window.location.href).searchParams.get('rop')).toBe('Charos')
+
+      fireEvent.change(ropSelect(), { target: { value: '' } })
+      await waitFor(() => expect(screen.getByText('Sardor Davlatov')).toBeTruthy())
+      expect(new URL(window.location.href).searchParams.get('rop')).toBeNull()
+    })
+
+    it('reads a team it does not have as «Barchasi»', async () => {
+      window.history.replaceState(null, '', '/rnp?rop=Ghost')
+      await openReport()
+      expect(ropSelect().value).toBe('')
+      expect(screen.getByText('Sardor Davlatov')).toBeTruthy()
+    })
+  })
 })

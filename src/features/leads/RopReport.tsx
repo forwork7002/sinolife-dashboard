@@ -4,6 +4,8 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Card } from '@/components/ui/Card'
+import { Select } from '@/components/ui/Select'
+import { useCohortRop } from '@/features/cohort/useCohortRop'
 import { useDashboardFilters } from '@/features/shared/useDashboardFilters'
 import { type MoneyDto, apiGet } from '@/lib/api'
 import { formatDate, formatDateShort, formatDuration, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
@@ -28,6 +30,13 @@ import type { RopReportCellsDto, RopReportDto, RopReportGroupDto } from './leadS
  * writes it, marked ✅ when Факт-1 reached the plan and 🔴 when it fell short.
  * «Dostup» (2026-10-13, the user: «qizilarga ruxsat emas»): a seller whose
  * Отклонение is red may not take more leads — «Ruxsat emas», else «Ruxsat».
+ *
+ * «ROP» CUTS IT TO ONE TEAM (2026-11-03, the owner: «rop ni tanlab faqat o'sha
+ * ropnikini ko'rsa bo'lishi kerak»): the team's sellers and its «Umumiy», no
+ * company foot. In the browser — every team is already on the page — and in
+ * the URL as `?rop=`, the same key the sheet tab's «ROP» keeps, so a team
+ * picked on one tab is still picked on the other. A key the report has no team
+ * for reads as «Barchasi».
  */
 
 const NOBODY = '∅'
@@ -83,6 +92,9 @@ export function RopReport({
     placeholderData: keepPreviousData,
   })
   const data = report.data?.data
+  const { rop, setRop } = useCohortRop()
+  const teams = data ? data.groups.filter((g): g is RopReportGroupDto & { rop: string } => g.rop !== null) : []
+  const chosen = teams.find((g) => g.rop === rop)?.rop ?? null
 
   return (
     <Card className="reveal">
@@ -99,6 +111,23 @@ export function RopReport({
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <label className="flex items-center gap-2 text-xs" style={muted}>
+            ROP
+            <Select
+              value={chosen ?? ''}
+              onChange={(e) => setRop(e.target.value === '' ? null : e.target.value)}
+              disabled={teams.length === 0}
+              height="touch"
+              className="max-w-[14rem]"
+            >
+              <option value="">Barchasi</option>
+              {teams.map((g) => (
+                <option key={g.rop} value={g.rop}>
+                  {TEAM_DISPLAY[g.rop] ?? g.rop}
+                </option>
+              ))}
+            </Select>
+          </label>
           <RopWindowPicker value={span} onChange={onWindow} />
         </div>
       </header>
@@ -115,14 +144,14 @@ export function RopReport({
             {data.from === data.day ? 'Bu kunda' : 'Bu davrda'} ROP jamoalarida hech kim yoʻq — lid ham, buyurtma ham.
           </p>
         ) : (
-          <ReportTable data={data} colors={colors} />
+          <ReportTable data={data} colors={colors} only={chosen} />
         )}
       </div>
     </Card>
   )
 }
 
-function ReportTable({ data, colors }: { data: RopReportDto; colors: ReadonlyMap<string, string> }) {
+function ReportTable({ data, colors, only }: { data: RopReportDto; colors: ReadonlyMap<string, string>; only: string | null }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="overflow-x-auto rounded-[var(--radius-panel-sm)] border" style={{ borderColor: 'var(--border)' }}>
@@ -139,12 +168,16 @@ function ReportTable({ data, colors }: { data: RopReportDto; colors: ReadonlyMap
               ))}
             </tr>
           </thead>
-          {data.groups.map((g, i) => (
-            <Group key={g.rop ?? NOBODY} group={g} color={groupColor(g.rop, i, colors)} />
-          ))}
-          <tfoot>
-            <TotalRow label="Jami · barcha guruhlar" cells={data.total} tint="var(--accent)" strong />
-          </tfoot>
+          {data.groups.map((g, i) =>
+            // One team picked: its rows alone, coloured as in the full report (the index is the report's own).
+            only === null || g.rop === only ? <Group key={g.rop ?? NOBODY} group={g} color={groupColor(g.rop, i, colors)} /> : null,
+          )}
+          {/* The company's foot only over the whole company — under one team its own «Umumiy» is the total. */}
+          {only === null && (
+            <tfoot>
+              <TotalRow label="Jami · barcha guruhlar" cells={data.total} tint="var(--accent)" strong />
+            </tfoot>
+          )}
         </table>
       </div>
     </div>
