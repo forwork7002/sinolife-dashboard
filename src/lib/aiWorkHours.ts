@@ -15,7 +15,10 @@
  *   · «HH:MM», 00:00–23:59;
  *   · start < end — one day, never across midnight;
  *   · lunch both or neither (neither = «tushliksiz»);
- *   · start ≤ lunchStart < lunchEnd ≤ end.
+ *   · start ≤ lunchStart < lunchEnd ≤ end;
+ *   · `days` (2026-11-04, T144, ai_registrator 2bc906f `check_days`) — ISO
+ *     weekdays 1 (dushanba) … 7 (yakshanba), at least one; null = every day.
+ *     None at all is not a day off but a stop — that is «Toʻxtatish».
  */
 
 export interface WorkHours {
@@ -26,6 +29,55 @@ export interface WorkHours {
   /** Null with `lunchEnd` — no lunch («tushliksiz»). */
   readonly lunchStart: string | null
   readonly lunchEnd: string | null
+  /**
+   * The days of the week the agent works, ISO 1 (Monday) … 7 (Sunday). Null or
+   * absent — every day (an hours value saved before the days existed reads so).
+   * On another day the agent dials nobody and the server's timer keeps it down.
+   */
+  readonly days?: readonly number[] | null
+}
+
+/** ISO weekday → the floor's two letters and the word, Monday first. */
+export const WEEKDAYS: readonly { readonly n: number; readonly short: string; readonly long: string }[] = [
+  { n: 1, short: 'Du', long: 'dushanba' },
+  { n: 2, short: 'Se', long: 'seshanba' },
+  { n: 3, short: 'Ch', long: 'chorshanba' },
+  { n: 4, short: 'Pa', long: 'payshanba' },
+  { n: 5, short: 'Ju', long: 'juma' },
+  { n: 6, short: 'Sh', long: 'shanba' },
+  { n: 7, short: 'Ya', long: 'yakshanba' },
+]
+
+/**
+ * The working days as stored and sent: sorted, each once — null for every
+ * day (absent, null, or all seven). Anything that is not a weekday is left as
+ * it is for `workHoursProblems` to name.
+ */
+export function normalDays(days: readonly number[] | null | undefined): number[] | null {
+  if (days === null || days === undefined) return null
+  const out = [...new Set(days)].sort((a, b) => a - b)
+  return out.length === 7 && out.every((d, i) => d === i + 1) ? null : out
+}
+
+/** Whether the agent works on this ISO weekday. */
+export function worksOn(weekday: number, hours: Pick<WorkHours, 'days'>): boolean {
+  const days = normalDays(hours.days)
+  return days === null || days.includes(weekday)
+}
+
+/** «har kuni», «Du–Ju», «Du, Ch, Ju», «Du–Pa, Sh». */
+export function daysText(days: readonly number[] | null | undefined): string {
+  const list = normalDays(days)
+  if (list === null) return 'har kuni'
+  if (list.length === 0) return 'hech qaysi kun'
+  const short = (n: number) => WEEKDAYS.find((d) => d.n === n)?.short ?? String(n)
+  const runs: number[][] = []
+  for (const d of list) {
+    const run = runs[runs.length - 1]
+    if (run && run[run.length - 1] === d - 1) run.push(d)
+    else runs.push([d])
+  }
+  return runs.map((r) => (r.length >= 3 ? `${short(r[0]!)}–${short(r[r.length - 1]!)}` : r.map(short).join(', '))).join(', ')
 }
 
 /**
@@ -54,6 +106,10 @@ export function hasLunch(hours: WorkHours): boolean {
  * they are fine. Every problem named at once, as `controlProblems` does.
  */
 export function workHoursProblems(hours: WorkHours): string[] {
+  return [...clockProblems(hours), ...dayProblems(hours.days)]
+}
+
+function clockProblems(hours: WorkHours): string[] {
   const problems: string[] = []
   const start = clockMinutes(hours.start)
   const end = clockMinutes(hours.end)
@@ -82,6 +138,14 @@ export function workHoursProblems(hours: WorkHours): string[] {
   return problems
 }
 
+/** The agent's `check_days`: whole weekdays 1–7, at least one. Null / absent — every day, fine. */
+function dayProblems(days: readonly number[] | null | undefined): string[] {
+  if (days === null || days === undefined) return []
+  if (!days.every((d) => Number.isInteger(d) && d >= 1 && d <= 7)) return ['Ish kuni 1 (dushanba) dan 7 (yakshanba) gacha boʻlsin.']
+  if (days.length === 0) return ['Kamida bitta ish kuni boʻlsin — AIni butunlay toʻxtatish uchun «Toʻxtatish».']
+  return []
+}
+
 /** «09:00–22:00» */
 export function workText(hours: Pick<WorkHours, 'start' | 'end'>): string {
   return `${hours.start}–${hours.end}`
@@ -92,13 +156,20 @@ export function lunchText(hours: Pick<WorkHours, 'lunchStart' | 'lunchEnd'>): st
   return hours.lunchStart && hours.lunchEnd ? `${hours.lunchStart}–${hours.lunchEnd}` : 'yoʻq'
 }
 
-/** «09:00–22:00, tushlik 12:30–13:30» / «09:00–22:00, tushliksiz». */
+/** «09:00–22:00, tushlik 12:30–13:30» / «09:00–22:00, tushliksiz» — and «, Du–Ju» when not every day. */
 export function hoursText(hours: WorkHours): string {
-  return hasLunch(hours) ? `${workText(hours)}, tushlik ${lunchText(hours)}` : `${workText(hours)}, tushliksiz`
+  const day = hasLunch(hours) ? `${workText(hours)}, tushlik ${lunchText(hours)}` : `${workText(hours)}, tushliksiz`
+  return normalDays(hours.days) === null ? day : `${day}, ${daysText(hours.days)}`
 }
 
-/** The same four values — an empty lunch end and a null one are the same «no lunch». */
+/** The same values — an empty lunch end and a null one are the same «no lunch», absent days and all seven «every day». */
 export function sameHours(a: WorkHours | null, b: WorkHours | null): boolean {
   if (a === null || b === null) return a === b
-  return a.start === b.start && a.end === b.end && (a.lunchStart || null) === (b.lunchStart || null) && (a.lunchEnd || null) === (b.lunchEnd || null)
+  return (
+    a.start === b.start &&
+    a.end === b.end &&
+    (a.lunchStart || null) === (b.lunchStart || null) &&
+    (a.lunchEnd || null) === (b.lunchEnd || null) &&
+    String(normalDays(a.days)) === String(normalDays(b.days))
+  )
 }

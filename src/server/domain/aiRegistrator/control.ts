@@ -17,8 +17,10 @@
  * settings on a refusal — two checks, one vocabulary.
  */
 
+import { type AiTuning, tuningDiff, tuningProblems } from '@/lib/aiControlRules'
 import { type WorkHours, sameHours, workHoursProblems } from '@/lib/aiWorkHours'
 
+export type { AiTuning } from '@/lib/aiControlRules'
 export type { WorkHours } from '@/lib/aiWorkHours'
 
 /** A seller's extension as the ATS numbers them: digits only, 2–6 of them. */
@@ -68,8 +70,29 @@ export interface ControlSettings {
    * Saved by its own body (`controlHoursSchema`), never by «Saqlash» — a
    * seller list saved from an older tab must not take the hours back. The
    * rules are `workHoursProblems` (`@/lib/aiWorkHours`), the agent's own.
+   * `hours.days` (T144) — the working days; null / absent every day.
    */
   readonly hours: WorkHours | null
+  /**
+   * «Vaqtincha toʻxtatish» (2026-11-04, T144, the owner: «hozirgi soatlarni
+   * toʻxtatib qoʻyish») — an instant (ISO, UTC) till which the agent dials no
+   * new lead; then it goes on by itself. Null — no pause; one gone by is none
+   * either. `enabled: false` stays the lasting stop. Its own body
+   * (`controlPauseSchema`); at most seven days ahead (`pauseProblems`).
+   */
+  readonly pauseUntil: string | null
+  /**
+   * The AI lines switched off from the panel (T144, «SIP bilan ishlash») —
+   * they take no new call; one on a call ends it. One main line at least
+   * stays on (`linesOffProblems`). Its own body (`controlLinesSchema`).
+   */
+  readonly linesOff: readonly string[]
+  /**
+   * «Qoʻshimcha sozlamalar» (T144) — the call tuning, all seven together.
+   * Null — not set here, the agent keeps its own .env values. Its own body
+   * (`controlTuningSchema`); the rules are `tuningProblems`, the agent's own.
+   */
+  readonly tuning: AiTuning | null
 }
 
 /** The extensions in order of first appearance, trimmed, each once. */
@@ -124,6 +147,9 @@ export function controlProblems(settings: ControlSettings): string[] {
   if (!SALE_HANDOFFS.includes(settings.saleHandoff)) problems.push('Sotuvni topshirish usuli refer yoki bridge boʻlsin.')
   // A config whose hours break a rule is refused WHOLE by the agent — sellers and limits too.
   if (settings.hours) problems.push(...workHoursProblems(settings.hours))
+  // So is one whose tuning does. (The pause and the lines are checked against
+  // the clock and the agent's own lines at their saves — `aiRegistratorControlService`.)
+  if (settings.tuning) problems.push(...tuningProblems(settings.tuning))
 
   return problems
 }
@@ -155,6 +181,17 @@ export function controlChanges(before: ControlSettings | null, after: ControlSet
   const hoursBefore = was?.hours ?? null
   if (was === null ? after.hours !== null : !sameHours(hoursBefore, after.hours)) {
     out.push({ field: 'hours', before: hoursBefore, after: after.hours })
+  }
+  // The same for the fields of 2026-11-04 (T144): an older row reads as none set.
+  const pauseBefore = was?.pauseUntil ?? null
+  if ((was === null && after.pauseUntil !== null) || (was !== null && pauseBefore !== after.pauseUntil)) {
+    out.push({ field: 'pauseUntil', before: pauseBefore, after: after.pauseUntil })
+  }
+  const linesBefore = was?.linesOff ?? []
+  if (linesBefore.join(',') !== after.linesOff.join(',')) out.push({ field: 'linesOff', before: [...linesBefore], after: [...after.linesOff] })
+  const tuningBefore = was?.tuning ?? null
+  if ((tuningBefore === null) !== (after.tuning === null) || tuningDiff(tuningBefore, after.tuning).length > 0) {
+    out.push({ field: 'tuning', before: tuningBefore, after: after.tuning })
   }
   return out
 }

@@ -41,12 +41,25 @@
  * sellersStart, sellersEnd }`, what the agent runs NOW (its .env ones while
  * none is set). Each value on its own: one that is not a clock reads as null,
  * a `hours` that is not an object as absent — never a refused report.
+ *
+ * 2026-11-04 (ai_registrator 2bc906f, T144 — «hamma narsani boshqara olsin»),
+ * all OPTIONAL in the CONFIG, each left out while not set here: `pauseUntil`
+ * (ISO with the offset, «2026-11-04T21:30:00+05:00»; only while ahead),
+ * `hours.days` (ISO weekdays; left out = every day), `linesOff` (left out =
+ * all on), `tuning` (all seven keys; left out = the agent's own) and
+ * `actions` — the open one-off presses `[{ id, kind, line?, at, by }]`, read
+ * by the agent on EVERY poll (not a version). Back in the STATUS, optional and
+ * each on its own: `pausedUntil`, `flags.paused` / `flags.day_off`,
+ * `hours.days`, `aiLines[]` (each line's pool, transport, state, ATS
+ * registration, on/off), `tuning` (what it runs) and `actions[]` (its answers,
+ * newest first). One the agent got wrong is dropped alone, the report stored.
  */
 
 import { z } from 'zod'
 
+import { MAX_ACTIONS } from '@/lib/aiControlRules'
 import { CLOCK_PATTERN } from '@/lib/aiWorkHours'
-import { MAX_CALLS_LIMIT, MAX_SELLERS, SALE_HANDOFFS } from '@/server/domain/aiRegistrator/control'
+import { EXTENSION_PATTERN, MAX_CALLS_LIMIT, MAX_SELLERS, SALE_HANDOFFS } from '@/server/domain/aiRegistrator/control'
 
 const instant = z.iso.datetime({ offset: true })
 const word = z.string().trim().regex(/^[a-z_]{1,32}$/)
@@ -121,6 +134,10 @@ const flagsSchema = z.object({
   no_free_specialist: flag,
   legs_full: flag,
   fused: flag,
+  /** «Vaqtincha toʻxtatish» running (T144). */
+  paused: flag,
+  /** Today is not one of the panel's working days (T144). */
+  day_off: flag,
   active_calls: count.optional().catch(undefined),
 })
 
@@ -135,6 +152,48 @@ const hoursReportSchema = z.object({
   lunchEnd: reportedClock,
   sellersStart: reportedClock,
   sellersEnd: reportedClock,
+  /** The working days the agent runs (T144), ISO weekdays; null every day. */
+  days: z.array(z.number().int().min(1).max(7)).max(7).nullable().optional().catch(undefined),
+})
+
+/** A short word the agent writes as it is («Registered», «Rejected», «missing») — shown raw, never a refusal. */
+const rawWord = z.string().trim().max(40)
+
+/** One AI line (T144): its pool, transport, what it does now, its ATS registration, on or off on the panel. */
+const aiLineSchema = z.object({
+  // A line the panel can switch and press for — a real extension, or the element is dropped.
+  ext: z.string().trim().regex(EXTENSION_PATTERN),
+  pool: rawWord.default('main').catch('main'),
+  transport: rawWord.default('udp').catch('udp'),
+  state: rawWord.default('unknown').catch('unknown'),
+  registration: rawWord.default('unknown').catch('unknown'),
+  enabled: z.boolean().default(true).catch(true),
+})
+
+/** One value of the tuning the agent runs — absent when it is not one. */
+const tuned = count.optional().catch(undefined)
+const tunedWord = z.string().trim().max(20).optional().catch(undefined)
+
+/** «Qoʻshimcha sozlamalar» as the agent runs them (T144), `maxAttempts` its product. */
+const tuningReportSchema = z.object({
+  attemptsPerDay: tuned,
+  retryDays: tuned,
+  maxAttempts: tuned,
+  transferOrder: tunedWord,
+  ringSec: tuned,
+  missedSec: tuned,
+  firstCallDelaySec: tuned,
+  whyUs: tunedWord,
+})
+
+/** The agent's answer to one press (T144): done, refused, or pending (a TLS renewal under way). */
+const actionAnswerSchema = z.object({
+  id: z.number().int().min(1),
+  kind: z.string().trim().max(20),
+  line: ext.nullable().default(null).catch(null),
+  state: z.enum(['done', 'refused', 'pending']),
+  text: z.string().max(300).default(''),
+  at: instant,
 })
 
 export const aiStatusSchema = z.object({
@@ -145,6 +204,14 @@ export const aiStatusSchema = z.object({
   enabled: z.boolean().optional().catch(undefined),
   /** The hours the agent applied (its .env ones while none is saved). Absent — an agent older than «Ish vaqti». */
   hours: hoursReportSchema.nullable().optional().catch(undefined),
+  /** The pause running, till when (T144); null none. Absent — an agent older than the pause. */
+  pausedUntil: instant.nullable().optional().catch(undefined),
+  /** Each AI line (T144). Absent — an agent older than the lines' controls. */
+  aiLines: each(aiLineSchema, 32).optional().catch(undefined),
+  /** The tuning it runs (T144). */
+  tuning: tuningReportSchema.nullable().optional().catch(undefined),
+  /** Its answers to the panel's presses, newest first (T144). */
+  actions: each(actionAnswerSchema, MAX_ACTIONS).optional().catch(undefined),
   limits: z
     .object({
       calls: count.nullable().optional(),
@@ -238,12 +305,81 @@ const formLunch = z
  */
 export const controlHoursSchema = z.strictObject({
   baseVersion: z.number().int().min(0),
-  hours: z.strictObject({ start: formClock, end: formClock, lunchStart: formLunch, lunchEnd: formLunch }),
+  hours: z.strictObject({
+    start: formClock,
+    end: formClock,
+    lunchStart: formLunch,
+    lunchEnd: formLunch,
+    /** The working days (T144), ISO weekdays — absent or null every day. */
+    days: z.array(z.number().int()).max(7).nullable().optional(),
+  }),
 })
 
 export type ControlHours = z.infer<typeof controlHoursSchema>
 
-/** What the control POST takes: a whole save, the stop alone, or the hours alone. */
-export const controlWriteSchema = z.union([controlEnabledSchema, controlHoursSchema, controlSaveSchema])
+/**
+ * «Vaqtincha toʻxtatish» — the pause alone (T144): `pauseUntil` an instant with
+ * its offset, or null for «Davom ettirish». The seven-day rule and «not gone
+ * by» are the service's (`pauseProblems`), named in Uzbek.
+ */
+export const controlPauseSchema = z.strictObject({
+  baseVersion: z.number().int().min(0),
+  pauseUntil: z.iso.datetime({ offset: true }).nullable(),
+})
+
+export type ControlPause = z.infer<typeof controlPauseSchema>
+
+/** The AI lines switched off — the whole list (T144). The agent's lines and the main-line rule are the service's. */
+export const controlLinesSchema = z.strictObject({
+  baseVersion: z.number().int().min(0),
+  linesOff: z.array(z.string().trim().regex(EXTENSION_PATTERN)).max(32),
+})
+
+export type ControlLines = z.infer<typeof controlLinesSchema>
+
+/** «Qoʻshimcha sozlamalar» — all seven together (T144). Bounds are the service's (`tuningProblems`), every problem named. */
+export const controlTuningSchema = z.strictObject({
+  baseVersion: z.number().int().min(0),
+  tuning: z.strictObject({
+    attemptsPerDay: z.number().int(),
+    retryDays: z.number().int(),
+    transferOrder: z.string().trim().max(20),
+    ringSec: z.number().int(),
+    missedSec: z.number().int(),
+    firstCallDelaySec: z.number().int(),
+    whyUs: z.string().trim().max(20),
+  }),
+})
+
+export type ControlTuning = z.infer<typeof controlTuningSchema>
+
+/**
+ * A one-off press (T144): «Qayta ulash» of one line, or «TLSʼni yangilash». Not
+ * a version — no `baseVersion`; the agent reads it with its next config.
+ */
+export const controlActionSchema = z.strictObject({
+  action: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('reregister'), line: z.string().trim().regex(EXTENSION_PATTERN) }),
+    z.strictObject({ kind: z.literal('tls_reset') }),
+  ]),
+})
+
+export type ControlAction = z.infer<typeof controlActionSchema>
+
+/**
+ * What the control POST takes: a whole save, or one of the small writes alone
+ * — the stop, the hours, the pause, the lines, the tuning, a press. The small
+ * ones are strict, so «Saqlash» (`controlSaveSchema`, last) never carries one:
+ * a body with sellers and a pause is a «Saqlash» with the pause stripped.
+ */
+export const controlWriteSchema = z.union([
+  controlEnabledSchema,
+  controlHoursSchema,
+  controlPauseSchema,
+  controlLinesSchema,
+  controlTuningSchema,
+  controlActionSchema,
+  controlSaveSchema,
+])
 
 export type ControlWrite = z.infer<typeof controlWriteSchema>

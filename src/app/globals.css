@@ -6156,6 +6156,7 @@ button.watch-card:hover {
 }
 .ai-switch[aria-checked='true'] { background: var(--status-good); }
 .ai-switch[aria-checked='true']::after { transform: translateX(18px); }
+.ai-switch:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (prefers-reduced-motion: no-preference) {
   .ai-lane[data-phase='dial'] .ai-wire-a { animation: ai-flow-l 600ms linear infinite; }

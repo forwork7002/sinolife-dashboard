@@ -1,5 +1,6 @@
 import { OUTCOME_LABEL } from '@/features/aiRegistrator/AiCallsDrawer'
-import { DEFAULT_WORK_HOURS, type WorkHours, clockMinutes, hoursText, lunchText, sameHours, workText } from '@/lib/aiWorkHours'
+import type { AiTuning } from '@/lib/aiControlRules'
+import { DEFAULT_WORK_HOURS, type WorkHours, clockMinutes, daysText, hoursText, lunchText, normalDays, sameHours, workText, worksOn } from '@/lib/aiWorkHours'
 import { APP_TIME_ZONE, formatDateTime, formatTime, tashkentDay } from '@/lib/format'
 
 /**
@@ -82,6 +83,10 @@ export interface AiFlags {
   readonly no_free_specialist?: boolean
   readonly legs_full?: boolean
   readonly fused?: boolean
+  /** «Vaqtincha toʻxtatish» runs (T144). */
+  readonly paused?: boolean
+  /** Today is not one of the panel's working days (T144). */
+  readonly day_off?: boolean
   readonly active_calls?: number
 }
 
@@ -97,6 +102,40 @@ export interface AppliedHours {
   readonly lunchEnd: string | null
   readonly sellersStart?: string | null
   readonly sellersEnd?: string | null
+  /** ISO weekdays (1 = Du); null / absent — every day (T144). */
+  readonly days?: readonly number[] | null
+}
+
+/** One AI line as the agent reports it (T144, `aiLines[]`). */
+export interface AiLine {
+  readonly ext: string
+  /** «main» (Collagen) | «zextra». */
+  readonly pool: string
+  /** «tls» | «udp». */
+  readonly transport: string
+  /** The line map's word — free, call, seller_talk, not_registered, off. */
+  readonly state: string
+  /** The ATS's registration word — «Registered», «Rejected», «missing» … */
+  readonly registration: string
+  /** On in the panel (not in `linesOff`). */
+  readonly enabled: boolean
+}
+
+/** The agent's answer to one press (T144, `actions[]`). */
+export interface AiActionAnswer {
+  readonly id: number
+  readonly kind: string
+  readonly line: string | null
+  readonly state: 'done' | 'refused' | 'pending'
+  readonly text: string
+  readonly at: string
+}
+
+/** The tuning the agent runs (T144) — each value optional; `maxAttempts` its own total. */
+export type ReportTuning = Partial<Omit<AiTuning, 'transferOrder' | 'whyUs'>> & {
+  readonly transferOrder?: string
+  readonly whyUs?: string
+  readonly maxAttempts?: number
 }
 
 export interface AiReport {
@@ -107,6 +146,14 @@ export interface AiReport {
   readonly enabled?: boolean
   /** What the agent runs now. Absent — an agent older than «Ish vaqti». */
   readonly hours?: AppliedHours | null
+  /** The pause it runs, UTC — null when none (T144). Absent — an agent older than the pause. */
+  readonly pausedUntil?: string | null
+  /** Each AI line (T144). Absent — an agent older than the lines' controls. */
+  readonly aiLines?: readonly AiLine[]
+  /** The tuning it runs (T144). */
+  readonly tuning?: ReportTuning | null
+  /** Its answers to the panel's presses, newest first (T144). */
+  readonly actions?: readonly AiActionAnswer[]
   readonly limits: AiLimits
   readonly lines: Readonly<Record<string, string>>
   readonly sellers: readonly ReportSeller[]
@@ -140,7 +187,7 @@ export function reportedHours(report: AiReport | null | undefined): WorkHours | 
   const end = clockMinutes(h.end)
   if (start === null || end === null || start >= end) return null
   const lunch = clockMinutes(h.lunchStart) !== null && clockMinutes(h.lunchEnd) !== null
-  return { start: h.start!, end: h.end!, lunchStart: lunch ? h.lunchStart! : null, lunchEnd: lunch ? h.lunchEnd! : null }
+  return { start: h.start!, end: h.end!, lunchStart: lunch ? h.lunchStart! : null, lunchEnd: lunch ? h.lunchEnd! : null, days: normalDays(h.days) }
 }
 
 /**
@@ -162,8 +209,18 @@ export function tashkentMinutes(at: Date): number {
   return value('hour') * 60 + value('minute')
 }
 
-/** [start, end) is the day, [lunchStart, lunchEnd) its lunch — none when the lunch is null. */
+/** The Tashkent weekday, ISO — 1 = dushanba … 7 = yakshanba. Tashkent is +05:00 all year. */
+export function tashkentWeekday(at: Date): number {
+  const day = new Date(at.getTime() + 5 * 60 * 60 * 1000).getUTCDay()
+  return day === 0 ? 7 : day
+}
+
+/**
+ * [start, end) is the day, [lunchStart, lunchEnd) its lunch — none when the
+ * lunch is null. A weekday not among `days` is off all day (T144).
+ */
 export function workPhase(at: Date, hours: WorkHours = DEFAULT_WORK_HOURS): 'work' | 'lunch' | 'off' {
+  if (!worksOn(tashkentWeekday(at), hours)) return 'off'
   const m = tashkentMinutes(at)
   const from = clockMinutes(hours.start) ?? 0
   const to = clockMinutes(hours.end) ?? 24 * 60
@@ -217,12 +274,28 @@ export interface NowRow {
  */
 export function nowRow(status: AiStatus | null, now: Date, staleAfterSec: number, saved?: WorkHours | null): NowRow {
   if (status && isFresh(status, now, staleAfterSec)) {
-    return agentEnabled(status.report) === false
-      ? { tone: 'critical', title: 'AI toʻxtatilgan', detail: 'Boshqaruvdan toʻxtatilgan — yangi lidlarga qoʻngʻiroq qilmaydi.' }
-      : { tone: 'good', title: 'AI ishlayapti', detail: null }
+    const report = status.report
+    if (agentEnabled(report) === false) {
+      return { tone: 'critical', title: 'AI toʻxtatilgan', detail: 'Boshqaruvdan toʻxtatilgan — yangi lidlarga qoʻngʻiroq qilmaydi.' }
+    }
+    // T144: a timed pause, then a day the panel does not work — each the owner's own choice, not an alarm.
+    if (report.flags?.paused === true) {
+      const until = report.pausedUntil ? whenText(report.pausedUntil, now) : null
+      return {
+        tone: 'warning',
+        title: until ? `Pauza (${until} gacha)` : 'Pauza',
+        detail: 'Vaqtincha toʻxtatilgan — yangi lidlarga qoʻngʻiroq qilmaydi. Vaqti tugagach oʻzi davom etadi.',
+      }
+    }
+    if (report.flags?.day_off === true) {
+      const days = reportedHours(report)?.days ?? saved?.days ?? null
+      return { tone: 'neutral', title: 'Bugun dam olish kuni', detail: days ? `Ish kunlari: ${daysText(days)}.` : null }
+    }
+    return { tone: 'good', title: 'AI ishlayapti', detail: null }
   }
   const last = status ? `oxirgi xabar ${whenText(status.receivedAt, now)}` : null
   const hours = hoursInForce(status?.report, saved)
+  if (!worksOn(tashkentWeekday(now), hours)) return { tone: 'neutral', title: 'Bugun dam olish kuni', detail: last }
   switch (workPhase(now, hours)) {
     case 'off':
       return { tone: 'neutral', title: `Ish vaqti emas (${workText(hours)})`, detail: last }
@@ -333,6 +406,9 @@ const MAP_STATE: Readonly<Record<string, { readonly label: string; readonly tone
   seller_talk: { label: 'Mijoz sotuvchi bilan', tone: 'good' },
 }
 
+/** A line switched off on the panel (T144) — the map's «off». */
+export const LINE_OFF_LABEL = 'Oʻchiq (Boshqaruvdan)'
+
 export interface LineRow {
   readonly line: string
   /** busy: on a call (a live call, or `call` / `seller_talk` in the map); the rest one dim row each. */
@@ -409,6 +485,7 @@ export function lineRows(report: AiReport, nameOf: (ext: string) => string | nul
     if (mapped) return { ...idle, kind: 'busy', ...mapped }
     if (word === 'free') return { ...idle, kind: 'free', label: 'Boʻsh', tone: 'neutral' }
     if (word === 'not_registered') return { ...idle, kind: 'unregistered', label: 'ATSʼda roʻyxatda emas', tone: 'critical' }
+    if (word === 'off') return { ...idle, kind: 'other', label: LINE_OFF_LABEL, tone: 'neutral' }
     return { ...idle, kind: 'other', label: word, tone: 'neutral' }
   })
   const zextra = (r: LineRow) => (r.product === 'Zextra' ? 1 : 0)
@@ -582,6 +659,8 @@ export function feedNoAnswer(report: AiReport): number {
 
 const FLAG_TEXT: readonly (readonly [keyof AiFlags, string])[] = [
   ['stopped', 'AI Boshqaruvdan toʻxtatilgan — «Yoqish» bilan qaytadi'],
+  ['paused', 'Vaqtincha toʻxtatilgan (pauza) — vaqti tugagach oʻzi davom etadi'],
+  ['day_off', 'Bugun dam olish kuni — Boshqaruvdagi ish kunlaridan emas'],
   ['held', 'AI toʻxtatib qoʻyilgan'],
   ['ats_paused', 'ATS pauzada'],
   ['credits_out', 'Ovoz kreditlari tugagan'],
@@ -645,6 +724,7 @@ export function laneOf(row: LineRow): Lane {
     if (row.kind === 'free') return { phase, label: 'Boʻsh', sentence: 'Navbatdagi lidni kutyapti' }
     if (row.kind === 'unregistered') return { phase, label: 'ATS bilmaydi', sentence: 'Liniya ATSʼda roʻyxatda emas — MicroSIP ulanmagan' }
     if (row.kind === 'busy') return { phase, label: row.label, sentence: 'AI qoʻngʻiroqda — kim bilanligini yubormadi (sinov qoʻngʻirogʻi ham shunday koʻrinadi)' }
+    if (row.state === 'off') return { phase, label: 'Oʻchiq', sentence: 'Boshqaruvdan oʻchirilgan — AI bu liniyadan qoʻngʻiroq qilmaydi' }
     return { phase, label: row.label, sentence: '' }
   }
   switch (row.state) {

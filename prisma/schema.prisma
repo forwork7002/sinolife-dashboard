@@ -2427,12 +2427,48 @@ model AiRegistratorConfig {
   /// The sellers' lunch; both null with the hours set — «tushliksiz».
   lunchStart  String?
   lunchEnd    String?
+  /// «Ish vaqti» days (2026-11-04, T144): ISO weekdays 1 (Mon) … 7 (Sun).
+  /// [] — every day; `hours.days` is left out of the agent's config.
+  workDays    Int[]    @default([])
+  /// «Vaqtincha toʻxtatish» (T144): no new lead is dialled till then, then the
+  /// agent goes on by itself. Null, or a time gone by — no pause.
+  pauseUntil  DateTime?
+  /// AI lines switched off from the panel (T144): they take no new call.
+  /// [] — all on; left out of the agent's config.
+  linesOff    String[] @default([])
+  /// «Qoʻshimcha sozlamalar» (T144): { attemptsPerDay, retryDays,
+  /// transferOrder, ringSec, missedSec, firstCallDelaySec, whyUs }. Null — not
+  /// set here, the agent keeps its own .env values.
+  tuning      Json?
   updatedAt   DateTime
   /// Who saved it, as the panel prints it (the login).
   updatedBy   String
   updatedById String?
 
   @@map("ai_registrator_config")
+}
+
+/// A one-off press on «Boshqaruv» (2026-11-04, T144): «Qayta ulash» of one
+/// AI line, or «TLSʼni yangilash». Not a version — the agent reads the open
+/// ones with every config read (at most 20, none older than ten minutes), does
+/// each `id` ONCE, and answers in its status; the answer is written back here.
+model AiRegistratorAction {
+  id            Int       @id @default(autoincrement())
+  /// "reregister" | "tls_reset"
+  kind          String
+  /// The AI line for "reregister"; null for "tls_reset".
+  line          String?
+  requestedAt   DateTime  @default(now())
+  requestedBy   String
+  requestedById String?
+  /// null — sent, no answer yet; "pending" | "done" | "refused" — the agent's.
+  state         String?
+  /// The agent's answer in its words.
+  text          String?
+  answeredAt    DateTime?
+
+  @@index([requestedAt])
+  @@map("ai_registrator_action")
 }
 
 /// Every save, never rewritten: who, when, the whole setting before and

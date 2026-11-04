@@ -53,7 +53,7 @@ describe('workHoursProblems — the agent\'s rules', () => {
 })
 
 describe('the hours in a save', () => {
-  const ok: ControlSettings = { sellers: ['122', '120'], parked: [], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer', enabled: true, hours: null }
+  const ok: ControlSettings = { sellers: ['122', '120'], parked: [], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer', enabled: true, hours: null, pauseUntil: null, linesOff: [], tuning: null }
 
   it('refuses a whole setting whose hours break a rule, as the agent would', () => {
     expect(controlProblems({ ...ok, hours: day })).toEqual([])

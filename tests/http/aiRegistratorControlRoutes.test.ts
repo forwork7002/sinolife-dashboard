@@ -37,6 +37,10 @@ const state = vi.hoisted(() => ({
   savers: [] as unknown[],
   switches: [] as unknown[],
   hours: [] as unknown[],
+  pauses: [] as unknown[],
+  lineSaves: [] as unknown[],
+  tunings: [] as unknown[],
+  presses: [] as unknown[],
   fail: false,
   principal: null as unknown,
 }))
@@ -67,6 +71,26 @@ vi.mock('@/server/services/container', () => ({
       state.hours.push(body)
       state.savers.push(by)
       return state.config
+    },
+    setPause: async (body: unknown, by: unknown) => {
+      state.pauses.push(body)
+      state.savers.push(by)
+      return state.config
+    },
+    setLinesOff: async (body: unknown, by: unknown) => {
+      state.lineSaves.push(body)
+      state.savers.push(by)
+      return state.config
+    },
+    setTuning: async (body: unknown, by: unknown) => {
+      state.tunings.push(body)
+      state.savers.push(by)
+      return state.config
+    },
+    requestAction: async (body: unknown, by: unknown) => {
+      state.presses.push(body)
+      state.savers.push(by)
+      return { id: 41 }
     },
   },
   scopeService: { resolve: async () => ({ restrictToEmployeeIds: null }) },
@@ -133,6 +157,10 @@ beforeEach(() => {
   state.saves.length = 0
   state.savers.length = 0
   state.hours.length = 0
+  state.pauses.length = 0
+  state.lineSaves.length = 0
+  state.tunings.length = 0
+  state.presses.length = 0
   state.switches.length = 0
   state.fail = false
   state.principal = null
@@ -357,5 +385,74 @@ describe('/api/v1/leads/ai-registrator/control — the owner\'s account only', (
     state.principal = principal()
     expect((await write({ baseVersion: 1, hours: { start: '08:00', end: '23:00', lunchStart: null, lunchEnd: null } })).status).toBe(403)
     expect(state.hours).toHaveLength(0)
+  })
+
+  /*
+    The rest of the panel (2026-11-04, T144): the pause, the lines switched
+    off, the tuning — each its own body, strict — and a press, with no version.
+    A whole save never carries any of them.
+  */
+  const TUNING = { attemptsPerDay: 5, retryDays: 2, transferOrder: 'random', ringSec: 15, missedSec: 600, firstCallDelaySec: 60, whyUs: 'on' }
+
+  it('takes the pause alone as the pause — an instant with its offset, or null', async () => {
+    state.principal = principal({ aiControl: true, login: 'umida' })
+    expect((await write({ baseVersion: 1, pauseUntil: '2026-11-04T21:30:00+05:00' })).status).toBe(200)
+    expect((await write({ baseVersion: 1, pauseUntil: null })).status).toBe(200)
+    expect(state.pauses).toEqual([
+      { baseVersion: 1, pauseUntil: '2026-11-04T21:30:00+05:00' },
+      { baseVersion: 1, pauseUntil: null },
+    ])
+    expect((await write({ baseVersion: 1, pauseUntil: '2026-11-04T21:30:00' })).status).toBe(400)
+    expect((await write({ baseVersion: 1, pauseUntil: 'ertaga' })).status).toBe(400)
+    expect((await write({ ...body, pauseUntil: '2026-11-04T21:30:00+05:00' })).status).toBe(200)
+    expect(state.saves[0]).not.toHaveProperty('pauseUntil')
+    expect(state.pauses).toHaveLength(2)
+  })
+
+  it('takes the lines switched off alone, and refuses a malformed number', async () => {
+    state.principal = principal({ aiControl: true, login: 'umida' })
+    expect((await write({ baseVersion: 1, linesOff: ['291'] })).status).toBe(200)
+    expect((await write({ baseVersion: 1, linesOff: [] })).status).toBe(200)
+    expect(state.lineSaves).toEqual([
+      { baseVersion: 1, linesOff: ['291'] },
+      { baseVersion: 1, linesOff: [] },
+    ])
+    expect((await write({ baseVersion: 1, linesOff: ['29a'] })).status).toBe(400)
+    expect((await write({ baseVersion: 1, linesOff: '291' })).status).toBe(400)
+    expect(state.lineSaves).toHaveLength(2)
+  })
+
+  it('takes the tuning alone, all seven and nothing else', async () => {
+    state.principal = principal({ aiControl: true, login: 'umida' })
+    expect((await write({ baseVersion: 1, tuning: TUNING })).status).toBe(200)
+    expect(state.tunings).toEqual([{ baseVersion: 1, tuning: TUNING }])
+    const { whyUs: _w, ...six } = TUNING
+    expect((await write({ baseVersion: 1, tuning: six })).status).toBe(400)
+    expect((await write({ baseVersion: 1, tuning: { ...TUNING, extra: 1 } })).status).toBe(400)
+    expect((await write({ baseVersion: 1, tuning: { ...TUNING, ringSec: '15' } })).status).toBe(400)
+    expect(state.tunings).toHaveLength(1)
+  })
+
+  it('takes a press with no version — «Qayta ulash» of a line, «TLSʼni yangilash» of none', async () => {
+    state.principal = principal({ aiControl: true, login: 'umida' })
+    const res = await write({ action: { kind: 'reregister', line: '291' } })
+    expect(res.status).toBe(200)
+    expect((await res.json()).data).toEqual({ id: 41 })
+    expect((await write({ action: { kind: 'tls_reset' } })).status).toBe(200)
+    expect(state.presses).toEqual([{ action: { kind: 'reregister', line: '291' } }, { action: { kind: 'tls_reset' } }])
+    expect((await write({ action: { kind: 'reregister' } })).status).toBe(400)
+    expect((await write({ action: { kind: 'tls_reset', line: '291' } })).status).toBe(400)
+    expect((await write({ action: { kind: 'restart' } })).status).toBe(400)
+    expect((await write({ baseVersion: 1, action: { kind: 'tls_reset' } })).status).toBe(400)
+    expect(state.presses).toHaveLength(2)
+  })
+
+  it('keeps the pause, the lines, the tuning and the presses behind the same door', async () => {
+    state.principal = principal()
+    expect((await write({ baseVersion: 1, pauseUntil: '2026-11-04T21:30:00+05:00' })).status).toBe(403)
+    expect((await write({ baseVersion: 1, linesOff: ['291'] })).status).toBe(403)
+    expect((await write({ baseVersion: 1, tuning: TUNING })).status).toBe(403)
+    expect((await write({ action: { kind: 'tls_reset' } })).status).toBe(403)
+    expect([...state.pauses, ...state.lineSaves, ...state.tunings, ...state.presses]).toHaveLength(0)
   })
 })

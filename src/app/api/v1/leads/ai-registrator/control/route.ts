@@ -34,20 +34,24 @@ export const GET = getHandler(ACCESS, z.object({ part: z.enum(['live']).optional
 
 /**
  * «Saqlash» — the next version, its audit row; the agent picks it up on its
- * next read. `{ baseVersion, enabled }` alone is «Toʻxtatish» / «Yoqish»: the
- * next version with only the stop changed. `{ baseVersion, hours }` alone is
- * «Ish vaqti → Saqlash»: only the hours changed. A whole save carries neither,
- * so both stay whatever «Saqlash» changes.
+ * next read. Every other control is its own body, the next version with only
+ * that changed, so «Saqlash» never carries them and each stays as it was:
+ * `{ baseVersion, enabled }` «Toʻxtatish» / «Yoqish», `{ baseVersion, hours }`
+ * «Ish vaqti», `{ baseVersion, pauseUntil }` «Vaqtincha toʻxtatish» /
+ * «Davom ettirish», `{ baseVersion, linesOff }` an AI line on / off,
+ * `{ baseVersion, tuning }` «Qoʻshimcha sozlamalar». `{ action }` is a press
+ * («Qayta ulash», «TLSʼni yangilash») — no version: a row the agent does once.
  */
 export const POST = mutationHandler(ACCESS, controlWriteSchema, async (ctx) => {
   assertAiControl(ctx.principal)
   const by = { label: ctx.principal.login ?? ctx.principal.userId, userId: ctx.principal.userId }
   const body = ctx.body
-  const data =
-    'enabled' in body
-      ? await aiRegistratorControlService.setEnabled(body, by)
-      : 'hours' in body
-        ? await aiRegistratorControlService.setHours(body, by)
-        : await aiRegistratorControlService.save(body, by)
-  return { data }
+  const service = aiRegistratorControlService
+  if ('action' in body) return { data: await service.requestAction(body, by, ctx.now) }
+  if ('enabled' in body) return { data: await service.setEnabled(body, by) }
+  if ('hours' in body) return { data: await service.setHours(body, by) }
+  if ('pauseUntil' in body) return { data: await service.setPause(body, by, ctx.now) }
+  if ('linesOff' in body) return { data: await service.setLinesOff(body, by) }
+  if ('tuning' in body) return { data: await service.setTuning(body, by) }
+  return { data: await service.save(body, by) }
 })

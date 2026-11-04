@@ -128,6 +128,35 @@ Per-screen traps worth knowing before you touch one:
   ones, else 09:00–22:00 / 12:30–13:30; `workPhase` / `nowRow` and the stop texts («08:00 da ham oʻzi
   yonmaydi») read it, and with no lunch there is no «Tushlik» phase. **Never save other hours on prod to
   test** — the agent applies them to real clients' calls within 20 s (the owner's rule).
+  **The rest of the panel** (2026-11-04, T144, the owner: «boshqaruv bo'limini yanada kuchaytir: hamma narsani
+  boshqara olsin … to'xtatib qo'yish funksiyalari, SIP bilan ishlash»; agent ai_registrator 2bc906f). Migration
+  `20261104210000` (ADD COLUMN + one new table): `workDays INT[]`, `pauseUntil`, `linesOff TEXT[]`, `tuning JSONB`
+  on the config, and `ai_registrator_action` (one row per press). Every new field is OPTIONAL and LEFT OUT of
+  `GET /api/ai-registrator/config` while unset (an older agent and the .env keep working); **the agent refuses the
+  WHOLE config over one bad field**, so its `check_pause / check_lines_off / check_tuning / check_hours` are copied
+  once into `src/lib/aiControlRules.ts` (+ `aiWorkHours.ts` for days) and every problem is said in one message before
+  saving. Each control has its own strict body and its own new version + audit row; **«Saqlash» never carries them**:
+  `{baseVersion, pauseUntil}` (ISO with the +05:00 offset, ≤ 7 days, null = «Davom ettirish»; a past pause is not
+  sent) · `{baseVersion, hours: {…, days}}` (ISO weekdays 1–7; all seven = no `days` = every day) · `{baseVersion,
+  linesOff}` (only the agent's own `aiLines`, ≥ 1 main/Collagen line stays on) · `{baseVersion, tuning}` (all seven
+  keys: attemptsPerDay 1–10, retryDays 1–5, transferOrder random|fewest, ringSec 10–40, missedSec 0–1800,
+  firstCallDelaySec 0–600, whyUs off|test|on) · `{action: {kind: 'reregister', line}}` / `{action: {kind:
+  'tls_reset'}}` → `actions: [{id, kind, line?, at, by}]` in the config (≤ 20, the last 10 minutes; the agent does
+  each once and answers in its status `actions[{id, state done|refused|pending, text}]`, written back by
+  `answerActions`). A press is refused before saving unless the AI answers right now and sends `aiLines`;
+  «Qayta ulash» only for an AI line not «Registered», «TLSʼni yangilash» only while every TLS line is down and none
+  is on a call, never twice while the same press waits. Status (lenient, each `.catch`): `pausedUntil`,
+  `flags.paused / day_off`, `hours.days`, `aiLines[{ext, pool, transport, state, registration, enabled}]`, line
+  word `off`, `tuning{…, maxAttempts}`, `actions`. **Page** (`AiControlMore.tsx`, logic `aiControlMoreLogic.ts`):
+  «Vaqtincha toʻxtatish» under the stop card (15/30 daq, 1/2 soat, «Bugungacha» = the next work start, «… gacha»;
+  «Pauza: 21:30 gacha · 45 daq qoldi» + «Davom ettirish»; header «Pauza (HH:MM gacha)» / «Bugun dam olish kuni»);
+  Du…Ya buttons under «Ish vaqti»; step 1 «AI liniyalari (SIP)» table (Liniya · Mahsulot · Ulanish · ATS holati ·
+  Hozir · Yoqiq switch · «Qayta ulash»; «TLSʼni yangilash» asks in `AiConfirmDialog`, the last answer beside each
+  button; «Yangi liniya qoʻshish — hozircha AI serverida» — no SIP password in ISH, T123); step 5 «Qoʻshimcha
+  sozlamalar» (starts from what the agent runs, «jami N marta», the WHY_US claim warning); history merges saves
+  and presses. Each shows saved vs applied (`ackOf`: refused first, then «AI serveri buni hali bilmaydi» for an
+  agent that sends nothing, «qoʻllanmoqda…», «AI qoʻlladi ✓»). **Never press any of them on prod to test** —
+  pause, a line off and a re-register hit real clients' calls (the owner presses them).
 - **AI registrator — the design canvas** (2026-11-02, the owner: «dashboardimiz dizayni shunga boʻladi … funksiyalarini
   hammasini ishlaydigan qilib ber»; artifact «AI registrator — jonli monitoring variantlari», Hisobot + Boshqaruv).
   **Hisobot** = «Hozir · jonli» (`AiNowPanel`: one `.ai-lane[data-phase]` per AI line — client · wire · AI · wire ·
@@ -138,8 +167,8 @@ Per-screen traps worth knowing before you touch one:
   **Boshqaruv** = status card («Dilnoza ishlayapti», vN, ack) · 1 lines (the same `AiNowPanel`, read-only) · 2 sellers
   (switch, «Oʻchirib qoʻyilganlar · N», no order and no ↑↓ — the agent picks by its own `limits.transferOrder`, shown
   as words) · 3 limits with the slot bar · 4 refer/bridge · history · a sticky save bar; under the status card
-  «Toʻxtatish» / «Yoqish» and «Ish vaqti» (its own save) since 2026-11-04 (above). **NOT DRAWN, the agent has no
-  such control** (ai_registrator ca9c52a): adding/removing an AI line, seller order, the client's phone in a
+  «Toʻxtatish» / «Yoqish», «Ish vaqti» (its own save), the pause, SIP lines and step 5 since 2026-11-04 (above). **NOT DRAWN, the agent has no
+  such control** (ai_registrator ca9c52a): adding an AI line (T144: on the AI server; switching one off is drawn), seller order, the client's phone in a
   lane, a region in a lane. The ca9c52a fields are ALL OPTIONAL, each falls back alone (`.catch`): status
   `live.lines[].started` (the lane timer), `live.events[]`, `sellers[].word/since` (the chip timer; «AI mijozi bilan»
   = busy and a `connected` to that ext within 90 s of `since`, else «oʻz qoʻngʻirogʻida»), `flags`,

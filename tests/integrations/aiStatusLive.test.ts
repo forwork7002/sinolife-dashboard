@@ -215,3 +215,61 @@ describe('«Ish vaqti» (2026-11-04, ai_registrator d0abf97) — hours, optional
     expect(parse(report({ hours: null })).hours).toBeNull()
   })
 })
+
+/*
+  The rest of the panel (2026-11-04, T144, ai_registrator 2bc906f): the pause
+  it runs, its lines, its tuning, its answers to presses, and the two flags.
+  Each is optional and lenient — one the agent got wrong drops alone, the
+  report is stored.
+*/
+describe('aiStatusSchema — the panel\'s controls (T144)', () => {
+  const t144 = {
+    pausedUntil: '2026-11-04T16:30:00+00:00',
+    aiLines: [
+      { ext: '178', pool: 'main', transport: 'udp', state: 'free', registration: 'Registered', enabled: true },
+      { ext: '292', pool: 'main', transport: 'tls', state: 'off', registration: 'Rejected', enabled: false },
+    ],
+    tuning: { attemptsPerDay: 5, retryDays: 2, transferOrder: 'random', ringSec: 15, missedSec: 600, firstCallDelaySec: 60, whyUs: 'on', maxAttempts: 10 },
+    actions: [{ id: 5, kind: 'reregister', line: '292', state: 'refused', text: 'ATS bloklamasin — 10 daqiqadan keyin', at: '2026-11-04T15:00:00+00:00' }],
+    flags: { paused: true, day_off: false },
+    hours: { start: '09:00', end: '22:00', lunchStart: '12:30', lunchEnd: '13:30', days: [1, 2, 3, 4, 5] },
+  }
+
+  it('keeps each as the agent sent it', () => {
+    const r = parse(report(t144))
+    expect(r.pausedUntil).toBe('2026-11-04T16:30:00+00:00')
+    expect(r.aiLines).toEqual(t144.aiLines)
+    expect(r.tuning).toMatchObject({ attemptsPerDay: 5, maxAttempts: 10, whyUs: 'on' })
+    expect(r.actions).toEqual([{ ...t144.actions[0] }])
+    expect(r.flags).toMatchObject({ paused: true, day_off: false })
+    expect(r.hours?.days).toEqual([1, 2, 3, 4, 5])
+  })
+
+  it('reads a report from an agent older than them as before', () => {
+    const r = parse(report())
+    expect(r.pausedUntil).toBeUndefined()
+    expect(r.aiLines).toBeUndefined()
+    expect(r.tuning).toBeUndefined()
+    expect(r.actions).toBeUndefined()
+  })
+
+  it('drops a wrong one alone and stores the report', () => {
+    const r = aiStatusSchema.safeParse(
+      report({
+        pausedUntil: 'soon',
+        aiLines: [{ ext: '178', pool: 7, enabled: 'yes' }, { ext: 'x' }],
+        tuning: { attemptsPerDay: 'five', ringSec: 15 },
+        actions: [{ id: 0, state: 'done' }, { id: 6, kind: 'tls_reset', line: null, state: 'pending', text: '', at: '2026-11-04T15:00:00+00:00' }],
+        hours: { start: '09:00', end: '22:00', lunchStart: null, lunchEnd: null, days: [0, 9] },
+      }),
+    )
+    expect(r.success).toBe(true)
+    if (!r.success) return
+    expect(r.data.pausedUntil).toBeUndefined()
+    expect(r.data.aiLines).toEqual([{ ext: '178', pool: 'main', transport: 'udp', state: 'unknown', registration: 'unknown', enabled: true }])
+    expect(r.data.tuning).toMatchObject({ ringSec: 15 })
+    expect(r.data.tuning?.attemptsPerDay).toBeUndefined()
+    expect(r.data.actions).toEqual([{ id: 6, kind: 'tls_reset', line: null, state: 'pending', text: '', at: '2026-11-04T15:00:00+00:00' }])
+    expect(r.data.hours?.days).toBeUndefined()
+  })
+})

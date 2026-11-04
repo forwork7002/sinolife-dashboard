@@ -1,8 +1,7 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { type ReactNode, useState } from 'react'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +9,10 @@ import { Callout } from '@/components/ui/Callout'
 import { Card } from '@/components/ui/Card'
 import { Select } from '@/components/ui/Select'
 import { StatusChip } from '@/components/ui/Stat'
+import { AiConfirmDialog } from '@/features/aiRegistrator/AiConfirmDialog'
+import { AiLinesControl, DaysPicker, PauseControls, TuningStep } from '@/features/aiRegistrator/AiControlMore'
 import { AiNowPanel, ProductPill, StatePill, TONE_COLOR, inked } from '@/features/aiRegistrator/AiNowPanel'
+import { ACTION_LABEL, type Press, mergePresses, pressText } from '@/features/aiRegistrator/aiControlMoreLogic'
 import { useServerNow } from '@/features/aiRegistrator/aiClock'
 import {
   type AiStatus,
@@ -30,7 +32,8 @@ import {
   transferOrderText,
 } from '@/features/aiRegistrator/aiLiveLogic'
 import { PageShell } from '@/features/shared/PageShell'
-import { DEFAULT_WORK_HOURS, type WorkHours, hasLunch, sameHours, workHoursProblems } from '@/lib/aiWorkHours'
+import type { ActionKind, AiTuning } from '@/lib/aiControlRules'
+import { DEFAULT_WORK_HOURS, type WorkHours, hasLunch, normalDays, sameHours, workHoursProblems } from '@/lib/aiWorkHours'
 import { ApiClientError, apiGet, apiWrite } from '@/lib/api'
 import { formatClock, formatDateTime, formatNumber } from '@/lib/format'
 
@@ -48,6 +51,12 @@ interface AiControlDto {
     readonly saleHandoff: string
     /** «Ish vaqti» — null while not set here (the AI server's own hours run). */
     readonly hours?: WorkHours | null
+    /** «Vaqtincha toʻxtatish» (T144) — the saved pause, ISO UTC; kept after it ran out. */
+    readonly pauseUntil?: string | null
+    /** AI lines switched off (T144). */
+    readonly linesOff?: readonly string[]
+    /** «Qoʻshimcha sozlamalar» (T144) — null while not saved (the agent's own run). */
+    readonly tuning?: AiTuning | null
     readonly updatedAt: string
     readonly updatedBy: string
   } | null
@@ -69,6 +78,12 @@ interface AiControlDto {
   readonly switched?: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
   /** The last save that changed «Ish vaqti» — who and when. */
   readonly hoursSet?: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
+  /** The last save that paused or went on (T144). */
+  readonly pauseSet?: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
+  /** The last save of «Qoʻshimcha sozlamalar» (T144). */
+  readonly tuningSet?: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
+  /** The newest presses and their answers (T144), newest first. */
+  readonly actions?: readonly Press[]
 }
 
 /* Mirrors `AiLiveDto` — the 5 s read, `?part=live`. */
@@ -125,9 +140,14 @@ const sameDraft = (a: Draft, b: Draft) =>
  * `AiSwitch`, its own small save, never part of «Saqlash». Under it «Ish vaqti»
  * (2026-11-04, the owner: «hohlagan vaqtim ish vaqtini oʻzgartiray») —
  * `WorkHoursCard`, its own save the same way.
- * NOT DRAWN, because the agent has no such control (ai_registrator ca9c52a):
- * adding or removing an AI line, the sellers' ORDER — the agent picks by
- * `limits.transferOrder` itself, shown as words only.
+ * The rest of the panel (2026-11-04, T144, the owner: «hamma narsani boshqara
+ * olsin … to'xtatib qo'yish funksiyalari, SIP bilan ishlash») — each its own
+ * write, never part of «Saqlash» (`AiControlMore.tsx`): «Vaqtincha
+ * toʻxtatish» under «Toʻxtatish», the working days in «Ish vaqti», each AI
+ * line on / off with «Qayta ulash» and «TLSʼni yangilash» in section 1, and
+ * section 5 «Qoʻshimcha sozlamalar» (the call tuning, the put-through order).
+ * NOT DRAWN: adding an AI line — a SIP with its password stays the AI
+ * server's own setting (T123).
  *
  * TWO READS. The last report alone (`?part=live`, one row by its key) every
  * 5 s while the tab is in view — the agent reports every 5 s while a line is
@@ -198,6 +218,7 @@ export function AiControlPage() {
   const nameOf = (ext: string): string | null => reported.get(ext)?.trim() || data?.names[ext] || null
   const now = useServerNow(skewMs)
   const fresh = isFresh(status, now, staleAfterSec)
+  const presses = mergePresses(data?.actions ?? [], status?.report.actions)
   const problem = !editing ? null : editing.sellers.length === 0 ? 'Kamida bitta sotuvchi yoqiq boʻlsin.' : limitsProblem(editing.maxNew, editing.maxRetry)
 
   return (
@@ -228,7 +249,18 @@ export function AiControlPage() {
           <StatusCard data={data} status={status} saved={saved} now={now} staleAfterSec={staleAfterSec} />
           <AiSwitch data={data} status={status} now={now} staleAfterSec={staleAfterSec} />
           <WorkHoursCard data={data} status={status} now={now} staleAfterSec={staleAfterSec} />
-          <Step n={1} title="AI liniyalari (SIP)" lead="Har liniya hozir nima qilyapti — AIning oʻz xabaridan. Liniya qoʻshish yoki oʻchirish AI serverining sozlamasida, bu yerda emas.">
+          <Step
+            n={1}
+            title="AI liniyalari (SIP)"
+            lead="Har liniyaning ATS holati, yoqish/oʻchirish va qayta ulash; pastda — hozir nima qilyapti, AIning oʻz xabaridan."
+          >
+            <AiLinesControl
+              config={{ version: data.config!.version, linesOff: data.config!.linesOff ?? [] }}
+              status={status}
+              presses={presses}
+              now={now}
+              staleAfterSec={staleAfterSec}
+            />
             <AiNowPanel
               status={status}
               saved={data.config}
@@ -258,7 +290,20 @@ export function AiControlPage() {
           <Step n={4} title="Sotuvni ATSga topshirish">
             <Handoff draft={editing} onChange={change} />
           </Step>
-          <History data={data} />
+          <Step
+            n={5}
+            title="Qoʻshimcha sozlamalar"
+            lead="Nedozvonga necha marta, sotuvchi necha soniya jiringlaydi, navbat, birinchi qoʻngʻiroq va «ikki sabab» — oʻz «Saqlash» tugmasi bilan."
+          >
+            <TuningStep
+              config={{ version: data.config!.version, tuning: data.config!.tuning ?? null }}
+              status={status}
+              now={now}
+              staleAfterSec={staleAfterSec}
+              tuningSet={data.tuningSet ?? null}
+            />
+          </Step>
+          <History data={data} presses={presses} now={now} />
           <SaveBar
             dirty={dirty}
             pending={save.isPending}
@@ -402,49 +447,64 @@ function AiSwitch({
 
   return (
     <section aria-label="AI ishlashi">
-      <Card className="flex flex-wrap items-center gap-x-5 gap-y-3 p-4 sm:p-5">
-        <div className="min-w-0 flex-1 basis-72">
-          <p className="flex flex-wrap items-center gap-2 text-[15px] font-bold" style={{ color: 'var(--ink-primary)' }}>
-            AI registrator
-            {state && (
-              <span aria-live="polite">
-                <StatusChip tone={state.tone}>{state.title}</StatusChip>
-              </span>
+      <Card className="flex flex-col gap-3 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+          <div className="min-w-0 flex-1 basis-72">
+            <p className="flex flex-wrap items-center gap-2 text-[15px] font-bold" style={{ color: 'var(--ink-primary)' }}>
+              AI registrator
+              {state && (
+                <span aria-live="polite">
+                  <StatusChip tone={state.tone}>{state.title}</StatusChip>
+                </span>
+              )}
+            </p>
+            <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+              {state ? state.detail ?? 'Yangi lidlarga qoʻngʻiroq qilyapti.' : 'Avval sozlamani saqlang — AI toʻxtatish buyrugʻini sozlama bilan oʻqiydi.'}
+            </p>
+            {who && (
+              <p className="mt-0.5 text-xs tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                {who}
+              </p>
             )}
-          </p>
-          <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
-            {state ? state.detail ?? 'Yangi lidlarga qoʻngʻiroq qilyapti.' : 'Avval sozlamani saqlang — AI toʻxtatish buyrugʻini sozlama bilan oʻqiydi.'}
-          </p>
-          {who && (
-            <p className="mt-0.5 text-xs tabular-nums" style={{ color: 'var(--ink-muted)' }}>
-              {who}
-            </p>
-          )}
-          {error && !asking && (
-            <p role="alert" className="mt-1 text-[13px]" style={{ color: 'var(--status-critical)' }}>
-              {error}
-            </p>
+            {error && !asking && (
+              <p role="alert" className="mt-1 text-[13px]" style={{ color: 'var(--status-critical)' }}>
+                {error}
+              </p>
+            )}
+          </div>
+          {enabled ? (
+            <Button
+              variant="danger"
+              disabled={!config || write.isPending}
+              onClick={() => {
+                write.reset()
+                setAsking(true)
+              }}
+            >
+              Toʻxtatish
+            </Button>
+          ) : (
+            <Button variant="primary" disabled={write.isPending} onClick={() => write.mutate(true)}>
+              {write.isPending ? 'Yoqilmoqda…' : 'Yoqish'}
+            </Button>
           )}
         </div>
-        {enabled ? (
-          <Button
-            variant="danger"
-            disabled={!config || write.isPending}
-            onClick={() => {
-              write.reset()
-              setAsking(true)
-            }}
-          >
-            Toʻxtatish
-          </Button>
-        ) : (
-          <Button variant="primary" disabled={write.isPending} onClick={() => write.mutate(true)}>
-            {write.isPending ? 'Yoqilmoqda…' : 'Yoqish'}
-          </Button>
+        {config && enabled && (
+          <PauseControls
+            config={{ version: config.version, pauseUntil: config.pauseUntil ?? null }}
+            hours={hoursInForce(status?.report, config.hours)}
+            status={status}
+            now={now}
+            staleAfterSec={staleAfterSec}
+            pauseSet={data.pauseSet ?? null}
+          />
         )}
       </Card>
       {asking && (
-        <StopDialog
+        <AiConfirmDialog
+          title="AI registratorni toʻxtatish"
+          confirmLabel="Ha, toʻxtatish"
+          pendingLabel="Toʻxtatilmoqda…"
           question={stopQuestion(start)}
           pending={write.isPending}
           error={error}
@@ -460,101 +520,6 @@ function AiSwitch({
   )
 }
 
-/**
- * The stop's question — the house modal (`.backdrop-dim` scrim, `.glass-float`
- * card, as «+ Yangi hisob»), not `window.confirm`: focus starts on «Bekor
- * qilish» and stays inside, Escape and the scrim cancel, the page holds still.
- */
-function StopDialog({
-  question,
-  pending,
-  error,
-  note,
-  onConfirm,
-  onCancel,
-}: {
-  readonly question: string
-  readonly pending: boolean
-  readonly error: string | null
-  readonly note: string | null
-  readonly onConfirm: () => void
-  readonly onCancel: () => void
-}) {
-  const panelRef = useRef<HTMLDivElement>(null)
-  const titleId = useId()
-  const textId = useId()
-
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null
-    panelRef.current?.querySelector<HTMLElement>('button')?.focus()
-    const overflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = overflow
-      previous?.focus()
-    }
-  }, [])
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') {
-      event.stopPropagation()
-      if (!pending) onCancel()
-      return
-    }
-    if (event.key !== 'Tab') return
-    const stops = [...(panelRef.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])]
-    const first = stops[0]
-    const last = stops[stops.length - 1]
-    if (!first || !last) return
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault()
-      last.focus()
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault()
-      first.focus()
-    }
-  }
-
-  return createPortal(
-    <div
-      className="backdrop-dim fixed inset-0 z-50 flex items-center justify-center p-4"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !pending) onCancel()
-      }}
-    >
-      <div ref={panelRef} role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={textId} onKeyDown={onKeyDown} className="w-full max-w-md">
-        <Card className="glass-float flex flex-col gap-4 px-5 py-5">
-          <h2 id={titleId} className="text-base font-semibold" style={{ color: 'var(--ink-primary)' }}>
-            AI registratorni toʻxtatish
-          </h2>
-          <p id={textId} className="text-[14px] leading-6" style={{ color: 'var(--ink-secondary)' }}>
-            {question}
-          </p>
-          {note && (
-            <p className="text-[13px]" style={{ color: inked('var(--status-warning)') }}>
-              {note}
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="text-[13px]" style={{ color: 'var(--status-critical)' }}>
-              {error}
-            </p>
-          )}
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="ghost" disabled={pending} onClick={onCancel}>
-              Bekor qilish
-            </Button>
-            <Button variant="danger" disabled={pending} onClick={onConfirm}>
-              {pending ? 'Toʻxtatilmoqda…' : 'Ha, toʻxtatish'}
-            </Button>
-          </div>
-        </Card>
-      </div>
-    </div>,
-    document.body,
-  )
-}
-
 /** The form behind «Ish vaqti»: the lunch keeps its last values while «Tushliksiz» is ticked. */
 interface HoursForm {
   readonly start: string
@@ -562,7 +527,11 @@ interface HoursForm {
   readonly noLunch: boolean
   readonly lunchStart: string
   readonly lunchEnd: string
+  /** The working days, ISO (1 = Du) — all seven for every day. */
+  readonly days: readonly number[]
 }
+
+const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7] as const
 
 function hoursForm(hours: WorkHours | null): HoursForm {
   const h = hours ?? DEFAULT_WORK_HOURS
@@ -572,6 +541,7 @@ function hoursForm(hours: WorkHours | null): HoursForm {
     noLunch: !hasLunch(h),
     lunchStart: h.lunchStart ?? DEFAULT_WORK_HOURS.lunchStart!,
     lunchEnd: h.lunchEnd ?? DEFAULT_WORK_HOURS.lunchEnd!,
+    days: normalDays(h.days) ?? ALL_DAYS,
   }
 }
 
@@ -580,6 +550,7 @@ const hoursOfForm = (f: HoursForm): WorkHours => ({
   end: f.end,
   lunchStart: f.noLunch ? null : f.lunchStart,
   lunchEnd: f.noLunch ? null : f.lunchEnd,
+  days: f.days.length === 7 ? null : [...f.days],
 })
 
 const pad2 = (n: number) => String(n).padStart(2, '0')
@@ -666,7 +637,9 @@ function WorkHoursCard({
   const dirty = form !== null && !sameHours(hours, hoursOfForm(base))
   const problems = workHoursProblems(hours)
   const write = useMutation({
-    mutationFn: (next: WorkHours) => apiWrite<{ version: number }>('POST', '/leads/ai-registrator/control', { baseVersion: config.version, hours: next }),
+    // Every day: no `days` at all — the agent reads a missing list as every day.
+    mutationFn: ({ days, ...clock }: WorkHours) =>
+      apiWrite<{ version: number }>('POST', '/leads/ai-registrator/control', { baseVersion: config.version, hours: days ? { ...clock, days } : clock }),
     onSuccess: () => {
       setForm(null)
       void queryClient.invalidateQueries({ queryKey: ['ai-registrator-control'] })
@@ -707,6 +680,7 @@ function WorkHoursCard({
           <ClockPicker label="Tushlik boshlanishi" value={editing.lunchStart} disabled={editing.noLunch} onChange={(v) => change({ lunchStart: v })} />
           <ClockPicker label="Tushlik tugashi" value={editing.lunchEnd} disabled={editing.noLunch} onChange={(v) => change({ lunchEnd: v })} />
         </div>
+        <DaysPicker days={editing.days} onChange={(days) => change({ days })} />
         {(state.detail || who) && (
           <div className="flex flex-col gap-0.5">
             {state.detail && (
@@ -1144,31 +1118,56 @@ function Handoff({ draft, onChange }: { readonly draft: Draft; readonly onChange
   )
 }
 
-function History({ data }: { readonly data: AiControlDto }) {
+/** One line of the history — a save (a version) or a press, newest first. */
+type HistoryItem =
+  | { readonly kind: 'save'; readonly at: string; readonly key: string; readonly version: number; readonly by: string; readonly lines: readonly string[] }
+  | { readonly kind: 'press'; readonly at: string; readonly key: string; readonly press: Press }
+
+function History({ data, presses, now }: { readonly data: AiControlDto; readonly presses: readonly Press[]; readonly now: Date }) {
+  const items: HistoryItem[] = [
+    ...data.history.map((h): HistoryItem => ({ kind: 'save', at: h.savedAt, key: `v${h.version}`, version: h.version, by: h.savedBy, lines: h.lines })),
+    ...presses.map((p): HistoryItem => ({ kind: 'press', at: p.requestedAt, key: `a${p.id}`, press: p })),
+  ].sort((a, b) => b.at.localeCompare(a.at))
   return (
     <section aria-label="Oʻzgarishlar tarixi" className="flex flex-col gap-3">
       <h2 className="text-[18px] font-bold tracking-tight" style={{ color: 'var(--ink-primary)' }}>
         Oʻzgarishlar tarixi
       </h2>
       <Card className="p-4 sm:p-5">
-        {data.history.length === 0 ? (
+        {items.length === 0 ? (
           <p className="text-[13px]" style={{ color: 'var(--ink-muted)' }}>
             Hali oʻzgarish yoʻq
           </p>
         ) : (
           <ul className="flex flex-col text-[13px]">
-            {data.history.map((h, i) => (
-              <li key={h.version} className={`flex flex-wrap gap-x-3 gap-y-0.5 py-2 ${i > 0 ? 'border-t' : ''}`} style={{ borderColor: 'var(--grid)' }}>
-                <span className="font-extrabold tabular-nums" style={{ color: 'var(--ink-primary)' }}>
-                  v{h.version}
-                </span>
-                <span className="tabular-nums" style={{ color: 'var(--ink-muted)' }}>
-                  {formatDateTime(h.savedAt)} · {h.savedBy}
-                </span>
-                {h.lines.length > 0 && (
-                  <span className="w-full" style={{ color: 'var(--ink-secondary)' }}>
-                    {h.lines.join(' · ')}
-                  </span>
+            {items.map((h, i) => (
+              <li key={h.key} className={`flex flex-wrap gap-x-3 gap-y-0.5 py-2 ${i > 0 ? 'border-t' : ''}`} style={{ borderColor: 'var(--grid)' }}>
+                {h.kind === 'save' ? (
+                  <>
+                    <span className="font-extrabold tabular-nums" style={{ color: 'var(--ink-primary)' }}>
+                      v{h.version}
+                    </span>
+                    <span className="tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                      {formatDateTime(h.at)} · {h.by}
+                    </span>
+                    {h.lines.length > 0 && (
+                      <span className="w-full" style={{ color: 'var(--ink-secondary)' }}>
+                        {h.lines.join(' · ')}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="font-extrabold" style={{ color: 'var(--ink-primary)' }}>
+                      Tugma
+                    </span>
+                    <span className="tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                      {formatDateTime(h.at)} · {h.press.requestedBy}
+                    </span>
+                    <span className="w-full" style={{ color: 'var(--ink-secondary)' }}>
+                      {`«${ACTION_LABEL[h.press.kind as ActionKind] ?? h.press.kind}»${h.press.line ? ` ${h.press.line}` : ''} — ${pressText(h.press, now).text}`}
+                    </span>
+                  </>
                 )}
               </li>
             ))}

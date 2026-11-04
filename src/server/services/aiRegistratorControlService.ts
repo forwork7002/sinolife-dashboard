@@ -1,4 +1,21 @@
-import { type WorkHours, lunchText, sameHours, workHoursProblems, workText } from '@/lib/aiWorkHours'
+import {
+  ACTION_LABEL,
+  ACTION_MAX_AGE_MS,
+  type ActionKind,
+  type AiTuning,
+  MAX_ACTIONS,
+  TUNING_LABEL,
+  type TransferOrder,
+  type WhyUs,
+  linesOffProblems,
+  normalLinesOff,
+  pauseProblems,
+  tashkentIso,
+  tuningDiff,
+  tuningProblems,
+  tuningValueText,
+} from '@/lib/aiControlRules'
+import { type WorkHours, daysText, lunchText, normalDays, sameHours, workHoursProblems, workText } from '@/lib/aiWorkHours'
 import {
   AI_OWN_LINES,
   MAX_CALLS_LIMIT,
@@ -16,17 +33,58 @@ import { floorNumberOf, indexByFloorNumber } from '@/server/domain/employees/flo
 import { ApiError } from '@/server/http/errors'
 import {
   type AiStatusPush,
+  type ControlAction,
   type ControlEnabled,
   type ControlHours,
+  type ControlLines,
+  type ControlPause,
   type ControlSave,
+  type ControlTuning,
   aiStatusSchema,
 } from '@/server/integrations/aiRegistrator/control'
 import {
   type AiRegistratorControlRepository,
+  type StoredAction,
   type StoredConfig,
   type StoredStatus,
   StaleVersionError,
 } from '@/server/repositories/aiRegistratorControlRepository'
+
+type By = { readonly label: string; readonly userId: string }
+
+/** A press as the agent reads it in its config — `check_action`. */
+export interface AgentActionDto {
+  readonly id: number
+  readonly kind: string
+  /** The line, for «reregister» only. */
+  readonly line?: string
+  /** When it was pressed, Tashkent with the offset — the agent does none older than ten minutes. */
+  readonly at: string
+  readonly by: string
+}
+
+/** A press and its answer, for the panel — mirrored in `AiControlPage.tsx`. */
+export interface ActionDto {
+  readonly id: number
+  readonly kind: string
+  readonly line: string | null
+  readonly requestedAt: string
+  readonly requestedBy: string
+  readonly state: string | null
+  readonly text: string | null
+  readonly answeredAt: string | null
+}
+
+const actionDto = (a: StoredAction): ActionDto => ({
+  id: a.id,
+  kind: a.kind,
+  line: a.line,
+  requestedAt: a.requestedAt.toISOString(),
+  requestedBy: a.requestedBy,
+  state: a.state,
+  text: a.text,
+  answeredAt: a.answeredAt ? a.answeredAt.toISOString() : null,
+})
 
 /** What the AI server reads — the contract's exact shape, no envelope. */
 export interface AgentConfigDto {
@@ -41,8 +99,17 @@ export interface AgentConfigDto {
   /**
    * «Ish vaqti» — present only once saved here. Left out, the agent keeps its
    * own .env hours (its `cfg.get("hours")` reads a missing key as «not set»).
+   * `days` only when not every day — an empty list would be refused.
    */
-  readonly hours?: WorkHours
+  readonly hours?: { readonly start: string; readonly end: string; readonly lunchStart: string | null; readonly lunchEnd: string | null; readonly days?: readonly number[] }
+  /** «Vaqtincha toʻxtatish» (T144) — only while it is ahead, Tashkent with the offset. */
+  readonly pauseUntil?: string
+  /** AI lines switched off (T144) — only when any. */
+  readonly linesOff?: readonly string[]
+  /** «Qoʻshimcha sozlamalar» (T144) — only once saved, all seven. */
+  readonly tuning?: AiTuning
+  /** The open presses (T144) — not a version: the agent reads them on every poll. */
+  readonly actions?: readonly AgentActionDto[]
   readonly updatedAt: string
   readonly updatedBy: string
 }
@@ -55,8 +122,17 @@ export interface AiStatusDto {
 }
 
 export interface AiControlDto {
-  /** `hours` always present here — null while not set (the agent's own hours run). */
-  readonly config: (Omit<AgentConfigDto, 'hours'> & { readonly parked: readonly string[]; readonly hours: WorkHours | null }) | null
+  /** `hours`, `pauseUntil`, `linesOff`, `tuning` always present here — null / [] while not set. */
+  readonly config:
+    | (Omit<AgentConfigDto, 'hours' | 'pauseUntil' | 'linesOff' | 'tuning' | 'actions'> & {
+        readonly parked: readonly string[]
+        readonly hours: WorkHours | null
+        /** The saved pause (ISO, UTC) — kept after it ran out; the page reads it against the clock. */
+        readonly pauseUntil: string | null
+        readonly linesOff: readonly string[]
+        readonly tuning: AiTuning | null
+      })
+    | null
   readonly status: AiStatusDto | null
   /** Every extension the panel shows, to the employee whose name carries it («122» → «122 Dilnoza …»). */
   readonly names: Readonly<Record<string, string>>
@@ -79,6 +155,12 @@ export interface AiControlDto {
   readonly switched: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
   /** The last save that changed «Ish vaqti» — who and when. Null when the history shown has none. */
   readonly hoursSet: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
+  /** The last save that paused or went on (T144). */
+  readonly pauseSet: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
+  /** The last save of «Qoʻshimcha sozlamalar» (T144). */
+  readonly tuningSet: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
+  /** The newest presses and their answers (T144), newest first. */
+  readonly actions: readonly ActionDto[]
 }
 
 /** The 5 s read of «Boshqaruv» — the agent's last report and nothing else. Mirrored in `AiControlPage.tsx`. */
@@ -118,11 +200,43 @@ function enabledLine(before: unknown, after: unknown): string {
  */
 function hoursLines(before: WorkHours | null, after: WorkHours | null): string[] {
   if (after === null) return before === null ? [] : ['Ish vaqti: AI serverining oʻz vaqtiga qaytdi']
-  if (before === null) return [`Ish vaqti: ${workText(after)}`, `Tushlik: ${lunchText(after)}`]
+  if (before === null) {
+    const first = [`Ish vaqti: ${workText(after)}`, `Tushlik: ${lunchText(after)}`]
+    return normalDays(after.days) === null ? first : [...first, `Ish kunlari: ${daysText(after.days)}`]
+  }
   const out: string[] = []
   if (workText(before) !== workText(after)) out.push(`Ish vaqti: ${workText(before)} → ${workText(after)}`)
   if (lunchText(before) !== lunchText(after)) out.push(`Tushlik: ${lunchText(before)} → ${lunchText(after)}`)
+  if (daysText(before.days) !== daysText(after.days)) out.push(`Ish kunlari: ${daysText(before.days)} → ${daysText(after.days)}`)
   return out
+}
+
+/** «21:30» today, «05.11 09:00» another day — a pause's end as the audit prints it. */
+function pauseEndText(iso: string): string {
+  const local = tashkentIso(new Date(iso))
+  return `${local.slice(8, 10)}.${local.slice(5, 7)} ${local.slice(11, 16)}`
+}
+
+/** «Pauza: 05.11 21:30 gacha», «Pauza: bekor qilindi». */
+function pauseLines(before: string | null, after: string | null): string[] {
+  if (after !== null) return [`Pauza: ${pauseEndText(after)} gacha`]
+  return before === null ? [] : ['Pauza: bekor qilindi — AI davom etadi']
+}
+
+/** «Liniya 291: oʻchirildi», «Liniya 291: yoqildi». */
+function linesLines(before: readonly string[], after: readonly string[]): string[] {
+  return [
+    ...after.filter((l) => !before.includes(l)).map((l) => `Liniya ${l}: oʻchirildi`),
+    ...before.filter((l) => !after.includes(l)).map((l) => `Liniya ${l}: yoqildi`),
+  ]
+}
+
+/** «Nedozvonga kuniga: 5 marta → 3 marta» — only the keys that changed; the first save names all seven. */
+function tuningLines(before: AiTuning | null, after: AiTuning | null): string[] {
+  if (after === null) return before === null ? [] : ['Qoʻshimcha sozlamalar: AI serverining oʻz qiymatlariga qaytdi']
+  return tuningDiff(before, after).map((k) =>
+    before === null ? `${TUNING_LABEL[k]}: ${tuningValueText(k, after[k])}` : `${TUNING_LABEL[k]}: ${tuningValueText(k, before[k])} → ${tuningValueText(k, after[k])}`,
+  )
 }
 
 const FIELD_LABEL: Readonly<Record<string, string>> = {
@@ -132,7 +246,20 @@ const FIELD_LABEL: Readonly<Record<string, string>> = {
   saleHandoff: 'Sotuvni ATSga topshirish',
 }
 
-function agentConfig(config: StoredConfig): AgentConfigDto {
+/** The hours as the agent reads them: `days` only when not every day. */
+function agentHours(hours: WorkHours): NonNullable<AgentConfigDto['hours']> {
+  const days = normalDays(hours.days)
+  return { start: hours.start, end: hours.end, lunchStart: hours.lunchStart, lunchEnd: hours.lunchEnd, ...(days ? { days } : {}) }
+}
+
+/**
+ * What the agent reads. Every field of 2026-11-04 is left out while not set
+ * here, so an agent that does not know it reads the config as before and one
+ * that does keeps its own value: a pause only while it is ahead, the lines
+ * only when any is off, the tuning only once saved, the presses only when open.
+ */
+function agentConfig(config: StoredConfig, now: Date = new Date(), actions: readonly StoredAction[] = []): AgentConfigDto {
+  const pause = config.pauseUntil !== null && new Date(config.pauseUntil).getTime() > now.getTime() ? config.pauseUntil : null
   return {
     version: config.version,
     enabled: config.enabled,
@@ -141,11 +268,34 @@ function agentConfig(config: StoredConfig): AgentConfigDto {
     maxNew: config.maxNew,
     maxRetry: config.maxRetry,
     saleHandoff: config.saleHandoff,
-    ...(config.hours ? { hours: config.hours } : {}),
+    ...(config.hours ? { hours: agentHours(config.hours) } : {}),
+    ...(pause ? { pauseUntil: tashkentIso(new Date(pause)) } : {}),
+    ...(config.linesOff.length > 0 ? { linesOff: config.linesOff } : {}),
+    ...(config.tuning ? { tuning: config.tuning } : {}),
+    ...(actions.length > 0
+      ? {
+          actions: actions.map((a) => ({
+            id: a.id,
+            kind: a.kind,
+            ...(a.line ? { line: a.line } : {}),
+            at: tashkentIso(a.requestedAt),
+            by: a.requestedBy,
+          })),
+        }
+      : {}),
     updatedAt: config.updatedAt.toISOString(),
     updatedBy: config.updatedBy,
   }
 }
+
+/** The AI lines the agent last reported (T144) — empty from an agent older than them. */
+function reportedLines(status: StoredStatus | null): { ext: string; pool: string; transport: string; state: string; registration: string }[] {
+  const parsed = status ? aiStatusSchema.safeParse(status.payload) : null
+  return parsed?.success ? (parsed.data.aiLines ?? []) : []
+}
+
+/** The SIP words for a line on a call — closing its socket or re-registering would cut it. */
+const ON_A_CALL = new Set(['call', 'seller_talk'])
 
 /** One save in the owner's words: «+143, −117», «Bir vaqtda: 4 → 6». */
 export function changeLines(changes: readonly ControlChange[]): string[] {
@@ -159,6 +309,9 @@ export function changeLines(changes: readonly ControlChange[]): string[] {
     }
     if (c.field === 'enabled') return [enabledLine(c.before, c.after)]
     if (c.field === 'hours') return hoursLines((c.before as WorkHours | null) ?? null, (c.after as WorkHours | null) ?? null)
+    if (c.field === 'pauseUntil') return pauseLines((c.before as string | null) ?? null, (c.after as string | null) ?? null)
+    if (c.field === 'linesOff') return linesLines((c.before as string[] | null) ?? [], (c.after as string[] | null) ?? [])
+    if (c.field === 'tuning') return tuningLines((c.before as AiTuning | null) ?? null, (c.after as AiTuning | null) ?? null)
     const label = FIELD_LABEL[c.field] ?? c.field
     return [c.before === null ? `${label}: ${String(c.after)}` : `${label}: ${String(c.before)} → ${String(c.after)}`]
   })
@@ -170,14 +323,19 @@ export class AiRegistratorControlService {
     private readonly roster: () => Promise<{ id: string; fullName: string }[]>,
   ) {}
 
-  /** For the agent: the current setting, or null before the first save. */
-  async agentConfig(): Promise<AgentConfigDto | null> {
+  /** For the agent: the current setting with the open presses, or null before the first save. */
+  async agentConfig(now: Date = new Date()): Promise<AgentConfigDto | null> {
     const config = await this.repository.config()
-    return config ? agentConfig(config) : null
+    if (!config) return null
+    const open = await this.repository.openActions(new Date(now.getTime() - ACTION_MAX_AGE_MS), MAX_ACTIONS)
+    return agentConfig(config, now, open)
   }
 
+  /** The last report, and the answers it carries written onto the presses still open (T144). */
   async putStatus(status: AiStatusPush, now: Date): Promise<void> {
     await this.repository.putStatus(status, now)
+    const answers = (status.actions ?? []).map((a) => ({ id: a.id, state: a.state, text: a.text, at: new Date(a.at) }))
+    if (answers.length > 0) await this.repository.answerActions(answers)
   }
 
   /**
@@ -190,11 +348,12 @@ export class AiRegistratorControlService {
   }
 
   async panel(now: Date): Promise<AiControlDto> {
-    const [config, status, changes, roster] = await Promise.all([
+    const [config, status, changes, roster, actions] = await Promise.all([
       this.repository.config(),
       this.repository.status(),
       this.repository.changes(HISTORY),
       this.roster(),
+      this.repository.actions(HISTORY),
     ])
 
     const exts = new Set<string>([...(config?.sellers ?? []), ...(config?.parked ?? []), ...(status?.payload.sellers ?? []).map((s) => s.ext)])
@@ -210,8 +369,30 @@ export class AiRegistratorControlService {
 
     const switched = changes.find((c) => c.changes.some((f) => f.field === 'enabled'))
     const hoursSet = changes.find((c) => c.changes.some((f) => f.field === 'hours'))
+    const pauseSet = changes.find((c) => c.changes.some((f) => f.field === 'pauseUntil'))
+    const tuningSet = changes.find((c) => c.changes.some((f) => f.field === 'tuning'))
+    const who = (c: (typeof changes)[number] | undefined) => (c ? { version: c.version, savedAt: c.savedAt.toISOString(), savedBy: c.savedBy } : null)
+    const agent = config ? agentConfig(config, now) : null
     return {
-      config: config ? { ...agentConfig(config), parked: config.parked, hours: config.hours } : null,
+      config:
+        config && agent
+          ? {
+              version: agent.version,
+              enabled: agent.enabled,
+              sellers: agent.sellers,
+              maxCalls: agent.maxCalls,
+              maxNew: agent.maxNew,
+              maxRetry: agent.maxRetry,
+              saleHandoff: agent.saleHandoff,
+              updatedAt: agent.updatedAt,
+              updatedBy: agent.updatedBy,
+              parked: config.parked,
+              hours: config.hours,
+              pauseUntil: config.pauseUntil,
+              linesOff: config.linesOff,
+              tuning: config.tuning,
+            }
+          : null,
       status: statusDto(status, now),
       names,
       rules: { aiLines: AI_OWN_LINES, maxCalls: MAX_CALLS_LIMIT, maxSellers: MAX_SELLERS, staleAfterSec: STATUS_STALE_MS / 1000 },
@@ -221,8 +402,11 @@ export class AiRegistratorControlService {
         savedBy: c.savedBy,
         lines: changeLines(c.changes),
       })),
-      switched: switched ? { version: switched.version, savedAt: switched.savedAt.toISOString(), savedBy: switched.savedBy } : null,
-      hoursSet: hoursSet ? { version: hoursSet.version, savedAt: hoursSet.savedAt.toISOString(), savedBy: hoursSet.savedBy } : null,
+      switched: who(switched),
+      hoursSet: who(hoursSet),
+      pauseSet: who(pauseSet),
+      tuningSet: who(tuningSet),
+      actions: actions.map(actionDto),
     }
   }
 
@@ -247,6 +431,10 @@ export class AiRegistratorControlService {
       enabled: current?.enabled ?? true,
       // Nor does it carry the hours: they stay as stored («Ish vaqti» saves them alone).
       hours: current?.hours ?? null,
+      // Nor the pause, the lines switched off or the tuning (T144) — each saved alone.
+      pauseUntil: current?.pauseUntil ?? null,
+      linesOff: current?.linesOff ?? [],
+      tuning: current?.tuning ?? null,
     }
     const raw = (list: readonly string[]) => list.map((s) => s.trim()).filter((s) => s !== '')
     const problems = controlProblems({ ...settings, sellers: raw(body.sellers), parked: raw(body.parked) })
@@ -293,8 +481,8 @@ export class AiRegistratorControlService {
     const current = await this.repository.config()
     if (!current) throw ApiError.validation('Avval sozlamani saqlang — AI ish vaqtini sozlama bilan oʻqiydi.')
 
-    const hours: WorkHours = { start: body.hours.start, end: body.hours.end, lunchStart: body.hours.lunchStart, lunchEnd: body.hours.lunchEnd }
-    const problems = workHoursProblems(hours)
+    const raw: WorkHours = { start: body.hours.start, end: body.hours.end, lunchStart: body.hours.lunchStart, lunchEnd: body.hours.lunchEnd, days: body.hours.days ?? null }
+    const problems = workHoursProblems(raw)
     if (problems.length > 0) {
       throw ApiError.validation(
         problems.join(' '),
@@ -302,12 +490,133 @@ export class AiRegistratorControlService {
       )
     }
 
+    // Stored as the agent reads them: the days sorted, once each — left out for all seven.
+    const days = normalDays(raw.days)
+    const hours: WorkHours = { start: raw.start, end: raw.end, lunchStart: raw.lunchStart, lunchEnd: raw.lunchEnd, ...(days ? { days } : {}) }
     const { version: _version, updatedAt: _at, updatedBy: _by, ...stored } = current
     if (current.version === body.baseVersion && sameHours(current.hours, hours)) {
       throw ApiError.validation('Ish vaqti oʻzgarmadi — saqlash shart emas.')
     }
 
     return this.write({ ...stored, hours }, body.baseVersion, by)
+  }
+
+  /**
+   * «Vaqtincha toʻxtatish» / «Davom ettirish» (T144): the next version with
+   * ONLY `pauseUntil` changed. A pause is ahead of now and at most seven days
+   * away (the agent's rule); null ends one that is running. Refused before a
+   * first save, when it changes nothing, and over a newer version.
+   */
+  async setPause(body: ControlPause, by: By, now: Date): Promise<AgentConfigDto> {
+    const current = await this.repository.config()
+    if (!current) throw ApiError.validation('Avval sozlamani saqlang — AI pauzani sozlama bilan oʻqiydi.')
+    const running = current.pauseUntil !== null && new Date(current.pauseUntil).getTime() > now.getTime()
+    if (body.pauseUntil === null) {
+      if (!running) throw ApiError.validation('Pauza yoʻq — davom ettirish shart emas.')
+    } else {
+      const problems = pauseProblems(body.pauseUntil, now)
+      if (problems.length > 0) {
+        throw ApiError.validation(
+          problems.join(' '),
+          problems.map((message) => ({ path: 'pauseUntil', message })),
+        )
+      }
+    }
+    const pauseUntil = body.pauseUntil === null ? null : new Date(body.pauseUntil).toISOString()
+    if (pauseUntil !== null && pauseUntil === current.pauseUntil) throw ApiError.validation('Pauza shu vaqtgacha allaqachon qoʻyilgan.')
+    const { version: _version, updatedAt: _at, updatedBy: _by, ...stored } = current
+    return this.write({ ...stored, pauseUntil }, body.baseVersion, by)
+  }
+
+  /**
+   * The AI lines switched off (T144): the next version with ONLY `linesOff`
+   * changed. Read against the lines the agent last reported — a number not its
+   * own is dropped, as the agent drops it — and one main line at least stays on.
+   * An agent that does not report its lines yet cannot be told which to leave.
+   */
+  async setLinesOff(body: ControlLines, by: By): Promise<AgentConfigDto> {
+    const [current, status] = await Promise.all([this.repository.config(), this.repository.status()])
+    if (!current) throw ApiError.validation('Avval sozlamani saqlang — AI liniyalarni sozlama bilan oʻqiydi.')
+    const lines = reportedLines(status)
+    if (lines.length === 0) throw ApiError.validation('AI serveri liniyalar roʻyxatini hali yubormayapti — liniya oʻchirish u yangilangach ishlaydi.')
+    const linesOff = normalLinesOff(body.linesOff, lines)
+    const problems = linesOffProblems(linesOff, lines)
+    if (problems.length > 0) {
+      throw ApiError.validation(
+        problems.join(' '),
+        problems.map((message) => ({ path: 'linesOff', message })),
+      )
+    }
+    if (current.version === body.baseVersion && linesOff.join(',') === current.linesOff.join(',')) {
+      throw ApiError.validation('Liniyalar oʻzgarmadi — saqlash shart emas.')
+    }
+    const { version: _version, updatedAt: _at, updatedBy: _by, ...stored } = current
+    return this.write({ ...stored, linesOff }, body.baseVersion, by)
+  }
+
+  /**
+   * «Qoʻshimcha sozlamalar → Saqlash» (T144): the next version with ONLY
+   * `tuning` changed — all seven together. The agent's bounds first, every
+   * problem named; it would refuse the whole config over one.
+   */
+  async setTuning(body: ControlTuning, by: By): Promise<AgentConfigDto> {
+    const current = await this.repository.config()
+    if (!current) throw ApiError.validation('Avval sozlamani saqlang — AI qoʻshimcha sozlamalarni sozlama bilan oʻqiydi.')
+    const tuning: AiTuning = { ...body.tuning, transferOrder: body.tuning.transferOrder as TransferOrder, whyUs: body.tuning.whyUs as WhyUs }
+    const problems = tuningProblems(tuning)
+    if (problems.length > 0) {
+      throw ApiError.validation(
+        problems.join(' '),
+        problems.map((message) => ({ path: 'tuning', message })),
+      )
+    }
+    if (current.version === body.baseVersion && current.tuning !== null && tuningDiff(current.tuning, tuning).length === 0) {
+      throw ApiError.validation('Qoʻshimcha sozlamalar oʻzgarmadi — saqlash shart emas.')
+    }
+    const { version: _version, updatedAt: _at, updatedBy: _by, ...stored } = current
+    return this.write({ ...stored, tuning }, body.baseVersion, by)
+  }
+
+  /**
+   * A one-off press (T144) — «Qayta ulash» of one AI line, or «TLSʼni
+   * yangilash». Not a version: a row the agent reads with its next config and
+   * does once. Asked only while the agent speaks (a fresh report) and of what
+   * its last report shows needs it — a line not registered; every TLS line
+   * down with no call on one — and never twice while one is still open. The
+   * agent keeps its own guard (the ATS ban rule, its intervals) and says why
+   * when it refuses.
+   */
+  async requestAction(body: ControlAction, by: By, now: Date): Promise<ActionDto> {
+    const [current, status] = await Promise.all([this.repository.config(), this.repository.status()])
+    if (!current) throw ApiError.validation('Avval sozlamani saqlang — AI tugmalarni sozlama bilan oʻqiydi.')
+    if (!status || statusIsStale(status.receivedAt, now)) {
+      throw ApiError.validation('AIdan yangi xabar yoʻq — bu tugma AI javob berib turganda ishlaydi.')
+    }
+    const lines = reportedLines(status)
+    if (lines.length === 0) throw ApiError.validation('AI serveri liniyalar holatini hali yubormayapti — tugma u yangilangach ishlaydi.')
+    const kind: ActionKind = body.action.kind
+    const line = body.action.kind === 'reregister' ? body.action.line : null
+
+    if (line !== null) {
+      const it = lines.find((l) => l.ext === line)
+      if (!it || !AI_OWN_LINES.includes(line)) throw ApiError.validation(`${line} — AI liniyasi emas.`)
+      if (it.registration === 'Registered') throw ApiError.validation(`${line} ATSda roʻyxatda (Registered) — qayta ulash kerak emas.`)
+    } else {
+      const tls = lines.filter((l) => l.transport === 'tls')
+      if (tls.length === 0) throw ApiError.validation('TLS liniya yoʻq — yangilash kerak emas.')
+      const up = tls.filter((l) => l.registration === 'Registered').map((l) => l.ext)
+      if (up.length > 0) throw ApiError.validation(`TLS ulanishi ishlayapti (${up.join(', ')} Registered) — tushgan liniyani «Qayta ulash» bilan ulang.`)
+      const busy = tls.filter((l) => ON_A_CALL.has(l.state)).map((l) => l.ext)
+      if (busy.length > 0) throw ApiError.validation(`${busy.join(', ')} liniyasida qoʻngʻiroq bor — tugagach bosing.`)
+    }
+
+    const open = await this.repository.openActions(new Date(now.getTime() - ACTION_MAX_AGE_MS), MAX_ACTIONS)
+    const waiting = open.find((a) => a.kind === kind && a.line === line)
+    if (waiting) {
+      const what = line ? `${line} uchun «${ACTION_LABEL[kind]}»` : `«${ACTION_LABEL[kind]}»`
+      throw ApiError.validation(`${what} soʻrovi hali javob kutmoqda — AI javobini kuting.`)
+    }
+    return actionDto(await this.repository.createAction({ kind, line, requestedAt: now, by }))
   }
 
   private async write(
