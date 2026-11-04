@@ -605,11 +605,12 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
   })
 })
 
-describe('buildRnpSheet — Shohjaxon is Azizbek (the owner, 2026-11-04)', () => {
+describe('buildRnpSheet — Shohjaxon joined Azizbek on 2026-11-04, his older results stay his', () => {
   /*
-    «shohjahon degan narsa yoʻq endilikda … azizbek va shohjahon bitta boʻldi».
-    `ropNameSql` already prints both units as «Azizbek»; this pins the fold of
-    rows that still arrive by the old name, history included.
+    The owner: «bugungi kunda qoʻshgan vaqtingdan boshlab azizbekni hisoblaysan
+    eski shohjahonni natijalarini qoʻshma». `ropNameSql` names each row by its
+    own day (`MERGED_TEAMS`), so a row the sheet gets as «Shohjaxon» is one
+    from before the merge — and the sheet must keep it his.
   */
   const dto = () =>
     buildRnpSheet(
@@ -617,6 +618,7 @@ describe('buildRnpSheet — Shohjaxon is Azizbek (the owner, 2026-11-04)', () =>
         teams: [
           { rop: 'Sevinch', head: 'Sevinch Usmonova' },
           { rop: 'Azizbek', head: 'Azizbek Ahatovich 169' },
+          { rop: 'Shohjaxon', head: 'Marjona 228' },
         ],
         fakt: [
           fakt('2026-09-21', 'Azizbek', { fakt1Orders: 2, fakt1Minor: som(4_000_000), fakt2Orders: 1, fakt2Minor: som(1_000_000) }),
@@ -626,37 +628,38 @@ describe('buildRnpSheet — Shohjaxon is Azizbek (the owner, 2026-11-04)', () =>
           { day: '2026-09-21', rop: 'Azizbek', leads: 10 },
           { day: '2026-09-21', rop: 'Shohjaxon', leads: 4 },
         ],
-        bezkval: [
-          { day: '2026-09-21', rop: 'Azizbek', leads: 30 },
-          { day: '2026-09-21', rop: 'Shohjaxon', leads: 12 },
-        ],
         manualHeadcount: [
-          // His people are MORE people of Azizbek's team, typed in either order.
           { day: '2026-09-21', rop: 'Shohjaxon', heads: 5 },
           { day: '2026-09-21', rop: 'Azizbek', heads: 14 },
         ],
       }),
     )
 
-  it("adds his team's money, leads and people to Azizbek's block and logistics", () => {
+  it("keeps Azizbek's block his own", () => {
     const d = dto()
-    expect(on(row(d, 'team:Azizbek', 'team:Azizbek:fakt1'), '2026-09-21')).toBe(5_500_000)
-    expect(on(row(d, 'team:Azizbek', 'team:Azizbek:reach'), '2026-09-21')).toBe(14)
-    expect(on(row(d, 'team:Azizbek', 'team:Azizbek:headcount'), '2026-09-21')).toBe(19)
-    expect(on(row(d, 'logistics:Azizbek', 'lg:Azizbek:fakt1'), '2026-09-21')).toBe(5_500_000)
-    // «Aziz guruh» is Azizbek's team — his leads and his без квал with it.
-    expect(on(row(d, 'registration', 'reg:group:Aziz:qualified'), '2026-09-21')).toBe(14)
-    expect(on(row(d, 'registration', 'reg:bezkval:Aziz'), '2026-09-21')).toBe(42)
-    expect(on(row(d, 'registration', 'reg:bezkval:other'), '2026-09-21')).toBe(0)
+    expect(on(row(d, 'team:Azizbek', 'team:Azizbek:fakt1'), '2026-09-21')).toBe(4_000_000)
+    expect(on(row(d, 'team:Azizbek', 'team:Azizbek:reach'), '2026-09-21')).toBe(10)
+    expect(on(row(d, 'team:Azizbek', 'team:Azizbek:headcount'), '2026-09-21')).toBe(14)
+    expect(on(row(d, 'logistics:Azizbek', 'lg:Azizbek:fakt1'), '2026-09-21')).toBe(4_000_000)
+    expect(on(row(d, 'registration', 'reg:group:Aziz:qualified'), '2026-09-21')).toBe(10)
   })
 
-  it('draws no Шохжахон anywhere: no block, no logistics, no ROP list entry', () => {
+  it('draws his older results as his own added block and logistics, under his name and head', () => {
     const d = dto()
-    expect(d.blocks.some((b) => b.team === 'Shohjaxon' || b.id.includes('Shohjaxon'))).toBe(false)
-    expect(d.teams.map((t) => t.rop)).not.toContain('Shohjaxon')
-    expect(d.teams.find((t) => t.rop === 'Azizbek')).toMatchObject({ label: 'Азизбек РОП', head: 'Azizbek Ahatovich 169' })
-    expect(JSON.stringify(d.lines)).not.toMatch(/Шохжахон|Shohjaxon/)
+    expect(on(row(d, 'team:Shohjaxon', 'team:Shohjaxon:fakt1'), '2026-09-21')).toBe(1_500_000)
+    expect(on(row(d, 'team:Shohjaxon', 'team:Shohjaxon:headcount'), '2026-09-21')).toBe(5)
+    expect(on(row(d, 'logistics:Shohjaxon', 'lg:Shohjaxon:fakt1'), '2026-09-21')).toBe(1_500_000)
+    expect(d.teams.find((t) => t.rop === 'Shohjaxon')).toMatchObject({ label: 'Шохжахон РОП', head: 'Marjona 228' })
+    // No sheet row of his any more (314–318): an added block, after the sheet's own.
+    expect(d.lines.find((l) => l.row === 314)).toBeUndefined()
+    expect(d.lines.find((l) => l.kind === 'value' && l.key === 'lg:Shohjaxon:fakt1')).toMatchObject({ row: null, added: true })
     expect(teamBrand('Shohjaxon')).toBe('Collagen')
+  })
+
+  it('draws no Шохжахон in a month he has nothing in', () => {
+    const d = buildRnpSheet(input())
+    expect(d.teams.map((t) => t.rop)).not.toContain('Shohjaxon')
+    expect(JSON.stringify(d.lines)).not.toMatch(/Шохжахон|Shohjaxon/)
   })
 })
 

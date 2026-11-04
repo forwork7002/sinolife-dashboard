@@ -23,7 +23,6 @@
  * measurement.
  */
 
-import { MERGED_TEAMS } from '../employees/roles'
 import { RNP_GRADE_SCALES, rnpDayGrade, rnpGradeScaleText } from './rnpGrade'
 import { type RnpLine, sheetLines } from './rnpSheetView'
 import type { TargetProduct } from '../types'
@@ -255,13 +254,12 @@ const BASE_TEAMS: ReadonlySet<string> = new Set(['Charos', 'Baza'])
  * (rows 394 / 421, by department): an order belongs to the brand of the team
  * that sold it. «Первичка усп» (396 / 423) is the same list without the БАЗА
  * team (`BASE_TEAMS`). The sheet's «Sevinchxon(ROP)» is folded into
- * Sadriddin (`TEAM_ALIASES`), its «Shohjaxon(ROP)» into Azizbek since
- * 2026-11-04 (`MERGED_TEAMS`). The alias also folds «Malika(ROP)» into
+ * Sadriddin (`TEAM_ALIASES`). The alias also folds «Malika(ROP)» into
  * Charos — so Malika's old deals count as Zextra, though the sheet's list
  * does not name her. A team on neither list (Hayot) is «Brendsiz».
  */
 const BRAND_TEAMS: Readonly<Record<'Collagen' | 'Zextra', ReadonlySet<string>>> = {
-  Collagen: new Set(['Sevinch', 'Gulzora', 'Azizbek', 'Lola', 'Saidaziz', 'Maftuna', 'Marjona', 'Baza']),
+  Collagen: new Set(['Sevinch', 'Gulzora', 'Azizbek', 'Lola', 'Saidaziz', 'Maftuna', 'Marjona', 'Baza', 'Shohjaxon']),
   Zextra: new Set(['Asliddin', 'Sadriddin', 'Charos']),
 }
 
@@ -274,15 +272,13 @@ const BRAND_TEAMS: Readonly<Record<'Collagen' | 'Zextra', ReadonlySet<string>>> 
  * «Charos(ROP)». Applied to every source row before anything is summed, so a
  * folded team's money can only be counted once.
  *
- * And the teams the owner MERGED (`MERGED_TEAMS`, 2026-11-04: «Shohjaxon» is
- * «Azizbek», every month): `ropNameSql` already prints them merged, this
- * folds any row that arrives by its old name (a typed headcount, a saved
- * split). Its sheet block («Шохжахон РОП», logistics rows 314–318) is gone.
+ * NOT the teams the owner MERGED (`MERGED_TEAMS`, Shohjaxon → Azizbek from
+ * 2026-11-04): that fold has a day, and `ropNameSql` makes it on each row's
+ * own day before the rows get here — his older results stay his block.
  */
 export const TEAM_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   Sevinchxon: 'Sadriddin',
   Malika: 'Charos',
-  ...MERGED_TEAMS,
 })
 
 /**
@@ -388,6 +384,7 @@ const SHEET_TEAM_NAMES: Readonly<Record<string, string>> = Object.freeze({
   Saida: 'Саида РОП',
   Hayot: 'Ҳаёт РОП',
   Baza: 'Фаррух БАЗА',
+  Shohjaxon: 'Шохжахон РОП',
 })
 
 /** A team as the sheet names it; one it does not name is «<department> РОП». */
@@ -902,18 +899,14 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     t.calls[i]! += r.connected
   }
   // «Ходим сони» is typed (the client, 2026-10-01); a day nobody typed stays empty.
-  // A merged team's typed people (`MERGED_TEAMS`) are MORE people of the team it
-  // joined, so they are added — after that team's own, which a renamed alias's
-  // row (the same people) still replaces as before.
   const typedHeads = new Map<string, Series>()
-  const merged = (rop: string) => Object.hasOwn(MERGED_TEAMS, rop)
-  for (const r of [...input.manualHeadcount].sort((a, b) => Number(merged(a.rop)) - Number(merged(b.rop)))) {
+  for (const r of input.manualHeadcount) {
     const i = at.get(r.day)
     if (i === undefined) continue
     const rop = canonical(r.rop)
     let series = typedHeads.get(rop)
     if (!series) typedHeads.set(rop, (series = days.map(() => null)))
-    series[i] = merged(r.rop) ? (series[i] ?? 0) + r.heads : r.heads
+    series[i] = r.heads
   }
 
   const heads = new Map(input.teams.filter((t) => !(t.rop in TEAM_ALIASES)).map((t) => [t.rop, t.head]))
@@ -945,7 +938,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     .filter((rop) => rop !== input.noRop && (active(grid.get(rop)!) || Object.hasOwn(TEAM_SHEET_ROW, rop)))
     .sort((a, b) => (sheetRank(a) !== sheetRank(b) ? sheetRank(a) - sheetRank(b) : a.localeCompare(b, 'ru')))
   const withNoRop = grid.has(input.noRop) ? [...teamNames, input.noRop] : teamNames
-  /* A team the sheet's logistics rows name but its ROP blocks do not is drawn too, zeros and all (Шохжахон's was, until his team merged into Azizbek's on 2026-11-04). */
+  /* A team the sheet's logistics rows name but its ROP blocks do not is drawn too, zeros and all (Шохжахон's was, row 314, until his team joined Azizbek's on 2026-11-04 — a month with his older results draws them as an added block). */
   const logisticsTeams = [...withNoRop, ...Object.keys(LOGISTICS_SHEET_ROW).filter((rop) => !withNoRop.includes(rop))]
 
   // --- company totals -----------------------------------------------------
@@ -1132,7 +1125,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
     A GROUP'S «квал» IS THE LEADS HANDED TO ITS ROP'S TEAM (`GROUP_TEAM`, the
     client, 2026-10-02): the very series of that team's «Квал лид сони», so
     the two can never disagree, and 0 is a measurement. «Boshqa jamoalar» is
-    every other team's (Маржона, Ҳаёт, Kompaniya, the БАЗА heads …):
+    every other team's (Маржона, Ҳаёт, Kompaniya, the БАЗА heads, Шохжахон before 2026-11-04 …):
     the groups and it add up to «РОП ларга тарқатилди», day by day.
   */
   const groupTeams = new Set<string>(Object.values(GROUP_TEAM))
@@ -1144,7 +1137,7 @@ export function buildRnpSheet(input: RnpSheetInput): RnpOverviewDto {
   const otherIntake = zeros().map((_, i) => otherIntakeTeams.reduce((acc, rop) => acc + intake.get(rop)![i]!, 0))
   /*
     The same row cut by brand, for the brand switch only: the «Boshqa» teams
-    are of both brands and of neither (Маржона, Baza are Collagen;
+    are of both brands and of neither (Маржона, Baza, Шохжахон are Collagen;
     Ҳаёт, Kompaniya «Brendsiz»), so under one slice the groups and this add
     up to the leads handed to that slice's teams.
   */

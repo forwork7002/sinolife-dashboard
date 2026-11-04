@@ -62,38 +62,57 @@ export const ROSTER_TEAMS: readonly {
 }[] = [{ unitExternalId: '94', label: 'Malika', labels: ['Malika', 'Charos'] }]
 
 /**
- * Teams the owner MERGED into another: the left name reads as the right one
- * on every screen, for every month — history included.
+ * Teams the owner MERGED into another, FROM A DAY ON: from `from` (a Tashkent
+ * day) the left name reads as `into` on every screen; what was done before it
+ * stays the old team's.
  *
- * 2026-11-04, the owner: «shohjahon degan narsa yoʻq endilikda … shohjahonni
- * azizbekga oʻtkazdik … rnp rop otchet boshqa joylarda endilikda azizbek va
- * shohjahon bitta boʻldi». The portal was NOT changed: that day unit 76
- * «Shohjaxon(ROP)» still had its 12 people under its own head (portal user
- * 68210), and deals were still stamped «Shohjaxon(ROP)» (38 created
- * 20.10–04.11, against 358 for «Azizbek(ROP)»). So the merge lives here, read
- * by every place that names a team:
- *   - `InsightsRepository.ropNameSql` — the SQL home of a team's name, so the
- *     queue, Logistika, the sellers' teams, RNP, ROP otchet, Roistat, Lidlar
- *     and payroll all print «Azizbek» for both units and both deal stamps;
- *   - `mergedTeam` — the JS spellings of that rule (the sellers board,
- *     Sverka) and `TEAM_ALIASES` (RNP's fold);
- *   - the merged unit's head is a MEMBER of the team it joined, not a second
- *     ROP (`InsightsRepository.mergedTeamSql` in the head lists and rosters),
- *     and the joined team's head's TEAM scope reads the merged unit's people
- *     (`ScopeRepository.teamEmployeeIds`).
- * The org chart and the ROP picker on `/users` still mirror the portal's
- * units as they are.
+ * 2026-11-04, the owner: «shohjahon degan narsa yoʻq endilikda … rnp rop
+ * otchet boshqa joylarda endilikda azizbek va shohjahon bitta boʻldi», then,
+ * the same evening, «bugungi kunda qoʻshgan vaqtingdan boshlab azizbekni
+ * hisoblaysan eski shohjahonni natijalarini qoʻshma» — the first version
+ * (89bc926) folded every month and put Shohjaxon's October on Azizbek. The
+ * portal was NOT changed: that day unit 76 «Shohjaxon(ROP)» still had its 12
+ * people under its own head (portal user 68210), and deals were still
+ * stamped «Shohjaxon(ROP)» (38 created 20.10–04.11, against 358 for
+ * «Azizbek(ROP)»).
  *
- * Keys and values are department names without «(ROP)», as `ropNameSql`
+ * WHAT DATES A ROW is the thing the screen counts: a deal by its sale
+ * (`createdAtSource`, when the portal stamps the team), a handed-out lead by
+ * «Лид таркатилган сана», a kirim by its arrival, a call by its start
+ * (`InsightsRepository.ropNameSql`'s `asOf`). Who is in a team NOW (the ROP
+ * otchet roster of a window reaching the day, the joined team's head's TEAM
+ * scope) reads the merge; the heads and ancestors of units keep each unit's
+ * own name, so an old month's «Shohjaxon» still has its head.
+ *
+ * Keys and `into` are department names without «(ROP)», as `ropNameSql`
  * prints them; letters only — they are spliced into SQL.
  */
-export const MERGED_TEAMS: Readonly<Record<string, string>> = Object.freeze({
-  Shohjaxon: 'Azizbek',
+export interface TeamMerge {
+  readonly into: string
+  /** The first Tashkent day of the merge, `YYYY-MM-DD`. */
+  readonly from: string
+}
+
+export const MERGED_TEAMS: Readonly<Record<string, TeamMerge>> = Object.freeze({
+  Shohjaxon: Object.freeze({ into: 'Azizbek', from: '2026-11-04' }),
 })
 
-/** A team as every screen names it: a merged team (`MERGED_TEAMS`) is the one it joined. Case-insensitive, like `ropNameSql`'s strip. */
-export function mergedTeam(team: string): string {
+/** The instant a merge takes effect: its first day's Tashkent midnight (UTC+5; Uzbekistan keeps no DST). */
+export function mergeStartsAt(merge: TeamMerge): Date {
+  return new Date(`${merge.from}T00:00:00+05:00`)
+}
+
+/**
+ * A team as the screens name it for `at` — a Tashkent day `YYYY-MM-DD` or an
+ * instant; omitted, today. A merged team on or after its day is the one it
+ * joined; before, itself. Case-insensitive, like `ropNameSql`'s strip.
+ */
+export function mergedTeam(team: string, at?: string | Date): string {
   const key = team.trim().toLowerCase()
-  for (const [from, to] of Object.entries(MERGED_TEAMS)) if (from.toLowerCase() === key) return to
+  for (const [from, merge] of Object.entries(MERGED_TEAMS)) {
+    if (from.toLowerCase() !== key) continue
+    const on = at === undefined || (typeof at === 'string' ? at.slice(0, 10) >= merge.from : at.getTime() >= mergeStartsAt(merge).getTime())
+    return on ? merge.into : team
+  }
   return team
 }

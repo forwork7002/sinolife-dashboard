@@ -550,7 +550,7 @@ export class RoistatRepository {
         LEFT JOIN "employee" e ON e."id" = sb."operatorEmployeeId"
         LEFT JOIN "department" dep ON dep."id" = e."departmentId"
         LEFT JOIN LATERAL (SELECT COALESCE(
-            ${InsightsRepository.teamSql('sb."operatorTeamSource"', 'e."id"', 'dep."name"')},
+            ${InsightsRepository.teamSql('sb."operatorTeamSource"', 'e."id"', 'dep."name"', 'sb."createdAtSource"')},
             '${InsightsRepository.NO_ROP}'
           ) AS team) tm ON true
         -- The origin lead the probe in sale_origin found, under the names the columns above read.

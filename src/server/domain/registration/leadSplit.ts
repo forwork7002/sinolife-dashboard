@@ -46,14 +46,16 @@
 
 import { apportion } from '@/lib/apportion'
 
+import { mergedTeam } from '../employees/roles'
 import { TEAM_ALIASES, teamBrand } from '../rnp/rnpSheet'
 import { type BrandFilter, brandMatches } from '../types'
 
 /**
  * The teams the client splits leads among (2026-10-01: their six plus
  * Shohjaxon, Asliddin, Sadriddin). Shohjaxon left the list on 2026-11-04,
- * merged into Azizbek (`MERGED_TEAMS`): a split saved before that day
- * still reads, its Shohjaxon share added to Azizbek's (`foldShares`).
+ * when his team joined Azizbek's (`MERGED_TEAMS`): an older day still shows
+ * his own share and leads after the list; a split of that day or later that
+ * names him adds his share to Azizbek's (`foldShares`).
  */
 export const SPLIT_ROPS: readonly string[] = Object.freeze([
   'Sevinch',
@@ -148,15 +150,16 @@ export function canonicalRop(rop: string): string {
 }
 
 /**
- * A saved split under today's team names, in its own order: the shares of
- * teams that are one team now (Shohjaxon and Azizbek, `MERGED_TEAMS`) are
- * added, so a split saved before the merge still sums to 100 % and never
- * names a team twice («Kechagi taqsimotni olish» copies it as is).
+ * A saved split under `day`'s team names, in its own order: on or after a
+ * merge's day the shares of teams that are one team (Shohjaxon and Azizbek,
+ * `MERGED_TEAMS`) are added, so the split still sums to 100 % and never
+ * names a team twice («Kechagi taqsimotni olish» copies an older day's split
+ * onto `day`); before it, each keeps its own.
  */
-export function foldShares(rows: readonly SplitShare[]): SplitShare[] {
+export function foldShares(rows: readonly SplitShare[], day: string): SplitShare[] {
   const out = new Map<string, number>()
   for (const s of rows) {
-    const rop = canonicalRop(s.rop)
+    const rop = mergedTeam(canonicalRop(s.rop), day)
     out.set(rop, (out.get(rop) ?? 0) + s.shareBp)
   }
   return [...out].map(([rop, shareBp]) => ({ rop, shareBp }))
@@ -201,8 +204,9 @@ export function buildLeadSplit(input: {
   }
   const fresh = Math.max(0, total - duplicates)
 
-  const shares = new Map(foldShares(input.split?.rows ?? []).map((s) => [s.rop, s.shareBp]))
-  const previous = input.previous ? { day: input.previous.day, rows: foldShares(input.previous.rows) } : null
+  const shares = new Map(foldShares(input.split?.rows ?? [], input.day).map((s) => [s.rop, s.shareBp]))
+  // «Kechagi taqsimotni olish» copies it onto this day: under this day's names.
+  const previous = input.previous ? { day: input.previous.day, rows: foldShares(input.previous.rows, input.day) } : null
   // The client's teams first, in their order; then any other team either split names or that got leads this week.
   const names = teamOrder([...shares.keys(), ...(previous?.rows.map((s) => s.rop) ?? []), ...byRop.keys()])
 

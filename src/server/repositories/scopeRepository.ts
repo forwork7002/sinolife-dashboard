@@ -88,8 +88,8 @@ const unitKey = (team: string) => `'${`${team}${SALES_TEAM_SUFFIX}`.toLowerCase(
  */
 const MERGED_INTO_SQL = (merged: string, joined: string) => {
   const pairs = Object.entries(MERGED_TEAMS).map(
-    ([from, to]) =>
-      `(lower(replace(${merged}."name", ' ', '')) = ${unitKey(from)} AND lower(replace(${joined}."name", ' ', '')) = ${unitKey(to)})`,
+    ([from, merge]) =>
+      `(lower(replace(${merged}."name", ' ', '')) = ${unitKey(from)} AND lower(replace(${joined}."name", ' ', '')) = ${unitKey(merge.into)})`,
   )
   return pairs.length === 0 ? 'false' : `(${pairs.join(' OR ')})`
 }

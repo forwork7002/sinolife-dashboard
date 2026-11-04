@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MERGED_TEAMS, isSalesTeamName, mergedTeam } from '@/server/domain/employees/roles'
+import { MERGED_TEAMS, isSalesTeamName, mergeStartsAt, mergedTeam } from '@/server/domain/employees/roles'
 
 /** The fifteen sales teams as the portal actually spells them. */
 const SALES_TEAMS = [
@@ -59,18 +59,24 @@ describe('sales-team detection', () => {
 })
 
 describe('merged teams (the owner, 2026-11-04)', () => {
-  it('reads Shohjaxon as Azizbek, whatever the case or spaces, and leaves every other team alone', () => {
-    expect(MERGED_TEAMS).toEqual({ Shohjaxon: 'Azizbek' })
+  it('reads Shohjaxon as Azizbek from 2026-11-04 on, himself before, whatever the case or spaces', () => {
+    expect(MERGED_TEAMS).toEqual({ Shohjaxon: { into: 'Azizbek', from: '2026-11-04' } })
     expect(mergedTeam('Shohjaxon')).toBe('Azizbek')
-    expect(mergedTeam(' shohjaxon ')).toBe('Azizbek')
-    expect(mergedTeam('Azizbek')).toBe('Azizbek')
+    expect(mergedTeam(' shohjaxon ', '2026-11-04')).toBe('Azizbek')
+    expect(mergedTeam('Shohjaxon', '2026-11-03')).toBe('Shohjaxon')
+    // The merge starts at the day's Tashkent midnight: 2026-11-03 19:00 UTC.
+    expect(mergeStartsAt(MERGED_TEAMS.Shohjaxon!).toISOString()).toBe('2026-11-03T19:00:00.000Z')
+    expect(mergedTeam('Shohjaxon', new Date('2026-11-03T18:59:59Z'))).toBe('Shohjaxon')
+    expect(mergedTeam('Shohjaxon', new Date('2026-11-03T19:00:00Z'))).toBe('Azizbek')
+    expect(mergedTeam('Azizbek', '2026-10-01')).toBe('Azizbek')
     expect(mergedTeam('Lola')).toBe('Lola')
   })
 
-  it('names only letters, since the names are spliced into SQL', () => {
-    for (const [from, to] of Object.entries(MERGED_TEAMS)) {
+  it('names only letters and an ISO day, since they are spliced into SQL', () => {
+    for (const [from, merge] of Object.entries(MERGED_TEAMS)) {
       expect(from).toMatch(/^\p{L}+$/u)
-      expect(to).toMatch(/^\p{L}+$/u)
+      expect(merge.into).toMatch(/^\p{L}+$/u)
+      expect(merge.from).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     }
   })
 })

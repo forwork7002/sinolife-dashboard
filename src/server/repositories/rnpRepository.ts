@@ -382,7 +382,7 @@ export class RnpRepository {
       FROM "call_record" c
       JOIN "employee" e ON e."id" = c."employeeId"
       JOIN "department" dep ON dep."id" = e."departmentId"
-      CROSS JOIN LATERAL (SELECT ${InsightsRepository.teamSql('NULL::text', 'e."id"', 'dep."name"')} AS rop) t
+      CROSS JOIN LATERAL (SELECT ${InsightsRepository.teamSql('NULL::text', 'e."id"', 'dep."name"', 'c."startedAt"')} AS rop) t
       WHERE c."connected"
         AND c."direction" IN ('INBOUND', 'OUTBOUND')
         AND c."startedAt" >= (($1::date)::timestamp AT TIME ZONE $3 AT TIME ZONE 'UTC')
@@ -472,22 +472,26 @@ export class RnpRepository {
 
   /**
    * The ROP teams `employeeId` heads — the «Ходим сони» rows that person may
-   * type. Heading a merged unit («Shohjaxon(ROP)», `MERGED_TEAMS`) is not
-   * heading the team it joined.
+   * type. Each unit by its own name: heading a merged unit («Shohjaxon(ROP)»,
+   * `MERGED_TEAMS`) is heading its own older block, not the team it joined.
    */
   async teamsHeadedBy(employeeId: string): Promise<string[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string }[]>(
       `SELECT DISTINCT t.rop
          FROM "department" dep
-         CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"')} AS rop) t
-        WHERE dep."headId" = $1 AND dep."isActive" AND t.rop IS NOT NULL
-          AND NOT ${InsightsRepository.mergedTeamSql('dep."name"')}`,
+         CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"', null)} AS rop) t
+        WHERE dep."headId" = $1 AND dep."isActive" AND t.rop IS NOT NULL`,
       employeeId,
     )
     return rows.map((r) => r.rop)
   }
 
-  /** The ROP teams these people are filed in — their PRIMARY unit, as the scope reads it (`ScopeRepository`). */
+  /**
+   * The ROP teams these people are filed in — their PRIMARY unit, as the
+   * scope reads it (`ScopeRepository`). A merged unit's people read both
+   * names: its own older block and, from the merge, the team it joined
+   * (`MERGED_TEAMS`).
+   */
   async teamsOfEmployees(employeeIds: readonly string[]): Promise<string[]> {
     if (employeeIds.length === 0) return []
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string }[]>(RnpRepository.teamsOfEmployeesSql(), [...employeeIds])
@@ -499,14 +503,18 @@ export class RnpRepository {
       SELECT DISTINCT t.rop
         FROM "employee" e
         JOIN "department" dep ON dep."id" = e."departmentId"
-        CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"')} AS rop) t
+        CROSS JOIN LATERAL (
+          SELECT ${InsightsRepository.ropNameSql('dep."name"', null)} AS rop
+          UNION
+          SELECT ${InsightsRepository.ropNameSql('dep."name"')}
+        ) t
        WHERE e."id" = ANY($1::text[]) AND dep."isActive" AND t.rop IS NOT NULL`
   }
 
   /**
-   * Every active ROP department, with its head — one per team: a merged unit
-   * («Shohjaxon(ROP)», `MERGED_TEAMS`) reads as the team it joined, whose own
-   * head comes first.
+   * Every active ROP department, with its head — each unit by its own name,
+   * so a month with a merged team's older results («Shohjaxon», before
+   * 2026-11-04, `MERGED_TEAMS`) still names its head.
    */
   async teams(): Promise<RnpTeam[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string; head: string | null }[]>(RnpRepository.teamsSql())
@@ -518,10 +526,10 @@ export class RnpRepository {
     return `
       SELECT DISTINCT ON (t.rop) t.rop, e."fullName" AS head
       FROM "department" dep
-      CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"')} AS rop) t
+      CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"', null)} AS rop) t
       LEFT JOIN "employee" e ON e."id" = dep."headId"
       WHERE dep."isActive" AND t.rop IS NOT NULL
-      ORDER BY t.rop, ${InsightsRepository.mergedTeamSql('dep."name"')}, (e."fullName" IS NULL)`
+      ORDER BY t.rop, (e."fullName" IS NULL)`
   }
 
   /**

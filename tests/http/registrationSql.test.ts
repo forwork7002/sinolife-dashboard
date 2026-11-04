@@ -178,9 +178,15 @@ describe('ropHeadsSql', () => {
     expect(sql).toContain(`WHERE h."isActive" AND`)
   })
 
-  it('reads a merged unit last, so the team it joined keeps its own head (2026-11-04)', () => {
+  it('names each unit by its own name, so an older window\'s Shohjaxon keeps his head (2026-11-04)', () => {
     const sql = bare(RegistrationRepository.ropHeadsSql())
-    expect(sql).toMatch(/ORDER BY 1, COALESCE\(lower\(replace\(h\."name", ' ', ''\)\) IN \('shohjaxon\(rop\)'\), false\), h\."name"\s*$/)
+    expect(sql).not.toContain(`'Azizbek'`)
+    expect(sql).toMatch(/ORDER BY 1, h\."name"\s*$/)
+  })
+
+  it('reads the ROP of a handed-out lead on its hand-out day', () => {
+    const sql = bare(RegistrationRepository.leadRopSql())
+    expect(sql).toContain(`= 'shohjaxon(rop)' AND (d."leadDistributedOn") >= TIMESTAMP '2026-11-03 19:00:00' THEN 'Azizbek'`)
   })
 })
 
@@ -218,13 +224,16 @@ describe('sellerCallsSql', () => {
 })
 
 describe('rosterSql', () => {
-  it('makes the head of a merged unit a member of the team it joined, not a second ROP (2026-11-04)', () => {
-    const sql = bare(RegistrationRepository.rosterSql())
-    expect(sql).toContain(`NOT COALESCE(lower(replace(h."name", ' ', '')) IN ('shohjaxon(rop)'), false) AS is_head`)
+  it('makes the head of a merged unit a member of the team it joined once a window reaches its day (2026-11-04)', () => {
+    const on = bare(RegistrationRepository.rosterSql('2026-11-04'))
+    expect(on).toContain(`AND (DATE '2026-11-04') >= TIMESTAMP '2026-11-03 19:00:00' THEN 'Azizbek'`)
+    expect(on).toContain(`NOT COALESCE((lower(replace(h."name", ' ', '')) = 'shohjaxon(rop)' AND (DATE '2026-11-04') >= TIMESTAMP '2026-11-03 19:00:00'), false) AS is_head`)
+    // An older window is dated the same way; Postgres answers false there (pinned on PGlite, see the comment above).
+    expect(bare(RegistrationRepository.rosterSql('2026-11-03'))).toContain(`(DATE '2026-11-03') >= TIMESTAMP '2026-11-03 19:00:00'`)
   })
 
   it('puts a head of two ROP units in the one they sit in, as the leads are read (2026-10-02)', () => {
-    const sql = bare(RegistrationRepository.rosterSql())
+    const sql = bare(RegistrationRepository.rosterSql('2026-10-02'))
     expect(sql).toMatch(/ORDER BY x\.employee_id, x\.rank, \(x\.unit_id = e\."departmentId"\) DESC, x\."name"\s*$/)
     expect(bare(RegistrationRepository.distributedDaysSql())).toContain(`ORDER BY (h."id" = e."departmentId") DESC, h."name"`)
   })

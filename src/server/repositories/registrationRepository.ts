@@ -140,14 +140,16 @@ export class RegistrationRepository {
    * Reads `d`, `e` and `dep` from `handedOutJoinsSql`.
    */
   static leadRopSql(): string {
+    // By the hand-out day: a merged team is the one it joined only from its day on (`MERGED_TEAMS`).
+    const day = 'd."leadDistributedOn"'
     return `COALESCE(
-            (SELECT ${InsightsRepository.ropNameSql('h."name"')}
+            (SELECT ${InsightsRepository.ropNameSql('h."name"', day)}
                FROM "department" h
               WHERE h."headId" = d."leadRopEmployeeId" AND h."isActive"
-                AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
+                AND ${InsightsRepository.ropNameSql('h."name"', null)} IS NOT NULL
               ORDER BY (h."id" = e."departmentId") DESC, h."name"
               LIMIT 1),
-            ${InsightsRepository.ropNameSql('dep."name"')}
+            ${InsightsRepository.ropNameSql('dep."name"', day)}
           )`
   }
 
@@ -335,8 +337,8 @@ export class RegistrationRepository {
 
   /**
    * Who heads each ROP team now, by its canonical name — the names on the
-   * client's own sheet. A merged unit («Shohjaxon(ROP)», `MERGED_TEAMS`) is
-   * read last: the team it joined keeps its own head.
+   * client's own sheet. Each unit by its own name (`ropNameSql(…, null)`):
+   * an old window's «Shohjaxon» group keeps its head, Azizbek's keeps his.
    */
   async ropHeads(): Promise<Map<string, string>> {
     const rows = await this.prisma.$queryRawUnsafe<{ team: string; head: string }[]>(RegistrationRepository.ropHeadsSql())
@@ -351,11 +353,11 @@ export class RegistrationRepository {
   /** `ropHeads`' statement. */
   static ropHeadsSql(): string {
     return `
-      SELECT ${InsightsRepository.ropNameSql('h."name"')} AS team, e."fullName" AS head
+      SELECT ${InsightsRepository.ropNameSql('h."name"', null)} AS team, e."fullName" AS head
         FROM "department" h
         JOIN "employee" e ON e."id" = h."headId"
-       WHERE h."isActive" AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
-       ORDER BY 1, ${InsightsRepository.mergedTeamSql('h."name"')}, h."name"`
+       WHERE h."isActive" AND ${InsightsRepository.ropNameSql('h."name"', null)} IS NOT NULL
+       ORDER BY 1, h."name"`
   }
 
   /**
@@ -531,9 +533,9 @@ export class RegistrationRepository {
              COALESCE(cu."externalId", l.meta_contact) AS contact_id,
              CASE WHEN cu."id" IS NULL THEN '{}'::text[] ELSE array_remove(cu."phones" || cu."phone", NULL) END AS phones,
              l.deal_phone,
-             k.rop AS rop_kval,
-             lr.rop AS rop_primary,
-             ow.rop AS owner_rop,
+             ${InsightsRepository.mergeFoldSql('k.rop', 'l.at')} AS rop_kval,
+             ${InsightsRepository.mergeFoldSql('lr.rop', 'l.at')} AS rop_primary,
+             ${InsightsRepository.mergeFoldSql('ow.rop', 'l.at')} AS owner_rop,
              COALESCE(ow.desk, false) AS owner_desk${
                detail
                  ? `,
@@ -631,21 +633,23 @@ export class RegistrationRepository {
    * (7010, 6968 — the spec's fact 5): their team's ROP is the ROP.
    */
   static bezkvalPersonRopSql(o: string): string {
+    // Each unit by its own name: the kirim's day folds a merged team later (`mergeFoldSql` on l.at).
+    const unit = (column: string) => InsightsRepository.ropNameSql(column, null)
     return `COALESCE(
-            (SELECT ${InsightsRepository.ropNameSql('h."name"')}
+            (SELECT ${unit('h."name"')}
                FROM "department" h
               WHERE h."headId" = ${o}."id" AND h."isActive"
-                AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
+                AND ${unit('h."name"')} IS NOT NULL
               ORDER BY (h."id" = ${o}."departmentId") DESC, h."name"
               LIMIT 1),
-            (SELECT ${InsightsRepository.ropNameSql('dep."name"')}
+            (SELECT ${unit('dep."name"')}
                FROM "department" dep
               WHERE dep."id" = ${o}."departmentId" AND dep."isActive"),
-            (SELECT ${InsightsRepository.ropNameSql('md."name"')}
+            (SELECT ${unit('md."name"')}
                FROM "department_member" m
                JOIN "department" md ON md."id" = m."departmentId" AND md."isActive"
               WHERE m."employeeId" = ${o}."id"
-                AND ${InsightsRepository.ropNameSql('md."name"')} IS NOT NULL
+                AND ${unit('md."name"')} IS NOT NULL
               ORDER BY m."isPrimary" DESC, md."name"
               LIMIT 1)
           )`
@@ -684,27 +688,35 @@ export class RegistrationRepository {
    * a row, as on the client's sheet. Primary, never `department_member`: this
    * is a money table, and a person in two units would sit on two teams' rows.
    * A head is in the team they head — of several, the one they sit in, as
-   * `leadRopSql` reads it, then the first by name. The head of a merged unit
-   * («Shohjaxon(ROP)», `MERGED_TEAMS`) is a member of the team it joined, not
-   * its head: one ROP per group.
+   * `leadRopSql` reads it, then the first by name. Once merged
+   * («Shohjaxon(ROP)» from 2026-11-04, `MERGED_TEAMS`), the merged unit's
+   * head is a member of the team it joined, not its head: one ROP per group.
    */
-  async roster(): Promise<RosterMember[]> {
+  async roster(to: string): Promise<RosterMember[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ employee_id: string; full_name: string; rop: string; is_head: boolean }[]>(
-      RegistrationRepository.rosterSql(),
+      RegistrationRepository.rosterSql(to),
     )
     return rows.map((r) => ({ employeeId: r.employee_id, fullName: r.full_name, rop: r.rop, isHead: r.is_head }))
   }
 
-  /** `roster`'s statement. Exported for its test. */
-  static rosterSql(): string {
+  /**
+   * `roster`'s statement, for a window ending on `to` (a Tashkent day).
+   * Exported for its test. A window that reaches a merge's day reads the
+   * merged unit as the team it joined, its head a member there; an older
+   * window, as its own team with its own head (`MERGED_TEAMS`).
+   */
+  static rosterSql(to: string): string {
+    // A day is all `to` ever is (the report's window); anything else reads as today.
+    const asOf = /^\d{4}-\d{2}-\d{2}$/.test(to) ? `DATE '${to}'` : undefined
+    const isHead = `NOT ${InsightsRepository.mergedOnSql('h."name"', asOf)}`
     return `
       SELECT DISTINCT ON (x.employee_id) x.employee_id, e."fullName" AS full_name, x.rop, x.is_head
         FROM (
-          SELECT h."headId" AS employee_id, ${InsightsRepository.ropNameSql('h."name"')} AS rop, NOT ${InsightsRepository.mergedTeamSql('h."name"')} AS is_head, 0 AS rank, h."id" AS unit_id, h."name"
+          SELECT h."headId" AS employee_id, ${InsightsRepository.ropNameSql('h."name"', asOf)} AS rop, ${isHead} AS is_head, 0 AS rank, h."id" AS unit_id, h."name"
             FROM "department" h
            WHERE h."isActive" AND h."headId" IS NOT NULL
           UNION ALL
-          SELECT m."id", ${InsightsRepository.ropNameSql('dep."name"')}, false, 1, dep."id", dep."name"
+          SELECT m."id", ${InsightsRepository.ropNameSql('dep."name"', asOf)}, false, 1, dep."id", dep."name"
             FROM "employee" m
             JOIN "department" dep ON dep."id" = m."departmentId" AND dep."isActive"
         ) x

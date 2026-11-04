@@ -237,7 +237,7 @@ export class RegistrationService {
     const [allFakt, allLeads, allRoster, calls] = await Promise.all([
       faktCache.get(`${input.from}:${input.to}`, () => this.insights.sellerFaktDays(period)),
       this.repository.sellerLeads(input.from, input.to),
-      this.repository.roster(),
+      this.repository.roster(input.to),
       !input.calls || callFloorApplied(period.start) ? null : this.repository.sellerCalls(period.start, period.end),
     ])
     const rostered = new Set(allRoster.map((m) => m.employeeId))

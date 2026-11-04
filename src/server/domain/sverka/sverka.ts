@@ -323,11 +323,13 @@ function teamText(name: string): string {
 
 /**
  * A team's folded name with a merged team read as the one it joined
- * (`MERGED_TEAMS`, 2026-11-04): the deal's team arrives as «Azizbek» for a
- * «Shohjaxon(ROP)» stamp (`ropNameSql`), while MoySklad's project may still
- * say «Shohjaxon(ROP)» — one team, so the two must meet.
+ * (`MERGED_TEAMS`, 2026-11-04): a deal sold from that day arrives as
+ * «Azizbek» for a «Shohjaxon(ROP)» stamp (`ropNameSql`), while MoySklad's
+ * project may still say «Shohjaxon(ROP)» — one team, so the two must meet.
+ * Whatever the day: this asks whether the two systems name the same team,
+ * not whose result the order is.
  */
-const MERGED_KEYS: ReadonlyMap<string, string> = new Map(Object.entries(MERGED_TEAMS).map(([from, to]) => [teamText(from), teamText(to)]))
+const MERGED_KEYS: ReadonlyMap<string, string> = new Map(Object.entries(MERGED_TEAMS).map(([from, merge]) => [teamText(from), teamText(merge.into)]))
 const teamKey = (name: string): string => {
   const key = teamText(name)
   return MERGED_KEYS.get(key) ?? key

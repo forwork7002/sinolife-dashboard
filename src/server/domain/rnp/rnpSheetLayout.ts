@@ -52,8 +52,9 @@
  * (id 3001, no sheet row); row 45 reads «Цена квал лида» — the budget over
  * the kval leads, no longer over all of them.
  *
- * 2026-11-04: «Шохжахон РОП»'s logistics block (314–318) is gone — the owner
- * merged his team into Azizbek's (`MERGED_TEAMS`), whose block carries it.
+ * 2026-11-04: «Шохжахон РОП»'s logistics block (314–318) is gone — from that
+ * day his team is Azizbek's (`MERGED_TEAMS`); a month with his older results
+ * draws them as an added block, not a sheet row every later month repeats.
  *
  * Each entry: [row, label (column A), sub (column B when it holds text — the
  * person responsible, «без квал», «факт1» …), kind, bold, tone of the label

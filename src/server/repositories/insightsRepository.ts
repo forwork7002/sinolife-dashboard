@@ -50,7 +50,7 @@ import {
   NO_EMPLOYEE_IN_SCOPE,
   type ScopedWindow,
 } from '@/server/domain/employees/branches'
-import { MERGED_TEAMS, ROSTER_TEAMS, SALES_TEAM_SUFFIX } from '@/server/domain/employees/roles'
+import { MERGED_TEAMS, ROSTER_TEAMS, SALES_TEAM_SUFFIX, type TeamMerge, mergeStartsAt } from '@/server/domain/employees/roles'
 import type { Period } from '@/server/domain/period/period'
 import { type DealProductBrand, PRODUCT_BRAND_PATTERNS } from '@/server/domain/products/productBrand'
 import {
@@ -84,6 +84,18 @@ function mergedKeySql(column: string): string {
 /** «Shohjaxon» → the SQL literal 'shohjaxon(rop)', the key `mergedKeySql` compares to. */
 function mergedSourceLiteral(team: string): string {
   return `'${`${team}${SALES_TEAM_SUFFIX}`.toLowerCase().replaceAll(' ', '').replaceAll("'", "''")}'`
+}
+
+/**
+ * «The row is on or after the merge»: `asOf` (a UTC \`timestamp\` or a
+ * Tashkent \`date\`) against the merge's first instant as a UTC timestamp —
+ * a date column compares as its midnight, so «2026-11-04» is in and
+ * «2026-11-03» is out either way. Undefined `asOf`: now, which is after it.
+ */
+function mergeOnSql(merge: TeamMerge, asOf: string | undefined): string {
+  if (asOf === undefined) return 'true'
+  const at = mergeStartsAt(merge).toISOString().slice(0, 19).replace('T', ' ')
+  return `(${asOf}) >= TIMESTAMP '${at}'`
 }
 
 /**
@@ -1440,7 +1452,8 @@ export class InsightsRepository {
              operator, the COALESCE lands on the holder exactly as it did
              before, and Logistika's classified CTE resolves it the same way. */
           d."operatorTeamSource" AS team_source,
-          COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id,`
+          COALESCE(d."operatorEmployeeId", d."employeeId") AS employee_id,
+          d."createdAtSource" AS owner_at,`
               : ''
           }${
             brand !== null
@@ -1489,7 +1502,9 @@ export class InsightsRepository {
         SELECT
           p.customer_id,
           min(p.team_source) AS team_source,
-          min(p.employee_id) AS employee_id
+          min(p.employee_id) AS employee_id,
+          -- When the customer was brought in: a merged team is the one it joined only from its day on.
+          min(p.owner_at) AS owner_at
         FROM purchases_all p
         WHERE p.months_since = 0
         GROUP BY p.customer_id
@@ -1498,7 +1513,7 @@ export class InsightsRepository {
         SELECT
           o.customer_id,
           COALESCE(
-            ${InsightsRepository.teamSql('o.team_source', 'o.employee_id', 'dep."name"')},
+            ${InsightsRepository.teamSql('o.team_source', 'o.employee_id', 'dep."name"', 'o.owner_at')},
             '${InsightsRepository.NO_ROP}'
           ) AS rop
         FROM first_owner o
@@ -3471,7 +3486,7 @@ export class InsightsRepository {
            ds."name" AS stage_name,
            d."operatorNameSource" AS seller_source,
            c.rop,
-           ${InsightsRepository.ropNameSql('d."operatorTeamSource"')} AS rop_source,
+           ${InsightsRepository.ropNameSql('d."operatorTeamSource"', 'd."createdAtSource"')} AS rop_source,
            d."region" AS region${extra}
       FROM scoped c
       JOIN "deal" d ON d."id" = c.deal_id
@@ -3688,7 +3703,7 @@ export class InsightsRepository {
    * Регистрация and Операцион, the two back-office ones, leaked onto 25
    * orders and into the ROP filter list. NULL is the honest answer for them.
    */
-  static ropNameSql(column: string): string {
+  static ropNameSql(column: string, asOf?: string | null): string {
     /*
       The strip is case-INSENSITIVE, like the ILIKE guard beside it.
 
@@ -3712,15 +3727,25 @@ export class InsightsRepository {
       every other check in that file reads the source and would have passed
       either way.
 
-      A MERGED TEAM READS AS THE ONE IT JOINED (`MERGED_TEAMS`, the owner
-      2026-11-04: Shohjaxon is Azizbek), asked first, on the raw name with
+      A MERGED TEAM READS AS THE ONE IT JOINED FROM ITS DAY ON
+      (`MERGED_TEAMS`, the owner 2026-11-04: Shohjaxon is Azizbek from that
+      day, his older results stay his). `asOf` is the SQL moment or Tashkent
+      day the name is read for — a deal's sale, a lead's hand-out day, a
+      call's start; omitted, today (merged); null, the unit's own name
+      whatever the day (heads, ancestors). Asked first, on the raw name with
       its spaces dropped and case folded — a plain string compare, not one
       more regexp per row.
     */
-    const merged = Object.entries(MERGED_TEAMS)
-      .map(([from, to]) => `
-          WHEN ${mergedKeySql(column)} = ${mergedSourceLiteral(from)} THEN '${to.replaceAll("'", "''")}'`)
-      .join('')
+    const merged =
+      asOf === null
+        ? ''
+        : Object.entries(MERGED_TEAMS)
+            .map(([from, merge]) => {
+              const on = mergeOnSql(merge, asOf)
+              return `
+          WHEN ${mergedKeySql(column)} = ${mergedSourceLiteral(from)}${on === 'true' ? '' : ` AND ${on}`} THEN '${merge.into.replaceAll("'", "''")}'`
+            })
+            .join('')
     return `CASE${merged}
           WHEN ${column} ILIKE '%(ROP)%'
             THEN NULLIF(btrim(regexp_replace(${column}, '\\(ROP\\)', '', 'gi')), '')
@@ -3729,15 +3754,30 @@ export class InsightsRepository {
   }
 
   /**
-   * Whether a department name is a team the owner merged into another
-   * (`MERGED_TEAMS`) — true for «Shohjaxon(ROP)», false on NULL. Its unit's
-   * head is a member of the team it joined, not a second ROP of it: the head
-   * lists and rosters put such a unit last or leave its head out.
+   * Whether a department name is a team the owner had MERGED into another by
+   * `asOf` (`MERGED_TEAMS`; omitted, today) — true for «Shohjaxon(ROP)» from
+   * 2026-11-04, false on NULL. Once merged, its unit's head is a member of
+   * the team it joined, not a second ROP of it (the ROP otchet roster).
    */
-  static mergedTeamSql(column: string): string {
-    const names = Object.keys(MERGED_TEAMS).map(mergedSourceLiteral)
-    if (names.length === 0) return 'false'
-    return `COALESCE(${mergedKeySql(column)} IN (${names.join(', ')}), false)`
+  static mergedOnSql(column: string, asOf?: string): string {
+    const arms = Object.entries(MERGED_TEAMS).map(([from, merge]) => {
+      const on = mergeOnSql(merge, asOf)
+      return `(${mergedKeySql(column)} = ${mergedSourceLiteral(from)}${on === 'true' ? '' : ` AND ${on}`})`
+    })
+    return arms.length === 0 ? 'false' : `COALESCE(${arms.join(' OR ')}, false)`
+  }
+
+  /**
+   * A team NAME already stripped (`ropNameSql(…, null)` — a person's unit,
+   * read once per person) folded for the row's moment `asOf`: «Shohjaxon» is
+   * «Azizbek» from the merge's day (`MERGED_TEAMS`). For a reader that names
+   * the person once and the row's day later — «Безквал»'s people.
+   */
+  static mergeFoldSql(name: string, asOf: string): string {
+    const arms = Object.entries(MERGED_TEAMS).map(
+      ([from, merge]) => `WHEN ${name} = '${from.replaceAll("'", "''")}' AND ${mergeOnSql(merge, asOf)} THEN '${merge.into.replaceAll("'", "''")}'`,
+    )
+    return arms.length === 0 ? name : `CASE ${arms.join(' ')} ELSE ${name} END`
   }
 
   /**
@@ -3820,9 +3860,10 @@ export class InsightsRepository {
    * The roster is an uncorrelated IN-subquery: Postgres hashes it once per
    * statement, not per row.
    */
-  static teamSql(snapshot: string, operatorId: string, departmentName: string): string {
-    const snap = InsightsRepository.ropNameSql(snapshot)
-    const dept = InsightsRepository.ropNameSql(departmentName)
+  static teamSql(snapshot: string, operatorId: string, departmentName: string, asOf: string): string {
+    // `asOf`: the row's moment — a merged team is the one it joined only from its day on (`MERGED_TEAMS`).
+    const snap = InsightsRepository.ropNameSql(snapshot, asOf)
+    const dept = InsightsRepository.ropNameSql(departmentName, asOf)
     const pinned = ROSTER_TEAMS.flatMap((team) => team.labels)
       .map((label) => `'${label}'`)
       .join(', ')
@@ -3852,6 +3893,7 @@ export class InsightsRepository {
       `(SELECT tdep."name"
              FROM "employee" te JOIN "department" tdep ON tdep."id" = te."departmentId"
             WHERE te."id" = COALESCE(${alias}."operatorEmployeeId", ${alias}."employeeId"))`,
+      `${alias}."createdAtSource"`,
     )
   }
 
@@ -4383,7 +4425,7 @@ export class InsightsRepository {
 
           The expression is ropNameSql, the one home of the (ROP) strip.
         */
-        ${InsightsRepository.teamSql('d."operatorTeamSource"', 'e."id"', 'dep."name"')} AS rop,
+        ${InsightsRepository.teamSql('d."operatorTeamSource"', 'e."id"', 'dep."name"', 'd."createdAtSource"')} AS rop,
         /*
           Shipped without anyone reaching the customer.
 
@@ -5427,9 +5469,9 @@ export class InsightsRepository {
    * Who heads each ROP team, keyed by the same label the confirmation
    * cohort prints (`ropNameSql` over the unit's name), so payroll can name the person
    * the team's 2% is paid to. A label several active units share lists every
-   * distinct head, comma-joined, rather than picking one of them — but a
-   * merged unit's head (`mergedTeamSql`, «Shohjaxon(ROP)») is a member of the
-   * team it joined, not one of its heads.
+   * distinct head, comma-joined, rather than picking one of them. Units by
+   * their own names (`ropNameSql(…, null)`): «Shohjaxon»'s older sales keep
+   * his unit's head, Azizbek's label keeps Azizbek.
    */
   async ropHeadNames(): Promise<Map<string, string>> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string; heads: string }[]>(InsightsRepository.ropHeadNamesSql())
@@ -5438,12 +5480,13 @@ export class InsightsRepository {
 
   /** `ropHeadNames`' statement. Exported for its test. */
   static ropHeadNamesSql(): string {
-    const rop = InsightsRepository.ropNameSql('d."name"')
+    // Each unit by its own name: a payroll row of a merged team's older sales still names its own head.
+    const rop = InsightsRepository.ropNameSql('d."name"', null)
     return `
       SELECT ${rop} AS rop, string_agg(DISTINCT e."fullName", ', ' ORDER BY e."fullName") AS heads
         FROM "department" d
         JOIN "employee" e ON e."id" = d."headId" AND e."isActive"
-       WHERE d."isActive" AND ${rop} IS NOT NULL AND NOT ${InsightsRepository.mergedTeamSql('d."name"')}
+       WHERE d."isActive" AND ${rop} IS NOT NULL
        GROUP BY 1
     `
   }
@@ -5469,7 +5512,7 @@ export class InsightsRepository {
    * one label list their chains the same way on every read.
    */
   static ropAncestorsSql(): string {
-    const rop = InsightsRepository.ropNameSql('d."name"')
+    const rop = InsightsRepository.ropNameSql('d."name"', null)
     return `
       WITH RECURSIVE up AS (
         SELECT ${rop} AS rop, d."isActive" AS active, d."id" AS start_id, d."parentId" AS node_id, 1 AS depth

@@ -885,9 +885,11 @@ describe('the queue names the team the deal was sold under', () => {
     expect(rop).toMatch(/COALESCE\(\s*CASE WHEN CASE\s+WHEN lower\(replace\(d\."operatorTeamSource"/)
   })
 
-  it('reads a merged team as the one it joined, before the strip (2026-11-04)', () => {
-    // «Shohjaxon(ROP)» is «Azizbek» on every screen (`MERGED_TEAMS`).
-    const merged = rop.indexOf(`WHEN lower(replace(d."operatorTeamSource", ' ', '')) = 'shohjaxon(rop)' THEN 'Azizbek'`)
+  it('reads a merged team as the one it joined for a deal sold from its day on, before the strip (2026-11-04)', () => {
+    // «Shohjaxon(ROP)» is «Azizbek» from 2026-11-04 Tashkent (`MERGED_TEAMS`); an older sale stays his.
+    const merged = rop.indexOf(
+      `WHEN lower(replace(d."operatorTeamSource", ' ', '')) = 'shohjaxon(rop)' AND (d."createdAtSource") >= TIMESTAMP '2026-11-03 19:00:00' THEN 'Azizbek'`,
+    )
     expect(merged).toBeGreaterThan(-1)
     expect(merged).toBeLessThan(rop.indexOf(`WHEN d."operatorTeamSource" ILIKE '%(ROP)%'`))
   })

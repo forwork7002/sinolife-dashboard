@@ -19,8 +19,9 @@ const { InsightsRepository } = await import('@/server/repositories/insightsRepos
 const SQL = InsightsRepository.ropAncestorsSql()
 
 describe('ropAncestorsSql', () => {
-  it('labels each team as the queue does — «(ROP)» stripped by ropNameSql', () => {
-    expect(SQL).toContain(InsightsRepository.ropNameSql('d."name"'))
+  it('labels each team as the queue does — «(ROP)» stripped by ropNameSql, each unit by its own name', () => {
+    // Its own name (2026-11-04): an older payroll row of a merged team («Shohjaxon») still finds its branch.
+    expect(SQL).toContain(InsightsRepository.ropNameSql('d."name"', null))
     // The built string carries the escaped parentheses, not a bare capture group.
     expect(SQL).toContain(String.raw`'\(ROP\)'`)
   })

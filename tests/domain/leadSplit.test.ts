@@ -119,47 +119,49 @@ describe('buildLeadSplit — безквал', () => {
   })
 })
 
-describe('Shohjaxon is Azizbek (the owner, 2026-11-04)', () => {
-  it('is off the client\'s list, and his leads are Azizbek\'s', () => {
+describe('Shohjaxon joined Azizbek on 2026-11-04 (the owner)', () => {
+  const saved = [
+    { rop: 'Sevinch', shareBp: 6000 },
+    { rop: 'Azizbek', shareBp: 3000 },
+    { rop: 'Shohjaxon', shareBp: 1000 },
+  ]
+
+  it('is off the client\'s list; an older day still shows his own leads', () => {
     expect(SPLIT_ROPS).not.toContain('Shohjaxon')
+    // The rows arrive named by their own day (`ropNameSql`): «Shohjaxon» is a day before the merge.
     const dto = buildLeadSplit({
       day,
       rows: [
         { day, rop: 'Azizbek', leads: 20, duplicates: 0 },
         { day, rop: 'Shohjaxon', leads: 5, duplicates: 0 },
       ],
-      bezkval: [{ day, rop: 'Shohjaxon', leads: 7 }],
+      bezkval: [],
       split: null,
       previous: null,
       canEdit: false,
     })
-    expect(dto.rops.map((r) => r.rop)).not.toContain('Shohjaxon')
-    expect(dto.rops.find((r) => r.rop === 'Azizbek')!.received).toBe(25)
-    expect(dto.bezkval.rops.map((r) => r.rop)).not.toContain('Shohjaxon')
-    expect(dto.bezkval.rops.find((r) => r.rop === 'Azizbek')!.week.at(-1)).toBe(7)
+    expect(dto.rops.find((r) => r.rop === 'Azizbek')!.received).toBe(20)
+    expect(dto.rops.find((r) => r.rop === 'Shohjaxon')!.received).toBe(5)
   })
 
-  it('adds a split saved before the merge into Azizbek\'s share, so it still sums to 100 % and names no team twice', () => {
-    const saved = [
-      { rop: 'Sevinch', shareBp: 6000 },
-      { rop: 'Azizbek', shareBp: 3000 },
-      { rop: 'Shohjaxon', shareBp: 1000 },
-    ]
-    expect(foldShares(saved)).toEqual([
+  it('keeps a split before the merge as saved, and adds his share into Azizbek\'s from the merge\'s day', () => {
+    expect(foldShares(saved, '2026-11-03')).toEqual(saved)
+    expect(foldShares(saved, '2026-11-04')).toEqual([
       { rop: 'Sevinch', shareBp: 6000 },
       { rop: 'Azizbek', shareBp: 4000 },
     ])
+  })
+
+  it('copies an older split onto a merged day under that day\'s names, so the copy saves', () => {
     const dto = buildLeadSplit({
-      day,
-      rows: [{ day, rop: 'Azizbek', leads: 10, duplicates: 0 }],
+      day: '2026-11-05',
+      rows: [{ day: '2026-11-05', rop: 'Azizbek', leads: 10, duplicates: 0 }],
       bezkval: [],
-      split: { rows: saved, updatedAt: '2026-09-30T05:00:00.000Z' },
-      previous: { day: '2026-09-29', rows: saved },
+      split: null,
+      previous: { day: '2026-11-03', rows: saved },
       canEdit: true,
     })
-    expect(dto.rops.find((r) => r.rop === 'Azizbek')!.shareBp).toBe(4000)
-    expect(dto.previous!.rows).toEqual(foldShares(saved))
-    // «Kechagi taqsimotni olish» copies it as is — and that copy saves.
+    expect(dto.previous!.rows).toEqual(foldShares(saved, '2026-11-05'))
     expect(splitProblem(dto.previous!.rows)).toBeNull()
   })
 })

@@ -179,7 +179,7 @@ export class SellerBoardRepository {
     return rows.map((r) => ({
       employeeId: r.employee_id,
       fullName: r.full_name,
-      rop: ropOf(r.department_name),
+      rop: ropOf(r.department_name, period.end),
       departmentName: r.department_name,
       orders: int(r.orders),
       /*
@@ -242,17 +242,19 @@ export class SellerBoardRepository {
 
 /**
  * "Sevinch(ROP)" → "Sevinch"; anything else → null. A merged team reads as
- * the one it joined ("Shohjaxon(ROP)" → "Azizbek", `MERGED_TEAMS`).
+ * the one it joined when the window reaches its day ("Shohjaxon(ROP)" →
+ * "Azizbek" from 2026-11-04, `MERGED_TEAMS`): the seller's team now.
  *
  * The same rule the confirmation queue uses, kept identical on purpose: a
  * seller's team must read the same word on both screens or the two boards
  * cannot be compared by the person who owns the team.
  */
-function ropOf(departmentName: string | null): string | null {
+function ropOf(departmentName: string | null, windowEnd: Date): string | null {
   if (!departmentName) return null
   if (!/\(ROP\)/i.test(departmentName)) return null
   const name = departmentName.replace(/\(ROP\)/i, '').trim()
-  return name === '' ? null : mergedTeam(name)
+  // The window's end is exclusive: its last moment decides.
+  return name === '' ? null : mergedTeam(name, new Date(windowEnd.getTime() - 1))
 }
 
 function int(value: bigint | number | null | undefined): number {
