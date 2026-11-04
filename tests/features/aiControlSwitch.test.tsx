@@ -191,7 +191,7 @@ describe('switchState / agentEnabled', () => {
   })
 
   it('is grey, not red, out of hours with no fresh report', () => {
-    const night = new Date(at('20:00'))
+    const night = new Date(at('22:30'))
     expect(switchState({ enabled: true, version: 5 }, status({ enabled: true }), night, 90)).toMatchObject({ kind: 'silent', tone: 'neutral' })
   })
 })

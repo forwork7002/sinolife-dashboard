@@ -66,7 +66,7 @@ Per-screen traps worth knowing before you touch one:
   `canControlAi` gates the page (`requireAiControl`, others are redirected to the report), the v1 API
   `/leads/ai-registrator/control` (GET + POST, 403 for any other account, an ADMIN included) and the
   «Boshqaruv →» link. **THE AGENT PULLS** (Eskiz's ports are closed): `GET /api/ai-registrator/config` →
-  the bare contract object `{version, enabled, sellers, maxCalls, maxNew, maxRetry, saleHandoff, updatedAt,
+  the bare contract object `{version, enabled, sellers, maxCalls, maxNew, maxRetry, saleHandoff, hours?, updatedAt,
   updatedBy}` (no envelope; 404 before a save), read every 20 s; it reports every 30 s to
   `POST /api/ai-registrator/status` (only the last kept, `ai_registrator_status`, 64 KB cap; an unknown
   line/seller state is stored as given). Both bearer `AI_REGISTRATOR_INGEST_TOKEN`, outside `/api/v1`.
@@ -102,6 +102,32 @@ Per-screen traps worth knowing before you touch one:
   qoʻllamaydi»** (an older agent ignores it and keeps dialling — never shown as stopped); no fresh report →
   the «AI javob bermayapti» rule. «Toʻxtatish» asks first in the house modal (not `window.confirm`);
   «Yoqish» does not. No config yet → the button is disabled, «Avval sozlamani saqlang».
+  **«Ish vaqti»** (2026-11-04, the owner: «hohlagan vaqtim ish vaqtini oʻzgartiray … hohlagan vaqtim
+  hohlaganimni oʻzgartira olishim kerak»; «soat 22:00gacha qilamiz endilikda»; agent ai_registrator d0abf97):
+  four NULLABLE columns `hoursStart / hoursEnd / lunchStart / lunchEnd` («HH:MM», migration `20261104190000`,
+  ADD COLUMN only). Both day ends null = not set → `hours` is LEFT OUT of the config and the agent keeps its
+  .env hours; set → `hours: {start, end, lunchStart, lunchEnd}`, the lunch both null for «tushliksiz». The
+  agent sets its calling window, the sellers' hours and the lunch from it within 20 s (no dialling, no
+  put-through at lunch); its `scripts/ai_schedule.py` reads the config every minute, starts the app at
+  `start` and stops it after `end` once no call is on (a stopped `enabled: false` still does not dial). **The
+  rules are the agent's `check_hours` and it refuses the WHOLE config over one** (sellers and limits not
+  applied either): «HH:MM» 00:00–23:59, start < end (one day), lunch both or neither, start ≤ lunchStart <
+  lunchEnd ≤ end — ONE copy in `src/lib/aiWorkHours.ts` (`workHoursProblems`), imported by the domain
+  (`controlProblems`) and the page; nothing breaking one is saved. Own body like the stop: `{baseVersion,
+  hours}` (`controlHoursSchema`, strict; an empty lunch end reads as null) → `setHours`: only `hours`
+  changes; **«Saqlash» and the stop never carry it** (a whole save sent with `hours` has it stripped). Audit
+  «Ish vaqti: 09:00–22:00 → 08:00–23:00», «Tushlik: 12:30–13:30 → yoʻq» (only the half that changed; the
+  first set reads without an arrow); `hoursSet` names who and when. The form (`WorkHoursCard`, under the stop
+  card) starts from 09:00–22:00, lunch 12:30–13:30 while nothing is saved; hour + minute `Select`s (minutes
+  in fives), never `<input type="time">` (the browser's locale prints «09:00 PM» — the `DateInput` trap).
+  Status may carry `hours: {start, end, lunchStart, lunchEnd, sellersStart, sellersEnd}` (each `.catch(null)`,
+  the object `.catch(undefined)` — never a refusal); `hoursState` shows saved vs applied (applied / qoʻllanmoqda…
+  / AI rad etdi / «AI bu sozlamani hali qoʻllamaydi» for an agent that sends none / AI serverining oʻz vaqti).
+  **The page's day is no longer fixed** (it was 09:00–18:30 in `aiLiveLogic.ts`, and after 18:30 the header
+  said «Ish vaqti emas» over an AI working till 22:00): `hoursInForce` = the status's hours, else the saved
+  ones, else 09:00–22:00 / 12:30–13:30; `workPhase` / `nowRow` and the stop texts («08:00 da ham oʻzi
+  yonmaydi») read it, and with no lunch there is no «Tushlik» phase. **Never save other hours on prod to
+  test** — the agent applies them to real clients' calls within 20 s (the owner's rule).
 - **AI registrator — the design canvas** (2026-11-02, the owner: «dashboardimiz dizayni shunga boʻladi … funksiyalarini
   hammasini ishlaydigan qilib ber»; artifact «AI registrator — jonli monitoring variantlari», Hisobot + Boshqaruv).
   **Hisobot** = «Hozir · jonli» (`AiNowPanel`: one `.ai-lane[data-phase]` per AI line — client · wire · AI · wire ·
@@ -112,7 +138,7 @@ Per-screen traps worth knowing before you touch one:
   **Boshqaruv** = status card («Dilnoza ishlayapti», vN, ack) · 1 lines (the same `AiNowPanel`, read-only) · 2 sellers
   (switch, «Oʻchirib qoʻyilganlar · N», no order and no ↑↓ — the agent picks by its own `limits.transferOrder`, shown
   as words) · 3 limits with the slot bar · 4 refer/bridge · history · a sticky save bar; under the status card
-  «Toʻxtatish» / «Yoqish» since 2026-11-04 (above). **NOT DRAWN, the agent has no
+  «Toʻxtatish» / «Yoqish» and «Ish vaqti» (its own save) since 2026-11-04 (above). **NOT DRAWN, the agent has no
   such control** (ai_registrator ca9c52a): adding/removing an AI line, seller order, the client's phone in a
   lane, a region in a lane. The ca9c52a fields are ALL OPTIONAL, each falls back alone (`.catch`): status
   `live.lines[].started` (the lane timer), `live.events[]`, `sellers[].word/since` (the chip timer; «AI mijozi bilan»

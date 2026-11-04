@@ -1,3 +1,4 @@
+import { type WorkHours, lunchText, sameHours, workHoursProblems, workText } from '@/lib/aiWorkHours'
 import {
   AI_OWN_LINES,
   MAX_CALLS_LIMIT,
@@ -13,7 +14,13 @@ import {
 } from '@/server/domain/aiRegistrator/control'
 import { floorNumberOf, indexByFloorNumber } from '@/server/domain/employees/floorNumber'
 import { ApiError } from '@/server/http/errors'
-import { type AiStatusPush, type ControlEnabled, type ControlSave, aiStatusSchema } from '@/server/integrations/aiRegistrator/control'
+import {
+  type AiStatusPush,
+  type ControlEnabled,
+  type ControlHours,
+  type ControlSave,
+  aiStatusSchema,
+} from '@/server/integrations/aiRegistrator/control'
 import {
   type AiRegistratorControlRepository,
   type StoredConfig,
@@ -31,6 +38,11 @@ export interface AgentConfigDto {
   readonly maxNew: number
   readonly maxRetry: number
   readonly saleHandoff: string
+  /**
+   * «Ish vaqti» — present only once saved here. Left out, the agent keeps its
+   * own .env hours (its `cfg.get("hours")` reads a missing key as «not set»).
+   */
+  readonly hours?: WorkHours
   readonly updatedAt: string
   readonly updatedBy: string
 }
@@ -43,7 +55,8 @@ export interface AiStatusDto {
 }
 
 export interface AiControlDto {
-  readonly config: (AgentConfigDto & { readonly parked: readonly string[] }) | null
+  /** `hours` always present here — null while not set (the agent's own hours run). */
+  readonly config: (Omit<AgentConfigDto, 'hours'> & { readonly parked: readonly string[]; readonly hours: WorkHours | null }) | null
   readonly status: AiStatusDto | null
   /** Every extension the panel shows, to the employee whose name carries it («122» → «122 Dilnoza …»). */
   readonly names: Readonly<Record<string, string>>
@@ -64,6 +77,8 @@ export interface AiControlDto {
    * umida, 04.11 15:30». Null when the history shown has none (never switched).
    */
   readonly switched: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
+  /** The last save that changed «Ish vaqti» — who and when. Null when the history shown has none. */
+  readonly hoursSet: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
 }
 
 /** The 5 s read of «Boshqaruv» — the agent's last report and nothing else. Mirrored in `AiControlPage.tsx`. */
@@ -96,6 +111,20 @@ function enabledLine(before: unknown, after: unknown): string {
   return after === false ? 'AI: ishlayapti → toʻxtatildi' : 'AI: toʻxtatildi → yoqildi'
 }
 
+/**
+ * «Ish vaqti: 09:00–22:00 → 08:00–23:00», «Tushlik: 12:30–13:30 → yoʻq» — only
+ * the half that changed. The first hours ever set read without an arrow, as
+ * every field of a first save does: what ran before was the agent's own.
+ */
+function hoursLines(before: WorkHours | null, after: WorkHours | null): string[] {
+  if (after === null) return before === null ? [] : ['Ish vaqti: AI serverining oʻz vaqtiga qaytdi']
+  if (before === null) return [`Ish vaqti: ${workText(after)}`, `Tushlik: ${lunchText(after)}`]
+  const out: string[] = []
+  if (workText(before) !== workText(after)) out.push(`Ish vaqti: ${workText(before)} → ${workText(after)}`)
+  if (lunchText(before) !== lunchText(after)) out.push(`Tushlik: ${lunchText(before)} → ${lunchText(after)}`)
+  return out
+}
+
 const FIELD_LABEL: Readonly<Record<string, string>> = {
   maxCalls: 'Bir vaqtda',
   maxNew: 'Yangi lidlarga',
@@ -112,6 +141,7 @@ function agentConfig(config: StoredConfig): AgentConfigDto {
     maxNew: config.maxNew,
     maxRetry: config.maxRetry,
     saleHandoff: config.saleHandoff,
+    ...(config.hours ? { hours: config.hours } : {}),
     updatedAt: config.updatedAt.toISOString(),
     updatedBy: config.updatedBy,
   }
@@ -128,6 +158,7 @@ export function changeLines(changes: readonly ControlChange[]): string[] {
       return [parts.length > 0 ? `${title}: ${parts.join(', ')}` : `${title}: tartib oʻzgardi`]
     }
     if (c.field === 'enabled') return [enabledLine(c.before, c.after)]
+    if (c.field === 'hours') return hoursLines((c.before as WorkHours | null) ?? null, (c.after as WorkHours | null) ?? null)
     const label = FIELD_LABEL[c.field] ?? c.field
     return [c.before === null ? `${label}: ${String(c.after)}` : `${label}: ${String(c.before)} → ${String(c.after)}`]
   })
@@ -178,8 +209,9 @@ export class AiRegistratorControlService {
     }
 
     const switched = changes.find((c) => c.changes.some((f) => f.field === 'enabled'))
+    const hoursSet = changes.find((c) => c.changes.some((f) => f.field === 'hours'))
     return {
-      config: config ? { ...agentConfig(config), parked: config.parked } : null,
+      config: config ? { ...agentConfig(config), parked: config.parked, hours: config.hours } : null,
       status: statusDto(status, now),
       names,
       rules: { aiLines: AI_OWN_LINES, maxCalls: MAX_CALLS_LIMIT, maxSellers: MAX_SELLERS, staleAfterSec: STATUS_STALE_MS / 1000 },
@@ -190,6 +222,7 @@ export class AiRegistratorControlService {
         lines: changeLines(c.changes),
       })),
       switched: switched ? { version: switched.version, savedAt: switched.savedAt.toISOString(), savedBy: switched.savedBy } : null,
+      hoursSet: hoursSet ? { version: hoursSet.version, savedAt: hoursSet.savedAt.toISOString(), savedBy: hoursSet.savedBy } : null,
     }
   }
 
@@ -212,6 +245,8 @@ export class AiRegistratorControlService {
       // whose seller list is changed stays stopped. The row's version lock
       // makes this read safe — a stop saved after it fails the save as stale.
       enabled: current?.enabled ?? true,
+      // Nor does it carry the hours: they stay as stored («Ish vaqti» saves them alone).
+      hours: current?.hours ?? null,
     }
     const raw = (list: readonly string[]) => list.map((s) => s.trim()).filter((s) => s !== '')
     const problems = controlProblems({ ...settings, sellers: raw(body.sellers), parked: raw(body.parked) })
@@ -246,6 +281,33 @@ export class AiRegistratorControlService {
     }
 
     return this.write(settings, body.baseVersion, by)
+  }
+
+  /**
+   * «Ish vaqti → Saqlash»: the next version with ONLY `hours` changed. The
+   * agent's rules first, every problem named — it would refuse the whole
+   * config over one, the sellers and limits with it. Refused before a first
+   * save, when nothing changed, and over a newer version, like any save.
+   */
+  async setHours(body: ControlHours, by: { readonly label: string; readonly userId: string }): Promise<AgentConfigDto> {
+    const current = await this.repository.config()
+    if (!current) throw ApiError.validation('Avval sozlamani saqlang — AI ish vaqtini sozlama bilan oʻqiydi.')
+
+    const hours: WorkHours = { start: body.hours.start, end: body.hours.end, lunchStart: body.hours.lunchStart, lunchEnd: body.hours.lunchEnd }
+    const problems = workHoursProblems(hours)
+    if (problems.length > 0) {
+      throw ApiError.validation(
+        problems.join(' '),
+        problems.map((message) => ({ path: 'hours', message })),
+      )
+    }
+
+    const { version: _version, updatedAt: _at, updatedBy: _by, ...stored } = current
+    if (current.version === body.baseVersion && sameHours(current.hours, hours)) {
+      throw ApiError.validation('Ish vaqti oʻzgarmadi — saqlash shart emas.')
+    }
+
+    return this.write({ ...stored, hours }, body.baseVersion, by)
   }
 
   private async write(

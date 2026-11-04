@@ -28,6 +28,7 @@ import {
 } from '@/features/aiRegistrator/aiLiveLogic'
 import { bitrixDealUrl } from '@/features/target/targetApi'
 import { PRODUCT_TONE } from '@/features/target/targetTheme'
+import type { WorkHours } from '@/lib/aiWorkHours'
 import { formatClock, formatNumber } from '@/lib/format'
 
 /**
@@ -163,8 +164,11 @@ export function useLineProducts(report: AiReport | null): ReadonlyMap<string, Pr
 
 export interface NowPanelProps {
   readonly status: AiStatus | null
-  /** The saved form's limits, when the reader may see them — «Saqlangan: 4/4/0» under the header when the agent applies other ones. */
-  readonly saved: { readonly maxCalls: number; readonly maxNew: number; readonly maxRetry: number } | null
+  /**
+   * The saved form's limits, when the reader may see them — «Saqlangan: 4/4/0» under the header when the agent applies other ones.
+   * Its `hours` («Ish vaqti») date the day when the agent's report names none.
+   */
+  readonly saved: { readonly maxCalls: number; readonly maxNew: number; readonly maxRetry: number; readonly hours?: WorkHours | null } | null
   readonly staleAfterSec: number
   readonly now: Date
   readonly updatedAt: string | null
@@ -177,7 +181,7 @@ export function AiNowPanel(props: NowPanelProps) {
   const report = status?.report ?? null
   const fresh = isFresh(status, now, staleAfterSec)
   const products = useLineProducts(report)
-  const head = nowRow(status, now, staleAfterSec)
+  const head = nowRow(status, now, staleAfterSec, saved?.hours)
   const rows = report ? lineRows(report, nameOf, products) : []
   const lanes = rows.map(laneOf)
   const count = report && fresh ? lineCount(report) : null

@@ -8,6 +8,7 @@ import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
 import { Callout } from '@/components/ui/Callout'
 import { Card } from '@/components/ui/Card'
+import { Select } from '@/components/ui/Select'
 import { StatusChip } from '@/components/ui/Stat'
 import { AiNowPanel, ProductPill, StatePill, TONE_COLOR, inked } from '@/features/aiRegistrator/AiNowPanel'
 import { useServerNow } from '@/features/aiRegistrator/aiClock'
@@ -18,6 +19,8 @@ import {
   appliedAck,
   effectiveCalls,
   elapsedText,
+  hoursInForce,
+  hoursState,
   isFresh,
   limitsProblem,
   nowRow,
@@ -27,6 +30,7 @@ import {
   transferOrderText,
 } from '@/features/aiRegistrator/aiLiveLogic'
 import { PageShell } from '@/features/shared/PageShell'
+import { DEFAULT_WORK_HOURS, type WorkHours, hasLunch, sameHours, workHoursProblems } from '@/lib/aiWorkHours'
 import { ApiClientError, apiGet, apiWrite } from '@/lib/api'
 import { formatClock, formatDateTime, formatNumber } from '@/lib/format'
 
@@ -42,6 +46,8 @@ interface AiControlDto {
     readonly maxNew: number
     readonly maxRetry: number
     readonly saleHandoff: string
+    /** «Ish vaqti» — null while not set here (the AI server's own hours run). */
+    readonly hours?: WorkHours | null
     readonly updatedAt: string
     readonly updatedBy: string
   } | null
@@ -61,6 +67,8 @@ interface AiControlDto {
   }[]
   /** The last save that stopped or started the AI — who and when. */
   readonly switched?: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
+  /** The last save that changed «Ish vaqti» — who and when. */
+  readonly hoursSet?: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
 }
 
 /* Mirrors `AiLiveDto` — the 5 s read, `?part=live`. */
@@ -114,7 +122,9 @@ const sameDraft = (a: Draft, b: Draft) =>
  * save bar that stays at the bottom of the screen while anything is unsaved.
  * Under the status card, «Toʻxtatish» / «Yoqish» (2026-11-04, the owner: «ai
  * boshqaruvda ai registratorni oʻchirib toʻxtatish funksiyasi ham boʻlsin») —
- * `AiSwitch`, its own small save, never part of «Saqlash».
+ * `AiSwitch`, its own small save, never part of «Saqlash». Under it «Ish vaqti»
+ * (2026-11-04, the owner: «hohlagan vaqtim ish vaqtini oʻzgartiray») —
+ * `WorkHoursCard`, its own save the same way.
  * NOT DRAWN, because the agent has no such control (ai_registrator ca9c52a):
  * adding or removing an AI line, the sellers' ORDER — the agent picks by
  * `limits.transferOrder` itself, shown as words only.
@@ -193,7 +203,7 @@ export function AiControlPage() {
   return (
     <PageShell
       title="Boshqaruv"
-      description="Dilnoza (AI registrator) kimlarga ulaydi, bir vaqtda nechta qoʻngʻiroq qiladi va sotuvni ATSga qanday topshiradi. Saqlangan sozlamani AI 20 soniya ichida oʻqiydi."
+      description="Dilnoza (AI registrator) qachon ishlaydi, kimlarga ulaydi, bir vaqtda nechta qoʻngʻiroq qiladi va sotuvni ATSga qanday topshiradi. Saqlangan sozlamani AI 20 soniya ichida oʻqiydi."
       accent="var(--series-1)"
       period={false}
       actions={
@@ -217,6 +227,7 @@ export function AiControlPage() {
         <div className="flex flex-col gap-5 pb-2">
           <StatusCard data={data} status={status} saved={saved} now={now} staleAfterSec={staleAfterSec} />
           <AiSwitch data={data} status={status} now={now} staleAfterSec={staleAfterSec} />
+          <WorkHoursCard data={data} status={status} now={now} staleAfterSec={staleAfterSec} />
           <Step n={1} title="AI liniyalari (SIP)" lead="Har liniya hozir nima qilyapti — AIning oʻz xabaridan. Liniya qoʻshish yoki oʻchirish AI serverining sozlamasida, bu yerda emas.">
             <AiNowPanel
               status={status}
@@ -299,7 +310,7 @@ function StatusCard({
   readonly staleAfterSec: number
 }) {
   const config = data.config!
-  const head = nowRow(status, now, staleAfterSec)
+  const head = nowRow(status, now, staleAfterSec, config.hours)
   const headColor = head.tone === 'neutral' ? 'var(--ink-muted)' : TONE_COLOR[head.tone]
 
   const applied = appliedAck(status, config.version)
@@ -343,8 +354,9 @@ function StatusCard({
   )
 }
 
-const STOP_QUESTION =
-  'AI registrator yangi lidlarga qoʻngʻiroq qilmaydi, hozirgi suhbatlar oxirigacha tugaydi. 09:00 da ham oʻzi yonmaydi — faqat «Yoqish» bilan. Toʻxtatilsinmi?'
+/** The stop's question — `start` is when the day begins («09:00»): the AI does not come back on by itself then. */
+const stopQuestion = (start: string) =>
+  `AI registrator yangi lidlarga qoʻngʻiroq qilmaydi, hozirgi suhbatlar oxirigacha tugaydi. ${start} da ham oʻzi yonmaydi — faqat «Yoqish» bilan. Toʻxtatilsinmi?`
 
 /**
  * «AI registrator · Ishlayapti — Toʻxtatish» / «Toʻxtatilgan — Yoqish». Its own
@@ -380,7 +392,8 @@ function AiSwitch({
   const error = write.error instanceof Error ? write.error.message : null
 
   const enabled = config ? config.enabled !== false : true
-  const state = config ? switchState({ enabled, version: config.version }, status, now, staleAfterSec) : null
+  const state = config ? switchState({ enabled, version: config.version, hours: config.hours }, status, now, staleAfterSec) : null
+  const start = hoursInForce(status?.report, config?.hours).start
   const who = !config
     ? null
     : data.switched
@@ -432,6 +445,7 @@ function AiSwitch({
       </Card>
       {asking && (
         <StopDialog
+          question={stopQuestion(start)}
           pending={write.isPending}
           error={error}
           note={state?.kind === 'old' ? 'Diqqat: AI serveri bu tugmani hali qoʻllamaydi — toʻxtatish u yangilangandan keyin ishlaydi.' : null}
@@ -452,12 +466,14 @@ function AiSwitch({
  * qilish» and stays inside, Escape and the scrim cancel, the page holds still.
  */
 function StopDialog({
+  question,
   pending,
   error,
   note,
   onConfirm,
   onCancel,
 }: {
+  readonly question: string
   readonly pending: boolean
   readonly error: string | null
   readonly note: string | null
@@ -512,7 +528,7 @@ function StopDialog({
             AI registratorni toʻxtatish
           </h2>
           <p id={textId} className="text-[14px] leading-6" style={{ color: 'var(--ink-secondary)' }}>
-            {STOP_QUESTION}
+            {question}
           </p>
           {note && (
             <p className="text-[13px]" style={{ color: inked('var(--status-warning)') }}>
@@ -536,6 +552,201 @@ function StopDialog({
       </div>
     </div>,
     document.body,
+  )
+}
+
+/** The form behind «Ish vaqti»: the lunch keeps its last values while «Tushliksiz» is ticked. */
+interface HoursForm {
+  readonly start: string
+  readonly end: string
+  readonly noLunch: boolean
+  readonly lunchStart: string
+  readonly lunchEnd: string
+}
+
+function hoursForm(hours: WorkHours | null): HoursForm {
+  const h = hours ?? DEFAULT_WORK_HOURS
+  return {
+    start: h.start,
+    end: h.end,
+    noLunch: !hasLunch(h),
+    lunchStart: h.lunchStart ?? DEFAULT_WORK_HOURS.lunchStart!,
+    lunchEnd: h.lunchEnd ?? DEFAULT_WORK_HOURS.lunchEnd!,
+  }
+}
+
+const hoursOfForm = (f: HoursForm): WorkHours => ({
+  start: f.start,
+  end: f.end,
+  lunchStart: f.noLunch ? null : f.lunchStart,
+  lunchEnd: f.noLunch ? null : f.lunchEnd,
+})
+
+const pad2 = (n: number) => String(n).padStart(2, '0')
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => pad2(h))
+const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => pad2(i * 5))
+
+/**
+ * «09 : 00» — an hour and a minute picked from lists, never typed and never
+ * drawn by the browser: a native time field prints the BROWSER's locale (an
+ * English Chrome writes «09:00 PM»), the trap `DateInput` documents for days.
+ * Minutes in fives; a value saved off that grid stays an option.
+ */
+function ClockPicker({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  readonly label: string
+  readonly value: string
+  readonly disabled?: boolean
+  readonly onChange: (value: string) => void
+}) {
+  const [hour = '00', minute = '00'] = value.split(':')
+  const minutes = MINUTE_OPTIONS.includes(minute) ? MINUTE_OPTIONS : [...MINUTE_OPTIONS, minute].sort()
+  return (
+    <div role="group" aria-label={label} className="flex flex-col gap-1">
+      <span className="text-[12.5px] font-semibold" style={{ color: disabled ? 'var(--ink-muted)' : 'var(--ink-secondary)' }}>
+        {label}
+      </span>
+      <span className="inline-flex items-center gap-1 tabular-nums">
+        <Select height="touch" aria-label={`${label} — soat`} value={hour} disabled={disabled} onChange={(e) => onChange(`${e.target.value}:${minute}`)}>
+          {HOUR_OPTIONS.map((h) => (
+            <option key={h} value={h}>
+              {h}
+            </option>
+          ))}
+        </Select>
+        <span aria-hidden className="font-bold" style={{ color: 'var(--ink-muted)' }}>
+          :
+        </span>
+        <Select height="touch" aria-label={`${label} — daqiqa`} value={minute} disabled={disabled} onChange={(e) => onChange(`${hour}:${e.target.value}`)}>
+          {minutes.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </Select>
+      </span>
+    </div>
+  )
+}
+
+/**
+ * «Ish vaqti» (2026-11-04, the owner: «hohlagan vaqtim … ish vaqtini
+ * oʻzgartiray»; «soat 22:00gacha qilamiz endilikda»): when the AI dials and
+ * puts callers through, and the sellers' lunch — or none. Its own write,
+ * `{ baseVersion, hours }`, like the stop: the next version with only the
+ * hours changed, so a seller draft is neither saved nor lost by it and
+ * «Saqlash» never takes the hours back. The agent's rules are checked here
+ * before the button is offered (`workHoursProblems`, the server's own copy),
+ * because the agent refuses the WHOLE config over hours that break one.
+ * Nothing saved yet: the form starts from 09:00–22:00, lunch 12:30–13:30, and
+ * the agent's own hours run until the first save.
+ */
+function WorkHoursCard({
+  data,
+  status,
+  now,
+  staleAfterSec,
+}: {
+  readonly data: AiControlDto
+  readonly status: AiStatus | null
+  readonly now: Date
+  readonly staleAfterSec: number
+}) {
+  const queryClient = useQueryClient()
+  const config = data.config!
+  const savedHours = config.hours ?? null
+  const base = hoursForm(savedHours)
+  const [form, setForm] = useState<HoursForm | null>(null)
+  const editing = form ?? base
+  const hours = hoursOfForm(editing)
+  const dirty = form !== null && !sameHours(hours, hoursOfForm(base))
+  const problems = workHoursProblems(hours)
+  const write = useMutation({
+    mutationFn: (next: WorkHours) => apiWrite<{ version: number }>('POST', '/leads/ai-registrator/control', { baseVersion: config.version, hours: next }),
+    onSuccess: () => {
+      setForm(null)
+      void queryClient.invalidateQueries({ queryKey: ['ai-registrator-control'] })
+    },
+  })
+  const error = write.error instanceof Error ? write.error.message : null
+  const change = (next: Partial<HoursForm>) => {
+    setForm({ ...editing, ...next })
+    write.reset()
+  }
+  const state = hoursState({ hours: savedHours, version: config.version }, status, now, staleAfterSec)
+  const who = data.hoursSet ? `Oʻzgartirdi: ${data.hoursSet.savedBy} · ${formatDateTime(data.hoursSet.savedAt)}` : null
+  // Before a first save the form's values are not the agent's yet — saving them as they stand is a change too.
+  const canSave = (dirty || savedHours === null) && problems.length === 0 && !write.isPending
+
+  return (
+    <section aria-label="Ish vaqti">
+      <Card className="flex flex-col gap-4 p-4 sm:p-5">
+        <div>
+          <p className="flex flex-wrap items-center gap-2 text-[15px] font-bold" style={{ color: 'var(--ink-primary)' }}>
+            Ish vaqti
+            <span aria-live="polite">
+              <StatusChip tone={state.tone}>{state.title}</StatusChip>
+            </span>
+          </p>
+          <p className="mt-1 max-w-3xl text-[13px] leading-5" style={{ color: 'var(--ink-secondary)' }}>
+            AI saqlangan vaqtni 20 soniya ichida qoʻllaydi: shu vaqtda teradi va sotuvchiga ulaydi, tushlikda termaydi va ulamaydi. Server har
+            daqiqada shu vaqtni oʻqib, boshlanishida AIni yoqadi, tugashida (suhbatlar tugagach) oʻchiradi.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+          <ClockPicker label="Ish boshlanishi" value={editing.start} onChange={(v) => change({ start: v })} />
+          <ClockPicker label="Ish tugashi" value={editing.end} onChange={(v) => change({ end: v })} />
+          <label className="inline-flex h-11 items-center gap-2 text-[13px] font-semibold sm:h-8" style={{ color: 'var(--ink-primary)' }}>
+            <input type="checkbox" className="focusable h-4 w-4" checked={editing.noLunch} onChange={(e) => change({ noLunch: e.target.checked })} />
+            Tushliksiz
+          </label>
+          <ClockPicker label="Tushlik boshlanishi" value={editing.lunchStart} disabled={editing.noLunch} onChange={(v) => change({ lunchStart: v })} />
+          <ClockPicker label="Tushlik tugashi" value={editing.lunchEnd} disabled={editing.noLunch} onChange={(v) => change({ lunchEnd: v })} />
+        </div>
+        {(state.detail || who) && (
+          <div className="flex flex-col gap-0.5">
+            {state.detail && (
+              <p className="text-[13px]" style={{ color: state.tone === 'critical' ? inked('var(--status-critical)') : 'var(--ink-secondary)' }}>
+                {state.detail}
+              </p>
+            )}
+            {who && (
+              <p className="text-xs tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+                {who}
+              </p>
+            )}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <span
+            className="mr-auto text-[13px] font-medium"
+            role={problems.length > 0 || error ? 'alert' : undefined}
+            style={{ color: problems.length > 0 || error ? 'var(--status-critical)' : dirty ? inked('var(--status-warning)') : 'var(--ink-muted)' }}
+          >
+            {error ?? (problems.length > 0 ? problems.join(' ') : dirty ? 'Ish vaqti saqlanmagan' : savedHours === null ? 'Hali saqlanmagan — AI serverining oʻz vaqti ishlayapti' : 'Oʻzgarish yoʻq')}
+          </span>
+          {dirty && (
+            <Button
+              variant="ghost"
+              disabled={write.isPending}
+              onClick={() => {
+                setForm(null)
+                write.reset()
+              }}
+            >
+              Bekor qilish
+            </Button>
+          )}
+          <Button variant="primary" disabled={!canSave} onClick={() => write.mutate(hours)}>
+            {write.isPending ? 'Saqlanmoqda…' : 'Ish vaqtini saqlash'}
+          </Button>
+        </div>
+      </Card>
+    </section>
   )
 }
 

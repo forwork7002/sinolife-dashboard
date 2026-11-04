@@ -35,13 +35,19 @@ export const GET = getHandler(ACCESS, z.object({ part: z.enum(['live']).optional
 /**
  * «Saqlash» — the next version, its audit row; the agent picks it up on its
  * next read. `{ baseVersion, enabled }` alone is «Toʻxtatish» / «Yoqish»: the
- * next version with only the stop changed. A whole save never carries it, so
- * the stored state stays whatever «Saqlash» changes.
+ * next version with only the stop changed. `{ baseVersion, hours }` alone is
+ * «Ish vaqti → Saqlash»: only the hours changed. A whole save carries neither,
+ * so both stay whatever «Saqlash» changes.
  */
 export const POST = mutationHandler(ACCESS, controlWriteSchema, async (ctx) => {
   assertAiControl(ctx.principal)
   const by = { label: ctx.principal.login ?? ctx.principal.userId, userId: ctx.principal.userId }
   const body = ctx.body
-  const data = 'enabled' in body ? await aiRegistratorControlService.setEnabled(body, by) : await aiRegistratorControlService.save(body, by)
+  const data =
+    'enabled' in body
+      ? await aiRegistratorControlService.setEnabled(body, by)
+      : 'hours' in body
+        ? await aiRegistratorControlService.setHours(body, by)
+        : await aiRegistratorControlService.save(body, by)
   return { data }
 })

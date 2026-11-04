@@ -8,7 +8,7 @@ import {
   type StoredConfig,
   StaleVersionError,
 } from '@/server/repositories/aiRegistratorControlRepository'
-import { AiRegistratorControlService } from '@/server/services/aiRegistratorControlService'
+import { AiRegistratorControlService, changeLines } from '@/server/services/aiRegistratorControlService'
 
 /**
  * «Toʻxtatish» / «Yoqish» (2026-11-04, the owner: «ai boshqaruvda ai
@@ -25,6 +25,7 @@ const stored = (over: Partial<StoredConfig> = {}): StoredConfig => ({
   maxRetry: 1,
   saleHandoff: 'refer',
   enabled: true,
+  hours: null,
   updatedAt: new Date('2026-11-04T09:00:00Z'),
   updatedBy: 'adminjon',
   ...over,
@@ -144,5 +145,77 @@ describe('what the agent and the panel read', () => {
     expect(panel.switched).toEqual({ version: 8, savedAt: '2026-11-04T08:00:00.000Z', savedBy: 'umida' })
     expect(panel.history[1]!.lines).toEqual(['AI: ishlayapti → toʻxtatildi'])
     expect((await fake(stored(), { history: [history[0]!] }).service.panel(new Date())).switched).toBeNull()
+  })
+})
+
+/*
+  «Ish vaqti» (2026-11-04, the owner: «hohlagan vaqtim ish vaqtini
+  oʻzgartiray»): the hours are their own save — only `hours` changes — and
+  neither «Saqlash» nor the stop takes them back.
+*/
+describe('setHours — the hours alone', () => {
+  const late = { start: '08:00', end: '23:00', lunchStart: null, lunchEnd: null }
+  const day = { start: '09:00', end: '22:00', lunchStart: '12:30', lunchEnd: '13:30' }
+
+  it('writes the next version with every other field as stored and only the hours changed', async () => {
+    const { service, writes } = fake(stored({ enabled: false }))
+    const result = await service.setHours({ baseVersion: 7, hours: day }, by)
+    const { version: _v, updatedAt: _a, updatedBy: _b, ...rest } = stored({ enabled: false })
+    expect(writes[0]!.settings).toEqual({ ...rest, hours: day })
+    expect(writes[0]!.changes).toEqual([{ field: 'hours', before: null, after: day }])
+    expect(result.hours).toEqual(day)
+    expect(result.enabled).toBe(false)
+  })
+
+  it('names what changed in the audit: the day, the lunch, or both', async () => {
+    const { service, writes } = fake(stored({ hours: day }))
+    await service.setHours({ baseVersion: 7, hours: late }, by)
+    expect(changeLines(writes[0]!.changes)).toEqual(['Ish vaqti: 09:00–22:00 → 08:00–23:00', 'Tushlik: 12:30–13:30 → yoʻq'])
+    expect(changeLines([{ field: 'hours', before: null, after: day }])).toEqual(['Ish vaqti: 09:00–22:00', 'Tushlik: 12:30–13:30'])
+    expect(changeLines([{ field: 'hours', before: day, after: { ...day, end: '21:00' } }])).toEqual(['Ish vaqti: 09:00–22:00 → 09:00–21:00'])
+  })
+
+  it('refuses hours the agent would refuse — every problem named, nothing written', async () => {
+    const { service, writes } = fake(stored())
+    expect(await message(service.setHours({ baseVersion: 7, hours: { ...day, start: '22:00', end: '09:00' } }, by))).toMatch(/bitta kun ichida/)
+    expect(await message(service.setHours({ baseVersion: 7, hours: { ...day, lunchEnd: null } }, by))).toMatch(/Tushliksiz/)
+    expect(await message(service.setHours({ baseVersion: 7, hours: { ...day, lunchStart: '08:30' } }, by))).toBe('Tushlik ish vaqti ichida boʻlsin (09:00–22:00).')
+    expect(await message(service.setHours({ baseVersion: 7, hours: { ...day, start: '9:00', lunchEnd: '12:00' } }, by))).toBe(
+      'Ish boshlanishi SS:DD koʻrinishida boʻlsin (masalan 09:00). Tushlik tugashi boshlanishidan keyin boʻlsin.',
+    )
+    expect(writes).toHaveLength(0)
+  })
+
+  it('refuses hours that change nothing, before a first save, and over a newer version', async () => {
+    expect(await message(fake(stored({ hours: day })).service.setHours({ baseVersion: 7, hours: day }, by))).toBe('Ish vaqti oʻzgarmadi — saqlash shart emas.')
+    expect(await message(fake(null).service.setHours({ baseVersion: 0, hours: day }, by))).toMatch(/^Avval sozlamani saqlang/)
+    expect(await message(fake(stored(), { stale: 9 }).service.setHours({ baseVersion: 7, hours: day }, by))).toMatch(/boshqa oynada saqlangan \(hozir v9\)/)
+  })
+
+  it('is kept by «Saqlash» and by the stop', async () => {
+    const save = fake(stored({ hours: late }))
+    await save.service.save({ baseVersion: 7, sellers: ['122', '120', '143'], parked: ['128'], maxCalls: 4, maxNew: 3, maxRetry: 1, saleHandoff: 'refer' }, by)
+    expect(save.writes[0]!.settings.hours).toEqual(late)
+    expect(save.writes[0]!.changes.map((c) => c.field)).toEqual(['sellers'])
+
+    const stop = fake(stored({ hours: late }))
+    await stop.service.setEnabled({ baseVersion: 7, enabled: false }, by)
+    expect(stop.writes[0]!.settings.hours).toEqual(late)
+    expect(stop.writes[0]!.changes.map((c) => c.field)).toEqual(['enabled'])
+  })
+
+  it('goes to the agent only once saved, and to the panel always — null while not set', async () => {
+    expect(await fake(stored()).service.agentConfig()).not.toHaveProperty('hours')
+    expect((await fake(stored({ hours: late })).service.agentConfig())?.hours).toEqual(late)
+    expect((await fake(stored()).service.panel(new Date())).config?.hours).toBeNull()
+
+    const history: StoredChange[] = [
+      { version: 9, savedAt: new Date('2026-11-04T14:00:00Z'), savedBy: 'umida', before: null, after: stored() as ControlSettings, changes: [{ field: 'maxNew', before: 2, after: 3 }] },
+      { version: 8, savedAt: new Date('2026-11-04T13:00:00Z'), savedBy: 'adminjon', before: null, after: stored() as ControlSettings, changes: [{ field: 'hours', before: null, after: late }] },
+    ]
+    const panel = await fake(stored({ version: 9, hours: late }), { history }).service.panel(new Date())
+    expect(panel.config?.hours).toEqual(late)
+    expect(panel.hoursSet).toEqual({ version: 8, savedAt: '2026-11-04T13:00:00.000Z', savedBy: 'adminjon' })
+    expect(panel.history[1]!.lines).toEqual(['Ish vaqti: 08:00–23:00', 'Tushlik: yoʻq'])
   })
 })

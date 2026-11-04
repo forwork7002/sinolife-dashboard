@@ -36,6 +36,7 @@ const state = vi.hoisted(() => ({
   saves: [] as unknown[],
   savers: [] as unknown[],
   switches: [] as unknown[],
+  hours: [] as unknown[],
   fail: false,
   principal: null as unknown,
 }))
@@ -59,6 +60,11 @@ vi.mock('@/server/services/container', () => ({
     },
     setEnabled: async (body: unknown, by: unknown) => {
       state.switches.push(body)
+      state.savers.push(by)
+      return state.config
+    },
+    setHours: async (body: unknown, by: unknown) => {
+      state.hours.push(body)
       state.savers.push(by)
       return state.config
     },
@@ -126,6 +132,7 @@ beforeEach(() => {
   state.statuses.length = 0
   state.saves.length = 0
   state.savers.length = 0
+  state.hours.length = 0
   state.switches.length = 0
   state.fail = false
   state.principal = null
@@ -142,6 +149,12 @@ describe('GET /api/ai-registrator/config — what the agent reads', () => {
     expect(body.sellers).toEqual(OWNER_18)
     expect(body.sellers).not.toContain('125')
     expect(body.sellers).not.toContain('129')
+  })
+
+  it('sends the hours only once saved — left out, the agent keeps its own', async () => {
+    expect(await (await get()).json()).not.toHaveProperty('hours')
+    state.config = { ...saved, hours: { start: '09:00', end: '22:00', lunchStart: null, lunchEnd: null } }
+    expect((await (await get()).json()).hours).toEqual({ start: '09:00', end: '22:00', lunchStart: null, lunchEnd: null })
   })
 
   it('is 404 before anything is saved and while no token is configured', async () => {
@@ -314,5 +327,35 @@ describe('/api/v1/leads/ai-registrator/control — the owner\'s account only', (
     state.principal = asProd('dilnoza')
     expect((await write({ baseVersion: 1, enabled: false })).status).toBe(403)
     expect(state.switches).toHaveLength(0)
+  })
+
+  /*
+    «Ish vaqti» (2026-11-04): `{ baseVersion, hours }` alone is the hours — its
+    own service call; a whole save never carries them, even when a client
+    sends them along.
+  */
+  it('takes the hours alone as the hours, and a whole save as a save that never touches them', async () => {
+    state.principal = principal({ aiControl: true, login: 'umida' })
+    const hours = { start: '08:00', end: '23:00', lunchStart: null, lunchEnd: null }
+    expect((await write({ baseVersion: 1, hours })).status).toBe(200)
+    expect(state.hours).toEqual([{ baseVersion: 1, hours }])
+    expect((await write({ baseVersion: 1, hours: { start: '09:00', end: '22:00', lunchStart: '', lunchEnd: '' } })).status).toBe(200)
+    expect(state.hours[1]).toEqual({ baseVersion: 1, hours: { start: '09:00', end: '22:00', lunchStart: null, lunchEnd: null } })
+    expect(state.saves).toHaveLength(0)
+
+    expect((await write({ ...body, hours })).status).toBe(200)
+    expect(state.saves).toHaveLength(1)
+    expect(state.saves[0]).not.toHaveProperty('hours')
+    expect(state.hours).toHaveLength(2)
+
+    expect((await write({ baseVersion: 1, hours: { start: '08:00' } })).status).toBe(400)
+    expect((await write({ baseVersion: 1, hours: 'always' })).status).toBe(400)
+    expect(state.hours).toHaveLength(2)
+  })
+
+  it('keeps the hours behind the same door', async () => {
+    state.principal = principal()
+    expect((await write({ baseVersion: 1, hours: { start: '08:00', end: '23:00', lunchStart: null, lunchEnd: null } })).status).toBe(403)
+    expect(state.hours).toHaveLength(0)
   })
 })

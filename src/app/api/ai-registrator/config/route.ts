@@ -8,10 +8,12 @@
  * for the same reason (a service, not a person — no section to name).
  *
  * 200 with the contract's bare object — `{ version, enabled, sellers, maxCalls,
- * maxNew, maxRetry, saleHandoff, updatedAt, updatedBy }`, NO envelope: the
+ * maxNew, maxRetry, saleHandoff, hours?, updatedAt, updatedBy }`, NO envelope: the
  * agent reads the body as the settings. `enabled` is always a real boolean
  * (false = «Toʻxtatish» on the panel): the agent refuses the whole config over
- * one that is not. 404 when nothing is saved yet (and while no token
+ * one that is not. `hours` (`{ start, end, lunchStart, lunchEnd }`, «Ish
+ * vaqti») only once saved on the panel — left out, the agent keeps its own
+ * .env hours. 404 when nothing is saved yet (and while no token
  * is configured — the agent reads both as «no settings, keep your own»), 401
  * for a bad token, 503 when the database is down (the agent keeps its last).
  */

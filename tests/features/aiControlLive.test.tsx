@@ -158,8 +158,8 @@ describe('AiNowPanel', () => {
 
   it('takes a report with no live part, and a silent AI out of hours', () => {
     const old: AiReport = { ...report, live: null, sellers: report.sellers.map(({ product: _p, aiRinging: _r, ...s }) => s) }
-    render(<AiNowPanel {...props({ status: status({ report: old, receivedAt: at('18:31') }), now: new Date(at('20:00')) })} />)
-    expect(screen.getByRole('status').textContent).toContain('Ish vaqti emas (09:00–18:30)')
+    render(<AiNowPanel {...props({ status: status({ report: old, receivedAt: at('22:01') }), now: new Date(at('22:30')) })} />)
+    expect(screen.getByRole('status').textContent).toContain('Ish vaqti emas (09:00–22:00)')
     expect(lane('290').getAttribute('data-phase')).toBe('ai')
     expect(screen.getByRole('listitem', { name: 'Sotuvchi 120' }).getAttribute('data-state')).toBe('unknown')
   })

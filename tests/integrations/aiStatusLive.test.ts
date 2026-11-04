@@ -194,3 +194,24 @@ describe('the stop (2026-11-04) — enabled and flags.stopped, optional', () => 
     expect(wrong.data?.limits.calls).toBe(6)
   })
 })
+
+describe('«Ish vaqti» (2026-11-04, ai_registrator d0abf97) — hours, optional', () => {
+  const hours = { start: '09:00', end: '22:00', lunchStart: '12:30', lunchEnd: '13:30', sellersStart: '09:00', sellersEnd: '22:00' }
+
+  it('keeps the hours the agent runs — the lunch null for none', () => {
+    expect(parse(report({ hours })).hours).toEqual(hours)
+    expect(parse(report({ hours: { ...hours, lunchStart: null, lunchEnd: null } })).hours).toMatchObject({ lunchStart: null, lunchEnd: null })
+  })
+
+  it('reads an agent older than the hours, and never refuses a report over them', () => {
+    expect(parse(report()).hours).toBeUndefined()
+    const odd = aiStatusSchema.safeParse(report({ hours: { ...hours, end: '25:00', lunchStart: 7, extra: 'x' } }))
+    expect(odd.success).toBe(true)
+    expect(odd.data?.hours).toMatchObject({ start: '09:00', end: null, lunchStart: null, lunchEnd: '13:30' })
+    const junk = aiStatusSchema.safeParse(report({ hours: 'always' }))
+    expect(junk.success).toBe(true)
+    expect(junk.data?.hours).toBeUndefined()
+    expect(junk.data?.limits.calls).toBe(6)
+    expect(parse(report({ hours: null })).hours).toBeNull()
+  })
+})

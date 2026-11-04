@@ -2420,6 +2420,13 @@ model AiRegistratorConfig {
   /// false = stopped from the panel («Toʻxtatish», 2026-11-04): the agent
   /// dials no new lead, and stays stopped over a restart and its 09:00 timer.
   enabled     Boolean  @default(true)
+  /// «Ish vaqti» (2026-11-04): «HH:MM», Tashkent. Both null — not set, the
+  /// agent keeps its own .env hours; `hours` is left out of its config.
+  hoursStart  String?
+  hoursEnd    String?
+  /// The sellers' lunch; both null with the hours set — «tushliksiz».
+  lunchStart  String?
+  lunchEnd    String?
   updatedAt   DateTime
   /// Who saved it, as the panel prints it (the login).
   updatedBy   String

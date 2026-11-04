@@ -17,6 +17,10 @@
  * settings on a refusal — two checks, one vocabulary.
  */
 
+import { type WorkHours, sameHours, workHoursProblems } from '@/lib/aiWorkHours'
+
+export type { WorkHours } from '@/lib/aiWorkHours'
+
 /** A seller's extension as the ATS numbers them: digits only, 2–6 of them. */
 export const EXTENSION_PATTERN = /^\d{2,6}$/
 
@@ -57,6 +61,15 @@ export interface ControlSettings {
    * again without anybody saying so.
    */
   readonly enabled: boolean
+  /**
+   * «Ish vaqti» (2026-11-04, the owner: «hohlagan vaqtim ish vaqtini
+   * oʻzgartiray») — when the agent dials and puts callers through, and the
+   * sellers' lunch. Null: not set here, the agent keeps its own .env hours.
+   * Saved by its own body (`controlHoursSchema`), never by «Saqlash» — a
+   * seller list saved from an older tab must not take the hours back. The
+   * rules are `workHoursProblems` (`@/lib/aiWorkHours`), the agent's own.
+   */
+  readonly hours: WorkHours | null
 }
 
 /** The extensions in order of first appearance, trimmed, each once. */
@@ -109,6 +122,8 @@ export function controlProblems(settings: ControlSettings): string[] {
     problems.push('Yangi lid va nedozvon ikkalasi birga 0 boʻlmaydi: bu AIni toʻxtatmaydi, aksincha istalgan lidga teradi — kamida bittasi 1 yoki koʻp boʻlsin.')
   }
   if (!SALE_HANDOFFS.includes(settings.saleHandoff)) problems.push('Sotuvni topshirish usuli refer yoki bridge boʻlsin.')
+  // A config whose hours break a rule is refused WHOLE by the agent — sellers and limits too.
+  if (settings.hours) problems.push(...workHoursProblems(settings.hours))
 
   return problems
 }
@@ -135,6 +150,11 @@ export function controlChanges(before: ControlSettings | null, after: ControlSet
   }
   for (const field of ['enabled', 'maxCalls', 'maxNew', 'maxRetry', 'saleHandoff'] as const) {
     if (was === null || was[field] !== after[field]) out.push({ field, before: was === null ? null : was[field], after: after[field] })
+  }
+  // A row stored before the hours existed reads as «not set» (`?? null`).
+  const hoursBefore = was?.hours ?? null
+  if (was === null ? after.hours !== null : !sameHours(hoursBefore, after.hours)) {
+    out.push({ field: 'hours', before: hoursBefore, after: after.hours })
   }
   return out
 }

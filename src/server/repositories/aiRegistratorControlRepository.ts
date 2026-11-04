@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@/generated/prisma/client'
-import type { ControlChange, ControlSettings, SaleHandoff } from '@/server/domain/aiRegistrator/control'
+import type { ControlChange, ControlSettings, SaleHandoff, WorkHours } from '@/server/domain/aiRegistrator/control'
 import type { AiStatusPush } from '@/server/integrations/aiRegistrator/control'
 
 export interface StoredConfig extends ControlSettings {
@@ -32,15 +32,40 @@ export class StaleVersionError extends Error {
 
 const CURRENT = 1
 
-function settingsOf(row: {
-  sellers: string[]
-  parked: string[]
-  maxCalls: number
-  maxNew: number
-  maxRetry: number
-  saleHandoff: string
-  enabled: boolean
-}): ControlSettings {
+interface HoursColumns {
+  hoursStart: string | null
+  hoursEnd: string | null
+  lunchStart: string | null
+  lunchEnd: string | null
+}
+
+/** The four columns as one value: both day ends null — not set; both lunch ends null — no lunch. */
+function hoursOf(row: HoursColumns): WorkHours | null {
+  if (row.hoursStart === null || row.hoursEnd === null) return null
+  const lunch = row.lunchStart !== null && row.lunchEnd !== null
+  return { start: row.hoursStart, end: row.hoursEnd, lunchStart: lunch ? row.lunchStart : null, lunchEnd: lunch ? row.lunchEnd : null }
+}
+
+function hoursColumns(hours: WorkHours | null): HoursColumns {
+  return {
+    hoursStart: hours?.start ?? null,
+    hoursEnd: hours?.end ?? null,
+    lunchStart: hours?.lunchStart ?? null,
+    lunchEnd: hours?.lunchEnd ?? null,
+  }
+}
+
+function settingsOf(
+  row: {
+    sellers: string[]
+    parked: string[]
+    maxCalls: number
+    maxNew: number
+    maxRetry: number
+    saleHandoff: string
+    enabled: boolean
+  } & HoursColumns,
+): ControlSettings {
   return {
     sellers: row.sellers,
     parked: row.parked,
@@ -49,6 +74,7 @@ function settingsOf(row: {
     maxRetry: row.maxRetry,
     saleHandoff: row.saleHandoff as SaleHandoff,
     enabled: row.enabled,
+    hours: hoursOf(row),
   }
 }
 
@@ -95,6 +121,7 @@ export class AiRegistratorControlRepository {
         maxRetry: settings.maxRetry,
         saleHandoff: settings.saleHandoff,
         enabled: settings.enabled,
+        ...hoursColumns(settings.hours),
         updatedAt: now,
         updatedBy: by.label,
         updatedById: by.userId,

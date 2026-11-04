@@ -21,7 +21,7 @@ import { changeLines } from '@/server/services/aiRegistratorControlService'
 /** The owner's eighteen, 30.10 14:4x — «129 va 125 ni ulamaysan»; 139 and 143 not in it either. */
 const OWNER_18 = ['122', '120', '128', '123', '131', '127', '111', '112', '108', '109', '107', '114', '115', '117', '134', '136', '135', '141']
 
-const ok: ControlSettings = { sellers: OWNER_18, parked: [], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer', enabled: true }
+const ok: ControlSettings = { sellers: OWNER_18, parked: [], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer', enabled: true, hours: null }
 
 describe('controlProblems', () => {
   it('passes the starting setting', () => {

@@ -3,7 +3,7 @@
  * `domain/aiRegistrator/control.ts` for what the panel is.
  *
  *   GET  /api/ai-registrator/config  → { version, enabled, sellers, maxCalls,
- *        maxNew, maxRetry, saleHandoff, updatedAt, updatedBy }   (404 until saved)
+ *        maxNew, maxRetry, saleHandoff, hours?, updatedAt, updatedBy }   (404 until saved)
  *   POST /api/ai-registrator/status  ← what the agent runs, every 5 s while a
  *        line is busy, else every 30 s
  *
@@ -31,10 +31,21 @@
  * both optional: top-level `enabled` (the state the agent applied) and
  * `flags.stopped`. An agent that sends neither predates the button — it
  * ignores `enabled` and keeps dialling, and the panel says so.
+ *
+ * 2026-11-04 (ai_registrator d0abf97, «Ish vaqti») — `hours` in the CONFIG:
+ * `{ start, end, lunchStart, lunchEnd }`, «HH:MM», the lunch both null for
+ * none; LEFT OUT while not set here (the agent keeps its own .env hours). The
+ * agent refuses the whole config over hours that break `check_hours`, so they
+ * are checked before a save (`@/lib/aiWorkHours`). Back in the STATUS,
+ * optional: top-level `hours` — `{ start, end, lunchStart, lunchEnd,
+ * sellersStart, sellersEnd }`, what the agent runs NOW (its .env ones while
+ * none is set). Each value on its own: one that is not a clock reads as null,
+ * a `hours` that is not an object as absent — never a refused report.
  */
 
 import { z } from 'zod'
 
+import { CLOCK_PATTERN } from '@/lib/aiWorkHours'
 import { MAX_CALLS_LIMIT, MAX_SELLERS, SALE_HANDOFFS } from '@/server/domain/aiRegistrator/control'
 
 const instant = z.iso.datetime({ offset: true })
@@ -113,12 +124,27 @@ const flagsSchema = z.object({
   active_calls: count.optional().catch(undefined),
 })
 
+/** «HH:MM» in a report, or null — anything else the agent sends reads as null, never a refusal. */
+const reportedClock = z.string().trim().regex(CLOCK_PATTERN).nullable().catch(null)
+
+/** The hours the agent runs now: the calling window, the lunch, the sellers' day. */
+const hoursReportSchema = z.object({
+  start: reportedClock,
+  end: reportedClock,
+  lunchStart: reportedClock,
+  lunchEnd: reportedClock,
+  sellersStart: reportedClock,
+  sellersEnd: reportedClock,
+})
+
 export const aiStatusSchema = z.object({
   at: instant,
   appliedVersion: z.number().int().min(0).nullable().default(null),
   applyError: z.string().max(500).nullable().default(null),
   /** What the agent applied: false = stopped. Absent — an agent older than the button. */
   enabled: z.boolean().optional().catch(undefined),
+  /** The hours the agent applied (its .env ones while none is saved). Absent — an agent older than «Ish vaqti». */
+  hours: hoursReportSchema.nullable().optional().catch(undefined),
   limits: z
     .object({
       calls: count.nullable().optional(),
@@ -196,7 +222,28 @@ export const controlEnabledSchema = z.strictObject({
 
 export type ControlEnabled = z.infer<typeof controlEnabledSchema>
 
-/** What the control POST takes: a whole save, or the stop alone. */
-export const controlWriteSchema = z.union([controlEnabledSchema, controlSaveSchema])
+/** A form's «HH:MM»; an empty lunch end is «no lunch», as null. */
+const formClock = z.string().trim().max(5)
+const formLunch = z
+  .string()
+  .trim()
+  .max(5)
+  .nullable()
+  .transform((v) => (v === '' ? null : v))
+
+/**
+ * «Ish vaqti → Saqlash» — the hours alone, its own strict body like the stop:
+ * the next version with only `hours` changed. Shape only here; the agent's
+ * rules (`workHoursProblems`) are applied by the service, every problem named.
+ */
+export const controlHoursSchema = z.strictObject({
+  baseVersion: z.number().int().min(0),
+  hours: z.strictObject({ start: formClock, end: formClock, lunchStart: formLunch, lunchEnd: formLunch }),
+})
+
+export type ControlHours = z.infer<typeof controlHoursSchema>
+
+/** What the control POST takes: a whole save, the stop alone, or the hours alone. */
+export const controlWriteSchema = z.union([controlEnabledSchema, controlHoursSchema, controlSaveSchema])
 
 export type ControlWrite = z.infer<typeof controlWriteSchema>

@@ -68,16 +68,26 @@ const NAMES: Record<string, string> = { '120': '120 Malika Karimova 120', '122':
 const nameOf = (ext: string) => NAMES[ext] ?? null
 
 describe('work hours, Tashkent', () => {
-  it('is the day 09:00–18:30 with lunch 12:30–13:30', () => {
+  it('is the AI server\'s day 09:00–22:00 with lunch 12:30–13:30 when nobody says otherwise', () => {
     expect(workPhase(at('08:59'))).toBe('off')
     expect(workPhase(at('09:00'))).toBe('work')
     expect(workPhase(at('12:29'))).toBe('work')
     expect(workPhase(at('12:30'))).toBe('lunch')
     expect(workPhase(at('13:29'))).toBe('lunch')
     expect(workPhase(at('13:30'))).toBe('work')
-    expect(workPhase(at('18:29'))).toBe('work')
-    expect(workPhase(at('18:30'))).toBe('off')
-    expect(workPhase(at('23:00'))).toBe('off')
+    // 2026-11-04: 18:30 was the end here, fixed — the panel said «Ish vaqti emas» over a working AI.
+    expect(workPhase(at('18:30'))).toBe('work')
+    expect(workPhase(at('21:59'))).toBe('work')
+    expect(workPhase(at('22:00'))).toBe('off')
+  })
+
+  it('reads the hours it is given, and has no lunch without one', () => {
+    const late = { start: '08:00', end: '23:00', lunchStart: null, lunchEnd: null }
+    expect(workPhase(at('07:59'), late)).toBe('off')
+    expect(workPhase(at('08:00'), late)).toBe('work')
+    expect(workPhase(at('12:45'), late)).toBe('work')
+    expect(workPhase(at('22:59'), late)).toBe('work')
+    expect(workPhase(at('23:00'), late)).toBe('off')
   })
 })
 
@@ -88,9 +98,27 @@ describe('the hero', () => {
   })
 
   it('is grey outside the day and at lunch when the AI is silent', () => {
-    expect(nowRow(status(at('18:31')), at('20:00'), 90)).toEqual({ tone: 'neutral', title: 'Ish vaqti emas (09:00–18:30)', detail: 'oxirgi xabar 18:31' })
+    expect(nowRow(status(at('22:01')), at('22:30'), 90)).toEqual({ tone: 'neutral', title: 'Ish vaqti emas (09:00–22:00)', detail: 'oxirgi xabar 22:01' })
     expect(nowRow(status(at('12:31')), at('12:45'), 90)).toMatchObject({ tone: 'neutral', title: 'Tushlik 12:30–13:30' })
-    expect(nowRow(null, at('07:00'), 90)).toEqual({ tone: 'neutral', title: 'Ish vaqti emas (09:00–18:30)', detail: null })
+    expect(nowRow(null, at('07:00'), 90)).toEqual({ tone: 'neutral', title: 'Ish vaqti emas (09:00–22:00)', detail: null })
+  })
+
+  it('dates the day by the hours the agent runs, else the saved ones, else 09:00–22:00', () => {
+    const late = { start: '08:00', end: '23:00', lunchStart: null, lunchEnd: null }
+    const short = { start: '09:00', end: '18:30', lunchStart: '13:00', lunchEnd: '14:00' }
+    // The agent's own: 22:30 is inside its day, so silence is the alarm; no lunch at 12:45.
+    expect(nowRow(status(at('22:00'), { hours: { ...late, sellersStart: '08:00', sellersEnd: '23:00' } }), at('22:30'), 90).tone).toBe('critical')
+    expect(nowRow(status(at('12:00'), { hours: late }), at('12:45'), 90).tone).toBe('critical')
+    expect(nowRow(status(at('23:00'), { hours: late }), at('23:10'), 90).title).toBe('Ish vaqti emas (08:00–23:00)')
+    // The agent's beat the saved ones; without them the saved ones count.
+    expect(nowRow(status(at('22:00'), { hours: late }), at('22:30'), 90, short).tone).toBe('critical')
+    expect(nowRow(status(at('18:31')), at('19:00'), 90, short).title).toBe('Ish vaqti emas (09:00–18:30)')
+    expect(nowRow(status(at('13:01')), at('13:30'), 90, short).title).toBe('Tushlik 13:00–14:00')
+    // A report whose hours are no clock reads as none.
+    expect(nowRow(status(at('18:31')), at('19:00'), 90, short).title).toBe('Ish vaqti emas (09:00–18:30)')
+    expect(nowRow(status(at('18:31'), { hours: { start: null, end: '23:00', lunchStart: null, lunchEnd: null } }), at('19:00'), 90, short).title).toBe(
+      'Ish vaqti emas (09:00–18:30)',
+    )
   })
 
   it('is red within the day when the AI is silent', () => {

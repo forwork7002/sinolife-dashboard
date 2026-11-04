@@ -1,4 +1,5 @@
 import { OUTCOME_LABEL } from '@/features/aiRegistrator/AiCallsDrawer'
+import { DEFAULT_WORK_HOURS, type WorkHours, clockMinutes, hoursText, lunchText, sameHours, workText } from '@/lib/aiWorkHours'
 import { APP_TIME_ZONE, formatDateTime, formatTime, tashkentDay } from '@/lib/format'
 
 /**
@@ -84,12 +85,28 @@ export interface AiFlags {
   readonly active_calls?: number
 }
 
+/**
+ * The hours the agent runs NOW (2026-11-04, ai_registrator d0abf97) — the
+ * panel's saved ones, or its own .env ones while none is saved. Each value a
+ * «HH:MM» or null; the lunch both null for none.
+ */
+export interface AppliedHours {
+  readonly start: string | null
+  readonly end: string | null
+  readonly lunchStart: string | null
+  readonly lunchEnd: string | null
+  readonly sellersStart?: string | null
+  readonly sellersEnd?: string | null
+}
+
 export interface AiReport {
   readonly at: string
   readonly appliedVersion: number | null
   readonly applyError: string | null
   /** What the agent applied: false = stopped. Absent — an agent older than the stop button. */
   readonly enabled?: boolean
+  /** What the agent runs now. Absent — an agent older than «Ish vaqti». */
+  readonly hours?: AppliedHours | null
   readonly limits: AiLimits
   readonly lines: Readonly<Record<string, string>>
   readonly sellers: readonly ReportSeller[]
@@ -112,8 +129,29 @@ export interface AiStatus {
 
 /* ── Work hours ─────────────────────────────────────────────────────────── */
 
-/** The floor's day (the owner's spec, 2026-10-31): 09:00–18:30, lunch 12:30–13:30, Tashkent. */
-export const WORK_HOURS = { from: 9 * 60, to: 18 * 60 + 30, lunchFrom: 12 * 60 + 30, lunchTo: 13 * 60 + 30 } as const
+/**
+ * The agent's report as hours — null when it sends none, or no readable day
+ * (start and end both clocks, start before end). A half lunch reads as none.
+ */
+export function reportedHours(report: AiReport | null | undefined): WorkHours | null {
+  const h = report?.hours
+  if (!h) return null
+  const start = clockMinutes(h.start)
+  const end = clockMinutes(h.end)
+  if (start === null || end === null || start >= end) return null
+  const lunch = clockMinutes(h.lunchStart) !== null && clockMinutes(h.lunchEnd) !== null
+  return { start: h.start!, end: h.end!, lunchStart: lunch ? h.lunchStart! : null, lunchEnd: lunch ? h.lunchEnd! : null }
+}
+
+/**
+ * The floor's day as the page reads it (2026-11-04 — it was 09:00–18:30 fixed
+ * here, and after 18:30 the panel said «Ish vaqti emas» over an AI that was
+ * working till 22:00): what the agent says it runs; else what was saved on
+ * «Boshqaruv»; else the AI server's own day, 09:00–22:00 with lunch 12:30–13:30.
+ */
+export function hoursInForce(report: AiReport | null | undefined, saved?: WorkHours | null): WorkHours {
+  return reportedHours(report) ?? saved ?? DEFAULT_WORK_HOURS
+}
 
 const TASHKENT_HM = new Intl.DateTimeFormat('en-GB', { timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
 
@@ -124,10 +162,15 @@ export function tashkentMinutes(at: Date): number {
   return value('hour') * 60 + value('minute')
 }
 
-export function workPhase(at: Date): 'work' | 'lunch' | 'off' {
+/** [start, end) is the day, [lunchStart, lunchEnd) its lunch — none when the lunch is null. */
+export function workPhase(at: Date, hours: WorkHours = DEFAULT_WORK_HOURS): 'work' | 'lunch' | 'off' {
   const m = tashkentMinutes(at)
-  if (m < WORK_HOURS.from || m >= WORK_HOURS.to) return 'off'
-  if (m >= WORK_HOURS.lunchFrom && m < WORK_HOURS.lunchTo) return 'lunch'
+  const from = clockMinutes(hours.start) ?? 0
+  const to = clockMinutes(hours.end) ?? 24 * 60
+  if (m < from || m >= to) return 'off'
+  const lunchFrom = clockMinutes(hours.lunchStart)
+  const lunchTo = clockMinutes(hours.lunchEnd)
+  if (lunchFrom !== null && lunchTo !== null && m >= lunchFrom && m < lunchTo) return 'lunch'
   return 'work'
 }
 
@@ -170,19 +213,21 @@ export interface NowRow {
  * The first thing the page says. A fresh report: the AI works (green). No
  * fresh one: outside the day or at lunch that is expected (grey); within the
  * day it is the alarm (red) — the agent stopped or cannot reach the dashboard.
+ * The day is `hoursInForce` — the agent's, else the saved one (`saved`).
  */
-export function nowRow(status: AiStatus | null, now: Date, staleAfterSec: number): NowRow {
+export function nowRow(status: AiStatus | null, now: Date, staleAfterSec: number, saved?: WorkHours | null): NowRow {
   if (status && isFresh(status, now, staleAfterSec)) {
     return agentEnabled(status.report) === false
       ? { tone: 'critical', title: 'AI toʻxtatilgan', detail: 'Boshqaruvdan toʻxtatilgan — yangi lidlarga qoʻngʻiroq qilmaydi.' }
       : { tone: 'good', title: 'AI ishlayapti', detail: null }
   }
   const last = status ? `oxirgi xabar ${whenText(status.receivedAt, now)}` : null
-  switch (workPhase(now)) {
+  const hours = hoursInForce(status?.report, saved)
+  switch (workPhase(now, hours)) {
     case 'off':
-      return { tone: 'neutral', title: 'Ish vaqti emas (09:00–18:30)', detail: last }
+      return { tone: 'neutral', title: `Ish vaqti emas (${workText(hours)})`, detail: last }
     case 'lunch':
-      return { tone: 'neutral', title: 'Tushlik 12:30–13:30', detail: last }
+      return { tone: 'neutral', title: `Tushlik ${lunchText(hours)}`, detail: last }
     default:
       return { tone: 'critical', title: `AI javob bermayapti — ${last ?? 'hali xabar kelmagan'}`, detail: null }
   }
@@ -773,14 +818,14 @@ const stateWord = (enabled: boolean) => (enabled ? 'ishlayapti' : 'toʻxtatilgan
  *  · else «Ishlayapti» (green) or «Toʻxtatilgan» (red).
  */
 export function switchState(
-  saved: { readonly enabled: boolean; readonly version: number },
+  saved: { readonly enabled: boolean; readonly version: number; readonly hours?: WorkHours | null },
   status: AiStatus | null,
   now: Date,
   staleAfterSec: number,
 ): SwitchState {
   const savedText = `Saqlangan: ${stateWord(saved.enabled)}`
   if (!status || !isFresh(status, now, staleAfterSec)) {
-    const head = nowRow(status, now, staleAfterSec)
+    const head = nowRow(status, now, staleAfterSec, saved.hours)
     const tone = head.tone === 'critical' ? 'critical' : 'neutral'
     return { kind: 'silent', tone, title: head.title, detail: `${savedText} — AI qoʻllaganini bilib boʻlmaydi.` }
   }
@@ -803,7 +848,67 @@ export function switchState(
   if (!taken || applied !== saved.enabled) {
     return { kind: 'applying', tone: 'warning', title: 'qoʻllanmoqda…', detail: `${savedText}, AIda hozir: ${stateWord(applied)}. AI 20 soniya ichida oʻqiydi.` }
   }
+  const start = hoursInForce(report, saved.hours).start
   return applied
     ? { kind: 'on', tone: 'good', title: 'Ishlayapti', detail: null }
-    : { kind: 'off', tone: 'critical', title: 'Toʻxtatilgan', detail: 'Yangi lidlarga qoʻngʻiroq qilmaydi. 09:00 da ham oʻzi yonmaydi — faqat «Yoqish» bilan.' }
+    : { kind: 'off', tone: 'critical', title: 'Toʻxtatilgan', detail: `Yangi lidlarga qoʻngʻiroq qilmaydi. ${start} da ham oʻzi yonmaydi — faqat «Yoqish» bilan.` }
+}
+
+/* ── «Ish vaqti» (2026-11-04) ─────────────────────────────────────────────── */
+
+export interface HoursState {
+  /**
+   * `applied` — saved = applied; `applying` — not yet; `refused`; `old` — the
+   * agent sends no hours; `silent` — no fresh report; `server` — nothing saved,
+   * the agent's own hours run.
+   */
+  readonly kind: 'applied' | 'applying' | 'refused' | 'old' | 'silent' | 'server'
+  readonly tone: 'good' | 'warning' | 'critical' | 'neutral'
+  readonly title: string
+  readonly detail: string | null
+}
+
+/**
+ * What «Ish vaqti» says — the SAVED hours against the ones the agent says it
+ * RUNS (`report.hours`), as `switchState` does for the stop: never the saved
+ * shown as applied. An agent that sends no `hours` predates the section and
+ * keeps its own; one that refused the saved version says why in red.
+ */
+export function hoursState(
+  saved: { readonly hours: WorkHours | null; readonly version: number },
+  status: AiStatus | null,
+  now: Date,
+  staleAfterSec: number,
+): HoursState {
+  const report = status?.report
+  const fresh = isFresh(status, now, staleAfterSec)
+  const applied = fresh ? reportedHours(report) : null
+  if (saved.hours === null) {
+    return {
+      kind: 'server',
+      tone: 'neutral',
+      title: 'AI serverining oʻz vaqti',
+      detail: applied ? `AIda hozir: ${hoursText(applied)}. Bu yerda saqlansa, AI shu vaqtga oʻtadi.` : 'Bu yerda saqlansa, AI shu vaqtga oʻtadi.',
+    }
+  }
+  const savedText = `Saqlangan: ${hoursText(saved.hours)}`
+  if (!status || !fresh || !report) {
+    return { kind: 'silent', tone: 'neutral', title: 'AIdan yangi xabar yoʻq', detail: `${savedText} — AI qoʻllaganini bilib boʻlmaydi.` }
+  }
+  if (!applied) {
+    return {
+      kind: 'old',
+      tone: 'warning',
+      title: 'AI bu sozlamani hali qoʻllamaydi',
+      detail: `${savedText}. AI serveri yangilanmaguncha oʻz vaqtida ishlaydi.`,
+    }
+  }
+  const taken = report.appliedVersion !== null && report.appliedVersion >= saved.version
+  if (!taken && report.applyError) {
+    return { kind: 'refused', tone: 'critical', title: `AI rad etdi v${saved.version}`, detail: `${report.applyError} — AIda hozir: ${hoursText(applied)}.` }
+  }
+  if (!taken || !sameHours(applied, saved.hours)) {
+    return { kind: 'applying', tone: 'warning', title: 'qoʻllanmoqda…', detail: `${savedText}, AIda hozir: ${hoursText(applied)}. AI 20 soniya ichida oʻqiydi.` }
+  }
+  return { kind: 'applied', tone: 'good', title: 'AI qoʻlladi ✓', detail: `AIda hozir: ${hoursText(applied)}.` }
 }
