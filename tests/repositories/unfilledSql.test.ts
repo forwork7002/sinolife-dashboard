@@ -24,8 +24,8 @@ describe('unfilledCteSql', () => {
     expect(sql).toContain('NOT EXISTS (SELECT 1 FROM form_fill ff WHERE ff.owner = r.ext)')
   })
 
-  it('leaves out a copy whose contact filled a form from a day before to ten minutes after', () => {
-    expect(sql).toContain(`ff.customer = r.customer AND ff.at >= r.created - interval '1 day' AND ff.at <= r.created + interval '10 minutes'`)
+  it('leaves out a deal whose contact filled a form from a day before to a day after — a robot copy, or the portal opening it after Lead Guard', () => {
+    expect(sql).toContain(`ff.customer = r.customer AND ff.at >= r.created - interval '1 day' AND ff.at <= r.created + interval '1 day'`)
   })
 })
 

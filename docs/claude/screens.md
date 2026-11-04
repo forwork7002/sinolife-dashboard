@@ -318,8 +318,9 @@ Per-screen traps worth knowing before you touch one:
   (2026-11-04, the owner): when the portal's own Facebook link is down
   (04.11 13:42 → 0 fills for seven hours) Lead Guard opens the CRM-form deal
   through the API and no fill is filed; `registrationDays` counts each form
-  deal with no fill on it and none of its contact's from a day before to ten
-  minutes after (`unfilled`, `unfilledCteSql`), and the fills' basis adds it
+  deal with no fill on it and none of its contact's from a day before to a
+  day after — the portal opening the lead itself after Lead Guard did must
+  not count it twice (`unfilled`, `unfilledCteSql`), and the fills' basis adds it
   to its owner's fills — so every count above takes it. AND «AI
   FILTRLADI» (same day): the AI targetolog holds back a broken number,
   another targetolog's client, a «kim uchun» answer; its owners' Meta form

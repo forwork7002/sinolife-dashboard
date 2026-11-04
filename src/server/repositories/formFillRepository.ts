@@ -58,9 +58,13 @@ export function unfilledFillBounds(period: Period): [Date, Date] {
  * `unfilled` is the window's form deals of `reg` (a CTE with `id`, `ext` —
  * the portal id —, `created`, `title`, `customer`) with no fill behind them:
  * none filed on the deal itself, and none filed on ANY deal of the same
- * contact from a day before it to ten minutes after. The second rule keeps a
- * copy the portal's «Qayta zayavka» robot opens for a returning contact (its
- * fill lands on the OLD deal) from counting twice. Portal check 04.11:
+ * contact from a day before it to a day after. The second rule keeps a lead
+ * from counting twice: a copy the portal's «Qayta zayavka» robot opens for a
+ * returning contact (its fill lands on the OLD deal), and a lead the portal
+ * opens itself AFTER Lead Guard did — past its 150-minute wait, or once the
+ * link is back (the owner, 04.11: «150 daqiqadan keyin ochsa-chi?»): the
+ * portal's deal carries the fill, Lead Guard's is then not added. A contact
+ * who truly filled twice that day counts once — short by one, never double. Portal check 04.11:
  * 595 form deals, 249 with no fill on them (86 the AI targetolog's own
  * forms', 163 the people's), 0 of them with a fill of the contact in the day
  * before. The fills are read from `$from` to `$to` (`unfilledFillBounds`).
@@ -80,7 +84,7 @@ export function unfilledCteSql(reg: string, from: string, to: string): string {
           AND NOT EXISTS (
             SELECT 1 FROM form_fill ff
             WHERE r.customer IS NOT NULL AND ff.customer = r.customer
-              AND ff.at >= r.created - interval '1 day' AND ff.at <= r.created + interval '10 minutes'
+              AND ff.at >= r.created - interval '1 day' AND ff.at <= r.created + interval '1 day'
           )
       )`
 }
