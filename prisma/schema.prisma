@@ -2417,6 +2417,9 @@ model AiRegistratorConfig {
   maxRetry    Int
   /// "refer" | "bridge" — how a sale is handed to the ATS.
   saleHandoff String
+  /// false = stopped from the panel («Toʻxtatish», 2026-11-04): the agent
+  /// dials no new lead, and stays stopped over a restart and its 09:00 timer.
+  enabled     Boolean  @default(true)
   updatedAt   DateTime
   /// Who saved it, as the panel prints it (the login).
   updatedBy   String

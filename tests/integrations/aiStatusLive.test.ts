@@ -172,3 +172,25 @@ describe('the 2026-11-02 contract (ai_registrator ca9c52a) — optional, never a
     expect(wrong.live?.lines[0]?.started).toBeUndefined()
   })
 })
+
+describe('the stop (2026-11-04) — enabled and flags.stopped, optional', () => {
+  it('keeps what the agent applied: stopped, and running', () => {
+    const stopped = aiStatusSchema.parse(report({ enabled: false, flags: { stopped: true, held: false } }))
+    expect(stopped.enabled).toBe(false)
+    expect(stopped.flags).toMatchObject({ stopped: true, held: false })
+    const running = aiStatusSchema.parse(report({ enabled: true, flags: { stopped: false } }))
+    expect(running.enabled).toBe(true)
+    expect(running.flags?.stopped).toBe(false)
+  })
+
+  it('reads an agent older than the button — neither sent — and never refuses a wrong one', () => {
+    const old = aiStatusSchema.parse(report())
+    expect(old.enabled).toBeUndefined()
+    const wrong = aiStatusSchema.safeParse(report({ enabled: 'no', flags: { stopped: 'yes', no_specialist: true } }))
+    expect(wrong.success).toBe(true)
+    expect(wrong.data?.enabled).toBeUndefined()
+    expect(wrong.data?.flags).toMatchObject({ no_specialist: true })
+    expect(wrong.data?.flags?.stopped).toBeUndefined()
+    expect(wrong.data?.limits.calls).toBe(6)
+  })
+})

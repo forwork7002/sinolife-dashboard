@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { canControlAi } from '@/server/auth/rbac'
 import { ApiError } from '@/server/http/errors'
 import { getHandler, mutationHandler } from '@/server/http/handler'
-import { controlSaveSchema } from '@/server/integrations/aiRegistrator/control'
+import { controlWriteSchema } from '@/server/integrations/aiRegistrator/control'
 import { aiRegistratorControlService } from '@/server/services/container'
 
 export const dynamic = 'force-dynamic'
@@ -32,12 +32,16 @@ export const GET = getHandler(ACCESS, z.object({ part: z.enum(['live']).optional
   }
 })
 
-/** «Saqlash» — the next version, its audit row; the agent picks it up on its next read. */
-export const POST = mutationHandler(ACCESS, controlSaveSchema, async (ctx) => {
+/**
+ * «Saqlash» — the next version, its audit row; the agent picks it up on its
+ * next read. `{ baseVersion, enabled }` alone is «Toʻxtatish» / «Yoqish»: the
+ * next version with only the stop changed. A whole save never carries it, so
+ * the stored state stays whatever «Saqlash» changes.
+ */
+export const POST = mutationHandler(ACCESS, controlWriteSchema, async (ctx) => {
   assertAiControl(ctx.principal)
-  const data = await aiRegistratorControlService.save(ctx.body, {
-    label: ctx.principal.login ?? ctx.principal.userId,
-    userId: ctx.principal.userId,
-  })
+  const by = { label: ctx.principal.login ?? ctx.principal.userId, userId: ctx.principal.userId }
+  const body = ctx.body
+  const data = 'enabled' in body ? await aiRegistratorControlService.setEnabled(body, by) : await aiRegistratorControlService.save(body, by)
   return { data }
 })

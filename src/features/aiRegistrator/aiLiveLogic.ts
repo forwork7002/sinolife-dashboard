@@ -73,6 +73,8 @@ export interface AiLimits {
 /** Why the agent is not dialling (2026-11-02) — each a yes / no. */
 export interface AiFlags {
   readonly held?: boolean
+  /** Stopped from the panel («Toʻxtatish», 2026-11-04). */
+  readonly stopped?: boolean
   readonly ats_paused?: boolean
   readonly credits_out?: boolean
   readonly no_specialist?: boolean
@@ -86,6 +88,8 @@ export interface AiReport {
   readonly at: string
   readonly appliedVersion: number | null
   readonly applyError: string | null
+  /** What the agent applied: false = stopped. Absent — an agent older than the stop button. */
+  readonly enabled?: boolean
   readonly limits: AiLimits
   readonly lines: Readonly<Record<string, string>>
   readonly sellers: readonly ReportSeller[]
@@ -168,7 +172,11 @@ export interface NowRow {
  * day it is the alarm (red) — the agent stopped or cannot reach the dashboard.
  */
 export function nowRow(status: AiStatus | null, now: Date, staleAfterSec: number): NowRow {
-  if (status && isFresh(status, now, staleAfterSec)) return { tone: 'good', title: 'AI ishlayapti', detail: null }
+  if (status && isFresh(status, now, staleAfterSec)) {
+    return agentEnabled(status.report) === false
+      ? { tone: 'critical', title: 'AI toʻxtatilgan', detail: 'Boshqaruvdan toʻxtatilgan — yangi lidlarga qoʻngʻiroq qilmaydi.' }
+      : { tone: 'good', title: 'AI ishlayapti', detail: null }
+  }
   const last = status ? `oxirgi xabar ${whenText(status.receivedAt, now)}` : null
   switch (workPhase(now)) {
     case 'off':
@@ -528,6 +536,7 @@ export function feedNoAnswer(report: AiReport): number {
 /* ── Why the agent is not dialling — `flags` (2026-11-02) ───────────────── */
 
 const FLAG_TEXT: readonly (readonly [keyof AiFlags, string])[] = [
+  ['stopped', 'AI Boshqaruvdan toʻxtatilgan — «Yoqish» bilan qaytadi'],
   ['held', 'AI toʻxtatib qoʻyilgan'],
   ['ats_paused', 'ATS pauzada'],
   ['credits_out', 'Ovoz kreditlari tugagan'],
@@ -724,4 +733,77 @@ export function appliedAck(
     text: `AI hali qoʻllamadi — hozir ${report.appliedVersion === null ? 'oʻz sozlamasi' : `v${report.appliedVersion}`} ishlayapti`,
     reason: null,
   }
+}
+
+/* ── «Toʻxtatish» / «Yoqish» (2026-11-04) ───────────────────────────────── */
+
+/**
+ * The state the agent says it applied: `enabled` (top level), and
+ * `flags.stopped` beside it — stopped if either says so. Null when it sends
+ * neither: an agent older than the button, which ignores `enabled` in the
+ * config and keeps dialling.
+ */
+export function agentEnabled(report: AiReport | null | undefined): boolean | null {
+  if (!report) return null
+  const stopped = report.flags?.stopped
+  if (typeof report.enabled === 'boolean') return report.enabled && stopped !== true
+  if (typeof stopped === 'boolean') return !stopped
+  return null
+}
+
+export interface SwitchState {
+  /** `on` / `off` — saved = applied; `applying` — not yet; `old` — the agent cannot; `refused`; `silent` — no fresh report. */
+  readonly kind: 'on' | 'off' | 'applying' | 'old' | 'refused' | 'silent'
+  readonly tone: 'good' | 'warning' | 'critical' | 'neutral'
+  readonly title: string
+  readonly detail: string | null
+}
+
+const stateWord = (enabled: boolean) => (enabled ? 'ishlayapti' : 'toʻxtatilgan')
+
+/**
+ * What the stop card says — the SAVED state against what the agent APPLIED,
+ * never one shown as the other:
+ *  · no fresh report — the page's «AI javob bermayapti» rule (grey out of
+ *    hours), with the saved state named as saved only;
+ *  · the agent sends no `enabled` — it predates the button: a warning, the
+ *    saved state not shown as applied (a stopped one keeps dialling there);
+ *  · the agent refused the saved version — red, with its reason;
+ *  · applied ≠ saved, or the saved version not taken yet — «qoʻllanmoqda…»;
+ *  · else «Ishlayapti» (green) or «Toʻxtatilgan» (red).
+ */
+export function switchState(
+  saved: { readonly enabled: boolean; readonly version: number },
+  status: AiStatus | null,
+  now: Date,
+  staleAfterSec: number,
+): SwitchState {
+  const savedText = `Saqlangan: ${stateWord(saved.enabled)}`
+  if (!status || !isFresh(status, now, staleAfterSec)) {
+    const head = nowRow(status, now, staleAfterSec)
+    const tone = head.tone === 'critical' ? 'critical' : 'neutral'
+    return { kind: 'silent', tone, title: head.title, detail: `${savedText} — AI qoʻllaganini bilib boʻlmaydi.` }
+  }
+  const report = status.report
+  const applied = agentEnabled(report)
+  if (applied === null) {
+    return {
+      kind: 'old',
+      tone: 'warning',
+      title: 'AI bu tugmani hali qoʻllamaydi',
+      detail: saved.enabled
+        ? `${savedText}. AI serveri yangilanmaguncha toʻxtatish ishlamaydi.`
+        : `${savedText}, lekin AI serveri buni bilmaydi va qoʻngʻiroq qilishda davom etadi.`,
+    }
+  }
+  const taken = report.appliedVersion !== null && report.appliedVersion >= saved.version
+  if (!taken && report.applyError) {
+    return { kind: 'refused', tone: 'critical', title: `AI rad etdi v${saved.version}`, detail: `${report.applyError} — AIda hozir: ${stateWord(applied)}.` }
+  }
+  if (!taken || applied !== saved.enabled) {
+    return { kind: 'applying', tone: 'warning', title: 'qoʻllanmoqda…', detail: `${savedText}, AIda hozir: ${stateWord(applied)}. AI 20 soniya ichida oʻqiydi.` }
+  }
+  return applied
+    ? { kind: 'on', tone: 'good', title: 'Ishlayapti', detail: null }
+    : { kind: 'off', tone: 'critical', title: 'Toʻxtatilgan', detail: 'Yangi lidlarga qoʻngʻiroq qilmaydi. 09:00 da ham oʻzi yonmaydi — faqat «Yoqish» bilan.' }
 }

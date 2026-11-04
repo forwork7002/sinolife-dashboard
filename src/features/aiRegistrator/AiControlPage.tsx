@@ -1,7 +1,8 @@
 'use client'
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { type ReactNode, useState } from 'react'
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { ErrorState, LoadingSkeleton } from '@/components/states/States'
 import { Button } from '@/components/ui/Button'
@@ -22,6 +23,7 @@ import {
   nowRow,
   productOf,
   sellerLook,
+  switchState,
   transferOrderText,
 } from '@/features/aiRegistrator/aiLiveLogic'
 import { PageShell } from '@/features/shared/PageShell'
@@ -32,6 +34,8 @@ import { formatClock, formatDateTime, formatNumber } from '@/lib/format'
 interface AiControlDto {
   readonly config: {
     readonly version: number
+    /** false = stopped from this page («Toʻxtatish»). */
+    readonly enabled: boolean
     readonly sellers: readonly string[]
     readonly parked: readonly string[]
     readonly maxCalls: number
@@ -55,6 +59,8 @@ interface AiControlDto {
     readonly savedBy: string
     readonly lines: readonly string[]
   }[]
+  /** The last save that stopped or started the AI — who and when. */
+  readonly switched?: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
 }
 
 /* Mirrors `AiLiveDto` — the 5 s read, `?part=live`. */
@@ -106,9 +112,12 @@ const sameDraft = (a: Draft, b: Draft) =>
  * lines, adding a MicroSIP is the agent's own work), 2 the sellers, 3 the
  * limits with the slots they make, 4 the ATS hand-off — the history, and a
  * save bar that stays at the bottom of the screen while anything is unsaved.
+ * Under the status card, «Toʻxtatish» / «Yoqish» (2026-11-04, the owner: «ai
+ * boshqaruvda ai registratorni oʻchirib toʻxtatish funksiyasi ham boʻlsin») —
+ * `AiSwitch`, its own small save, never part of «Saqlash».
  * NOT DRAWN, because the agent has no such control (ai_registrator ca9c52a):
- * a pause button, adding or removing an AI line, the sellers' ORDER — the
- * agent picks by `limits.transferOrder` itself, shown as words only.
+ * adding or removing an AI line, the sellers' ORDER — the agent picks by
+ * `limits.transferOrder` itself, shown as words only.
  *
  * TWO READS. The last report alone (`?part=live`, one row by its key) every
  * 5 s while the tab is in view — the agent reports every 5 s while a line is
@@ -197,13 +206,17 @@ export function AiControlPage() {
         <ErrorState message={query.error instanceof ApiClientError ? query.error.message : undefined} onRetry={() => void query.refetch()} />
       ) : !data || !editing ? (
         data && !data.config ? (
-          <Callout>Sozlama hali saqlanmagan — maʼlumotlar bazasida boshlangʻich yozuv yoʻq.</Callout>
+          <div className="flex flex-col gap-5">
+            <Callout>Sozlama hali saqlanmagan — maʼlumotlar bazasida boshlangʻich yozuv yoʻq.</Callout>
+            <AiSwitch data={data} status={status} now={now} staleAfterSec={staleAfterSec} />
+          </div>
         ) : (
           <LoadingSkeleton rows={6} />
         )
       ) : (
         <div className="flex flex-col gap-5 pb-2">
           <StatusCard data={data} status={status} saved={saved} now={now} staleAfterSec={staleAfterSec} />
+          <AiSwitch data={data} status={status} now={now} staleAfterSec={staleAfterSec} />
           <Step n={1} title="AI liniyalari (SIP)" lead="Har liniya hozir nima qilyapti — AIning oʻz xabaridan. Liniya qoʻshish yoki oʻchirish AI serverining sozlamasida, bu yerda emas.">
             <AiNowPanel
               status={status}
@@ -327,6 +340,202 @@ function StatusCard({
         )}
       </section>
     </Card>
+  )
+}
+
+const STOP_QUESTION =
+  'AI registrator yangi lidlarga qoʻngʻiroq qilmaydi, hozirgi suhbatlar oxirigacha tugaydi. 09:00 da ham oʻzi yonmaydi — faqat «Yoqish» bilan. Toʻxtatilsinmi?'
+
+/**
+ * «AI registrator · Ishlayapti — Toʻxtatish» / «Toʻxtatilgan — Yoqish». Its own
+ * write, `{ baseVersion, enabled }`: the next version with only the stop
+ * changed, so a draft of sellers or limits is neither saved nor lost by it, and
+ * «Saqlash» never switches the AI back on. The state is the SAVED one against
+ * the one the agent APPLIED (`switchState`) — an agent older than the button
+ * is said to be one, not shown as stopped. «Toʻxtatish» asks first, in the
+ * page's own dialog; «Yoqish» does not — starting is the safe direction.
+ */
+function AiSwitch({
+  data,
+  status,
+  now,
+  staleAfterSec,
+}: {
+  readonly data: AiControlDto
+  readonly status: AiStatus | null
+  readonly now: Date
+  readonly staleAfterSec: number
+}) {
+  const queryClient = useQueryClient()
+  const [asking, setAsking] = useState(false)
+  const config = data.config
+  const write = useMutation({
+    mutationFn: (enabled: boolean) =>
+      apiWrite<{ version: number }>('POST', '/leads/ai-registrator/control', { baseVersion: config?.version ?? 0, enabled }),
+    onSuccess: () => {
+      setAsking(false)
+      void queryClient.invalidateQueries({ queryKey: ['ai-registrator-control'] })
+    },
+  })
+  const error = write.error instanceof Error ? write.error.message : null
+
+  const enabled = config ? config.enabled !== false : true
+  const state = config ? switchState({ enabled, version: config.version }, status, now, staleAfterSec) : null
+  const who = !config
+    ? null
+    : data.switched
+      ? `${enabled ? 'Yoqdi' : 'Toʻxtatdi'}: ${data.switched.savedBy} · ${formatDateTime(data.switched.savedAt)}`
+      : `Sozlama v${config.version}: ${config.updatedBy} · ${formatDateTime(config.updatedAt)}`
+
+  return (
+    <section aria-label="AI ishlashi">
+      <Card className="flex flex-wrap items-center gap-x-5 gap-y-3 p-4 sm:p-5">
+        <div className="min-w-0 flex-1 basis-72">
+          <p className="flex flex-wrap items-center gap-2 text-[15px] font-bold" style={{ color: 'var(--ink-primary)' }}>
+            AI registrator
+            {state && (
+              <span aria-live="polite">
+                <StatusChip tone={state.tone}>{state.title}</StatusChip>
+              </span>
+            )}
+          </p>
+          <p className="mt-1 text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+            {state ? state.detail ?? 'Yangi lidlarga qoʻngʻiroq qilyapti.' : 'Avval sozlamani saqlang — AI toʻxtatish buyrugʻini sozlama bilan oʻqiydi.'}
+          </p>
+          {who && (
+            <p className="mt-0.5 text-xs tabular-nums" style={{ color: 'var(--ink-muted)' }}>
+              {who}
+            </p>
+          )}
+          {error && !asking && (
+            <p role="alert" className="mt-1 text-[13px]" style={{ color: 'var(--status-critical)' }}>
+              {error}
+            </p>
+          )}
+        </div>
+        {enabled ? (
+          <Button
+            variant="danger"
+            disabled={!config || write.isPending}
+            onClick={() => {
+              write.reset()
+              setAsking(true)
+            }}
+          >
+            Toʻxtatish
+          </Button>
+        ) : (
+          <Button variant="primary" disabled={write.isPending} onClick={() => write.mutate(true)}>
+            {write.isPending ? 'Yoqilmoqda…' : 'Yoqish'}
+          </Button>
+        )}
+      </Card>
+      {asking && (
+        <StopDialog
+          pending={write.isPending}
+          error={error}
+          note={state?.kind === 'old' ? 'Diqqat: AI serveri bu tugmani hali qoʻllamaydi — toʻxtatish u yangilangandan keyin ishlaydi.' : null}
+          onConfirm={() => write.mutate(false)}
+          onCancel={() => {
+            setAsking(false)
+            write.reset()
+          }}
+        />
+      )}
+    </section>
+  )
+}
+
+/**
+ * The stop's question — the house modal (`.backdrop-dim` scrim, `.glass-float`
+ * card, as «+ Yangi hisob»), not `window.confirm`: focus starts on «Bekor
+ * qilish» and stays inside, Escape and the scrim cancel, the page holds still.
+ */
+function StopDialog({
+  pending,
+  error,
+  note,
+  onConfirm,
+  onCancel,
+}: {
+  readonly pending: boolean
+  readonly error: string | null
+  readonly note: string | null
+  readonly onConfirm: () => void
+  readonly onCancel: () => void
+}) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+  const textId = useId()
+
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null
+    panelRef.current?.querySelector<HTMLElement>('button')?.focus()
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = overflow
+      previous?.focus()
+    }
+  }, [])
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      event.stopPropagation()
+      if (!pending) onCancel()
+      return
+    }
+    if (event.key !== 'Tab') return
+    const stops = [...(panelRef.current?.querySelectorAll<HTMLElement>('button:not([disabled])') ?? [])]
+    const first = stops[0]
+    const last = stops[stops.length - 1]
+    if (!first || !last) return
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
+  return createPortal(
+    <div
+      className="backdrop-dim fixed inset-0 z-50 flex items-center justify-center p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !pending) onCancel()
+      }}
+    >
+      <div ref={panelRef} role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={textId} onKeyDown={onKeyDown} className="w-full max-w-md">
+        <Card className="glass-float flex flex-col gap-4 px-5 py-5">
+          <h2 id={titleId} className="text-base font-semibold" style={{ color: 'var(--ink-primary)' }}>
+            AI registratorni toʻxtatish
+          </h2>
+          <p id={textId} className="text-[14px] leading-6" style={{ color: 'var(--ink-secondary)' }}>
+            {STOP_QUESTION}
+          </p>
+          {note && (
+            <p className="text-[13px]" style={{ color: inked('var(--status-warning)') }}>
+              {note}
+            </p>
+          )}
+          {error && (
+            <p role="alert" className="text-[13px]" style={{ color: 'var(--status-critical)' }}>
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="ghost" disabled={pending} onClick={onCancel}>
+              Bekor qilish
+            </Button>
+            <Button variant="danger" disabled={pending} onClick={onConfirm}>
+              {pending ? 'Toʻxtatilmoqda…' : 'Ha, toʻxtatish'}
+            </Button>
+          </div>
+        </Card>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

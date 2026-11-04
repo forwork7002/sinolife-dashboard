@@ -7,9 +7,11 @@
  * constant time, AI_REGISTRATOR_INGEST_TOKEN on both sides; outside `/api/v1`
  * for the same reason (a service, not a person — no section to name).
  *
- * 200 with the contract's bare object — `{ version, sellers, maxCalls, maxNew,
- * maxRetry, saleHandoff, updatedAt, updatedBy }`, NO envelope: the agent reads
- * the body as the settings. 404 when nothing is saved yet (and while no token
+ * 200 with the contract's bare object — `{ version, enabled, sellers, maxCalls,
+ * maxNew, maxRetry, saleHandoff, updatedAt, updatedBy }`, NO envelope: the
+ * agent reads the body as the settings. `enabled` is always a real boolean
+ * (false = «Toʻxtatish» on the panel): the agent refuses the whole config over
+ * one that is not. 404 when nothing is saved yet (and while no token
  * is configured — the agent reads both as «no settings, keep your own»), 401
  * for a bad token, 503 when the database is down (the agent keeps its last).
  */

@@ -47,6 +47,16 @@ export interface ControlSettings {
   readonly maxNew: number
   readonly maxRetry: number
   readonly saleHandoff: SaleHandoff
+  /**
+   * Whether the agent dials at all (2026-11-04, the owner: «ai boshqaruvda ai
+   * registratorni oʻchirib toʻxtatish funksiyasi ham boʻlsin»). `false`: no new
+   * lead is dialled, the calls already on a line run to their end; the stop
+   * survives the agent's restart and its 09:00 timer — only «Yoqish» here brings
+   * it back. Saved by its own small body (`controlEnabledSchema`), never by
+   * «Saqlash»: a seller or a limit changed under a stopped AI must not start it
+   * again without anybody saying so.
+   */
+  readonly enabled: boolean
 }
 
 /** The extensions in order of first appearance, trimmed, each once. */
@@ -123,7 +133,7 @@ export function controlChanges(before: ControlSettings | null, after: ControlSet
       out.push({ field, before: was === null ? null : [...listBefore], after: [...after[field]] })
     }
   }
-  for (const field of ['maxCalls', 'maxNew', 'maxRetry', 'saleHandoff'] as const) {
+  for (const field of ['enabled', 'maxCalls', 'maxNew', 'maxRetry', 'saleHandoff'] as const) {
     if (was === null || was[field] !== after[field]) out.push({ field, before: was === null ? null : was[field], after: after[field] })
   }
   return out

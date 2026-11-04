@@ -66,7 +66,7 @@ Per-screen traps worth knowing before you touch one:
   `canControlAi` gates the page (`requireAiControl`, others are redirected to the report), the v1 API
   `/leads/ai-registrator/control` (GET + POST, 403 for any other account, an ADMIN included) and the
   «Boshqaruv →» link. **THE AGENT PULLS** (Eskiz's ports are closed): `GET /api/ai-registrator/config` →
-  the bare contract object `{version, sellers, maxCalls, maxNew, maxRetry, saleHandoff, updatedAt,
+  the bare contract object `{version, enabled, sellers, maxCalls, maxNew, maxRetry, saleHandoff, updatedAt,
   updatedBy}` (no envelope; 404 before a save), read every 20 s; it reports every 30 s to
   `POST /api/ai-registrator/status` (only the last kept, `ai_registrator_status`, 64 KB cap; an unknown
   line/seller state is stored as given). Both bearer `AI_REGISTRATOR_INGEST_TOKEN`, outside `/api/v1`.
@@ -86,6 +86,22 @@ Per-screen traps worth knowing before you touch one:
   131, 127, 111, 112, 108, 109, 107, 114, 115, 117, 134, 136, 135, 141 (never 125 / 129 / 139 / 143: the
   agent applies whatever is here within 20 s), 4 / 4 / 0, refer; `tests/domain/aiRegistratorControl.test.ts`
   pins it.
+  **«Toʻxtatish» / «Yoqish»** (2026-11-04, the owner: «ai boshqaruvda ai regsitratorni oʻchrib toʻxtatish
+  funksiyasi ham boʻlsin»): `ai_registrator_config.enabled` (migration `20261104120000`, ADD COLUMN NOT NULL
+  DEFAULT true), sent to the agent as a REAL boolean always (the agent refuses the whole config over a
+  non-boolean). false = no new lead dialled, calls on a line run to their end; the agent keeps it over a
+  restart and its 09:00 timer, and sends the Telegram message itself. Its own body on the same POST —
+  `{baseVersion, enabled}` (`controlEnabledSchema`, strict) → `setEnabled`: the next version with every
+  other field as stored. **«Saqlash» never carries it** — the stored state stays (a stopped AI whose sellers
+  change stays stopped; a whole save sent with `enabled` has it stripped). 0/0 is still refused: the stop
+  is `enabled`, never the limits. The audit line is «AI: ishlayapti → toʻxtatildi» / «toʻxtatildi →
+  yoqildi»; `switched` (the last such save in the history) names who and when. The status may carry
+  `enabled` and `flags.stopped` (both optional, `.catch`); the card (`AiSwitch`, `switchState` in
+  `aiLiveLogic.ts`) shows saved vs applied: equal → «Ishlayapti» (green) / «Toʻxtatilgan» (red); not taken
+  yet → «qoʻllanmoqda…»; refused → «AI rad etdi vN»; **no `enabled` in the status → «AI bu tugmani hali
+  qoʻllamaydi»** (an older agent ignores it and keeps dialling — never shown as stopped); no fresh report →
+  the «AI javob bermayapti» rule. «Toʻxtatish» asks first in the house modal (not `window.confirm`);
+  «Yoqish» does not. No config yet → the button is disabled, «Avval sozlamani saqlang».
 - **AI registrator — the design canvas** (2026-11-02, the owner: «dashboardimiz dizayni shunga boʻladi … funksiyalarini
   hammasini ishlaydigan qilib ber»; artifact «AI registrator — jonli monitoring variantlari», Hisobot + Boshqaruv).
   **Hisobot** = «Hozir · jonli» (`AiNowPanel`: one `.ai-lane[data-phase]` per AI line — client · wire · AI · wire ·
@@ -95,8 +111,9 @@ Per-screen traps worth knowing before you touch one:
   bars, AI vs registrator with the metrics as rows, sellers with a conversion bar, tries as stacked bars, every lead).
   **Boshqaruv** = status card («Dilnoza ishlayapti», vN, ack) · 1 lines (the same `AiNowPanel`, read-only) · 2 sellers
   (switch, «Oʻchirib qoʻyilganlar · N», no order and no ↑↓ — the agent picks by its own `limits.transferOrder`, shown
-  as words) · 3 limits with the slot bar · 4 refer/bridge · history · a sticky save bar. **NOT DRAWN, the agent has no
-  such control** (ai_registrator ca9c52a): pause, adding/removing an AI line, seller order, the client's phone in a
+  as words) · 3 limits with the slot bar · 4 refer/bridge · history · a sticky save bar; under the status card
+  «Toʻxtatish» / «Yoqish» since 2026-11-04 (above). **NOT DRAWN, the agent has no
+  such control** (ai_registrator ca9c52a): adding/removing an AI line, seller order, the client's phone in a
   lane, a region in a lane. The ca9c52a fields are ALL OPTIONAL, each falls back alone (`.catch`): status
   `live.lines[].started` (the lane timer), `live.events[]`, `sellers[].word/since` (the chip timer; «AI mijozi bilan»
   = busy and a `connected` to that ext within 90 s of `since`, else «oʻz qoʻngʻirogʻida»), `flags`,

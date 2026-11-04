@@ -39,6 +39,7 @@ function settingsOf(row: {
   maxNew: number
   maxRetry: number
   saleHandoff: string
+  enabled: boolean
 }): ControlSettings {
   return {
     sellers: row.sellers,
@@ -47,6 +48,7 @@ function settingsOf(row: {
     maxNew: row.maxNew,
     maxRetry: row.maxRetry,
     saleHandoff: row.saleHandoff as SaleHandoff,
+    enabled: row.enabled,
   }
 }
 
@@ -92,6 +94,7 @@ export class AiRegistratorControlRepository {
         maxNew: settings.maxNew,
         maxRetry: settings.maxRetry,
         saleHandoff: settings.saleHandoff,
+        enabled: settings.enabled,
         updatedAt: now,
         updatedBy: by.label,
         updatedById: by.userId,

@@ -174,7 +174,7 @@ describe('AiControlPage — the design\'s Boshqaruv, two reads', () => {
   it('shows the status card, the live lines, the sellers, limits and hand-off, and saves from the bar', async () => {
     const asked: { url: string; body?: unknown }[] = []
     const panel = {
-      config: { version: 3, sellers: ['120', '122'], parked: ['128'], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer', updatedAt: at('09:00'), updatedBy: 'adminjon' },
+      config: { version: 3, enabled: false, sellers: ['120', '122'], parked: ['128'], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer', updatedAt: at('09:00'), updatedBy: 'adminjon' },
       status: status(),
       names: {},
       rules: { aiLines: ['178', '290'], maxCalls: 8, maxSellers: 60, staleAfterSec: 90 },
@@ -207,6 +207,8 @@ describe('AiControlPage — the design\'s Boshqaruv, two reads', () => {
     await screen.findByText('Oʻzgarish yoʻq')
     const post = asked.find((a) => a.body !== undefined)
     expect(post?.body).toMatchObject({ baseVersion: 3, sellers: ['120', '122', '128'], parked: [] })
+    // «Saqlash» carries no stop: a stopped AI whose sellers change stays stopped (2026-11-04).
+    expect(post?.body).not.toHaveProperty('enabled')
     expect(asked.some((a) => a.url.endsWith('/api/v1/leads/ai-registrator/control?part=live'))).toBe(true)
     vi.unstubAllGlobals()
   })

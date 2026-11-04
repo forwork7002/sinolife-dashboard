@@ -21,7 +21,7 @@ import { changeLines } from '@/server/services/aiRegistratorControlService'
 /** The owner's eighteen, 30.10 14:4x — «129 va 125 ni ulamaysan»; 139 and 143 not in it either. */
 const OWNER_18 = ['122', '120', '128', '123', '131', '127', '111', '112', '108', '109', '107', '114', '115', '117', '134', '136', '135', '141']
 
-const ok: ControlSettings = { sellers: OWNER_18, parked: [], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer' }
+const ok: ControlSettings = { sellers: OWNER_18, parked: [], maxCalls: 4, maxNew: 4, maxRetry: 0, saleHandoff: 'refer', enabled: true }
 
 describe('controlProblems', () => {
   it('passes the starting setting', () => {
@@ -70,6 +70,16 @@ describe('controlChanges — the audit', () => {
     expect(changeLines(changes)).toEqual(['Sotuvchilar (AIga): +143, −117', 'Bir vaqtda: 4 → 6'])
     expect(controlChanges(ok, ok)).toEqual([])
   })
+
+  it('names the stop and the start, and only them when nothing else changed (2026-11-04)', () => {
+    const stopped: ControlSettings = { ...ok, enabled: false }
+    expect(controlChanges(ok, stopped)).toEqual([{ field: 'enabled', before: true, after: false }])
+    expect(changeLines(controlChanges(ok, stopped))).toEqual(['AI: ishlayapti → toʻxtatildi'])
+    expect(changeLines(controlChanges(stopped, ok))).toEqual(['AI: toʻxtatildi → yoqildi'])
+    expect(controlChanges(stopped, stopped)).toEqual([])
+    // The first save names the state it starts in.
+    expect(changeLines(controlChanges(null, ok))).toContain('AI: ishlayapti')
+  })
 })
 
 describe('statusIsStale', () => {
@@ -114,5 +124,21 @@ describe('the starting row the migration writes', () => {
 
   it('only adds: no ALTER, DROP, UPDATE or DELETE', () => {
     expect(sql).not.toMatch(/\b(ALTER|DROP|UPDATE|DELETE|TRUNCATE)\b/i)
+  })
+})
+
+describe('the stop column (migration 20261104120000)', () => {
+  const sql = readFileSync('prisma/migrations/20261104120000_ai_registrator_enabled/migration.sql', 'utf8')
+  const statements = sql
+    .split('\n')
+    .filter((line) => !line.trimStart().startsWith('--'))
+    .join('\n')
+    .split(';')
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+
+  it('adds one column that reads as «ishlayapti» for the row there is — nothing else', () => {
+    expect(statements).toEqual(['ALTER TABLE "ai_registrator_config" ADD COLUMN "enabled" BOOLEAN NOT NULL DEFAULT true'])
+    expect(sql).not.toMatch(/\b(DROP|UPDATE|DELETE|TRUNCATE|RENAME)\b/i)
   })
 })

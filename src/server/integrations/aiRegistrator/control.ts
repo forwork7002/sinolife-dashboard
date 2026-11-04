@@ -2,8 +2,8 @@
  * The two bodies of the AI registrator's control contract — see
  * `domain/aiRegistrator/control.ts` for what the panel is.
  *
- *   GET  /api/ai-registrator/config  → { version, sellers, maxCalls, maxNew,
- *        maxRetry, saleHandoff, updatedAt, updatedBy }   (404 until saved)
+ *   GET  /api/ai-registrator/config  → { version, enabled, sellers, maxCalls,
+ *        maxNew, maxRetry, saleHandoff, updatedAt, updatedBy }   (404 until saved)
  *   POST /api/ai-registrator/status  ← what the agent runs, every 5 s while a
  *        line is busy, else every 30 s
  *
@@ -24,6 +24,13 @@
  * `live.events[]` (the last ≤50 things that happened, newest first — the live
  * feed), `sellers[].word` / `since` (the ATS presence word and since when),
  * `flags` (why the agent is not dialling) and `limits.transferOrder`.
+ *
+ * 2026-11-04 (the stop button) — `enabled` in the CONFIG is always a real
+ * boolean: the agent refuses the whole config over one that is not
+ * (`applyError`), so ISH never sends it missing or null. Back in the STATUS,
+ * both optional: top-level `enabled` (the state the agent applied) and
+ * `flags.stopped`. An agent that sends neither predates the button — it
+ * ignores `enabled` and keeps dialling, and the panel says so.
  */
 
 import { z } from 'zod'
@@ -95,6 +102,8 @@ const flag = z.boolean().optional().catch(undefined)
 /** Why the agent is not dialling now — each a yes / no; `active_calls` a count. */
 const flagsSchema = z.object({
   held: flag,
+  /** Stopped from the panel («Toʻxtatish») — `enabled: false` applied. */
+  stopped: flag,
   ats_paused: flag,
   credits_out: flag,
   no_specialist: flag,
@@ -108,6 +117,8 @@ export const aiStatusSchema = z.object({
   at: instant,
   appliedVersion: z.number().int().min(0).nullable().default(null),
   applyError: z.string().max(500).nullable().default(null),
+  /** What the agent applied: false = stopped. Absent — an agent older than the button. */
+  enabled: z.boolean().optional().catch(undefined),
   limits: z
     .object({
       calls: count.nullable().optional(),
@@ -171,3 +182,21 @@ export const controlSaveSchema = z.object({
 })
 
 export type ControlSave = z.infer<typeof controlSaveSchema>
+
+/**
+ * «Toʻxtatish» / «Yoqish» — the stop alone. Its own body, and strict, so it
+ * can never be mistaken for a «Saqlash»: the service writes the next version
+ * with every other field as stored and only `enabled` changed. «Saqlash»
+ * (`controlSaveSchema`) carries no `enabled` at all — the stored one stays.
+ */
+export const controlEnabledSchema = z.strictObject({
+  baseVersion: z.number().int().min(0),
+  enabled: z.boolean(),
+})
+
+export type ControlEnabled = z.infer<typeof controlEnabledSchema>
+
+/** What the control POST takes: a whole save, or the stop alone. */
+export const controlWriteSchema = z.union([controlEnabledSchema, controlSaveSchema])
+
+export type ControlWrite = z.infer<typeof controlWriteSchema>

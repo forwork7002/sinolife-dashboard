@@ -20,6 +20,7 @@ vi.mock('@/server/config/env', () => ({ env: envState }))
 const OWNER_18 = ['122', '120', '128', '123', '131', '127', '111', '112', '108', '109', '107', '114', '115', '117', '134', '136', '135', '141']
 const saved = {
   version: 1,
+  enabled: true,
   sellers: OWNER_18,
   maxCalls: 4,
   maxNew: 4,
@@ -34,6 +35,7 @@ const state = vi.hoisted(() => ({
   statuses: [] as unknown[],
   saves: [] as unknown[],
   savers: [] as unknown[],
+  switches: [] as unknown[],
   fail: false,
   principal: null as unknown,
 }))
@@ -52,6 +54,11 @@ vi.mock('@/server/services/container', () => ({
     live: async () => ({ status: null, staleAfterSec: 90 }),
     save: async (body: unknown, by: unknown) => {
       state.saves.push(body)
+      state.savers.push(by)
+      return state.config
+    },
+    setEnabled: async (body: unknown, by: unknown) => {
+      state.switches.push(body)
       state.savers.push(by)
       return state.config
     },
@@ -119,6 +126,7 @@ beforeEach(() => {
   state.statuses.length = 0
   state.saves.length = 0
   state.savers.length = 0
+  state.switches.length = 0
   state.fail = false
   state.principal = null
 })
@@ -129,7 +137,8 @@ describe('GET /api/ai-registrator/config — what the agent reads', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('cache-control')).toBe('no-store')
     const body = await res.json()
-    expect(Object.keys(body).sort()).toEqual(['maxCalls', 'maxNew', 'maxRetry', 'saleHandoff', 'sellers', 'updatedAt', 'updatedBy', 'version'])
+    expect(Object.keys(body).sort()).toEqual(['enabled', 'maxCalls', 'maxNew', 'maxRetry', 'saleHandoff', 'sellers', 'updatedAt', 'updatedBy', 'version'])
+    expect(body.enabled).toBe(true)
     expect(body.sellers).toEqual(OWNER_18)
     expect(body.sellers).not.toContain('125')
     expect(body.sellers).not.toContain('129')
@@ -275,5 +284,35 @@ describe('/api/v1/leads/ai-registrator/control — the owner\'s account only', (
   it('refuses a deactivated it', async () => {
     state.principal = principal({ aiControl: true, isActive: false })
     expect((await read()).status).toBe(403)
+  })
+
+  /*
+    «Toʻxtatish» / «Yoqish» (2026-11-04): `{ baseVersion, enabled }` alone is
+    the stop — its own service call; a whole save never carries it, even when
+    a client sends one along.
+  */
+  it('takes the stop alone as the stop, and a whole save as a save that never switches the AI', async () => {
+    state.principal = principal({ aiControl: true, login: 'umida' })
+    expect((await write({ baseVersion: 1, enabled: false })).status).toBe(200)
+    expect(state.switches).toEqual([{ baseVersion: 1, enabled: false }])
+    expect(state.saves).toHaveLength(0)
+
+    expect((await write({ ...body, enabled: false })).status).toBe(200)
+    expect(state.saves).toHaveLength(1)
+    expect(state.saves[0]).not.toHaveProperty('enabled')
+    expect(state.switches).toHaveLength(1)
+
+    expect((await write({ baseVersion: 1, enabled: 'no' })).status).toBe(400)
+    expect((await write({ baseVersion: 1 })).status).toBe(400)
+    expect(state.switches).toHaveLength(1)
+    expect(state.savers).toEqual([{ label: 'umida', userId: 'u-1' }, { label: 'umida', userId: 'u-1' }])
+  })
+
+  it('keeps the stop behind the same door', async () => {
+    state.principal = principal()
+    expect((await write({ baseVersion: 1, enabled: false })).status).toBe(403)
+    state.principal = asProd('dilnoza')
+    expect((await write({ baseVersion: 1, enabled: false })).status).toBe(403)
+    expect(state.switches).toHaveLength(0)
   })
 })

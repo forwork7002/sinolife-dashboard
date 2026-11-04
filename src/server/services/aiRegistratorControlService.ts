@@ -13,7 +13,7 @@ import {
 } from '@/server/domain/aiRegistrator/control'
 import { floorNumberOf, indexByFloorNumber } from '@/server/domain/employees/floorNumber'
 import { ApiError } from '@/server/http/errors'
-import { type AiStatusPush, type ControlSave, aiStatusSchema } from '@/server/integrations/aiRegistrator/control'
+import { type AiStatusPush, type ControlEnabled, type ControlSave, aiStatusSchema } from '@/server/integrations/aiRegistrator/control'
 import {
   type AiRegistratorControlRepository,
   type StoredConfig,
@@ -24,6 +24,8 @@ import {
 /** What the AI server reads — the contract's exact shape, no envelope. */
 export interface AgentConfigDto {
   readonly version: number
+  /** Always a real boolean — the agent refuses the whole config over one that is not. */
+  readonly enabled: boolean
   readonly sellers: readonly string[]
   readonly maxCalls: number
   readonly maxNew: number
@@ -57,6 +59,11 @@ export interface AiControlDto {
     readonly savedBy: string
     readonly lines: readonly string[]
   }[]
+  /**
+   * The last save that stopped or started the AI — who and when, for «Toʻxtatilgan ·
+   * umida, 04.11 15:30». Null when the history shown has none (never switched).
+   */
+  readonly switched: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
 }
 
 /** The 5 s read of «Boshqaruv» — the agent's last report and nothing else. Mirrored in `AiControlPage.tsx`. */
@@ -83,6 +90,12 @@ function statusDto(status: StoredStatus | null, now: Date): AiStatusDto | null {
   }
 }
 
+/** «AI: ishlayapti → toʻxtatildi» — the stop in the audit, in the owner's words. */
+function enabledLine(before: unknown, after: unknown): string {
+  if (before === null || before === undefined) return `AI: ${after === false ? 'toʻxtatilgan' : 'ishlayapti'}`
+  return after === false ? 'AI: ishlayapti → toʻxtatildi' : 'AI: toʻxtatildi → yoqildi'
+}
+
 const FIELD_LABEL: Readonly<Record<string, string>> = {
   maxCalls: 'Bir vaqtda',
   maxNew: 'Yangi lidlarga',
@@ -93,6 +106,7 @@ const FIELD_LABEL: Readonly<Record<string, string>> = {
 function agentConfig(config: StoredConfig): AgentConfigDto {
   return {
     version: config.version,
+    enabled: config.enabled,
     sellers: config.sellers,
     maxCalls: config.maxCalls,
     maxNew: config.maxNew,
@@ -113,6 +127,7 @@ export function changeLines(changes: readonly ControlChange[]): string[] {
       const parts = [...added.map((s) => `+${s}`), ...removed.map((s) => `−${s}`)]
       return [parts.length > 0 ? `${title}: ${parts.join(', ')}` : `${title}: tartib oʻzgardi`]
     }
+    if (c.field === 'enabled') return [enabledLine(c.before, c.after)]
     const label = FIELD_LABEL[c.field] ?? c.field
     return [c.before === null ? `${label}: ${String(c.after)}` : `${label}: ${String(c.before)} → ${String(c.after)}`]
   })
@@ -162,6 +177,7 @@ export class AiRegistratorControlService {
       if (name) names[ext] = name
     }
 
+    const switched = changes.find((c) => c.changes.some((f) => f.field === 'enabled'))
     return {
       config: config ? { ...agentConfig(config), parked: config.parked } : null,
       status: statusDto(status, now),
@@ -173,6 +189,7 @@ export class AiRegistratorControlService {
         savedBy: c.savedBy,
         lines: changeLines(c.changes),
       })),
+      switched: switched ? { version: switched.version, savedAt: switched.savedAt.toISOString(), savedBy: switched.savedBy } : null,
     }
   }
 
@@ -183,6 +200,7 @@ export class AiRegistratorControlService {
    * the agent would re-apply for nothing, and an audit line that says nothing.
    */
   async save(body: ControlSave, by: { readonly label: string; readonly userId: string }): Promise<AgentConfigDto> {
+    const current = await this.repository.config()
     const settings: ControlSettings = {
       sellers: normaliseSellers(body.sellers),
       parked: normaliseSellers(body.parked),
@@ -190,6 +208,10 @@ export class AiRegistratorControlService {
       maxNew: body.maxNew,
       maxRetry: body.maxRetry,
       saleHandoff: body.saleHandoff,
+      // «Saqlash» never switches the AI: the stored state stays. A stopped AI
+      // whose seller list is changed stays stopped. The row's version lock
+      // makes this read safe — a stop saved after it fails the save as stale.
+      enabled: current?.enabled ?? true,
     }
     const raw = (list: readonly string[]) => list.map((s) => s.trim()).filter((s) => s !== '')
     const problems = controlProblems({ ...settings, sellers: raw(body.sellers), parked: raw(body.parked) })
@@ -200,13 +222,39 @@ export class AiRegistratorControlService {
       )
     }
 
-    const current = await this.repository.config()
     if (current && current.version === body.baseVersion && controlChanges(current, settings).length === 0) {
       throw ApiError.validation('Hech narsa oʻzgarmadi — saqlash shart emas.')
     }
 
+    return this.write(settings, body.baseVersion, by)
+  }
+
+  /**
+   * «Toʻxtatish» / «Yoqish»: the next version with ONLY `enabled` changed —
+   * sellers, parked, limits and hand-off exactly as stored. Refused before a
+   * first save (there is nothing for the agent to read the stop from), when it
+   * changes nothing, and over a newer version, like any save.
+   */
+  async setEnabled(body: ControlEnabled, by: { readonly label: string; readonly userId: string }): Promise<AgentConfigDto> {
+    const current = await this.repository.config()
+    if (!current) throw ApiError.validation('Avval sozlamani saqlang — AI toʻxtatish buyrugʻini sozlama bilan oʻqiydi.')
+
+    const { version: _version, updatedAt: _at, updatedBy: _by, ...stored } = current
+    const settings: ControlSettings = { ...stored, enabled: body.enabled }
+    if (current.version === body.baseVersion && controlChanges(current, settings).length === 0) {
+      throw ApiError.validation(body.enabled ? 'AI allaqachon yoqilgan.' : 'AI allaqachon toʻxtatilgan.')
+    }
+
+    return this.write(settings, body.baseVersion, by)
+  }
+
+  private async write(
+    settings: ControlSettings,
+    baseVersion: number,
+    by: { readonly label: string; readonly userId: string },
+  ): Promise<AgentConfigDto> {
     try {
-      const saved = await this.repository.save(settings, body.baseVersion, by, (before) => controlChanges(before, settings))
+      const saved = await this.repository.save(settings, baseVersion, by, (before) => controlChanges(before, settings))
       return agentConfig(saved)
     } catch (error) {
       if (error instanceof StaleVersionError) {
