@@ -1185,7 +1185,11 @@ Per-screen traps worth knowing before you touch one:
   token can write) fills `moysklad_order` / `moysklad_order_item` from the
   worker every `SYNC_MOYSKLAD_EVERY` ticks (3), off without `MOYSKLAD_TOKEN`;
   every 10th read also sweeps deleted orders (refuses on a short listing or
-  > max(50, 5 %) gone). By hand: `npm run moysklad:import [-- --sweep]`. The
+  > max(50, 5 %) gone). **An order out of the listing is gone when its by-id
+  GET answers 404 OR a 200 carrying `deleted`** (2026-11-04): MoySklad keeps a
+  deleted order in its bin («Корзина») and still serves it by id; reading only
+  the 404 kept the 20 orders the warehouse deleted on 2026-11-02, and «Sverka»
+  flagged five October deals «NOT_FAKT1» against them. By hand: `npm run moysklad:import [-- --sweep]`. The
   first, whole-table read is ~100 pages, ~6 min (measured 2026-10-06: 9 777
   orders, 20 671 lines). **The two systems meet on the DEAL ID** — the
   client's integration writes «ID сделки в BX» (and `code` «bx…») on every

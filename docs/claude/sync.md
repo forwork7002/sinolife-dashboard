@@ -223,7 +223,9 @@
   accounts (`LEAD_ECHO_ACCOUNTS`) send a Conversions API «Lead» back for every
   form lead, and Meta's `lead` action counts it again as a pixel lead (31.10:
   501 = 255 + 246). `metaLeads` stores `onsite_conversion.lead_grouped` there
-  whenever a row has any; every other account keeps `lead`. The fix reaches
+  whenever a row has any, and 0 on a row with no form leads, no spend and no
+  impression (2026-11-04: «Collagen AI» 14.10, `lead` 19 on a campaign that did
+  not run — echoes alone); every other account keeps `lead`. The fix reaches
   stored days through the re-reads above — the last week at once, 37 days by
   the next night (the AI accounts' first spend is 2026-09-29).
 - **Roistat is on the wall clock too (2026-10-22)**: `SYNC_ROISTAT_MIN` (60)

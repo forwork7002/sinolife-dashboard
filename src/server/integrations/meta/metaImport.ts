@@ -124,12 +124,20 @@ export function microUsd(spend: string | undefined): bigint {
  * (`onsite_conversion.lead_grouped`), as the AI targetolog's own dashboard
  * does (`meta_reader.pick_leads`); a row without them — a site campaign —
  * keeps `lead`. The account is a required argument so no grain forgets it.
+ *
+ * AND A ROW THAT DELIVERED NOTHING HAS NO SITE LEADS EITHER (2026-11-04): on
+ * 2026-10-14 «Collagen AI» answered `lead` 19 for «Barter blogger kakaoli ta’m»
+ * with 0 $, 0 impressions and no form leads — the campaign did not run that day
+ * (none on 12–13.10, 5–23 $ a day around it), so the 19 were echoes alone and
+ * the card counted 19 leads nobody bought. With no spend and no impression an
+ * echo account's row counts its form leads only, which here are none.
  */
 export function metaLeads(row: InsightRow, accountId: string): number {
   const count = (type: string) => Number(row.actions?.find((a) => a.action_type === type)?.value ?? 0)
   if (LEAD_ECHO_ACCOUNTS.has(accountId)) {
     const form = count('onsite_conversion.lead_grouped')
     if (form > 0) return form
+    if (microUsd(row.spend) === 0n && Number(row.impressions ?? 0) === 0) return 0
   }
   return count('lead')
 }

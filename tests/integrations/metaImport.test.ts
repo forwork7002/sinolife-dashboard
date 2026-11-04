@@ -86,11 +86,25 @@ describe('metaLeads — Meta\'s own lead count', () => {
     expect(metaLeads(echoed, UMAR_64)).toBe(501)
   })
 
+  it('counts nothing on an AI row that delivered nothing — `lead` there is echoes alone (2026-11-04)', () => {
+    // «Collagen AI» on 14.10, as stored: 0 $, 0 impressions, lead 19, no form leads — the campaign did not run.
+    const idle = { date_start: '2026-10-14', spend: '0', impressions: '0', actions: [{ action_type: 'lead', value: '19' }] }
+    expect(metaLeads(idle, COLLAGEN_AI)).toBe(0)
+    expect(metaLeads({ ...idle, spend: undefined, impressions: undefined }, ZEXTRA_AI)).toBe(0)
+    // A row that ran keeps `lead` (a site campaign), and any other account keeps it even idle: its leads are not echoed.
+    expect(metaLeads({ ...idle, spend: '3.19', impressions: '410' }, COLLAGEN_AI)).toBe(19)
+    expect(metaLeads(idle, UMAR_64)).toBe(19)
+    // Form leads on an idle day still count — a form filled from an ad shown the day before.
+    expect(metaLeads({ ...idle, actions: [{ action_type: 'lead', value: '4' }, { action_type: 'onsite_conversion.lead_grouped', value: '2' }] }, COLLAGEN_AI)).toBe(2)
+  })
+
   it('keeps `lead` on an AI row without form leads — a site campaign\'s leads are the pixel\'s', () => {
     expect(
       metaLeads(
         {
           date_start: '2026-10-31',
+          spend: '11.86',
+          impressions: '2400',
           actions: [
             { action_type: 'lead', value: '7' },
             { action_type: 'offsite_conversion.fb_pixel_lead', value: '7' },

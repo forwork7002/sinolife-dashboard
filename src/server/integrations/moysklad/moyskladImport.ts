@@ -435,6 +435,14 @@ export async function recordMoyskladFailure(prisma: PrismaClient, error: Error):
  * past the next boundary — and `meta.size` shrinks with it, so no count can
  * notice (measured with a mock: one live order of 1 500 would have gone).
  * Only a 404 deletes; any other answer stops the sweep.
+ *
+ * …OR A 200 THAT CARRIES `deleted` (2026-11-04). A deleted order is not gone
+ * from MoySklad: it sits in the bin («Корзина»), out of every listing, and its
+ * by-id GET still answers 200 — the order as it was, plus the instant it was
+ * deleted. Reading only the 404 kept every one of them: the 20 orders the
+ * warehouse deleted on 2026-11-02 (7 «Возврат получен», 5 «Отказ», 4 «Новый»,
+ * …) stayed in `moysklad_order`, and «Sverka» printed five October deals as
+ * «NOT_FAKT1» against MoySklad orders nobody had any more.
  */
 async function sweepDeleted(prisma: PrismaClient, token: string): Promise<number> {
   const live = new Set<string>()
@@ -461,8 +469,8 @@ async function sweepDeleted(prisma: PrismaClient, token: string): Promise<number
   }
   const gone: string[] = []
   for (const id of candidates) {
-    const order = await get<{ id: string }>(`entity/customerorder/${encodeURIComponent(id)}`, token, true)
-    if (order === null) gone.push(id)
+    const order = await get<{ id: string; deleted?: string }>(`entity/customerorder/${encodeURIComponent(id)}`, token, true)
+    if (order === null || order.deleted) gone.push(id)
   }
   if (gone.length > 0) await prisma.moyskladOrder.deleteMany({ where: { id: { in: gone } } })
   return gone.length

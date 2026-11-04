@@ -127,6 +127,8 @@ interface FakeOrder {
   created: number
   /** Kopecks booked against the order; MoySklad moves it WITHOUT touching `updated`. */
   payed?: number
+  /** In MoySklad's bin: out of every listing, but its by-id GET still answers 200 with this instant. */
+  deleted?: string
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -142,7 +144,8 @@ function fakeMoysklad(orders: FakeOrder[], onRequest: (url: URL, count: number) 
     const byId = url.pathname.match(/customerorder\/([^/]+)$/)
     if (byId && byId[1] !== 'customerorder') {
       const found = orders.find((o) => o.id === decodeURIComponent(byId[1]!))
-      return new Response(found ? JSON.stringify({ id: found.id }) : '{}', { status: found ? 200 : 404 })
+      const body = found ? { id: found.id, ...(found.deleted ? { deleted: found.deleted } : {}) } : {}
+      return new Response(JSON.stringify(body), { status: found ? 200 : 404 })
     }
     const limit = Number(url.searchParams.get('limit'))
     const offset = Number(url.searchParams.get('offset'))
@@ -152,6 +155,7 @@ function fakeMoysklad(orders: FakeOrder[], onRequest: (url: URL, count: number) 
     const placedFrom = filter?.match(/^moment>=(.+)$/)?.[1]
     const byCreated = url.searchParams.get('order') === 'created,asc'
     const list = orders
+      .filter((o) => !o.deleted)
       .filter((o) => !from || o.updated.slice(0, 19) >= from)
       .filter((o) => !placedFrom || o.updated.slice(0, 19) >= placedFrom)
       .sort((a, b) => (byCreated ? a.created - b.created : a.updated.localeCompare(b.updated)))
@@ -270,6 +274,23 @@ describe('the deletion sweep', () => {
     expect(next.deleted).toBe(1)
     expect(stored.has('o5')).toBe(false)
     expect(stored.size).toBe(1499)
+  })
+
+  it('deletes an order MoySklad moved to its bin — a 200 that carries `deleted` — and keeps the live ones', async () => {
+    const orders: FakeOrder[] = Array.from({ length: 30 }, (_, i) => ({ id: `o${i}`, updated: at(i + 1), created: i }))
+    const { prisma, stored } = fakePrisma()
+    vi.stubGlobal('fetch', fakeMoysklad(orders))
+    await importMoyskladOrders(prisma, 'token')
+    expect(stored.size).toBe(30)
+
+    // The warehouse deletes two orders (2026-11-02): listings drop them, GET by id still answers.
+    orders.find((o) => o.id === 'o3')!.deleted = '2026-11-02 14:38:23.665'
+    orders.find((o) => o.id === 'o17')!.deleted = '2026-11-02 14:45:27.906'
+    const r = await importMoyskladOrders(prisma, 'token', { sweep: true })
+    expect(r.deleted).toBe(2)
+    expect(stored.has('o3')).toBe(false)
+    expect(stored.has('o17')).toBe(false)
+    expect(stored.size).toBe(28)
   })
 })
 
