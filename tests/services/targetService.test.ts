@@ -640,6 +640,56 @@ describe('withTargetologLeads — the cards\' kval, kval % and FAKT 1 clients', 
     expect(card(withTargetologLeads(overview, forms, 'all'), 'Kamron')!.reachPercent).toBeNull()
   })
 
+  it('takes what the AI targetolog held back out of its «Qamrov» and the products\' «yetib keldi» (2026-11-04)', () => {
+    const aiMeta = metaBlock({
+      rows: [
+        row('1052133867828964', 'Collagen AI Targetolog', 10_000_000n),
+        row('1426259419634277', 'Zextra AI Targetolog', 20_000_000n),
+        row('4401744916740587', 'Zextra Sobirjon', 30_000_000n),
+      ],
+      importedAt: null,
+      window: { from: '2026-08-01', to: '2026-08-01' },
+      sources: [],
+      productOfSource: new Map(),
+      usdRate: null,
+    })
+    const hero = (product: 'Collagen' | 'Zextra', metaFormLeads: number, bitrixFormLeads: number) => ({
+      ...aiMeta.products.find((p) => p.product === product)!,
+      metaFormLeads,
+      bitrixFormLeads,
+    })
+    const withHero = {
+      meta: {
+        ...aiMeta,
+        products: [hero('Collagen', 20, 10), hero('Zextra', 100, 60)],
+        productsTotal: { ...aiMeta.productsTotal, metaFormLeads: 120, bitrixFormLeads: 70 },
+        total: { ...aiMeta.total, metaFormLeads: 120, bitrixFormLeads: 70 },
+      },
+    } as unknown as Parameters<typeof withTargetologLeads>[0]
+    const aiForms = {
+      owners: [
+        { ...owner('AI targetolog', 'Collagen', 10, 10, 1, 0), metaLeads: 20, aiUnsentLeads: 10 },
+        { ...owner('AI targetolog', 'Zextra', 20, 30, 3, 1), metaLeads: 40, aiUnsentLeads: 10 },
+        { ...owner('Sobirjon', 'Zextra', 30, 30, 2, 0), metaLeads: 60, aiUnsentLeads: null },
+      ],
+      fakt1Targetologs: null,
+    }
+    const dto = withTargetologLeads(withHero, aiForms, 'all')
+    // The AI's card: 40 in Bitrix24 of the 60 − 20 it meant to send.
+    expect(card(dto, 'AI targetolog')).toMatchObject({ leads: 40, aiUnsentLeads: 20, reachPercent: 100 })
+    // A person's card keeps Meta's whole count.
+    expect(card(dto, 'Sobirjon')).toMatchObject({ aiUnsentLeads: null, reachPercent: 50 })
+    // The hero: Zextra 60 of 100 − 10, Collagen 10 of 20 − 10; the two products together 70 of 120 − 20.
+    const products = Object.fromEntries(dto.meta.products.map((p) => [p.product, [p.aiUnsentLeads, p.formReachPercent]]))
+    expect(products['Zextra']![0]).toBe(10)
+    expect(products['Zextra']![1]).toBeCloseTo((60 / 90) * 100, 6)
+    expect(products['Collagen']).toEqual([10, 100])
+    expect(dto.meta.productsTotal.aiUnsentLeads).toBe(20)
+    expect(dto.meta.productsTotal.formReachPercent).toBeCloseTo((70 / 100) * 100, 6)
+    // Unread forms: the hero keeps Meta's whole count and claims nothing.
+    expect(withTargetologLeads(withHero, null, 'all').meta.products.every((p) => p.aiUnsentLeads === null)).toBe(true)
+  })
+
   it('leaves every card unread when the forms scan failed', () => {
     const dto = withTargetologLeads(overview, null, 'all')
     expect(dto.meta.targetologs.every((t) => t.bitrix === null)).toBe(true)

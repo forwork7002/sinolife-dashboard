@@ -220,8 +220,11 @@ export interface TargetologBitrixDto {
    * «Qamrov»: the form leads that reached Bitrix24 ÷ Meta's form leads, «Lidlar»'s
    * `reachPercent` summed over the person's rows — the deals the «Таргетолог»
    * field alone filed here passed through no Meta form, so they are left out.
+   * Meta's leads less `aiUnsentLeads`: the AI's filter is no lost lead.
    */
   readonly reachPercent: number | null
+  /** The AI targetolog's held-back leads (`FormOwnerDto.aiUnsentLeads`) — «AI filtrladi»; null for anyone else. */
+  readonly aiUnsentLeads: number | null
 }
 
 /**
@@ -262,8 +265,18 @@ export interface MetaProductTotalsDto extends MetaMetricsDto {
   readonly formLeadsBasis: 'fills' | 'deals'
   /** Регистрация leads from this product's target pages (DM). */
   readonly bitrixPageLeads: number
-  /** bitrixFormLeads ÷ metaFormLeads — how much of what Meta counted reached the portal. */
+  /**
+   * bitrixFormLeads ÷ metaFormLeads — how much of what Meta counted reached
+   * the portal; Meta's less `aiUnsentLeads` once those are read
+   * (`withTargetologLeads`), so «yetib keldi» is what was LOST alone.
+   */
   readonly formReachPercent: number | null
+  /**
+   * What the AI targetolog held back on purpose on these products' forms
+   * («Lidlar»' `FormOwnerDto.aiUnsentLeads`, summed) — «AI filtrladi». Null
+   * while «Lidlar»' forms are unread or on 'deals'.
+   */
+  readonly aiUnsentLeads: number | null
   /** Every Регистрация lead of the product: its forms' plus its pages'. */
   readonly bitrixLeads: number
   /** …of which the registrar passed on («Сделка успешна»). */
@@ -674,6 +687,7 @@ export function metaBlock(input: {
       formLeadsBasis: fills === null ? 'deals' : 'fills',
       bitrixPageLeads,
       formReachPercent: percent(bitrixFormLeads, metaFormLeads),
+      aiUnsentLeads: null,
       bitrixLeads,
       bitrixLeadWon: sum((s) => s.leadWon),
       orders,
@@ -775,6 +789,8 @@ export interface TargetologFormsInput {
     /** «Ген лид» the «Таргетолог» field alone filed here: in `bitrixLeads` on 'deals', never a form's. */
     readonly formlessLeads: number
     readonly leadsBasis: 'fills' | 'deals'
+    /** The AI targetolog's held-back leads on this row (`FormOwnerDto.aiUnsentLeads`); absent or null for anyone else. */
+    readonly aiUnsentLeads?: number | null
   }[]
   readonly fakt1Targetologs: readonly { readonly targetolog: string; readonly clients: number }[] | null
 }
@@ -793,8 +809,38 @@ export function withTargetologLeads(
   product: TargetProductFilter,
 ): TargetOverviewDto {
   if (forms === null) return overview
-  type Person = { formUsd: number; leads: number; success: number; clients: number | null; metaLeads: number; formLeads: number }
-  const empty = (): Person => ({ formUsd: 0, leads: 0, success: 0, clients: 0, metaLeads: 0, formLeads: 0 })
+  type Person = {
+    formUsd: number
+    leads: number
+    success: number
+    clients: number | null
+    metaLeads: number
+    formLeads: number
+    unsent: number | null
+  }
+  const empty = (): Person => ({ formUsd: 0, leads: 0, success: 0, clients: 0, metaLeads: 0, formLeads: 0, unsent: null })
+  /*
+    What the AI targetolog held back, by product — read off every row, the
+    product switch aside: the hero's «yetib keldi» is per product, and a
+    card's is per person below.
+  */
+  const unsentByProduct = new Map<MetaProduct, number>()
+  for (const o of forms.owners) {
+    if (o.aiUnsentLeads === null || o.aiUnsentLeads === undefined) continue
+    unsentByProduct.set(o.product, (unsentByProduct.get(o.product) ?? 0) + o.aiUnsentLeads)
+  }
+  const unsentRead = forms.owners.some((o) => o.leadsBasis === 'fills')
+  const withUnsent = <T extends MetaProductTotalsDto>(totals: T, products: readonly MetaProduct[] | null): T => {
+    if (!unsentRead) return totals
+    const unsent = [...unsentByProduct]
+      .filter(([p]) => products === null || products.includes(p))
+      .reduce((n, [, u]) => n + u, 0)
+    return {
+      ...totals,
+      aiUnsentLeads: unsent,
+      formReachPercent: percent(totals.bitrixFormLeads, totals.metaFormLeads - unsent),
+    }
+  }
   const people = new Map<string, Person>()
   for (const o of forms.owners) {
     if (product !== 'all' && o.product !== product) continue
@@ -806,6 +852,7 @@ export function withTargetologLeads(
     acc.metaLeads += o.metaLeads
     // «Lidlar»'s `reachPercent` numerator: on the deals, the field-filed «Ген лид» are no form's.
     acc.formLeads += o.leadsBasis === 'deals' ? o.bitrixLeads - o.formlessLeads : o.bitrixLeads
+    if (o.aiUnsentLeads !== null && o.aiUnsentLeads !== undefined) acc.unsent = (acc.unsent ?? 0) + o.aiUnsentLeads
     people.set(o.targetolog, acc)
   }
   // Both products: the distinct count, so a client of a Collagen and a Zextra form is one.
@@ -834,10 +881,17 @@ export function withTargetologLeads(
             clients,
             costPerClientUsd: formUsd > 0 && clients !== null ? ratio(formUsd, clients) : null,
             salesConversionPercent: clients === null ? null : percent(clients, acc.success),
-            reachPercent: percent(acc.formLeads, acc.metaLeads),
+            reachPercent: percent(acc.formLeads, acc.metaLeads - (acc.unsent ?? 0)),
+            aiUnsentLeads: acc.unsent,
           },
         }
       }),
+      products: overview.meta.products.map((p) => withUnsent(p, [p.product])),
+      total: withUnsent(overview.meta.total, null),
+      productsTotal: withUnsent(
+        overview.meta.productsTotal,
+        overview.meta.products.map((p) => p.product).filter((p) => (TARGET_PRODUCTS as readonly MetaProduct[]).includes(p)),
+      ),
     },
   }
 }

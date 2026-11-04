@@ -1470,6 +1470,59 @@ describe('«Targetologlar» counts Meta\'s way — every CRM-form fill (2026-10-
     expect(owner(withFill, 'Zextra|Timur').outcome.leads).toBe(6)
   })
 
+  it('counts a form deal no fill stands behind — Lead Guard\'s, when the portal\'s Facebook link is down (2026-11-04)', () => {
+    // 04.11 13:42: the link broke, the fills stopped, Lead Guard opened the deals through the API — no fill on them.
+    const d = leadSourcesOverview({
+      ...input,
+      registration: [...input.registration, reg({ day: '2026-09-19', formTitle: `Заполнение CRM-формы "${UMAR}"`, leads: 4, unfilled: 3, stage: 'Новая', status: 'OPEN' })],
+    })
+    const umar = owner(d, 'Collagen|Umar')
+    expect(umar).toMatchObject({ bitrixLeads: 5 + 3, leadsBasis: 'fills' })
+    expect(umar.days.map((day) => day.leads)).toEqual([4, 1 + 3])
+    expect(umar.reachPercent).toBeCloseTo((8 / 6) * 100, 6)
+    expect(d.forms.bitrixLeads).toBe(14 + 3)
+    // «Ген лид» and «Жами лидлар» are the same fills.
+    expect(d.tiles.rows.find((t) => t.tile === 'generated')!.leads).toBe(17)
+    // On the deals' basis every deal is counted already: nothing is added.
+    const deals = leadSourcesOverview({ ...input, formFills: null, registration: [reg({ formTitle: `Заполнение CRM-формы "${UMAR}"`, leads: 4, unfilled: 3 })] })
+    expect(owner(deals, 'Collagen|Umar')).toMatchObject({ bitrixLeads: 4, leadsBasis: 'deals' })
+  })
+
+  it('never adds the unfilled count of a vacancy form, or the AI targetolog\'s own deals twice', () => {
+    const d = leadSourcesOverview({
+      ...input,
+      registration: [
+        reg({ formTitle: 'Заполнение CRM-формы "Umar vakansiya"', leads: 2, unfilled: 2 }),
+        reg({ formTitle: 'CRM-формы «AI targetolog · Sinolife AI forma»', leads: 2, unfilled: 2 }),
+      ],
+      formFills: [],
+    })
+    expect(owner(d, 'Collagen|AI targetolog').bitrixLeads).toBe(2)
+    expect(d.forms.bitrixLeads).toBe(2)
+  })
+
+  it('takes what the AI targetolog held back out of «Yetib keldi», and names it (2026-11-04)', () => {
+    const d = leadSourcesOverview({
+      ...input,
+      campaigns: [
+        ...input.campaigns,
+        // Collagen AI Targetolog: Meta counted 10 form leads, 2 reached the portal as its deals.
+        campaign({ accountId: '1052133867828964', accountName: 'Collagen AI Targetolog', campaignId: 'ai1', leads: 10, spendMicroUsd: 5_000_000n }),
+      ],
+    })
+    const ai = owner(d, 'Collagen|AI targetolog')
+    expect(ai).toMatchObject({ metaLeads: 10, bitrixLeads: 2, aiUnsentLeads: 8 })
+    // What it held back is no lead lost: all it meant to send arrived.
+    expect(ai.reachPercent).toBe(100)
+    // A person's row keeps Meta's whole count.
+    expect(owner(d, 'Collagen|Umar').aiUnsentLeads).toBeNull()
+    expect(owner(d, 'Collagen|Umar').reachPercent).toBeCloseTo((5 / 6) * 100, 6)
+    expect(d.totals.aiUnsentLeads).toBe(8)
+    expect(d.totals.formReachPercent).toBeCloseTo((14 / (16 - 8)) * 100, 6)
+    // Unread fills: no claim about what the AI held back.
+    expect(owner(leadSourcesOverview({ ...input, formFills: null }), 'Collagen|AI targetolog').aiUnsentLeads).toBeNull()
+  })
+
   it('keeps the deals on «Brendsiz», where no customer form\'s fill can land', () => {
     const d = leadSourcesOverview({ ...input, registration: [reg({ targetolog: 'Элдор', leads: 3 })], brand: 'none' })
     expect(owner(d, 'brandless|Элдор')).toMatchObject({ bitrixLeads: 3, leadsBasis: 'deals' })

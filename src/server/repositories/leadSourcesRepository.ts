@@ -6,7 +6,7 @@ import { type Period, zonedDateKey } from '@/server/domain/period/period'
 import type { DistributedDayRow } from '@/server/domain/registration/leadSplit'
 import { LEAD_TILE_SOURCES, type RepeatLeadKind } from '@/server/integrations/crm/bitrix24/mapping'
 
-import { readFormFillCoverage, readFormFillDays } from './formFillRepository'
+import { readFormFillCoverage, readFormFillDays, unfilledCteSql, unfilledFillBounds } from './formFillRepository'
 import { dealFormTitleSql, formAliasCteSql, formAliasJoinSql, formAliasOverSql, leadFormTitleSql, replayActSql, replayedCteSql, sourceDescriptionSql } from './leadFormSql'
 import { RegistrationRepository } from './registrationRepository'
 
@@ -37,6 +37,12 @@ export interface RegistrationDayRow {
   /** «Такрор лид»: «харид қилган» BOUGHT, «обработка» PROCESSING; null is a new lead. */
   readonly repeat: RepeatLeadKind | null
   readonly leads: number
+  /**
+   * Of `leads`, the CRM-form deals no fill stands behind (`unfilledCteSql`):
+   * opened by Lead Guard when the portal's own Facebook link did not open
+   * them. Absent reads as 0.
+   */
+  readonly unfilled?: number
 }
 
 /** Регистрация deals WON in a window, by source and the AI's mark. */
@@ -124,6 +130,7 @@ export class LeadSourcesRepository {
         ai_qualified: boolean
         repeat: RepeatLeadKind | null
         leads: bigint
+        unfilled: bigint
       }[]
     >(
       `
@@ -133,7 +140,7 @@ export class LeadSourcesRepository {
         second pass over the window (as RNP's \`registrationDaysSql\`).
       */
       WITH reg AS MATERIALIZED (
-        SELECT d."id" AS id, d."createdAtSource" AS created, d."title" AS title, d."customerId" AS customer, ${sourceDescriptionSql('d')} AS sd,
+        SELECT d."id" AS id, d."externalId" AS ext, d."createdAtSource" AS created, d."title" AS title, d."customerId" AS customer, ${sourceDescriptionSql('d')} AS sd,
                ${replayActSql(sourceDescriptionSql('d'))} AS act,
                d."sourceId", d."stageId", d."status", d."aiQualifiedAt", d."repeatLead", NULLIF(btrim(d."productLine"), '') AS product_line,
                NULLIF(btrim(d."targetolog"), '') AS targetolog
@@ -170,7 +177,8 @@ export class LeadSourcesRepository {
           JOIN "sales_source" s ON s."id" = r."sourceId" AND s."externalId" = ANY($4::text[])
         ) x
         WHERE x.n > 1 OR x.broken
-      )
+      ),
+      ${unfilledCteSql('reg', '$5', '$6')}
       SELECT
         /*
           ::text, never a bare ::date — node-postgres builds a DATE at LOCAL
@@ -193,11 +201,13 @@ export class LeadSourcesRepository {
         r."status"::text AS status,
         (r."aiQualifiedAt" IS NOT NULL) AS ai_qualified,
         r."repeatLead" AS repeat,
-        count(*)::bigint AS leads
+        count(*)::bigint AS leads,
+        count(u.id)::bigint AS unfilled
       FROM reg r
       LEFT JOIN "deal_stage" st ON st."id" = r."stageId"
       LEFT JOIN "sales_source" s ON s."id" = r."sourceId"
       LEFT JOIN form_alias fa ON fa.sd = r.sd
+      LEFT JOIN unfilled u ON u.id = r.id
       WHERE NOT EXISTS (SELECT 1 FROM replayed rp WHERE rp.id = r.id)
         AND NOT EXISTS (SELECT 1 FROM telegram_extra te WHERE te.id = r.id)
       GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
@@ -206,6 +216,7 @@ export class LeadSourcesRepository {
       period.end,
       this.tz,
       [...LEAD_TILE_SOURCES.telegram],
+      ...unfilledFillBounds(period),
     )
     return rows.map((r) => ({
       day: r.day,
@@ -219,6 +230,7 @@ export class LeadSourcesRepository {
       aiQualified: r.ai_qualified,
       repeat: r.repeat,
       leads: Number(r.leads),
+      unfilled: Number(r.unfilled),
     }))
   }
 

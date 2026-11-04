@@ -268,12 +268,12 @@ function TargetologCards({
             <Metric
               label="Bitrix lid"
               value={p.bitrix ? formatNumber(p.bitrix.leads) : '—'}
-              hint="Targetolog CRM-formalari Bitrix24 Регистрация ga ochgan lidlar — Facebook forma leadlaridan haqiqatan CRM ga tushgani"
+              hint="Targetolog CRM-formalari Bitrix24 Регистрация ga ochgan lidlar — Facebook forma leadlaridan haqiqatan CRM ga tushgani. Bitrix24 ning Facebook ulanishi ochmay, Lead Guard ochgan forma bitimlari ham kiradi."
             />
             <Metric
               label="Qamrov"
               value={formatPercent(p.bitrix?.reachPercent ?? null)}
-              hint="Formadan Bitrix24 ga tushgan lidlar ÷ Facebook forma leadlari — «Lidlar» dagi qamrov. Formasiz, faqat «Таргетолог» maydoni bilan yozilgan lidlar kirmaydi. 100% dan oshsa — formani reklamadan tashqari ham toʻldirishgan."
+              hint="Formadan Bitrix24 ga tushgan lidlar ÷ Facebook forma leadlari — «Lidlar» dagi qamrov. Formasiz, faqat «Таргетолог» maydoni bilan yozilgan lidlar kirmaydi. AI targetolog ataylab yubormagan («AI filtrladi») leadlar Facebook tomonidan chiqariladi — ular yoʻqolgan emas. 100% dan oshsa — formani reklamadan tashqari ham toʻldirishgan."
             />
             <Metric
               label="Kval %"
@@ -312,6 +312,13 @@ function TargetologCards({
               strong
               hint="Tranzaksiya ÷ Kval lid: Mijoz (FAKT 1) ÷ Kval lid — kval lidlarning necha foizi FAKT 1 buyurtma bergan"
             />
+            {p.bitrix?.aiUnsentLeads != null && p.bitrix.aiUnsentLeads > 0 && (
+              <Metric
+                label="AI filtrladi"
+                value={formatNumber(p.bitrix.aiUnsentLeads)}
+                hint="AI targetolog ataylab Bitrix24 ga yubormagan leadlar: notoʻgʻri raqam, boshqa targetolog mijozi, «kim uchun» javobi — Facebook forma leadlari − Bitrix lid. Yoʻqolgan emas, «Qamrov» ularsiz hisoblanadi."
+              />
+            )}
           </dl>
         </Card>
       ))}

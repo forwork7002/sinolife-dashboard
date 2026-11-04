@@ -125,8 +125,10 @@ export interface TargetologBitrixDto {
   readonly costPerClientUsd: number | null
   /** «Konversiya sotuv»: Mijoz (FAKT 1) ÷ Kval lid × 100; null with no kval. */
   readonly salesConversionPercent: number | null
-  /** «Qamrov»: form leads in Bitrix24 ÷ Meta's form leads, «Lidlar»'s rule. */
+  /** «Qamrov»: form leads in Bitrix24 ÷ Meta's form leads less what the AI held back, «Lidlar»'s rule. */
   readonly reachPercent: number | null
+  /** «AI filtrladi»: the AI targetolog's leads it held back on purpose; null for anyone else. */
+  readonly aiUnsentLeads: number | null
 }
 
 /** One product (or both, as the total): Meta's delivery and the pages' results. */
@@ -146,8 +148,10 @@ export interface MetaProductTotalsDto extends MetaMetricsDto {
   readonly formLeadsBasis: 'fills' | 'deals'
   /** Регистрация leads from the product's target pages (DM). */
   readonly bitrixPageLeads: number
-  /** bitrixFormLeads ÷ metaFormLeads, %. */
+  /** bitrixFormLeads ÷ (metaFormLeads − aiUnsentLeads), % — «yetib keldi», what was lost alone. */
   readonly formReachPercent: number | null
+  /** «AI filtrladi»: what the AI targetolog held back on these forms; null while unread. */
+  readonly aiUnsentLeads: number | null
   /** bitrixFormLeads + bitrixPageLeads. */
   readonly bitrixLeads: number
   readonly bitrixLeadWon: number

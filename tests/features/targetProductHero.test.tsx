@@ -37,6 +37,7 @@ function totals(over: Partial<MetaProductTotalsDto>): MetaProductTotalsDto {
     formLeadsBasis: 'fills',
     bitrixPageLeads: 0,
     formReachPercent: null,
+    aiUnsentLeads: null,
     bitrixLeads: 0,
     bitrixLeadWon: 0,
     orders: 0,

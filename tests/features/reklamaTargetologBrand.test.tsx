@@ -73,6 +73,7 @@ const owner = (o: Pick<FormOwnerDto, 'key' | 'targetolog' | 'product'> & { spend
   ...o,
   bitrixLeads: o.leads,
   leadsBasis: 'fills',
+  aiUnsentLeads: null,
   forms: [],
   accounts: [],
   metaLeads: 0,

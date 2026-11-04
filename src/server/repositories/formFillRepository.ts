@@ -34,3 +34,53 @@ export async function readFormFillDays(prisma: PrismaClient, period: Period, tim
   )
   return rows.map((r) => ({ day: r.day, subject: r.subject, fills: Number(r.fills) }))
 }
+
+/**
+ * How far around the window the fills are read for `unfilledCteSql`: a fill
+ * is written seconds before its deal, and a returning contact's earlier fill
+ * up to a day before — two days back and one ahead hold both with room.
+ */
+export function unfilledFillBounds(period: Period): [Date, Date] {
+  const DAY = 86_400_000
+  return [new Date(period.start.getTime() - 2 * DAY), new Date(period.end.getTime() + DAY)]
+}
+
+/**
+ * THE LEAD GUARD'S DEALS ARE LEADS TOO (2026-11-04, the owner: «Lead Guard
+ * lidlarini sanash»). Bitrix24's own Facebook link opens a CRM-form deal AND
+ * files a fill on it (`crm_form_fill`, owner = that deal); when the link is
+ * down Lead Guard opens the same deal — title «Заполнение CRM-формы "<form>"»
+ * — through the REST API, and no fill is filed. 04.11.2026 13:42 the link
+ * broke: the fills stopped (0 for seven hours), Lead Guard opened 190 such
+ * deals, and every count that reads the fills — «Bitrix lid», «Qamrov»,
+ * «Ген лид» — fell to half of what had arrived.
+ *
+ * `unfilled` is the window's form deals of `reg` (a CTE with `id`, `ext` —
+ * the portal id —, `created`, `title`, `customer`) with no fill behind them:
+ * none filed on the deal itself, and none filed on ANY deal of the same
+ * contact from a day before it to ten minutes after. The second rule keeps a
+ * copy the portal's «Qayta zayavka» robot opens for a returning contact (its
+ * fill lands on the OLD deal) from counting twice. Portal check 04.11:
+ * 595 form deals, 249 with no fill on them (86 the AI targetolog's own
+ * forms', 163 the people's), 0 of them with a fill of the contact in the day
+ * before. The fills are read from `$from` to `$to` (`unfilledFillBounds`).
+ */
+export function unfilledCteSql(reg: string, from: string, to: string): string {
+  return `form_fill AS MATERIALIZED (
+        SELECT f."ownerExternalId" AS owner, f."filledAt" AS at, od."customerId" AS customer
+        FROM "crm_form_fill" f
+        LEFT JOIN "deal" od ON od."externalSource" = 'BITRIX24' AND od."externalId" = f."ownerExternalId"
+        WHERE f."ownerTypeId" = '2' AND f."filledAt" >= ${from} AND f."filledAt" < ${to}
+      ),
+      unfilled AS (
+        SELECT r.id
+        FROM ${reg} r
+        WHERE r.title LIKE '%CRM-форм%'
+          AND NOT EXISTS (SELECT 1 FROM form_fill ff WHERE ff.owner = r.ext)
+          AND NOT EXISTS (
+            SELECT 1 FROM form_fill ff
+            WHERE r.customer IS NOT NULL AND ff.customer = r.customer
+              AND ff.at >= r.created - interval '1 day' AND ff.at <= r.created + interval '10 minutes'
+          )
+      )`
+}

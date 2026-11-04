@@ -73,7 +73,10 @@ export interface FormOwnerDto extends FormExpenseDto {
    */
   readonly bitrixLeads: number
   readonly leadsBasis: 'fills' | 'deals'
+  /** `bitrixLeads` ÷ Meta's leads — for the AI targetolog, Meta's less `aiUnsentLeads`. */
   readonly reachPercent: number | null
+  /** The AI targetolog's leads it held back on purpose («AI filtrladi»); null for anyone else. */
+  readonly aiUnsentLeads: number | null
   readonly costPerLeadUsd: number | null
   readonly costPerSuccessUsd: number | null
   /** DM / message and other ad money of this person's accounts — their part of «Bogʻlanmagan sarf». */
@@ -168,6 +171,8 @@ export interface LeadSourcesOverviewDto {
     /** Distinct over `counted` — not the sum of the channels. */
     readonly fakt1Clients: number | null
     readonly formReachPercent: number | null
+    /** The AI targetolog's held-back leads, summed; null on 'deals'. */
+    readonly aiUnsentLeads: number | null
   }
   readonly forms: {
     readonly owners: readonly FormOwnerDto[]

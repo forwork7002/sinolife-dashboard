@@ -155,8 +155,22 @@ export interface FormOwnerDto extends FormExpenseDto {
    */
   readonly bitrixLeads: number
   readonly leadsBasis: 'fills' | 'deals'
-  /** `bitrixLeads` ÷ Meta leads — how much of what Meta counted arrived. */
+  /**
+   * `bitrixLeads` ÷ Meta leads — how much of what Meta counted arrived. For
+   * the AI targetolog, Meta's leads less `aiUnsentLeads`: what it held back
+   * on purpose is no lead lost.
+   */
   readonly reachPercent: number | null
+  /**
+   * THE AI TARGETOLOG'S LEADS IT NEVER SENT (2026-11-04, the owner: «AI
+   * ataylab yubormagan lidlar alohida»): Meta's form leads on its accounts
+   * less what reached the portal (its deals, Lead Guard's), never below 0.
+   * The AI holds back a broken number, another targetolog's client and a
+   * «kim uchun» answer (its own audit 30.10–04.11: 221 held back, 0 lost —
+   * Lead Guard delivers what it did not hold back), so the gap is its filter.
+   * Null for every other owner, and on 'deals'.
+   */
+  readonly aiUnsentLeads: number | null
   /** spend ÷ `bitrixLeads`. */
   readonly costPerLeadUsd: number | null
   /** spend ÷ kval. */
@@ -301,7 +315,10 @@ export interface LeadSourcesOverviewDto {
     readonly counted: LeadOutcomeDto
     /** «Факт1 мижоз» of `counted` — distinct, so not the sum of the channels; null while not ready. */
     readonly fakt1Clients: number | null
+    /** The forms' «Yetib keldi»: their Bitrix24 leads ÷ Meta's, what the AI held back (`aiUnsentLeads`) out of Meta's. */
     readonly formReachPercent: number | null
+    /** The AI targetolog's held-back leads, summed (`FormOwnerDto.aiUnsentLeads`); null on 'deals'. */
+    readonly aiUnsentLeads: number | null
   }
   readonly forms: {
     readonly owners: readonly FormOwnerDto[]
@@ -889,6 +906,10 @@ export function leadSourcesOverview(all: {
       if (form !== null && isIntegrationForm(form)) {
         acc.fills += row.leads
         day.fills += row.leads
+      } else if (form !== null && fillsBasis && isCustomerForm(form) && (row.unfilled ?? 0) > 0) {
+        // A form deal no fill stands behind — Lead Guard's (`unfilledCteSql`): arrived, so counted as one.
+        acc.fills += row.unfilled ?? 0
+        day.fills += row.unfilled ?? 0
       }
     } else if (row.sourceId !== null && (channel === 'page' || pages.has(pageKeyOf(row.sourceId)))) {
       const page = pageAcc(pageKeyOf(row.sourceId), row.source ?? row.sourceId)
@@ -989,11 +1010,16 @@ export function leadSourcesOverview(all: {
   let metaFormLeads = 0
   let formlessLeads = 0
   let formFills = 0
+  // What the AI targetolog held back on purpose (`FormOwnerDto.aiUnsentLeads`); null for anyone else.
+  const aiUnsentOf = (o: FormAcc): number | null =>
+    fillsBasis && o.targetolog === AI_TARGETOLOG ? Math.max(0, o.metaLeads - o.fills) : null
+  let aiUnsentTotal = 0
   /* An owner whose ad money is all DM is a targetolog too: their row carries it in «DM / boshqa» (2026-10-14). */
   const hasLeadWork = (o: FormAcc) =>
     o.spend > 0n || o.metaLeads > 0 || o.unlinked > 0n || o.fills > 0 || LEAD_BUCKETS.some((b) => o.outcome[b] > 0)
   const ownerDto = (o: FormAcc): FormOwnerDto => {
     const outcome = outcomeCells(o.outcome)
+    const aiUnsent = aiUnsentOf(o)
     return {
       key: o.key,
       targetolog: o.targetolog,
@@ -1007,7 +1033,10 @@ export function leadSourcesOverview(all: {
       bitrixLeads: fillsBasis ? o.fills : outcome.leads,
       leadsBasis: fillsBasis ? 'fills' : 'deals',
       // Forms only: a lead the field filed here never passed through a Meta form, so it may not hide a broken link.
-      reachPercent: fillsBasis ? percent(o.fills, o.metaLeads) : percent(outcome.leads - o.formless, o.metaLeads),
+      reachPercent: fillsBasis
+        ? percent(o.fills, o.metaLeads - (aiUnsent ?? 0))
+        : percent(outcome.leads - o.formless, o.metaLeads),
+      aiUnsentLeads: aiUnsent,
       costPerLeadUsd: perUnit(o.spend, fillsBasis ? o.fills : outcome.leads),
       costPerSuccessUsd: perUnit(o.spend, outcome.success),
       unlinkedUsd: usd(o.unlinked),
@@ -1031,6 +1060,7 @@ export function leadSourcesOverview(all: {
       metaFormLeads += o.metaLeads
       formlessLeads += o.formless
       formFills += o.fills
+      aiUnsentTotal += aiUnsentOf(o) ?? 0
       days.forEach((date, i) => {
         const cell = o.days.get(date)
         if (!cell) return
@@ -1217,7 +1247,8 @@ export function leadSourcesOverview(all: {
       registration: outcomeCells(registration),
       counted: outcomeCells(counted),
       fakt1Clients: fakt1Ready ? fakt1All.size : null,
-      formReachPercent: percent(formLeads, metaFormLeads),
+      formReachPercent: percent(formLeads, metaFormLeads - aiUnsentTotal),
+      aiUnsentLeads: fillsBasis ? aiUnsentTotal : null,
     },
     forms: {
       owners: formOwners,

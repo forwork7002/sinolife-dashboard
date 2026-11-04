@@ -314,7 +314,19 @@ Per-screen traps worth knowing before you touch one:
   cards (`withTargetologLeads`), «Отчёт Т»'s kval % divisor (`withFormKval`)
   and «Лид назорати»'s «Yetib keldi». `outcome` (kval, недозвон, sifatsiz,
   dubl, jarayonda) stays the deals'. A failed fills read is the deals'
-  basis, logged — never the tab down. SINCE 2026-10-16 «Lid manbalari»'s
+  basis, logged — never the tab down. LEAD GUARD'S DEALS ARE FILLS TOO
+  (2026-11-04, the owner): when the portal's own Facebook link is down
+  (04.11 13:42 → 0 fills for seven hours) Lead Guard opens the CRM-form deal
+  through the API and no fill is filed; `registrationDays` counts each form
+  deal with no fill on it and none of its contact's from a day before to ten
+  minutes after (`unfilled`, `unfilledCteSql`), and the fills' basis adds it
+  to its owner's fills — so every count above takes it. AND «AI
+  FILTRLADI» (same day): the AI targetolog holds back a broken number,
+  another targetolog's client, a «kim uchun» answer; its owners' Meta form
+  leads less their fills (≥ 0) is `aiUnsentLeads`, out of Meta's side of
+  their `reachPercent`, of `totals.formReachPercent`, and on /target of the
+  AI card's «Qamrov» and the products' «yetib keldi» (`withTargetologLeads`),
+  printed as «AI filtrladi». SINCE 2026-10-16 «Lid manbalari»'s
   «Ген лид» tile too (the client: «bitrix24dan ol facebookdan emas»): its big
   number is `forms.bitrixLeads` — every fill, the AI targetolog's deals, the
   hand-typed «Ген лид» (`tiles.generatedBasis`) — so «Жами / Янги лидлар»

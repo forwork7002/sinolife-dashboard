@@ -305,16 +305,20 @@ function ShareBars({ products }: { products: readonly MetaProductTotalsWithName[
  * «Yetib keldi»: of the leads Meta counted on the lead forms, the share that
  * reached Bitrix24 as a form lead. Under 90 % something is losing leads — a
  * form not linked to the portal, most often (the «Lidlar» · «Targetologlar»
- * table names the targetolog).
+ * table names the targetolog). What the AI targetolog held back on purpose
+ * («AI filtrladi», 2026-11-04) is out of Meta's side: it was never meant to arrive.
  */
-function ReachChip({ percent, meta }: { percent: number | null; meta: number }) {
+function ReachChip({ percent, meta, unsent }: { percent: number | null; meta: number; unsent: number | null }) {
   if (percent === null) return null
+  // What the AI held back on purpose is no lead lost: the share is of what was meant to arrive.
+  const sent = meta - (unsent ?? 0)
   const tone = percent >= 90 ? 'var(--status-good)' : percent >= 70 ? 'var(--status-warning)' : 'var(--status-critical)'
   return (
     <Tooltip
       content={
         <span className="tabular">
-          Meta {formatNumber(meta)} forma leadidan {formatPercent(percent, 0)}i Bitrix24 ga tushgan
+          Meta {formatNumber(sent)} forma leadidan {formatPercent(percent, 0)}i Bitrix24 ga tushgan
+          {unsent !== null && unsent > 0 && ` (AI filtrlagan ${formatNumber(unsent)} tasi hisobga olinmagan)`}
         </span>
       }
     >
@@ -460,11 +464,11 @@ function ProductColumn({
             {row(
               'Forma leadlari',
               <span className="inline-flex items-baseline gap-2">
-                <ReachChip percent={product.formReachPercent} meta={product.metaFormLeads} />
+                <ReachChip percent={product.formReachPercent} meta={product.metaFormLeads} unsent={product.aiUnsentLeads} />
                 <Tooltip
                   content={
                     product.formLeadsBasis === 'fills'
-                      ? '«Lidlar» dagi «Ген лид» shu brend boʻyicha: Bitrix24 ga tushgan har bir forma toʻldirish (sayt formasi ham) — eski mijoz qayta toʻldirsa ham, yangi bitim ochilmasa ham — va qoʻlda kiritilgan «Ген лид»'
+                      ? '«Lidlar» dagi «Ген лид» shu brend boʻyicha: Bitrix24 ga tushgan har bir forma toʻldirish (sayt formasi ham) — eski mijoz qayta toʻldirsa ham, yangi bitim ochilmasa ham —, Bitrix24 ning Facebook ulanishi ochmagan va Lead Guard ochgan forma bitimlari, qoʻlda kiritilgan «Ген лид»'
                       : 'Bu davr uchun forma toʻldirishlari hali oʻqilmagan — «Lidlar» dagi «Ген лид» bitimlari'
                   }
                 >
@@ -474,6 +478,22 @@ function ProductColumn({
                 </Tooltip>
               </span>,
             )}
+            {product.aiUnsentLeads !== null && product.aiUnsentLeads > 0 &&
+              row(
+                'AI filtrladi',
+                <Tooltip
+                  content={
+                    <span className="tabular">
+                      AI targetolog ataylab Bitrix24 ga yubormagan leadlar: notoʻgʻri raqam, boshqa targetolog mijozi,
+                      «kim uchun» javobi. Yoʻqolgan emas — «yetib keldi» ularsiz hisoblanadi
+                    </span>
+                  }
+                >
+                  <span tabIndex={0} className="focusable rounded-[var(--radius-panel-sm)]">
+                    {formatNumber(product.aiUnsentLeads)}
+                  </span>
+                </Tooltip>,
+              )}
             {row('DM sahifa leadlari', formatNumber(product.bitrixPageLeads))}
             {row('Leadlar · jami', formatNumber(product.bitrixLeads), undefined, true)}
             {row(
