@@ -4,6 +4,7 @@ import { apportion } from '@/lib/apportion'
 import {
   addDays,
   buildLeadSplit,
+  foldShares,
   leadSplitOfBrand,
   SPLIT_ROPS,
   splitProblem,
@@ -118,6 +119,51 @@ describe('buildLeadSplit — безквал', () => {
   })
 })
 
+describe('Shohjaxon is Azizbek (the owner, 2026-11-04)', () => {
+  it('is off the client\'s list, and his leads are Azizbek\'s', () => {
+    expect(SPLIT_ROPS).not.toContain('Shohjaxon')
+    const dto = buildLeadSplit({
+      day,
+      rows: [
+        { day, rop: 'Azizbek', leads: 20, duplicates: 0 },
+        { day, rop: 'Shohjaxon', leads: 5, duplicates: 0 },
+      ],
+      bezkval: [{ day, rop: 'Shohjaxon', leads: 7 }],
+      split: null,
+      previous: null,
+      canEdit: false,
+    })
+    expect(dto.rops.map((r) => r.rop)).not.toContain('Shohjaxon')
+    expect(dto.rops.find((r) => r.rop === 'Azizbek')!.received).toBe(25)
+    expect(dto.bezkval.rops.map((r) => r.rop)).not.toContain('Shohjaxon')
+    expect(dto.bezkval.rops.find((r) => r.rop === 'Azizbek')!.week.at(-1)).toBe(7)
+  })
+
+  it('adds a split saved before the merge into Azizbek\'s share, so it still sums to 100 % and names no team twice', () => {
+    const saved = [
+      { rop: 'Sevinch', shareBp: 6000 },
+      { rop: 'Azizbek', shareBp: 3000 },
+      { rop: 'Shohjaxon', shareBp: 1000 },
+    ]
+    expect(foldShares(saved)).toEqual([
+      { rop: 'Sevinch', shareBp: 6000 },
+      { rop: 'Azizbek', shareBp: 4000 },
+    ])
+    const dto = buildLeadSplit({
+      day,
+      rows: [{ day, rop: 'Azizbek', leads: 10, duplicates: 0 }],
+      bezkval: [],
+      split: { rows: saved, updatedAt: '2026-09-30T05:00:00.000Z' },
+      previous: { day: '2026-09-29', rows: saved },
+      canEdit: true,
+    })
+    expect(dto.rops.find((r) => r.rop === 'Azizbek')!.shareBp).toBe(4000)
+    expect(dto.previous!.rows).toEqual(foldShares(saved))
+    // «Kechagi taqsimotni olish» copies it as is — and that copy saves.
+    expect(splitProblem(dto.previous!.rows)).toBeNull()
+  })
+})
+
 describe('splitProblem', () => {
   it('accepts exactly 100 %', () => {
     expect(splitProblem([{ rop: 'Sevinch', shareBp: 6000 }, { rop: 'Lola', shareBp: 4000 }])).toBeNull()
@@ -167,7 +213,7 @@ describe('the Collagen / Zextra switch on the team tables', () => {
     expect(collagen.rops.find((r) => r.rop === 'Sevinch')!.planLeads).toBe(plan('Sevinch'))
     expect(collagen.unassigned).toBe(0)
     // The grid keeps the client's teams of the brand, quiet ones at zero; no Zextra team.
-    expect(collagen.bezkval.rops.map((r) => r.rop)).toEqual(['Sevinch', 'Gulzora', 'Saidaziz', 'Azizbek', 'Maftuna', 'Lola', 'Shohjaxon'])
+    expect(collagen.bezkval.rops.map((r) => r.rop)).toEqual(['Sevinch', 'Gulzora', 'Saidaziz', 'Azizbek', 'Maftuna', 'Lola'])
     expect(leadSplitOfBrand(whole, 'Zextra').bezkval.rops.map((r) => r.rop)).toEqual(['Asliddin', 'Sadriddin'])
     expect(collagen.bezkval.unassigned.every((n) => n === 0)).toBe(true)
     expect(collagen.canEdit).toBe(false)

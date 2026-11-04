@@ -34,6 +34,7 @@
  * IS counted, because it is live work the seller is carrying.
  */
 
+import { mergedTeam } from '@/server/domain/employees/roles'
 import type { Period } from '@/server/domain/period/period'
 import type { PrismaClient } from '@/generated/prisma/client'
 import {
@@ -240,7 +241,8 @@ export class SellerBoardRepository {
 }
 
 /**
- * "Sevinch(ROP)" → "Sevinch"; anything else → null.
+ * "Sevinch(ROP)" → "Sevinch"; anything else → null. A merged team reads as
+ * the one it joined ("Shohjaxon(ROP)" → "Azizbek", `MERGED_TEAMS`).
  *
  * The same rule the confirmation queue uses, kept identical on purpose: a
  * seller's team must read the same word on both screens or the two boards
@@ -250,7 +252,7 @@ function ropOf(departmentName: string | null): string | null {
   if (!departmentName) return null
   if (!/\(ROP\)/i.test(departmentName)) return null
   const name = departmentName.replace(/\(ROP\)/i, '').trim()
-  return name === '' ? null : name
+  return name === '' ? null : mergedTeam(name)
 }
 
 function int(value: bigint | number | null | undefined): number {

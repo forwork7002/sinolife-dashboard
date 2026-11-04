@@ -60,3 +60,40 @@ export const ROSTER_TEAMS: readonly {
   readonly label: string
   readonly labels: readonly string[]
 }[] = [{ unitExternalId: '94', label: 'Malika', labels: ['Malika', 'Charos'] }]
+
+/**
+ * Teams the owner MERGED into another: the left name reads as the right one
+ * on every screen, for every month — history included.
+ *
+ * 2026-11-04, the owner: «shohjahon degan narsa yoʻq endilikda … shohjahonni
+ * azizbekga oʻtkazdik … rnp rop otchet boshqa joylarda endilikda azizbek va
+ * shohjahon bitta boʻldi». The portal was NOT changed: that day unit 76
+ * «Shohjaxon(ROP)» still had its 12 people under its own head (portal user
+ * 68210), and deals were still stamped «Shohjaxon(ROP)» (38 created
+ * 20.10–04.11, against 358 for «Azizbek(ROP)»). So the merge lives here, read
+ * by every place that names a team:
+ *   - `InsightsRepository.ropNameSql` — the SQL home of a team's name, so the
+ *     queue, Logistika, the sellers' teams, RNP, ROP otchet, Roistat, Lidlar
+ *     and payroll all print «Azizbek» for both units and both deal stamps;
+ *   - `mergedTeam` — the JS spellings of that rule (the sellers board,
+ *     Sverka) and `TEAM_ALIASES` (RNP's fold);
+ *   - the merged unit's head is a MEMBER of the team it joined, not a second
+ *     ROP (`InsightsRepository.mergedTeamSql` in the head lists and rosters),
+ *     and the joined team's head's TEAM scope reads the merged unit's people
+ *     (`ScopeRepository.teamEmployeeIds`).
+ * The org chart and the ROP picker on `/users` still mirror the portal's
+ * units as they are.
+ *
+ * Keys and values are department names without «(ROP)», as `ropNameSql`
+ * prints them; letters only — they are spliced into SQL.
+ */
+export const MERGED_TEAMS: Readonly<Record<string, string>> = Object.freeze({
+  Shohjaxon: 'Azizbek',
+})
+
+/** A team as every screen names it: a merged team (`MERGED_TEAMS`) is the one it joined. Case-insensitive, like `ropNameSql`'s strip. */
+export function mergedTeam(team: string): string {
+  const key = team.trim().toLowerCase()
+  for (const [from, to] of Object.entries(MERGED_TEAMS)) if (from.toLowerCase() === key) return to
+  return team
+}

@@ -470,13 +470,18 @@ export class RnpRepository {
         AND h."enteredAt" < ${hi}`
   }
 
-  /** The ROP teams `employeeId` heads — the «Ходим сони» rows that person may type. */
+  /**
+   * The ROP teams `employeeId` heads — the «Ходим сони» rows that person may
+   * type. Heading a merged unit («Shohjaxon(ROP)», `MERGED_TEAMS`) is not
+   * heading the team it joined.
+   */
   async teamsHeadedBy(employeeId: string): Promise<string[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ rop: string }[]>(
       `SELECT DISTINCT t.rop
          FROM "department" dep
          CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"')} AS rop) t
-        WHERE dep."headId" = $1 AND dep."isActive" AND t.rop IS NOT NULL`,
+        WHERE dep."headId" = $1 AND dep."isActive" AND t.rop IS NOT NULL
+          AND NOT ${InsightsRepository.mergedTeamSql('dep."name"')}`,
       employeeId,
     )
     return rows.map((r) => r.rop)
@@ -498,16 +503,25 @@ export class RnpRepository {
        WHERE e."id" = ANY($1::text[]) AND dep."isActive" AND t.rop IS NOT NULL`
   }
 
-  /** Every active ROP department, with its head. */
+  /**
+   * Every active ROP department, with its head — one per team: a merged unit
+   * («Shohjaxon(ROP)», `MERGED_TEAMS`) reads as the team it joined, whose own
+   * head comes first.
+   */
   async teams(): Promise<RnpTeam[]> {
-    const rows = await this.prisma.$queryRawUnsafe<{ rop: string; head: string | null }[]>(`
+    const rows = await this.prisma.$queryRawUnsafe<{ rop: string; head: string | null }[]>(RnpRepository.teamsSql())
+    return rows.map((r) => ({ rop: r.rop, head: r.head }))
+  }
+
+  /** `teams`' statement. Exported for its test. */
+  static teamsSql(): string {
+    return `
       SELECT DISTINCT ON (t.rop) t.rop, e."fullName" AS head
       FROM "department" dep
       CROSS JOIN LATERAL (SELECT ${InsightsRepository.ropNameSql('dep."name"')} AS rop) t
       LEFT JOIN "employee" e ON e."id" = dep."headId"
       WHERE dep."isActive" AND t.rop IS NOT NULL
-      ORDER BY t.rop, (e."fullName" IS NULL)`)
-    return rows.map((r) => ({ rop: r.rop, head: r.head }))
+      ORDER BY t.rop, ${InsightsRepository.mergedTeamSql('dep."name"')}, (e."fullName" IS NULL)`
   }
 
   /**

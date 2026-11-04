@@ -333,7 +333,11 @@ export class RegistrationRepository {
     )
   }
 
-  /** Who heads each ROP team now, by its canonical name — the names on the client's own sheet. */
+  /**
+   * Who heads each ROP team now, by its canonical name — the names on the
+   * client's own sheet. A merged unit («Shohjaxon(ROP)», `MERGED_TEAMS`) is
+   * read last: the team it joined keeps its own head.
+   */
   async ropHeads(): Promise<Map<string, string>> {
     const rows = await this.prisma.$queryRawUnsafe<{ team: string; head: string }[]>(RegistrationRepository.ropHeadsSql())
     const out = new Map<string, string>()
@@ -351,7 +355,7 @@ export class RegistrationRepository {
         FROM "department" h
         JOIN "employee" e ON e."id" = h."headId"
        WHERE h."isActive" AND ${InsightsRepository.ropNameSql('h."name"')} IS NOT NULL
-       ORDER BY 1, h."name"`
+       ORDER BY 1, ${InsightsRepository.mergedTeamSql('h."name"')}, h."name"`
   }
 
   /**
@@ -680,7 +684,9 @@ export class RegistrationRepository {
    * a row, as on the client's sheet. Primary, never `department_member`: this
    * is a money table, and a person in two units would sit on two teams' rows.
    * A head is in the team they head — of several, the one they sit in, as
-   * `leadRopSql` reads it, then the first by name.
+   * `leadRopSql` reads it, then the first by name. The head of a merged unit
+   * («Shohjaxon(ROP)», `MERGED_TEAMS`) is a member of the team it joined, not
+   * its head: one ROP per group.
    */
   async roster(): Promise<RosterMember[]> {
     const rows = await this.prisma.$queryRawUnsafe<{ employee_id: string; full_name: string; rop: string; is_head: boolean }[]>(
@@ -694,7 +700,7 @@ export class RegistrationRepository {
     return `
       SELECT DISTINCT ON (x.employee_id) x.employee_id, e."fullName" AS full_name, x.rop, x.is_head
         FROM (
-          SELECT h."headId" AS employee_id, ${InsightsRepository.ropNameSql('h."name"')} AS rop, true AS is_head, 0 AS rank, h."id" AS unit_id, h."name"
+          SELECT h."headId" AS employee_id, ${InsightsRepository.ropNameSql('h."name"')} AS rop, NOT ${InsightsRepository.mergedTeamSql('h."name"')} AS is_head, 0 AS rank, h."id" AS unit_id, h."name"
             FROM "department" h
            WHERE h."isActive" AND h."headId" IS NOT NULL
           UNION ALL

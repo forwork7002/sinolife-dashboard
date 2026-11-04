@@ -49,7 +49,12 @@ import { apportion } from '@/lib/apportion'
 import { TEAM_ALIASES, teamBrand } from '../rnp/rnpSheet'
 import { type BrandFilter, brandMatches } from '../types'
 
-/** The teams the client splits leads among (2026-10-01: their six plus Shohjaxon, Asliddin, Sadriddin). */
+/**
+ * The teams the client splits leads among (2026-10-01: their six plus
+ * Shohjaxon, Asliddin, Sadriddin). Shohjaxon left the list on 2026-11-04,
+ * merged into Azizbek (`MERGED_TEAMS`): a split saved before that day
+ * still reads, its Shohjaxon share added to Azizbek's (`foldShares`).
+ */
 export const SPLIT_ROPS: readonly string[] = Object.freeze([
   'Sevinch',
   'Gulzora',
@@ -57,7 +62,6 @@ export const SPLIT_ROPS: readonly string[] = Object.freeze([
   'Azizbek',
   'Maftuna',
   'Lola',
-  'Shohjaxon',
   'Asliddin',
   'Sadriddin',
 ])
@@ -143,7 +147,22 @@ export function canonicalRop(rop: string): string {
   return TEAM_ALIASES[rop] ?? rop
 }
 
-/** The client's nine in their order, then any other team, by name. */
+/**
+ * A saved split under today's team names, in its own order: the shares of
+ * teams that are one team now (Shohjaxon and Azizbek, `MERGED_TEAMS`) are
+ * added, so a split saved before the merge still sums to 100 % and never
+ * names a team twice («Kechagi taqsimotni olish» copies it as is).
+ */
+export function foldShares(rows: readonly SplitShare[]): SplitShare[] {
+  const out = new Map<string, number>()
+  for (const s of rows) {
+    const rop = canonicalRop(s.rop)
+    out.set(rop, (out.get(rop) ?? 0) + s.shareBp)
+  }
+  return [...out].map(([rop, shareBp]) => ({ rop, shareBp }))
+}
+
+/** The client's teams in their order, then any other team, by name. */
 export function teamOrder(teams: Iterable<string>): string[] {
   const extra = [...new Set(teams)].filter((rop) => !SPLIT_ROPS.includes(rop)).sort((a, b) => a.localeCompare(b, 'ru'))
   return [...SPLIT_ROPS, ...extra]
@@ -182,9 +201,9 @@ export function buildLeadSplit(input: {
   }
   const fresh = Math.max(0, total - duplicates)
 
-  const shares = new Map((input.split?.rows ?? []).map((s) => [canonicalRop(s.rop), s.shareBp]))
-  const previous = input.previous ? { day: input.previous.day, rows: input.previous.rows.map((s) => ({ rop: canonicalRop(s.rop), shareBp: s.shareBp })) } : null
-  // The client's nine first, in their order; then any other team either split names or that got leads this week.
+  const shares = new Map(foldShares(input.split?.rows ?? []).map((s) => [s.rop, s.shareBp]))
+  const previous = input.previous ? { day: input.previous.day, rows: foldShares(input.previous.rows) } : null
+  // The client's teams first, in their order; then any other team either split names or that got leads this week.
   const names = teamOrder([...shares.keys(), ...(previous?.rows.map((s) => s.rop) ?? []), ...byRop.keys()])
 
   const bezkvalByRop = new Map<string, number[]>()

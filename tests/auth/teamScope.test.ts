@@ -105,6 +105,26 @@ describe('the team query', () => {
     expect(sql).toContain(`WHERE NOT (h."fromTeam" AND lower(btrim(child."name")) LIKE '%(rop)')`)
   })
 
+  it('reads a merged unit as part of the team it joined (2026-11-04)', async () => {
+    /*
+      The owner merged «Shohjaxon(ROP)» into «Azizbek(ROP)» (`MERGED_TEAMS`)
+      while the portal kept both units: every screen prints them as one team,
+      so Azizbek's account reads Shohjaxon's people as his own. Only the head
+      of the team it JOINED gets it — the merged unit's own head does not
+      gain Azizbek's.
+    */
+    const { service, calls } = serviceFor({ 'emp-rop': [] })
+    await service.resolve(principal())
+    const sql = calls[0]!.sql
+
+    expect(sql).toContain('JOIN "department" j ON j."headId" = $1')
+    expect(sql).toContain(
+      `(lower(replace(m."name", ' ', '')) = 'shohjaxon(rop)' AND lower(replace(j."name", ' ', '')) = 'azizbek(rop)')`,
+    )
+    // It seeds the headed set, so the merged unit's own head is a member here, not a boss elsewhere.
+    expect(sql.indexOf('SELECT m."id", true')).toBeLessThan(sql.indexOf('SELECT child."id", h."fromTeam"'))
+  })
+
   it('leaves out a member who heads a unit outside the team', async () => {
     /*
       «192 Charos» is filed first in «Malika(ROP)» and runs «Зехтра отдел

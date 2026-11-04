@@ -882,7 +882,14 @@ describe('the queue names the team the deal was sold under', () => {
   })
 
   it('is one COALESCE, so an empty field falls back instead of leaving the team', () => {
-    expect(rop).toMatch(/COALESCE\(\s*CASE WHEN CASE\s+WHEN d\."operatorTeamSource"/)
+    expect(rop).toMatch(/COALESCE\(\s*CASE WHEN CASE\s+WHEN lower\(replace\(d\."operatorTeamSource"/)
+  })
+
+  it('reads a merged team as the one it joined, before the strip (2026-11-04)', () => {
+    // «Shohjaxon(ROP)» is «Azizbek» on every screen (`MERGED_TEAMS`).
+    const merged = rop.indexOf(`WHEN lower(replace(d."operatorTeamSource", ' ', '')) = 'shohjaxon(rop)' THEN 'Azizbek'`)
+    expect(merged).toBeGreaterThan(-1)
+    expect(merged).toBeLessThan(rop.indexOf(`WHEN d."operatorTeamSource" ILIKE '%(ROP)%'`))
   })
 
   it('names a roster team by its people before reading the deal (2026-10-19)', () => {

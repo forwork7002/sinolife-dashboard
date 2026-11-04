@@ -177,6 +177,11 @@ describe('ropHeadsSql', () => {
     expect(sql).toContain(`JOIN "employee" e ON e."id" = h."headId"`)
     expect(sql).toContain(`WHERE h."isActive" AND`)
   })
+
+  it('reads a merged unit last, so the team it joined keeps its own head (2026-11-04)', () => {
+    const sql = bare(RegistrationRepository.ropHeadsSql())
+    expect(sql).toMatch(/ORDER BY 1, COALESCE\(lower\(replace\(h\."name", ' ', ''\)\) IN \('shohjaxon\(rop\)'\), false\), h\."name"\s*$/)
+  })
 })
 
 describe('sellerLeadsSql', () => {
@@ -213,6 +218,11 @@ describe('sellerCallsSql', () => {
 })
 
 describe('rosterSql', () => {
+  it('makes the head of a merged unit a member of the team it joined, not a second ROP (2026-11-04)', () => {
+    const sql = bare(RegistrationRepository.rosterSql())
+    expect(sql).toContain(`NOT COALESCE(lower(replace(h."name", ' ', '')) IN ('shohjaxon(rop)'), false) AS is_head`)
+  })
+
   it('puts a head of two ROP units in the one they sit in, as the leads are read (2026-10-02)', () => {
     const sql = bare(RegistrationRepository.rosterSql())
     expect(sql).toMatch(/ORDER BY x\.employee_id, x\.rank, \(x\.unit_id = e\."departmentId"\) DESC, x\."name"\s*$/)

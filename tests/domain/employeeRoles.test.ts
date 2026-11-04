@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isSalesTeamName } from '@/server/domain/employees/roles'
+import { MERGED_TEAMS, isSalesTeamName, mergedTeam } from '@/server/domain/employees/roles'
 
 /** The fifteen sales teams as the portal actually spells them. */
 const SALES_TEAMS = [
@@ -55,5 +55,22 @@ describe('sales-team detection', () => {
     expect(isSalesTeamName(null)).toBe(false)
     expect(isSalesTeamName(undefined)).toBe(false)
     expect(isSalesTeamName('')).toBe(false)
+  })
+})
+
+describe('merged teams (the owner, 2026-11-04)', () => {
+  it('reads Shohjaxon as Azizbek, whatever the case or spaces, and leaves every other team alone', () => {
+    expect(MERGED_TEAMS).toEqual({ Shohjaxon: 'Azizbek' })
+    expect(mergedTeam('Shohjaxon')).toBe('Azizbek')
+    expect(mergedTeam(' shohjaxon ')).toBe('Azizbek')
+    expect(mergedTeam('Azizbek')).toBe('Azizbek')
+    expect(mergedTeam('Lola')).toBe('Lola')
+  })
+
+  it('names only letters, since the names are spliced into SQL', () => {
+    for (const [from, to] of Object.entries(MERGED_TEAMS)) {
+      expect(from).toMatch(/^\p{L}+$/u)
+      expect(to).toMatch(/^\p{L}+$/u)
+    }
   })
 })

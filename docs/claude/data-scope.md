@@ -118,7 +118,10 @@ the «Charos» block) — their blocks and logistics and no company line
 (`narrowRnpSheet`, the month's memo untouched) — and `/registration/report`
 keeps the scope's people alone, the totals theirs (`buildRopReport`'s
 `keepsSeller`; «192 Charos», on her roster but out of her scope, goes). Both
-refuse OWN; a narrowed MANAGER is no editor there (the plan / cost POSTs judge
+refuse OWN; since 2026-11-04 the head of a team another one was MERGED into
+(`MERGED_TEAMS`: Shohjaxon → Azizbek) reads the merged unit's people too
+(`teamEmployeeIds`, its `headed` seed), the merged unit's own head only that
+unit; a narrowed MANAGER is no editor there (the plan / cost POSTs judge
 the stored scope). `isCompanyWideSection(id, dataScope)` takes the scope —
 without one it answers the old way.
 

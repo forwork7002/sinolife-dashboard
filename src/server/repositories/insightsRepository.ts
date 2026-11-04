@@ -50,7 +50,7 @@ import {
   NO_EMPLOYEE_IN_SCOPE,
   type ScopedWindow,
 } from '@/server/domain/employees/branches'
-import { ROSTER_TEAMS } from '@/server/domain/employees/roles'
+import { MERGED_TEAMS, ROSTER_TEAMS, SALES_TEAM_SUFFIX } from '@/server/domain/employees/roles'
 import type { Period } from '@/server/domain/period/period'
 import { type DealProductBrand, PRODUCT_BRAND_PATTERNS } from '@/server/domain/products/productBrand'
 import {
@@ -74,6 +74,16 @@ function money(value: MoneyText): bigint {
 
 function int(value: unknown): number {
   return Number(value ?? 0)
+}
+
+/** A department name (or deal stamp) as a merged team is matched: spaces dropped, case folded. */
+function mergedKeySql(column: string): string {
+  return `lower(replace(${column}, ' ', ''))`
+}
+
+/** «Shohjaxon» → the SQL literal 'shohjaxon(rop)', the key `mergedKeySql` compares to. */
+function mergedSourceLiteral(team: string): string {
+  return `'${`${team}${SALES_TEAM_SUFFIX}`.toLowerCase().replaceAll(' ', '').replaceAll("'", "''")}'`
 }
 
 /**
@@ -3701,12 +3711,33 @@ export class InsightsRepository {
       confirmationQueueSql.test.ts by an assertion on the BUILT string, since
       every other check in that file reads the source and would have passed
       either way.
+
+      A MERGED TEAM READS AS THE ONE IT JOINED (`MERGED_TEAMS`, the owner
+      2026-11-04: Shohjaxon is Azizbek), asked first, on the raw name with
+      its spaces dropped and case folded — a plain string compare, not one
+      more regexp per row.
     */
-    return `CASE
+    const merged = Object.entries(MERGED_TEAMS)
+      .map(([from, to]) => `
+          WHEN ${mergedKeySql(column)} = ${mergedSourceLiteral(from)} THEN '${to.replaceAll("'", "''")}'`)
+      .join('')
+    return `CASE${merged}
           WHEN ${column} ILIKE '%(ROP)%'
             THEN NULLIF(btrim(regexp_replace(${column}, '\\(ROP\\)', '', 'gi')), '')
           ELSE NULL
         END`
+  }
+
+  /**
+   * Whether a department name is a team the owner merged into another
+   * (`MERGED_TEAMS`) — true for «Shohjaxon(ROP)», false on NULL. Its unit's
+   * head is a member of the team it joined, not a second ROP of it: the head
+   * lists and rosters put such a unit last or leave its head out.
+   */
+  static mergedTeamSql(column: string): string {
+    const names = Object.keys(MERGED_TEAMS).map(mergedSourceLiteral)
+    if (names.length === 0) return 'false'
+    return `COALESCE(${mergedKeySql(column)} IN (${names.join(', ')}), false)`
   }
 
   /**
@@ -5396,18 +5427,25 @@ export class InsightsRepository {
    * Who heads each ROP team, keyed by the same label the confirmation
    * cohort prints (`ropNameSql` over the unit's name), so payroll can name the person
    * the team's 2% is paid to. A label several active units share lists every
-   * distinct head, comma-joined, rather than picking one of them.
+   * distinct head, comma-joined, rather than picking one of them — but a
+   * merged unit's head (`mergedTeamSql`, «Shohjaxon(ROP)») is a member of the
+   * team it joined, not one of its heads.
    */
   async ropHeadNames(): Promise<Map<string, string>> {
+    const rows = await this.prisma.$queryRawUnsafe<{ rop: string; heads: string }[]>(InsightsRepository.ropHeadNamesSql())
+    return new Map(rows.map((r) => [r.rop, r.heads]))
+  }
+
+  /** `ropHeadNames`' statement. Exported for its test. */
+  static ropHeadNamesSql(): string {
     const rop = InsightsRepository.ropNameSql('d."name"')
-    const rows = await this.prisma.$queryRawUnsafe<{ rop: string; heads: string }[]>(`
+    return `
       SELECT ${rop} AS rop, string_agg(DISTINCT e."fullName", ', ' ORDER BY e."fullName") AS heads
         FROM "department" d
         JOIN "employee" e ON e."id" = d."headId" AND e."isActive"
-       WHERE d."isActive" AND ${rop} IS NOT NULL
+       WHERE d."isActive" AND ${rop} IS NOT NULL AND NOT ${InsightsRepository.mergedTeamSql('d."name"')}
        GROUP BY 1
-    `)
-    return new Map(rows.map((r) => [r.rop, r.heads]))
+    `
   }
 
   /**

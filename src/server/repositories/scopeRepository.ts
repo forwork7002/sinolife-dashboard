@@ -41,6 +41,12 @@
  *     still reads everything below it. Measured on production that day: the
  *     other twelve TEAM accounts resolve to exactly the people they did.
  *
+ *     AND A MERGED UNIT IS HEADED BY THE HEAD OF THE TEAM IT JOINED
+ *     (2026-11-04, `MERGED_TEAMS`): «Shohjaxon(ROP)» became part of
+ *     «Azizbek(ROP)» on every screen while the portal kept both units, so
+ *     Azizbek's account reads Shohjaxon's people as his own team. The merged
+ *     unit's own head still reads only that unit.
+ *
  *   MEMBERS — everyone whose PRIMARY `departmentId` falls in that set,
  *     EXCEPT a person who heads a unit OUTSIDE it (2026-10-19). «192 Charos»
  *     is filed first in «Malika(ROP)» and heads «Зехтра отдел продаж» above
@@ -66,11 +72,27 @@
  */
 
 import type { PrismaClient } from '@/generated/prisma/client'
-import { SALES_TEAM_SUFFIX } from '@/server/domain/employees/roles'
+import { MERGED_TEAMS, SALES_TEAM_SUFFIX } from '@/server/domain/employees/roles'
 
 /** `isSalesTeamName` in SQL: the name, trimmed and case-folded, ends in «(ROP)». */
 const SALES_TEAM_SQL = (alias: string) =>
   `lower(btrim(${alias}."name")) LIKE '%${SALES_TEAM_SUFFIX.toLowerCase()}'`
+
+/** A team name as a unit's name is matched to `MERGED_TEAMS`: «Shohjaxon» → 'shohjaxon(rop)'. */
+const unitKey = (team: string) => `'${`${team}${SALES_TEAM_SUFFIX}`.toLowerCase().replaceAll(' ', '').replaceAll("'", "''")}'`
+
+/**
+ * Unit `merged` was merged into unit `joined` (`MERGED_TEAMS`, the owner
+ * 2026-11-04: «Shohjaxon(ROP)» is «Azizbek(ROP)»). Names matched as
+ * `InsightsRepository.ropNameSql` matches them: spaces dropped, case folded.
+ */
+const MERGED_INTO_SQL = (merged: string, joined: string) => {
+  const pairs = Object.entries(MERGED_TEAMS).map(
+    ([from, to]) =>
+      `(lower(replace(${merged}."name", ' ', '')) = ${unitKey(from)} AND lower(replace(${joined}."name", ' ', '')) = ${unitKey(to)})`,
+  )
+  return pairs.length === 0 ? 'false' : `(${pairs.join(' OR ')})`
+}
 
 export class ScopeRepository {
   constructor(private readonly prisma: PrismaClient) {}
@@ -99,6 +121,13 @@ export class ScopeRepository {
                ${SALES_TEAM_SQL('d')} AS "fromTeam"
           FROM "department" d
          WHERE d."headId" = $1
+        UNION
+        -- A unit merged into a team this person runs (MERGED_TEAMS) is theirs
+        -- too: one team on every screen, so one team in their scope.
+        SELECT m."id", true
+          FROM "department" m
+          JOIN "department" j ON j."headId" = $1
+         WHERE ${MERGED_INTO_SQL('m', 'j')}
         UNION
         SELECT child."id", h."fromTeam"
           FROM "department" child

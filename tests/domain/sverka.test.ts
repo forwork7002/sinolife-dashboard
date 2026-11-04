@@ -348,7 +348,9 @@ describe('regionKey / ropKey', () => {
   })
 
   it('reads a ROP project, and only a ROP project', () => {
-    expect(ropKey('Shohjaxon(ROP)')).toBe('shohjahon')
+    // Merged into Azizbek on 2026-11-04 (`MERGED_TEAMS`): one team, one key.
+    expect(ropKey('Shohjaxon(ROP)')).toBe('azizbek')
+    expect(ropKey('Lola(ROP)')).toBe('lola')
     expect(ropKey('Sevinch (rop)')).toBe('sevinch')
     expect(ropKey('Collagen Marine')).toBeNull()
   })
@@ -387,6 +389,9 @@ describe('compareDeal — region and team', () => {
 
   it('folds the two systems\' spellings of one team', () => {
     expect(ropVerdict('Shohjaxon', 'Shoxjaxon(ROP)')).toBe('same')
+    // The deal's team arrives merged («Azizbek»); MoySklad may still say «Shohjaxon(ROP)».
+    expect(ropVerdict('Azizbek', 'Shohjaxon(ROP)')).toBe('same')
+    expect(ropVerdict('Azizbek', 'Lola(ROP)')).toBe('diff')
     expect(ropVerdict('Shohjaxon', 'Collagen')).toBeNull()
   })
 

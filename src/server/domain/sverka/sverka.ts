@@ -23,6 +23,8 @@
  * Pure: no Prisma, no framework. The service hands rows in and gets lines out.
  */
 
+import { MERGED_TEAMS } from '@/server/domain/employees/roles'
+
 /** Below this, two sums are the same sum (1 soʻm, in minor units). */
 export const SUM_TOLERANCE_MINOR = 100n
 
@@ -319,17 +321,29 @@ function teamText(name: string): string {
     .replace(/[^\p{L}]+/gu, '')
 }
 
-/** «Shohjaxon(ROP)» → «shohjahon»; a project that is not a ROP team → null. */
+/**
+ * A team's folded name with a merged team read as the one it joined
+ * (`MERGED_TEAMS`, 2026-11-04): the deal's team arrives as «Azizbek» for a
+ * «Shohjaxon(ROP)» stamp (`ropNameSql`), while MoySklad's project may still
+ * say «Shohjaxon(ROP)» — one team, so the two must meet.
+ */
+const MERGED_KEYS: ReadonlyMap<string, string> = new Map(Object.entries(MERGED_TEAMS).map(([from, to]) => [teamText(from), teamText(to)]))
+const teamKey = (name: string): string => {
+  const key = teamText(name)
+  return MERGED_KEYS.get(key) ?? key
+}
+
+/** «Shohjaxon(ROP)» → «azizbek» (merged, `MERGED_TEAMS`), «Lola(ROP)» → «lola»; a project that is not a ROP team → null. */
 export function ropKey(text: string | null | undefined): string | null {
   if (!text || !/\(ROP\)/i.test(text)) return null
-  const name = teamText(text.replace(/\(ROP\)/gi, ''))
+  const name = teamKey(text.replace(/\(ROP\)/gi, ''))
   return name || null
 }
 
 /** Whether the deal's team and MoySklad's project agree; null when the project names no team. */
 export function ropVerdict(ropSource: string | null | undefined, project: string | null | undefined): 'same' | 'diff' | null {
   const msTeam = ropKey(project)
-  const bxTeam = ropSource ? teamText(ropSource) : ''
+  const bxTeam = ropSource ? teamKey(ropSource) : ''
   if (!msTeam || !bxTeam) return null
   return bxTeam === msTeam ? 'same' : 'diff'
 }

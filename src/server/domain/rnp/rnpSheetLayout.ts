@@ -52,6 +52,9 @@
  * (id 3001, no sheet row); row 45 reads «Цена квал лида» — the budget over
  * the kval leads, no longer over all of them.
  *
+ * 2026-11-04: «Шохжахон РОП»'s logistics block (314–318) is gone — the owner
+ * merged his team into Azizbek's (`MERGED_TEAMS`), whose block carries it.
+ *
  * Each entry: [row, label (column A), sub (column B when it holds text — the
  * person responsible, «без квал», «факт1» …), kind, bold, tone of the label
  * cell, tone of the fact cell].
@@ -359,11 +362,6 @@ export const RNP_SHEET_LAYOUT: readonly RnpLayoutRow[] = [
   [311, 'Успешкность % 📌', null, 'value', false, 'plain', 'plain'],
   [312, 'Отказ %', null, 'value', false, 'plain', 'plain'],
   [313, '', null, 'helper', false, 'plain', 'plain'],
-  [314, 'Логистика  Сумма факт1', 'Шохжахон РОП', 'value', true, 'section', 'plain'],
-  [315, 'Успешка сумма факт 2', null, 'value', false, 'plain', 'fakt'],
-  [316, 'Успешкность % 📌', null, 'value', false, 'plain', 'plain'],
-  [317, 'Отказ %', null, 'value', false, 'plain', 'plain'],
-  [318, '', null, 'helper', false, 'plain', 'plain'],
   [324, 'Логистика  Сумма факт1', 'Фаррух БАЗА', 'value', true, 'section', 'plain'],
   [325, 'Успешка сумма факт 2', null, 'value', false, 'plain', 'fakt'],
   [326, 'Успешкность % 📌', null, 'value', false, 'plain', 'plain'],

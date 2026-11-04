@@ -486,7 +486,7 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
           { day: '2026-09-02', rop: 'Sevinch', leads: 57 },
           { day: '2026-09-02', rop: 'Azizbek', leads: 13 },
           { day: '2026-09-02', rop: 'Lola', leads: 25 },
-          { day: '2026-09-02', rop: 'Shohjaxon', leads: 6 },
+          { day: '2026-09-02', rop: 'Marjona', leads: 6 },
           // A БАЗА head's: counted, but in no group — the team is measured by calls.
           { day: '2026-09-02', rop: 'Charos', leads: 2 },
           // Not handed to a ROP team (the Регистрация copy, the desk head): no row counts it.
@@ -498,7 +498,7 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
           { day: '2026-09-03', rop: 'Sevinch', leads: 10 },
           { day: '2026-09-02', rop: 'Azizbek', leads: 52 },
           // A team with no group row, and the deals no ROP got: in no group.
-          { day: '2026-09-02', rop: 'Shohjaxon', leads: 30 },
+          { day: '2026-09-02', rop: 'Marjona', leads: 30 },
           { day: '2026-09-02', rop: null, leads: 400 },
         ],
       }),
@@ -527,7 +527,7 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
   it('counts every Регистрация deal as без квал: groups + other teams + no ROP = «Жами без квал» (2026-10-13)', () => {
     const d = dto()
     expect(on(row(d, 'registration', 'reg:bezkval:other'), '2026-09-02')).toBe(30)
-    expect(row(d, 'registration', 'reg:bezkval:other').hint).toContain('Шохжахон РОП')
+    expect(row(d, 'registration', 'reg:bezkval:other').hint).toContain('Маржона РОП')
     expect(on(row(d, 'registration', 'reg:bezkval:none'), '2026-09-02')).toBe(400)
     const total = row(d, 'registration', 'reg:bezkval:total')
     expect(on(total, '2026-09-02')).toBe(190 + 52 + 30 + 400)
@@ -574,7 +574,7 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     expect(others.label).toBe('Boshqa jamoalar — квал')
     expect(on(others, '2026-09-02')).toBe(8)
     // The hint names who is in it.
-    expect(others.hint).toContain('Шохжахон РОП')
+    expect(others.hint).toContain('Маржона РОП')
     expect(others.hint).toContain('Малика РОП - БАЗА')
     // The brand cuts (`…:qualified:<brand>`) are the switch's, not the sheet's — left out of the sum.
     const groups = d.blocks
@@ -598,10 +598,65 @@ describe('buildRnpSheet — registration «guruh» rows', () => {
     const others = on(row(d, 'registration', 'reg:group:none:qualified'), '2026-09-02')
     const cuts = (['Collagen', 'Zextra', 'none'] as const).map((b) => on(row(d, 'registration', `reg:group:none:qualified:${b}`), '2026-09-02') ?? 0)
     expect(cuts.reduce((a, b) => a + b, 0)).toBe(others)
-    // Шохжахон is Collagen's, Малика (folded into Charos) Zextra's.
-    expect(row(d, 'registration', 'reg:group:none:qualified:Collagen').hint).toContain('Шохжахон РОП')
+    // Маржона is Collagen's, Малика (folded into Charos) Zextra's.
+    expect(row(d, 'registration', 'reg:group:none:qualified:Collagen').hint).toContain('Маржона РОП')
     const lines = d.lines.filter((l) => l.kind === 'value' && l.key?.startsWith('reg:group:none:qualified:'))
     expect(lines.map((l) => [l.brand, l.kind === 'value' && l.brandOnly])).toEqual([['Collagen', true], ['Zextra', true], ['none', true]])
+  })
+})
+
+describe('buildRnpSheet — Shohjaxon is Azizbek (the owner, 2026-11-04)', () => {
+  /*
+    «shohjahon degan narsa yoʻq endilikda … azizbek va shohjahon bitta boʻldi».
+    `ropNameSql` already prints both units as «Azizbek»; this pins the fold of
+    rows that still arrive by the old name, history included.
+  */
+  const dto = () =>
+    buildRnpSheet(
+      input({
+        teams: [
+          { rop: 'Sevinch', head: 'Sevinch Usmonova' },
+          { rop: 'Azizbek', head: 'Azizbek Ahatovich 169' },
+        ],
+        fakt: [
+          fakt('2026-09-21', 'Azizbek', { fakt1Orders: 2, fakt1Minor: som(4_000_000), fakt2Orders: 1, fakt2Minor: som(1_000_000) }),
+          fakt('2026-09-21', 'Shohjaxon', { fakt1Orders: 1, fakt1Minor: som(1_500_000), fakt2Orders: 1, fakt2Minor: som(500_000) }),
+        ],
+        leads: [
+          { day: '2026-09-21', rop: 'Azizbek', leads: 10 },
+          { day: '2026-09-21', rop: 'Shohjaxon', leads: 4 },
+        ],
+        bezkval: [
+          { day: '2026-09-21', rop: 'Azizbek', leads: 30 },
+          { day: '2026-09-21', rop: 'Shohjaxon', leads: 12 },
+        ],
+        manualHeadcount: [
+          // His people are MORE people of Azizbek's team, typed in either order.
+          { day: '2026-09-21', rop: 'Shohjaxon', heads: 5 },
+          { day: '2026-09-21', rop: 'Azizbek', heads: 14 },
+        ],
+      }),
+    )
+
+  it("adds his team's money, leads and people to Azizbek's block and logistics", () => {
+    const d = dto()
+    expect(on(row(d, 'team:Azizbek', 'team:Azizbek:fakt1'), '2026-09-21')).toBe(5_500_000)
+    expect(on(row(d, 'team:Azizbek', 'team:Azizbek:reach'), '2026-09-21')).toBe(14)
+    expect(on(row(d, 'team:Azizbek', 'team:Azizbek:headcount'), '2026-09-21')).toBe(19)
+    expect(on(row(d, 'logistics:Azizbek', 'lg:Azizbek:fakt1'), '2026-09-21')).toBe(5_500_000)
+    // «Aziz guruh» is Azizbek's team — his leads and his без квал with it.
+    expect(on(row(d, 'registration', 'reg:group:Aziz:qualified'), '2026-09-21')).toBe(14)
+    expect(on(row(d, 'registration', 'reg:bezkval:Aziz'), '2026-09-21')).toBe(42)
+    expect(on(row(d, 'registration', 'reg:bezkval:other'), '2026-09-21')).toBe(0)
+  })
+
+  it('draws no Шохжахон anywhere: no block, no logistics, no ROP list entry', () => {
+    const d = dto()
+    expect(d.blocks.some((b) => b.team === 'Shohjaxon' || b.id.includes('Shohjaxon'))).toBe(false)
+    expect(d.teams.map((t) => t.rop)).not.toContain('Shohjaxon')
+    expect(d.teams.find((t) => t.rop === 'Azizbek')).toMatchObject({ label: 'Азизбек РОП', head: 'Azizbek Ahatovich 169' })
+    expect(JSON.stringify(d.lines)).not.toMatch(/Шохжахон|Shohjaxon/)
+    expect(teamBrand('Shohjaxon')).toBe('Collagen')
   })
 })
 
@@ -993,7 +1048,7 @@ describe('buildRnpSheet — every sheet row claimed once, and on the layout', ()
     const x = buildRnpSheet(input())
     const at = (row: number) => x.lines.find((l) => l.row === row)
     expect(at(304)).toMatchObject({ kind: 'value', key: 'lg:Marjona:fakt1' })
-    expect(at(314)).toMatchObject({ kind: 'value', key: 'lg:Shohjaxon:fakt1' })
+    expect(at(309)).toMatchObject({ kind: 'value', key: 'lg:Azizbek:fakt1' })
   })
 
   it('keeps the leads of teams with no group row on the page, after the groups', () => {
@@ -1214,7 +1269,8 @@ describe('buildRnpSheet — the audit fixes of 2026-10-02', () => {
 
   it('draws «Отказ сумма» alike in every logistics block', () => {
     const refused = buildRnpSheet(input()).lines.filter((l) => l.kind === 'value' && l.row !== null && /^lg:.+:refused$/.test(l.key ?? ''))
-    expect(refused).toHaveLength(12)
+    // Eleven since 2026-11-04: «Шохжахон РОП»'s block went with his team into Azizbek's.
+    expect(refused).toHaveLength(11)
     expect(new Set(refused.map((l) => l.kind === 'value' && l.bold))).toEqual(new Set([false]))
   })
 

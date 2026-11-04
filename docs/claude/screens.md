@@ -454,7 +454,7 @@ Per-screen traps worth knowing before you touch one:
     `team`; «Свод» has no per-ROP lines since 2026-09-30); «Barchasi» is the
     whole sheet. Its list (2026-10-02) offers every team that has lines, in
     the order their lines first appear — the sheet's — a logistics-only one
-    too (Шохжахон, «(ROP yoʻq)»), named by `teams`, else its first team /
+    too («(ROP yoʻq)»; Шохжахон's until 2026-11-04), named by `teams`, else its first team /
     section line's column-B text; a `?rop=` the month has no lines for is
     kept, not cleared, and applies again in a month that has the team.
     The month follows the Tashkent calendar by itself unless one is picked.
@@ -502,8 +502,10 @@ Per-screen traps worth knowing before you touch one:
     value changes on **14.09**, from the sheet's column T.
   · Teams read as the sheet names them (`SHEET_TEAM_NAMES`, «Малика РОП -
     БАЗА» with the sheet's hyphen), and `TEAM_ALIASES` folds old snapshot
-    names — Sevinchxon → Sadriddin, Malika → Charos — BEFORE anything is
-    summed. ONE NAME PER TEAM (2026-10-02): a team the sheet does not name is
+    names — Sevinchxon → Sadriddin, Malika → Charos, and the merged
+    Shohjaxon → Azizbek (`MERGED_TEAMS`, 2026-11-04; his logistics block
+    314–318 is gone, his typed «Ходим сони» is ADDED to Azizbek's) — BEFORE
+    anything is summed. ONE NAME PER TEAM (2026-10-02): a team the sheet does not name is
     «<department> РОП» on its block, its logistics and in the ROP list alike
     (`labelOf`; «(ROP yoʻq)» keeps its own). Teams come in THE SHEET'S ORDER
     (`TEAM_SHEET_ROW`, then `LOGISTICS_SHEET_ROW`), the rest by name — it was
@@ -518,7 +520,7 @@ Per-screen traps worth knowing before you touch one:
     registrars feed Asliddin AND Sadriddin. The table is no longer read
     (kept), nor `leadDaysSql`'s registrar column. The appended «Boshqa
     jamoalar — квал» (key `reg:group:none:qualified`, was «Guruhsiz») holds
-    every other team's (Шохжахон, Маржона, Ҳаёт, Kompaniya, the БАЗА heads),
+    every other team's (Маржона, Ҳаёт, Kompaniya, the БАЗА heads),
     named in its hint, so the rows add up to «РОП ларга тарқатилди». Row 48
     stays the registrars' WON by close day: the two differ by definition
     (01.10: 240 kval, 233 handed out); its hint says so.
@@ -567,7 +569,7 @@ Per-screen traps worth knowing before you touch one:
     rnpSheet.ts, SQL `InsightsRepository.dealProductBrandSql`. Only an order
     with no paid line falls back to its SELLING TEAM, by the sheet's SUMIFS
     lists (`BRAND_TEAMS`: Collagen = Sevinch, Gulzora, Azizbek, Lola,
-    Saidaziz, Maftuna, Marjona, Baza, Shohjaxon; Zextra = Asliddin,
+    Saidaziz, Maftuna, Marjona, Baza (+Shohjaxon, merged); Zextra = Asliddin,
     Sadriddin (+Sevinchxon), Charos (+Malika)) — the rule from 2026-10-01
     until then. The same rule drives every screen's brand switch
     (`?brand=all|Collagen|Zextra|none`, «Brendsiz» the complement, so the
@@ -1691,6 +1693,19 @@ Per-screen traps worth knowing before you touch one:
   «Husniddin(ROP)», a department the portal no longer has. The strip has one
   home, `InsightsRepository.ropNameSql`, read by both bases; pinned by
   `tests/http/logisticsSql.test.ts` and `tests/http/confirmationQueueSql.test.ts`.
+  **A MERGED TEAM IS THE TEAM IT JOINED, EVERYWHERE — 2026-11-04** (the owner:
+  «shohjahon degan narsa yoʻq endilikda … azizbek va shohjahon bitta boʻldi»).
+  `MERGED_TEAMS` in `domain/employees/roles.ts` (Shohjaxon → Azizbek) is asked
+  first inside `ropNameSql`, so a «Shohjaxon(ROP)» stamp and the unit alike
+  print «Azizbek» on the queue, Logistika, /sellers, RNP, ROP otchet, Lidlar,
+  Roistat, payroll and Sverka (`ropKey` folds MoySklad's project too), every
+  month. The portal still had unit 76 «Shohjaxon(ROP)» with its own head that
+  day: that head is a MEMBER of Azizbek's group (roster `is_head` false, left
+  out of `ropHeads` / `ropHeadNames` / RNP `teams`, no «Ходим сони» of
+  Azizbek's), and Azizbek's TEAM account reads unit 76's people
+  (`ScopeRepository`). «Lid taqsimoti»'s list lost Shohjaxon; a split saved
+  before adds his share to Azizbek's (`foldShares`). The org chart and the
+  `/users` ROP picker still show the portal's units.
   **SINCE 2026-09-26 THE WHOLE QUEUE READS IT THIS WAY** («jamoani ham
   bitimdagi maydondan olsin, logistikadagidek qil»): `classified.rop` itself is
   `COALESCE(snapshot, department)`, so `/confirmation` (РОП column, filter,
