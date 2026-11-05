@@ -180,6 +180,7 @@ type ColumnKey =
   | 'fakt2'
   | 'percent'
   | 'fixed'
+  | 'late'
   | 'formula'
   | 'total'
   | 'growth'
@@ -211,7 +212,13 @@ const COLUMNS: readonly { key: ColumnKey; header: string; hint?: string; width: 
   { key: 'growth', header: 'Oʻsish', hint: 'FAKT 2 — oʻtgan shunday davr bilan', width: 108 },
   { key: 'percent', header: 'Foiz', hint: 'Bosqich foizi butun FAKT 2 dan', width: 132 },
   { key: 'fixed', header: 'Fiksa / oklad', hint: 'Bosqichga qarab; Bazada har bosqichda oklad bor', width: 156 },
-  { key: 'formula', header: 'Hisob', width: 250 },
+  {
+    key: 'late',
+    header: 'Kechikish',
+    hint: 'TimePay (FaceID) boʻyicha ish kunlari kechikkan daqiqalar — har daqiqa 1 soʻm jarima, JAMIdan ayriladi. «—» — TimePay bilan bogʻlanmagan',
+    width: 116,
+  },
+  { key: 'formula', header: 'Hisob', width: 270 },
   { key: 'total', header: 'JAMI', width: 126 },
 ]
 
@@ -264,7 +271,8 @@ function BranchRows({
           fakt2={branch.fakt2}
           percent={branch.percent}
           fixed={branch.fixed}
-          formula={`${formatFullUzs(branch.percent.amount)} + ${formatFullUzs(branch.fixed.amount)} =`}
+          late={{ minutes: branch.lateMinutes, fine: branch.lateFine }}
+          formula={sumFormula(branch)}
           total={branch.total}
           growth={compared ? <Muted /> : null}
         />
@@ -340,7 +348,8 @@ function TeamRows({
           fakt2={team.fakt2}
           percent={team.percent}
           fixed={team.fixed}
-          formula={`${formatFullUzs(team.percent.amount)} + ${formatFullUzs(team.fixed.amount)} =`}
+          late={{ minutes: team.lateMinutes, fine: team.lateFine }}
+          formula={sumFormula(team)}
           total={team.total}
           growth={compared ? <Growth delta={team.fakt2Delta} previous={team.previous?.fakt2 ?? null} team /> : null}
         />
@@ -396,6 +405,9 @@ function SellerRow({ row, compared }: { row: PayrollSellerDto; compared: boolean
         <FixedCell row={row} />
       </Num>
       <Num>
+        <LateCell minutes={row.lateMinutes} fine={row.lateFine} />
+      </Num>
+      <Num>
         <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>
           {sellerFormula(row)}
         </span>
@@ -427,6 +439,7 @@ function FigureRow({
   percent,
   rate,
   fixed,
+  late,
   formula,
   total,
   growth,
@@ -443,6 +456,8 @@ function FigureRow({
   percent: MoneyDto
   rate?: number
   fixed: MoneyDto
+  /** The sellers' late minutes and fines summed; absent on a ROP's row (a ROP is not fined). */
+  late?: { readonly minutes: number; readonly fine: MoneyDto }
   formula: string
   total: MoneyDto
   growth: ReactNode
@@ -489,6 +504,9 @@ function FigureRow({
         <span style={{ color: 'var(--ink-secondary)' }}>{fixed.amount > 0 ? formatFullUzs(fixed.amount) : NO_VALUE}</span>
       </Num>
       <Num ruleStrong={kind === 'branch' || kind === 'grand'}>
+        {late ? <LateCell minutes={late.minutes} fine={late.fine} /> : <Muted />}
+      </Num>
+      <Num ruleStrong={kind === 'branch' || kind === 'grand'}>
         <span className="text-[11.5px] font-normal" style={{ color: 'var(--ink-muted)' }}>
           {formula}
         </span>
@@ -526,7 +544,8 @@ function GrandRows({ data, span, compared }: { data: PayrollDto; span: number; c
         fakt2={totals.fakt2}
         percent={totals.percent}
         fixed={totals.fixed}
-        formula={`${formatFullUzs(totals.percent.amount)} + ${formatFullUzs(totals.fixed.amount)} =`}
+        late={{ minutes: totals.lateMinutes, fine: totals.lateFine }}
+        formula={sumFormula(totals)}
         total={totals.total}
         growth={compared ? <Growth delta={data.deltas.fakt2} previous={data.previous.fakt2} team /> : null}
       />
@@ -662,6 +681,29 @@ function FixedCell({ row }: { row: PayrollSellerDto }) {
   )
 }
 
+/**
+ * Minutes late and the fine under them. `null` minutes — the person is not
+ * linked to TimePay: unknown, printed as a dash, never as «0» (on time).
+ */
+export function LateCell({ minutes, fine }: { minutes: number | null; fine: MoneyDto }) {
+  if (minutes === null) {
+    return (
+      <span title="TimePay bilan bogʻlanmagan — kechikish nomaʼlum, jarima yoʻq">
+        <Muted />
+      </span>
+    )
+  }
+  if (minutes === 0) return <span style={{ color: 'var(--ink-muted)' }}>0 daq</span>
+  return (
+    <span className="flex flex-col items-end gap-0.5">
+      <span style={{ color: 'var(--delta-down)' }}>−{formatFullUzs(fine.amount)}</span>
+      <span className="text-[10px] font-normal" style={{ color: 'var(--ink-muted)' }}>
+        {formatNumber(minutes)} daq
+      </span>
+    </span>
+  )
+}
+
 /** The change and what it is off; nobody in the comparison window reads «yangi», never «+∞%». */
 export function Growth({ delta, previous, team = false }: { delta: DeltaDto; previous: MoneyDto | null; team?: boolean }) {
   if (previous === null) return <NewChip team={team} />
@@ -699,7 +741,18 @@ export function sellerFormula(row: PayrollSellerDto): string {
     return `${formatFullUzs(row.fakt2.amount)} — 15 mln gacha, toʻlanmaydi =`
   }
   const base = `${formatFullUzs(row.fakt2.amount)} × ${formatNumber(row.percentRate)}%`
-  return row.fixed.amount > 0 ? `${base} + ${formatFullUzs(row.fixed.amount)} =` : `${base} =`
+  const fixed = row.fixed.amount > 0 ? ` + ${formatFullUzs(row.fixed.amount)}` : ''
+  return `${base}${fixed}${fineTerm(row.lateFine)} =`
+}
+
+/** « − 1 250» — the lateness fine in a formula, nothing without one. */
+export function fineTerm(fine: MoneyDto): string {
+  return fine.amount > 0 ? ` − ${formatFullUzs(fine.amount)}` : ''
+}
+
+/** «foiz + fiksa − jarima =» — a row of sums (team, block, company). */
+export function sumFormula(sums: { readonly percent: MoneyDto; readonly fixed: MoneyDto; readonly lateFine: MoneyDto }): string {
+  return `${formatFullUzs(sums.percent.amount)} + ${formatFullUzs(sums.fixed.amount)}${fineTerm(sums.lateFine)} =`
 }
 
 /** «120 000 000 × 2% + 2 000 000 =» — a ROP's pay, the same way. */

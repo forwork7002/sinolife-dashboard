@@ -234,14 +234,20 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
 // The grid
 // ---------------------------------------------------------------------------
 
-type Col = 'formula' | 'fakt2' | 'percent' | 'fixed' | 'growth' | 'fakt2Orders' | 'fakt1Orders' | 'leads' | 'conversion'
+type Col = 'formula' | 'fakt2' | 'percent' | 'fixed' | 'late' | 'growth' | 'fakt2Orders' | 'fakt1Orders' | 'leads' | 'conversion'
 
 /** The columns after the pinned name and JAMI: the working first, then «ROP otchet»'s counts. */
 const COLS: readonly { key: Col; header: string; hint: string; min: string }[] = [
-  { key: 'formula', header: 'Hisob', hint: 'JAMI qanday chiqqani: FAKT 2 × foiz + fiksa', min: 'min-w-[228px]' },
+  { key: 'formula', header: 'Hisob', hint: 'JAMI qanday chiqqani: FAKT 2 × foiz + fiksa − kechikish jarimasi', min: 'min-w-[248px]' },
   { key: 'fakt2', header: 'FAKT 2 · Успешно', hint: 'Yetkazilgan pul — maosh shundan hisoblanadi', min: 'min-w-[128px]' },
   { key: 'percent', header: 'Foiz', hint: 'Bosqich foizi butun FAKT 2 dan', min: 'min-w-[132px]' },
   { key: 'fixed', header: 'Fiksa / oklad', hint: 'Bosqichga qarab; ostida — keyingi bosqichgacha qancha qoldi', min: 'min-w-[150px]' },
+  {
+    key: 'late',
+    header: 'Kechikish',
+    hint: 'TimePay (FaceID): ish kunlari kechikkan daqiqalar — har daqiqa 1 soʻm jarima, JAMIdan ayriladi. «—» — TimePay bilan bogʻlanmagan',
+    min: 'min-w-[104px]',
+  },
   { key: 'growth', header: 'Oʻsish', hint: 'FAKT 2 — oʻtgan shunday davr bilan', min: 'min-w-[104px]' },
   { key: 'fakt2Orders', header: 'Buyurtma soni', hint: 'Транз-2 — yetkazilgan (FAKT 2) buyurtmalar', min: 'min-w-[88px]' },
   { key: 'fakt1Orders', header: 'Tranzaksiya', hint: 'Транз-1 — FAKT 1 buyurtmalar', min: 'min-w-[88px]' },
@@ -261,6 +267,8 @@ interface Figures {
   readonly rate?: number
   readonly percent: MoneyDto
   readonly fixed: MoneyDto
+  /** The sellers' late minutes and fines summed; undefined on a ROP's row (not fined). */
+  readonly late?: { readonly minutes: number; readonly fine: MoneyDto }
   readonly growth: ReactNode
   readonly fakt2Orders: number | undefined
   readonly fakt1Orders: number | undefined
@@ -489,10 +497,11 @@ function BranchRows({
           sub={branch.rops > 0 ? `+ ${rnpNumber(branch.rops)} ta ROP: ${rnpUzs(branch.ropTotal.amount)}` : undefined}
           figures={{
             total: branch.total,
-            formula: `${rnpUzs(branch.percent.amount)} + ${rnpUzs(branch.fixed.amount)} =`,
+            formula: gridSumFormula(branch),
             fakt2: branch.fakt2,
             percent: branch.percent,
             fixed: branch.fixed,
+            late: { minutes: branch.lateMinutes, fine: branch.lateFine },
             growth: compared ? <Muted /> : null,
             fakt2Orders: branch.fakt2Orders,
             fakt1Orders: branch.fakt1Orders,
@@ -595,10 +604,11 @@ function TeamRows({
           sub={`${rnpNumber(team.sellers)} ta sotuvchi`}
           figures={{
             total: team.total,
-            formula: `${rnpUzs(team.percent.amount)} + ${rnpUzs(team.fixed.amount)} =`,
+            formula: gridSumFormula(team),
             fakt2: team.fakt2,
             percent: team.percent,
             fixed: team.fixed,
+            late: { minutes: team.lateMinutes, fine: team.lateFine },
             growth: compared ? <Growth delta={team.fakt2Delta} previous={team.previous?.fakt2 ?? null} team /> : null,
             fakt2Orders: team.fakt2Orders,
             fakt1Orders: team.fakt1Orders,
@@ -678,6 +688,8 @@ function sellerCell(key: Col, row: PayrollSellerDto, compared: boolean): ReactNo
       )
     case 'fixed':
       return <FixedCell row={row} />
+    case 'late':
+      return <LateCell minutes={row.lateMinutes} fine={row.lateFine} />
     case 'growth':
       return compared ? <Growth delta={row.fakt2Delta} previous={row.previous?.fakt2 ?? null} /> : null
     case 'fakt2Orders':
@@ -689,6 +701,31 @@ function sellerCell(key: Col, row: PayrollSellerDto, compared: boolean): ReactNo
     case 'conversion':
       return row.conversion === null ? <Muted /> : rnpPercent(row.conversion)
   }
+}
+
+/**
+ * Minutes late and the fine. `null` — not linked to TimePay: unknown, a dash,
+ * never «0» (on time).
+ */
+function LateCell({ minutes, fine }: { minutes: number | null; fine: MoneyDto }) {
+  if (minutes === null) {
+    return (
+      <span title="TimePay bilan bogʻlanmagan — kechikish nomaʼlum, jarima yoʻq">
+        <Muted />
+      </span>
+    )
+  }
+  if (minutes === 0) return <span style={{ color: 'var(--ink-muted)' }}>0 daq</span>
+  return (
+    <span className="block">
+      <span className="block" style={{ color: 'var(--delta-down)' }}>
+        −{rnpUzs(fine.amount)}
+      </span>
+      <span className="block text-[10px] font-normal" style={{ color: 'var(--ink-muted)' }}>
+        {rnpNumber(minutes)} daq
+      </span>
+    </span>
+  )
 }
 
 /** The fixed part and, under it, how far the next rung is. A flat rate has no rung. */
@@ -761,6 +798,8 @@ function FigureRow({
         )
       case 'fixed':
         return f.fixed.amount > 0 ? rnpUzs(f.fixed.amount) : '—'
+      case 'late':
+        return f.late ? <LateCell minutes={f.late.minutes} fine={f.late.fine} /> : <Muted />
       case 'growth':
         return f.growth
       case 'fakt2Orders':
@@ -841,10 +880,11 @@ function GrandRows({
         sub={`${rnpNumber(totals.sellers)} ta sotuvchi`}
         figures={{
           total: totals.total,
-          formula: `${rnpUzs(totals.percent.amount)} + ${rnpUzs(totals.fixed.amount)} =`,
+          formula: gridSumFormula(totals),
           fakt2: totals.fakt2,
           percent: totals.percent,
           fixed: totals.fixed,
+          late: { minutes: totals.lateMinutes, fine: totals.lateFine },
           growth: compared ? <Growth delta={data.deltas.fakt2} previous={data.previous.fakt2} team /> : null,
           fakt2Orders: totals.fakt2Orders,
           fakt1Orders: totals.fakt1Orders,
@@ -938,6 +978,12 @@ function Muted() {
 }
 
 /** The house formula («52,340,000 × 8% + 500,000 =») in the sheet's dots. */
+/** «foiz + fiksa − jarima =» for a row of sums, in the grid's figures. */
+function gridSumFormula(sums: { readonly percent: MoneyDto; readonly fixed: MoneyDto; readonly lateFine: MoneyDto }): string {
+  const fine = sums.lateFine.amount > 0 ? ` − ${rnpUzs(sums.lateFine.amount)}` : ''
+  return `${rnpUzs(sums.percent.amount)} + ${rnpUzs(sums.fixed.amount)}${fine} =`
+}
+
 function rnpFormula(text: string): string {
   return text.replace(/\d{1,3}(?:,\d{3})+/g, (n) => n.replaceAll(',', '.'))
 }
@@ -976,6 +1022,8 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
     'Foiz %',
     'Foiz soʻm',
     'Fiksa / oklad',
+    'Kechikish, daq',
+    'Kechikish jarimasi',
     ...(compared ? ['Oʻtgan davr FAKT 2'] : []),
     'Buyurtma soni',
     'Tranzaksiya',
@@ -999,6 +1047,8 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
           n(r.percentRate),
           n(r.percent.amount),
           n(r.fixed.amount),
+          n(r.lateMinutes),
+          n(r.lateFine.amount),
           ...(compared ? [n(r.previous?.fakt2.amount ?? null)] : []),
           n(r.fakt2Orders),
           n(r.fakt1Orders),
@@ -1018,6 +1068,8 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
           '2',
           n(team.ropPay.percent.amount),
           n(team.ropPay.fixed.amount),
+          '',
+          '',
           ...(compared ? [''] : []),
           '',
           '',
@@ -1036,6 +1088,8 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
         '',
         n(team.percent.amount),
         n(team.fixed.amount),
+        n(team.lateMinutes),
+        n(team.lateFine.amount),
         ...(compared ? [n(team.previous?.fakt2.amount ?? null)] : []),
         n(team.fakt2Orders),
         n(team.fakt1Orders),
@@ -1055,6 +1109,8 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
       '',
       n(b.percent.amount),
       n(b.fixed.amount),
+      n(b.lateMinutes),
+      n(b.lateFine.amount),
       ...(compared ? [''] : []),
       n(b.fakt2Orders),
       n(b.fakt1Orders),
@@ -1074,6 +1130,8 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
     '',
     n(t.percent.amount),
     n(t.fixed.amount),
+    n(t.lateMinutes),
+    n(t.lateFine.amount),
     ...(compared ? [n(data.previous.fakt2.amount)] : []),
     n(t.fakt2Orders),
     n(t.fakt1Orders),

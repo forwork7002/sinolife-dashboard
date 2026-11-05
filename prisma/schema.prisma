@@ -2542,3 +2542,49 @@ model MonthScan {
 
   @@map("month_scan")
 }
+
+/// TimePay (timepay24.uz, the company's FaceID attendance) — one person as
+/// TimePay lists them, and which ISH employee they are (2026-11-05, the owner:
+/// «sotuvchilar oyligida … har bir kechikkan minutiga 1 somdan jarima»).
+/// Written by the sync worker (`integrations/timepay`); the link is set by the
+/// name match there or by an administrator on «Sotuvchilar oyligi».
+model TimepayEmployee {
+  /// TimePay's own employee id.
+  timepayId  Int       @id
+  fullName   String
+  department String?
+  position   String?
+  /// The ISH employee (`employee.id`) this person is. Null — not linked.
+  /// No foreign key: an employee row is never deleted, and a link to one that
+  /// went would only stop a fine, never move one to somebody else.
+  employeeId String?   @unique
+  /// "name" — the worker's exact name match · "manual" — set (or cleared) by
+  /// an administrator; the worker never changes a manual decision.
+  linkSource String?
+  linkedBy   String?
+  linkedAt   DateTime?
+  /// Last day TimePay listed this person.
+  lastSeen   DateTime  @db.Date
+  syncedAt   DateTime  @default(now())
+
+  @@map("timepay_employee")
+}
+
+/// One person's day as TimePay reports it — the facts only; which days a fine
+/// is taken for is `domain/payroll/lateFine`.
+model TimepayDay {
+  timepayId   Int
+  /// The Tashkent calendar day.
+  day         DateTime @db.Date
+  /// First FaceID arrival, «HH:MM». Null — no arrival mark.
+  checkIn     String?
+  /// TimePay's `late_minutes` when it says `late`, else 0.
+  lateMinutes Int      @default(0)
+  holiday     Boolean  @default(false)
+  onLeave     Boolean  @default(false)
+  syncedAt    DateTime @default(now())
+
+  @@id([timepayId, day])
+  @@index([day])
+  @@map("timepay_day")
+}

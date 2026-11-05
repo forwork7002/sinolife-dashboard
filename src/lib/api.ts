@@ -712,6 +712,11 @@ export interface PayrollSellerDto {
   readonly percent: MoneyDto
   /** The tier's fixed part (fiksa / haftalik oklad). Zero below the first paying floor. */
   readonly fixed: MoneyDto
+  /** Minutes late on the window's workdays (TimePay FaceID). Null — not linked to TimePay: unknown, not «0». */
+  readonly lateMinutes: number | null
+  /** The lateness fine taken off — 1 soʻm a minute. */
+  readonly lateFine: MoneyDto
+  /** percent + fixed − lateFine, never below zero. */
   readonly total: MoneyDto
   readonly tierFloor: MoneyDto | null
   readonly nextFloor: MoneyDto | null
@@ -720,6 +725,29 @@ export interface PayrollSellerDto {
   readonly previous: { readonly fakt2: MoneyDto; readonly total: MoneyDto } | null
   readonly fakt2Delta: DeltaDto
   readonly totalDelta: DeltaDto
+}
+
+/**
+ * «Sotuvchilar oyligi → TimePay bogʻlash» — HAND-MIRRORED from
+ * `TimepayLinksDto` in `timepayLinkService`; edit both.
+ */
+export interface TimepayLinkPersonDto {
+  readonly timepayId: number
+  readonly fullName: string
+  readonly department: string | null
+  readonly position: string | null
+  readonly employeeId: string | null
+  readonly employeeName: string | null
+  /** 'name' — matched by name · 'manual' — set by an administrator · null — undecided. */
+  readonly source: 'name' | 'manual' | null
+  readonly linkedBy: string | null
+  readonly lastSeen: string
+  readonly suggestion: { readonly employeeId: string; readonly fullName: string } | null
+}
+
+export interface TimepayLinksDto {
+  readonly people: readonly TimepayLinkPersonDto[]
+  readonly employees: readonly { readonly id: string; readonly fullName: string; readonly linked: boolean }[]
 }
 
 /** One ROP card — its sellers summed, now and in the comparison window. */
@@ -736,6 +764,8 @@ export interface PayrollTeamDto {
   readonly fakt2: MoneyDto
   readonly percent: MoneyDto
   readonly fixed: MoneyDto
+  readonly lateMinutes: number
+  readonly lateFine: MoneyDto
   readonly total: MoneyDto
   /** Null when nobody was paid under this name in the comparison window. */
   readonly previous: {
@@ -773,6 +803,8 @@ export interface PayrollBranchDto {
   readonly fakt2: MoneyDto
   readonly percent: MoneyDto
   readonly fixed: MoneyDto
+  readonly lateMinutes: number
+  readonly lateFine: MoneyDto
   /** The sellers' pay. */
   readonly total: MoneyDto
   /** How many of its teams' ROPs are paid. */
@@ -811,7 +843,16 @@ export interface PayrollDto {
     readonly fakt2: MoneyDto
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
+    readonly lateMinutes: number
+    readonly lateFine: MoneyDto
     readonly total: MoneyDto
+  }
+  /** The lateness fine's source: TimePay's freshness and how many printed sellers it covers. */
+  readonly timepay: {
+    readonly syncedAt: string | null
+    readonly perMinute: MoneyDto
+    readonly linked: number
+    readonly unlinked: number
   }
   /** Σ `teams[].ropPay` — the ROPs' pay, apart from the sellers' fund. */
   readonly ropTotals: {

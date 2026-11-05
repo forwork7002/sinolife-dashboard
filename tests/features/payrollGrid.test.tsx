@@ -86,8 +86,8 @@ describe('PayrollGrid', () => {
     it(`spans every row across the header — ${compared ? 'with' : 'without'} the growth column`, () => {
       const { container } = render(<PayrollGrid data={data} days={days} search="" compared={compared} />)
       const columns = width(container.querySelector('thead tr') as HTMLTableRowElement)
-      // Name, JAMI, nine (or eight) figure columns, three days.
-      expect(columns).toBe(2 + (compared ? 9 : 8) + DAYS.length)
+      // Name, JAMI, ten (or nine) figure columns — «Kechikish» since 2026-11-05 — three days.
+      expect(columns).toBe(2 + (compared ? 10 : 9) + DAYS.length)
       for (const tr of Array.from(container.querySelectorAll<HTMLTableRowElement>('tbody tr'))) expect(width(tr)).toBe(columns)
     })
   }

@@ -102,6 +102,8 @@ import { applyLabelRenames } from '../src/server/integrations/crm/sync/labelRena
 import { pendingLinksSince, repairPendingLinks } from '../src/server/integrations/crm/sync/pendingLinks'
 import { importMetaLeads } from '../src/server/integrations/meta/metaLeadImport'
 import { importMoyskladOrders, recordMoyskladFailure } from '../src/server/integrations/moysklad/moyskladImport'
+import { TimepayClient } from '../src/server/integrations/timepay/timepayClient'
+import { importTimepay } from '../src/server/integrations/timepay/timepayImport'
 import { resolvePeriod, sinceMonth, zonedDateKey } from '../src/server/domain/period/period'
 import {
   type DealsBackfill,
@@ -242,6 +244,20 @@ const META_TOKEN = process.env.META_ACCESS_TOKEN?.trim() || null
 const MOYSKLAD_EVERY = Number(process.env.SYNC_MOYSKLAD_EVERY ?? 3)
 const MOYSKLAD_TOKEN = process.env.MOYSKLAD_TOKEN?.trim() || null
 const MOYSKLAD_SWEEP_RUNS = 10
+
+/**
+ * TimePay (FaceID attendance) for «Sotuvchilar oyligi»'s lateness fine
+ * (2026-11-05, the owner: «har bir kechikkan minutiga 1 somdan jarima»),
+ * every `SYNC_TIMEPAY_MIN` minutes (15): today's arrivals each pass, the last
+ * three days hourly, the previous month's missing days a dozen a pass
+ * (`importTimepay`). Beside the loop like Meta — TimePay is not the portal.
+ * Off without `TIMEPAY_LOGIN` / `TIMEPAY_PASSWORD`; the payroll then fines
+ * nobody and says how old its TimePay data is.
+ */
+const TIMEPAY_MS = Number(process.env.SYNC_TIMEPAY_MIN ?? 15) * 60_000
+const TIMEPAY_RECENT_MS = 60 * 60_000
+const TIMEPAY_LOGIN = process.env.TIMEPAY_LOGIN?.trim() || null
+const TIMEPAY_PASSWORD = process.env.TIMEPAY_PASSWORD || null
 /**
  * Pages of 100 one read may take. The first, whole-table read is ≈100 pages
  * (≈6 minutes); at 15 a turn it is spread over ~7 turns of ~1 minute each,
@@ -1185,6 +1201,11 @@ async function main() {
    * first. One at a time — a slow pass is never doubled.
    */
   let metaInFlight: Promise<void> | null = null
+  /** The TimePay pass in flight, and when it last ran / last re-read the recent days. */
+  let timepayInFlight: Promise<void> | null = null
+  let lastTimepayAt: Date | null = null
+  let lastTimepayRecentAt: Date | null = null
+  const timepay = TIMEPAY_LOGIN && TIMEPAY_PASSWORD ? new TimepayClient(TIMEPAY_LOGIN, TIMEPAY_PASSWORD) : null
   /**
    * The stored answers' passes in flight — «Mijoz qaytishi» (`runCohortPass`),
    * then Roistat's closed months (`runMonthScanPass`), one after the other —
@@ -1379,6 +1400,9 @@ async function main() {
       (MOYSKLAD_TOKEN && MOYSKLAD_EVERY > 0
         ? ` MoySklad har ${MOYSKLAD_EVERY} tsiklda.`
         : ' MoySklad oʻchirilgan (token yoʻq).') +
+      (timepay && TIMEPAY_MS > 0
+        ? ` TimePay har ${Math.round(TIMEPAY_MS / 60_000)} daqiqada.`
+        : ' TimePay oʻchirilgan (login yoʻq).') +
       (SWEEP_EVERY > 0
         ? ` Oʻchirilganlarni tozalash kechada bir marta (01:00–06:00, ${WORKER_TIME_ZONE}), oraliq ${SWEEP_EVERY} tsikl.`
         : ' Tozalash oʻchirilgan.') +
@@ -2383,6 +2407,33 @@ async function main() {
     }
 
     /*
+      TimePay for the payroll's lateness fine — beside the loop, one pass at a
+      time, never tick 0. A failure is logged and the next pass asks again;
+      the stored days stay as they were.
+    */
+    if (timepay && tick > 0 && timepayInFlight === null && isPassDue(lastTimepayAt, new Date(), TIMEPAY_MS) && !stopping) {
+      const startedAt = new Date()
+      lastTimepayAt = startedAt
+      const refreshRecent = isPassDue(lastTimepayRecentAt, startedAt, TIMEPAY_RECENT_MS)
+      timepayInFlight = (async () => {
+        try {
+          const r = await importTimepay(prisma, timepay, { today: zonedDateKey(startedAt, WORKER_TIME_ZONE), refreshRecent })
+          if (refreshRecent) lastTimepayRecentAt = startedAt
+          console.log(
+            `  ${stamp()} timepay: ${r.days.length} kun, ${r.rows} qator` +
+              (r.linked > 0 ? `, ismdan bogʻlandi ${r.linked}` : '') +
+              (r.missing > 0 ? `, yana ${r.missing} kun navbatda` : '') +
+              `  (${((Date.now() - startedAt.getTime()) / 1000).toFixed(1)}s)`,
+          )
+        } catch (error) {
+          console.warn(`  ${stamp()} timepay muvaffaqiyatsiz: ${(error as Error).message.slice(0, 300)}`)
+        }
+      })().finally(() => {
+        timepayInFlight = null
+      })
+    }
+
+    /*
       MoySklad for «Sverka», on the same «never tick 0» rule, offset by one
       tick from the hour's Meta and Roistat passes. A failure is logged and
       retried on the next turn — MoySklad being down must never cost a
@@ -2564,6 +2615,8 @@ async function main() {
   // A Meta pass in flight finishes its account — each grain is its own
   // transaction, so one cut short leaves the last pass's rows, never a hole.
   if (metaInFlight) await Promise.race([metaInFlight, sleep(15_000)])
+  // A TimePay day is written in one transaction: one cut short keeps the stored day.
+  if (timepayInFlight) await Promise.race([timepayInFlight, sleep(15_000)])
   // A cohort build cut short keeps its old row: each question is written only once it is built.
   if (storedInFlight) await Promise.race([storedInFlight, sleep(15_000)])
 

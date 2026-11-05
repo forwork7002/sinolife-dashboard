@@ -52,6 +52,7 @@ import {
   ropPayroll,
   sellerPayroll,
 } from '@/server/domain/payroll/sellerPayroll'
+import { fineableMinutes, lateFineMinor, LATE_FINE_PER_MINUTE_MINOR, netOfFine } from '@/server/domain/payroll/lateFine'
 import { isBaseTeam } from '@/server/domain/rnp/rnpSheet'
 import type {
   ConfirmationSellerDayRow,
@@ -59,6 +60,7 @@ import type {
   InsightsRepository,
 } from '@/server/repositories/insightsRepository'
 import type { RegistrationRepository } from '@/server/repositories/registrationRepository'
+import type { TimepayRepository } from '@/server/repositories/timepayRepository'
 import { LIVE_CACHE, keyPart, ttlCache } from './ttlCache'
 
 // ---------------------------------------------------------------------------
@@ -100,7 +102,15 @@ export interface PayrollSellerDto {
   readonly percent: MoneyDto
   /** The tier's fixed part. Zero below the first floor, never null. */
   readonly fixed: MoneyDto
-  /** percent + fixed. The soʻm the person is paid. */
+  /**
+   * Minutes late over the window's workdays, as TimePay (FaceID) counts them
+   * and `lateFine` takes them. NULL — this person is not linked to anybody in
+   * TimePay, so nothing is known: never printed as «0, on time».
+   */
+  readonly lateMinutes: number | null
+  /** The lateness fine taken off (`lateFine`: 1 soʻm a minute). Zero with no lateness. */
+  readonly lateFine: MoneyDto
+  /** percent + fixed − lateFine, never below zero. The soʻm the person is paid. */
   readonly total: MoneyDto
   /** The floor this row was paid at, so the screen can name the tier. */
   readonly tierFloor: MoneyDto | null
@@ -141,6 +151,10 @@ export interface PayrollTeamDto {
   readonly fakt2: MoneyDto
   readonly percent: MoneyDto
   readonly fixed: MoneyDto
+  /** Σ the printed sellers' late minutes (an unlinked seller adds none). */
+  readonly lateMinutes: number
+  /** Σ the printed sellers' fines. */
+  readonly lateFine: MoneyDto
   readonly total: MoneyDto
   /** Null when nobody was paid under this name in the comparison window. */
   readonly previous: {
@@ -188,6 +202,8 @@ export interface PayrollBranchDto {
   readonly fakt2: MoneyDto
   readonly percent: MoneyDto
   readonly fixed: MoneyDto
+  readonly lateMinutes: number
+  readonly lateFine: MoneyDto
   /** The sellers' pay. */
   readonly total: MoneyDto
   /** How many of its teams' ROPs are paid. */
@@ -218,8 +234,23 @@ export interface PayrollDto {
     readonly fakt2: MoneyDto
     readonly percent: MoneyDto
     readonly fixed: MoneyDto
+    readonly lateMinutes: number
+    readonly lateFine: MoneyDto
     /** The payroll fund for the period — what the office pays out in soʻm. */
     readonly total: MoneyDto
+  }
+  /**
+   * The lateness fine's source (TimePay, FaceID) — how fresh, and how many of
+   * the printed sellers it covers. `linked` + `unlinked` = `totals.sellers`;
+   * an unlinked seller is fined nothing because nothing is known of them.
+   */
+  readonly timepay: {
+    /** The newest stored TimePay day write, ISO; null — never synced. */
+    readonly syncedAt: string | null
+    /** The fine per late minute. */
+    readonly perMinute: MoneyDto
+    readonly linked: number
+    readonly unlinked: number
   }
   /** Σ `teams[].ropPay` — the ROPs' pay, kept apart from the sellers' fund. */
   readonly ropTotals: {
@@ -369,6 +400,18 @@ interface FlatRate {
 /** One window's leads per person, on the rows' own clock. */
 const leadsCache = ttlCache<Map<string, number>>(120_000, LIVE_CACHE)
 
+/** One window's late minutes per linked employee, on the rows' own clock. */
+const lateCache = ttlCache<LateMinutes>(120_000, LIVE_CACHE)
+
+/** Per ISH employee, the minutes fined over a window — see `lateFine`. */
+interface LateMinutes {
+  readonly minutes: ReadonlyMap<string, number>
+  readonly linked: ReadonlySet<string>
+  readonly syncedAt: Date | null
+}
+
+const NO_LATE: LateMinutes = { minutes: new Map(), linked: new Set(), syncedAt: null }
+
 /**
  * Test seam: every memo is module state, shared by every case in a worker —
  * the hazard `resetSellerBoardCache` describes.
@@ -381,10 +424,14 @@ export function resetPayrollCache(): void {
   flatCache.clear()
   leadsCache.clear()
   daysCache.clear()
+  lateCache.clear()
 }
 
 /** The leads reader — «ROP otchet»'s, so «Лид сони» is one number on both screens. */
 export type PayrollLeadsSource = Pick<RegistrationRepository, 'sellerLeads'>
+
+/** The TimePay reader behind the lateness fine. */
+export type PayrollLateSource = Pick<TimepayRepository, 'lateDays'>
 
 export class PayrollService {
   constructor(
@@ -396,6 +443,8 @@ export class PayrollService {
      * hands the logger). Injected rather than imported: the logger reads `env`.
      */
     private readonly warn: (context: Record<string, unknown>, message: string) => void = () => {},
+    /** Null — no TimePay here: every seller is «not linked» and fined nothing. */
+    private readonly lateSource: PayrollLateSource | null = null,
   ) {}
 
   /**
@@ -546,6 +595,28 @@ export class PayrollService {
       })
   }
 
+  /*
+    THE LATENESS FINE'S MINUTES over the window's calendar days (the end is
+    exclusive, so the last day is the one before it). MONEY, so a failed read
+    is the payroll's — swallowed, every seller would be paid unfined without
+    a word. An empty window (a comparison not started) asks nothing.
+  */
+  private late(period: Period): Promise<LateMinutes> {
+    const source = this.lateSource
+    if (source === null || period.end.getTime() <= period.start.getTime()) return Promise.resolve(NO_LATE)
+    const from = zonedDateKey(period.start, period.timeZone)
+    const to = zonedDateKey(new Date(period.end.getTime() - 1), period.timeZone)
+    return lateCache.get(`${from}|${to}`, async () => {
+      const read = await source.lateDays(from, to)
+      const minutes = new Map<string, number>()
+      for (const [employeeId, days] of read.days) {
+        const sum = days.reduce((acc, day) => acc + fineableMinutes(day), 0)
+        if (sum > 0) minutes.set(employeeId, sum)
+      }
+      return { minutes, linked: read.linked, syncedAt: read.syncedAt }
+    })
+  }
+
   private async build(
     scheme: PayrollSchemeValue,
     period: Period,
@@ -558,7 +629,7 @@ export class PayrollService {
       Both windows at once, through the same query. An empty comparison
       window (a period that has not started) is not asked for at all.
     */
-    const [slices, previousRows, heads, ancestors, flat, leads] = await Promise.all([
+    const [slices, previousRows, heads, ancestors, flat, leads, late, previousLate] = await Promise.all([
       this.slices(period),
       previousPeriod.end.getTime() > previousPeriod.start.getTime()
         ? this.rows(previousPeriod)
@@ -567,7 +638,20 @@ export class PayrollService {
       this.ancestors(),
       this.flatRates(),
       this.leads(period),
+      this.late(period),
+      this.late(previousPeriod),
     ])
+    /*
+      THE FINE A ROW PAYS, off its table's pay (2026-11-05, the owner: «har
+      bir kechikkan minutiga 1 somdan jarima»). The applied fine is what the
+      pay could carry: a fine larger than the pay takes it to zero and no
+      further, so foiz + fiksa − jarima = JAMI on every row.
+    */
+    const fined = (employeeId: string, grossMinor: bigint, from: LateMinutes) => {
+      const minutes = from.linked.has(employeeId) ? (from.minutes.get(employeeId) ?? 0) : null
+      const netMinor = netOfFine(grossMinor, lateFineMinor(minutes ?? 0))
+      return { minutes, fineMinor: grossMinor - netMinor, netMinor }
+    }
     /*
       WHICH TABLE PAYS A ROW: a flat rate of the person's own first, then
       БАЗА's for the two БАЗА teams, else the standard one. By the row's team
@@ -599,12 +683,16 @@ export class PayrollService {
       would have been paid then, not a figure from a different rule.
     */
     // Paid people only, as now: the cohort also carries the queued and refused.
-    const allPreviousPay = previousRows.filter((row) => row.deliveredMinor > 0n).map((row) => ({
-      employeeId: row.employeeId,
-      rop: row.rop,
-      fakt2: row.deliveredMinor,
-      pay: sellerPayroll({ basisMinor: row.deliveredMinor, scheme, ...tableOf(row) }),
-    }))
+    // The comparison window's fines come off the same way: like for like.
+    const allPreviousPay = previousRows.filter((row) => row.deliveredMinor > 0n).map((row) => {
+      const gross = sellerPayroll({ basisMinor: row.deliveredMinor, scheme, ...tableOf(row) })
+      return {
+        employeeId: row.employeeId,
+        rop: row.rop,
+        fakt2: row.deliveredMinor,
+        pay: { ...gross, totalMinor: fined(row.employeeId, gross.totalMinor, previousLate).netMinor },
+      }
+    })
     /*
       «HAD A PREVIOUS» MEANS DELIVERED MONEY THEN. The cohort carries sellers
       with nothing delivered (queued, refused), and an order booked at 0 soʻm
@@ -654,6 +742,7 @@ export class PayrollService {
       const rank = rankOf[index]!
       const table = tableOf(row)
       const pay = sellerPayroll({ basisMinor: row.deliveredMinor, scheme, ...table })
+      const fine = fined(row.employeeId, pay.totalMinor, late)
       const before = previousById.get(row.employeeId)
       const leadCount = leads === null ? null : (leads.get(row.employeeId) ?? 0)
 
@@ -672,7 +761,9 @@ export class PayrollService {
         percentRate: Number(pay.percentBp) / 100,
         percent: cash(pay.percentMinor),
         fixed: cash(pay.fixedMinor),
-        total: cash(pay.totalMinor),
+        lateMinutes: fine.minutes,
+        lateFine: cash(fine.fineMinor),
+        total: cash(fine.netMinor),
         tierFloor: pay.tierFloorMinor === null ? null : cash(pay.tierFloorMinor),
         nextFloor: pay.nextFloorMinor === null ? null : cash(pay.nextFloorMinor),
         toNext: pay.toNextMinor === null ? null : cash(pay.toNextMinor),
@@ -680,7 +771,7 @@ export class PayrollService {
           ? { fakt2: cash(before.fakt2), total: cash(before.pay.totalMinor) }
           : null,
         fakt2Delta: delta(row.deliveredMinor, before?.fakt2 ?? null),
-        totalDelta: delta(pay.totalMinor, before?.pay.totalMinor ?? null),
+        totalDelta: delta(fine.netMinor, before?.pay.totalMinor ?? null),
       }
     })
 
@@ -721,8 +812,11 @@ export class PayrollService {
       fakt2: sum((row) => row.fakt2),
       percent: sum((row) => row.percent),
       fixed: sum((row) => row.fixed),
+      lateFine: sum((row) => row.lateFine),
       total: sum((row) => row.total),
     }
+    const lateMinutes = sellers.reduce((acc, row) => acc + (row.lateMinutes ?? 0), 0)
+    const linkedSellers = sellers.filter((row) => row.lateMinutes !== null).length
     const counts = countsOf(sellers, leads !== null)
 
     const printed = new Set(sellers.map((row) => row.employeeId))
@@ -744,7 +838,15 @@ export class PayrollService {
         fakt2: cash(current.fakt2),
         percent: cash(current.percent),
         fixed: cash(current.fixed),
+        lateMinutes,
+        lateFine: cash(current.lateFine),
         total: cash(current.total),
+      },
+      timepay: {
+        syncedAt: late.syncedAt?.toISOString() ?? null,
+        perMinute: cash(LATE_FINE_PER_MINUTE_MINOR),
+        linked: linkedSellers,
+        unlinked: sellers.length - linkedSellers,
       },
       teams,
       branches: branchesOf(teams, sellers, cash, leads !== null),
@@ -796,8 +898,11 @@ function teamsOf(
 ): PayrollTeamDto[] {
   const minor = (value: MoneyDto) => BigInt(value.amountMinor)
 
-  const now = new Map<string | null, { sellers: PayrollSellerDto[]; fakt2: bigint; percent: bigint; fixed: bigint; total: bigint }>()
-  const empty = () => ({ sellers: [] as PayrollSellerDto[], fakt2: 0n, percent: 0n, fixed: 0n, total: 0n })
+  const now = new Map<
+    string | null,
+    { sellers: PayrollSellerDto[]; fakt2: bigint; percent: bigint; fixed: bigint; lateMinutes: number; lateFine: bigint; total: bigint }
+  >()
+  const empty = () => ({ sellers: [] as PayrollSellerDto[], fakt2: 0n, percent: 0n, fixed: 0n, lateMinutes: 0, lateFine: 0n, total: 0n })
   for (const row of sellers) {
     const held = now.get(row.rop) ?? empty()
     now.set(row.rop, {
@@ -805,6 +910,8 @@ function teamsOf(
       fakt2: held.fakt2 + minor(row.fakt2),
       percent: held.percent + minor(row.percent),
       fixed: held.fixed + minor(row.fixed),
+      lateMinutes: held.lateMinutes + (row.lateMinutes ?? 0),
+      lateFine: held.lateFine + minor(row.lateFine),
       total: held.total + minor(row.total),
     })
   }
@@ -847,6 +954,8 @@ function teamsOf(
         fakt2: cash(team.fakt2),
         percent: cash(team.percent),
         fixed: cash(team.fixed),
+        lateMinutes: team.lateMinutes,
+        lateFine: cash(team.lateFine),
         total: cash(team.total),
         previous: before
           ? { sellers: before.sellers, fakt2: cash(before.fakt2), total: cash(before.total) }
@@ -943,6 +1052,8 @@ function branchesOf(
         fakt2: sum((team) => team.fakt2),
         percent: sum((team) => team.percent),
         fixed: sum((team) => team.fixed),
+        lateMinutes: own.reduce((acc, team) => acc + team.lateMinutes, 0),
+        lateFine: sum((team) => team.lateFine),
         total: sum((team) => team.total),
         rops: paid.length,
         ropTotal: cash(paid.reduce((acc, pay) => acc + minor(pay.total), 0n)),

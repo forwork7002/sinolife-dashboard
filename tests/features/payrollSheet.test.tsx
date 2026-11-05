@@ -97,7 +97,8 @@ describe('PayrollSheet', () => {
       const { container } = render(<PayrollSheet data={data} search="" compared={compared} />)
       const head = container.querySelector('thead tr') as HTMLTableRowElement
       const columns = width(head)
-      expect(columns).toBe(compared ? 11 : 10)
+      // «Kechikish» (the lateness fine) since 2026-11-05.
+      expect(columns).toBe(compared ? 12 : 11)
       for (const tr of Array.from(container.querySelectorAll<HTMLTableRowElement>('tbody tr'))) {
         expect(width(tr)).toBe(columns)
       }

@@ -973,6 +973,28 @@ sweep is at most nightly since 2026-10-14, see «THE SWEEP RUNS AT NIGHT».)
 
 ---
 
+## TimePay — the payroll's lateness fine (2026-11-05)
+
+The owner: «sotuvchilar oyligida … har bir kechikkan minutiga 1 somdan jarima». The worker reads TimePay
+(timepay24.uz, the FaceID attendance «Otsenka ROP app» already uses; its `TIMEPAY_API_SPEC.md` is the API) BESIDE the
+loop like Meta — TimePay is not the portal, so this costs the portal nothing. `TIMEPAY_LOGIN` / `TIMEPAY_PASSWORD` on
+the `sync` component; without them the pass is off and the payroll fines nobody.
+
+- **Every `SYNC_TIMEPAY_MIN` (15) minutes** `importTimepay` asks for today, hourly also the last three days (TimePay's
+  past days change: an application approved, a mark corrected), and up to 12 missing days from the first of the
+  PREVIOUS month — a cold table fills in a few passes. One `employee-daily-stats` call per day (~100 rows).
+- **A day is replaced whole** (`timepay_day`: delete + insert in one transaction). An empty reply is TimePay failing —
+  it lists every employee every day — so the stored day stays and the pass logs `timepay muvaffaqiyatsiz`.
+- **People** (`timepay_employee`) are written only when new or changed. A person not decided yet is linked to the ISH
+  employee whose name is theirs (`domain/timepay/names` `exactNameLinks`: «Name Surname 115» ↔ «Surname Name
+  Patronymic», either script, unique on both sides). Bitrix24 holds no staff phones (checked 2026-11-05), so a name is
+  all there is. An administrator's link or «nobody» (`linkSource = 'manual'`, «Sotuvchilar oyligi → Batafsil →
+  Kechikish jarimasi · TimePay») is never touched by the worker. Measured 2026-11-05 on real names: 28 of TimePay's 84
+  sales people link by exact name, 32 more get a suggestion for the administrator.
+- Log line: `timepay: N kun, M qator, ismdan bogʻlandi K, yana L kun navbatda`.
+
+---
+
 ## Commands, and the unreachable portal — from CLAUDE.md
 
 > CLAUDE.md'dan 2026-11-01 da so'zma-so'z ko'chirildi (ixchamlash). Qoidalar o'zgarmagan.

@@ -4,6 +4,7 @@ import type * as Client from '@/lib/api'
 import type { PayrollBranch } from '@/server/domain/payroll/payrollBranches'
 import type { PayrollTableValue } from '@/server/domain/payroll/sellerPayroll'
 import type { PayrollDto } from '@/server/services/payrollService'
+import type { TimepayLinksDto } from '@/server/services/timepayLinkService'
 
 /**
  * `src/lib/api.ts` restates the payroll DTO by hand — the client may not
@@ -17,10 +18,11 @@ const MIRRORED: [
   Same<Client.PayrollBranch, PayrollBranch>,
   Same<Client.PayrollTable, PayrollTableValue>,
   Same<Client.PayrollDto, PayrollDto>,
-] = [true, true, true]
+  Same<Client.TimepayLinksDto, TimepayLinksDto>,
+] = [true, true, true, true]
 
 describe('the payroll DTO mirror', () => {
   it('is the server DTO, field for field', () => {
-    expect(MIRRORED).toEqual([true, true, true])
+    expect(MIRRORED).toEqual([true, true, true, true])
   })
 })

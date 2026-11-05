@@ -30,6 +30,7 @@ import { PayrollGridScreen, emptyBody } from './PayrollGrid'
 import { PayrollSheet, ropFormula, sellerFormula } from './PayrollSheet'
 import { NO_ROP, PayrollMovers, RopCompareChart } from './PayrollTeams'
 import { PayrollFilters, usePayrollParams, usePayrollPicked, useRowPick } from './payrollFilters'
+import { TimepayCard } from './TimepayCard'
 
 /**
  * «Sotuvchilar oyligi» — what the office owes each seller over the dashboard's
@@ -392,6 +393,8 @@ function PayrollDetails({ tabs }: { readonly tabs: ReactNode }) {
         </div>
       )}
 
+      <TimepayCard timepay={data?.timepay} />
+
       {/*
         THE RULE THE PAY COMES FROM, printed rather than trusted, with how many
         people stand on each rung this period — counted from the rows above, so
@@ -622,6 +625,8 @@ function CopyButton({
       'Foiz %',
       'Foiz',
       words.fixed,
+      'Kechikish, daq',
+      'Kechikish jarimasi',
       'Hisob',
       'JAMI',
       'Oʻtgan davr FAKT 2',
@@ -651,6 +656,8 @@ function CopyButton({
         row.percentRate,
         row.percent.amount,
         row.fixed.amount,
+        row.lateMinutes ?? '',
+        row.lateFine.amount,
         tsvCell(sellerFormula(row)),
         row.total.amount,
         row.previous?.fakt2.amount ?? '',

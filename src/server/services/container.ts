@@ -39,8 +39,10 @@ import { SearchService } from '@/server/services/searchService'
 import { SellerBoardRepository } from '@/server/repositories/sellerBoardRepository'
 import { ReferenceRepository } from '@/server/repositories/referenceRepository'
 import { UsdRateRepository } from '@/server/repositories/usdRateRepository'
+import { TimepayRepository } from '@/server/repositories/timepayRepository'
 import { InsightsService } from './insightsService'
 import { PayrollService } from './payrollService'
+import { TimepayLinkService } from './timepayLinkService'
 import { KpiService } from './kpiService'
 import { PulseService } from './pulseService'
 import { ConcentrationService } from './concentrationService'
@@ -193,8 +195,18 @@ export const registrationService = new RegistrationService(registrationRepositor
   own header says why. «Лид сони» is «ROP otchet»'s, so it is declared after
   the registration repository it reads.
 */
-export const payrollService = new PayrollService(insightsRepository, registrationRepository, (context, message) =>
-  logger.warn(context, message),
+/*
+  The lateness fine reads TimePay's days as the sync worker stored them
+  (`timepay_day`, 2026-11-05); the link list on «Sotuvchilar oyligi» writes
+  the people's links through the same repository.
+*/
+export const timepayRepository = new TimepayRepository(prisma)
+export const timepayLinkService = new TimepayLinkService(timepayRepository)
+export const payrollService = new PayrollService(
+  insightsRepository,
+  registrationRepository,
+  (context, message) => logger.warn(context, message),
+  timepayRepository,
 )
 /*
   «Лид назорати» (2026-10-09) — what is waiting right now on «Lidlar»: today's

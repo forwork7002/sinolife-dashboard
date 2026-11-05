@@ -162,6 +162,19 @@ envs:
     type: SECRET
     value: CHANGE_ME
 
+  # TimePay (timepay24.uz, FaceID attendance) — the sync worker reads each
+  # day's arrivals for «Sotuvchilar oyligi»'s lateness fine (2026-11-05). The
+  # login «Otsenka ROP app» uses. Unset means the pass is off and nobody is
+  # fined; the payroll says TimePay has not synced.
+  - key: TIMEPAY_LOGIN
+    scope: RUN_TIME
+    type: SECRET
+    value: CHANGE_ME
+  - key: TIMEPAY_PASSWORD
+    scope: RUN_TIME
+    type: SECRET
+    value: CHANGE_ME
+
   - key: BITRIX24_RATE_LIMIT_RPS
     scope: RUN_TIME
     value: "2"
