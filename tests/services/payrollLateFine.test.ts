@@ -135,11 +135,31 @@ describe('the lateness fine on the payroll', () => {
     })
   })
 
+  it('carries the proof: every late day with the arrival, the shift start and why a day was not fined', async () => {
+    const dto = await service(
+      [row('late', 'Lola', 40)],
+      lateSource(
+        {
+          '2026-09-01|2026-09-30': {
+            late: [late('2026-09-06', 50, { checkIn: '09:20' }), late('2026-09-02', 16, { checkIn: '08:46' })],
+          },
+        },
+        ['late'],
+      ),
+    ).payroll(SEPTEMBER, AUGUST, 'UZS', NOW)
+    expect(dto.sellers[0]!.lateDays).toEqual([
+      { day: '2026-09-02', checkIn: '08:46', shiftStart: '08:30', minutes: 16, skipped: null },
+      { day: '2026-09-06', checkIn: '09:20', shiftStart: '08:30', minutes: 50, skipped: 'sunday' },
+    ])
+    expect(dto.sellers[0]!.lateMinutes).toBe(16)
+  })
+
   it('fines nobody it does not know: an unlinked seller is «null», not «0 minutes»', async () => {
     const dto = await service([row('unknown', 'Lola', 40)], lateSource({}, [])).payroll(SEPTEMBER, AUGUST, 'UZS', NOW)
     const seller = dto.sellers[0]!
     expect(seller.lateMinutes).toBeNull()
     expect(seller.lateFine.amountMinor).toBe('0')
+    expect(seller.lateDays).toEqual([])
     expect(seller.total.amountMinor).toBe(String(som(3_200_000)))
     expect(dto.timepay.unlinked).toBe(1)
   })

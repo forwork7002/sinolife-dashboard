@@ -15,6 +15,7 @@ import type {
 } from '@/lib/api'
 import { NO_VALUE, formatCompactUzs, formatFullUzs, formatNumber, formatPercent } from '@/lib/format'
 
+import { LateButton, LateProofProvider } from './LateProof'
 import { NO_ROP, NewChip } from './PayrollTeams'
 import type { RowPick } from './payrollFilters'
 
@@ -56,6 +57,7 @@ export function PayrollSheet({
   const restPx = columns.slice(1).reduce((acc, c) => acc + c.width, 0)
 
   return (
+    <LateProofProvider perMinute={data.timepay.perMinute}>
     <div
       role="region"
       aria-label="Maosh jadvali"
@@ -113,6 +115,7 @@ export function PayrollSheet({
         </tbody>
       </table>
     </div>
+    </LateProofProvider>
   )
 }
 
@@ -405,7 +408,9 @@ function SellerRow({ row, compared }: { row: PayrollSellerDto; compared: boolean
         <FixedCell row={row} />
       </Num>
       <Num>
-        <LateCell minutes={row.lateMinutes} fine={row.lateFine} />
+        <LateButton row={row}>
+          <LateCell minutes={row.lateMinutes} fine={row.lateFine} />
+        </LateButton>
       </Num>
       <Num>
         <span className="text-[11.5px]" style={{ color: 'var(--ink-muted)' }}>

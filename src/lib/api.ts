@@ -716,6 +716,8 @@ export interface PayrollSellerDto {
   readonly lateMinutes: number | null
   /** The lateness fine taken off — 1 soʻm a minute. */
   readonly lateFine: MoneyDto
+  /** The proof: every day TimePay called them late, oldest first; `skipped` says why a day was not fined. */
+  readonly lateDays: readonly PayrollLateDayDto[]
   /** percent + fixed − lateFine, never below zero. */
   readonly total: MoneyDto
   readonly tierFloor: MoneyDto | null
@@ -748,6 +750,18 @@ export interface TimepayLinkPersonDto {
 export interface TimepayLinksDto {
   readonly people: readonly TimepayLinkPersonDto[]
   readonly employees: readonly { readonly id: string; readonly fullName: string; readonly linked: boolean }[]
+}
+
+/** Why a late day was not fined — `LateSkip` in `lateFine`, restated. */
+export type PayrollLateSkip = 'sunday' | 'holiday' | 'leave' | 'no_mark'
+
+/** One day TimePay called a seller late — `PayrollLateDayDto` in `payrollService`, restated. */
+export interface PayrollLateDayDto {
+  readonly day: string
+  readonly checkIn: string
+  readonly shiftStart: string | null
+  readonly minutes: number
+  readonly skipped: PayrollLateSkip | null
 }
 
 /** One ROP card — its sellers summed, now and in the comparison window. */

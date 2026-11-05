@@ -52,7 +52,15 @@ import {
   ropPayroll,
   sellerPayroll,
 } from '@/server/domain/payroll/sellerPayroll'
-import { fineableMinutes, lateFineMinor, LATE_FINE_PER_MINUTE_MINOR, netOfFine } from '@/server/domain/payroll/lateFine'
+import {
+  fineableMinutes,
+  lateFineMinor,
+  LATE_FINE_PER_MINUTE_MINOR,
+  type LateSkip,
+  lateSkipOf,
+  netOfFine,
+  shiftStartOf,
+} from '@/server/domain/payroll/lateFine'
 import { isBaseTeam } from '@/server/domain/rnp/rnpSheet'
 import type {
   ConfirmationSellerDayRow,
@@ -110,6 +118,13 @@ export interface PayrollSellerDto {
   readonly lateMinutes: number | null
   /** The lateness fine taken off (`lateFine`: 1 soʻm a minute). Zero with no lateness. */
   readonly lateFine: MoneyDto
+  /**
+   * THE PROOF (the owner, 2026-11-05: «sen shu vaqtda kelgansan, shuncha
+   * jarima bo'lgan, shu kunlar deb turishi kerak»): every day of the window
+   * TimePay called late, oldest first — fined ones and, with the reason, the
+   * ones the rule did not fine. Empty with no lateness or no TimePay link.
+   */
+  readonly lateDays: readonly PayrollLateDayDto[]
   /** percent + fixed − lateFine, never below zero. The soʻm the person is paid. */
   readonly total: MoneyDto
   /** The floor this row was paid at, so the screen can name the tier. */
@@ -126,6 +141,20 @@ export interface PayrollSellerDto {
   readonly previous: { readonly fakt2: MoneyDto; readonly total: MoneyDto } | null
   readonly fakt2Delta: DeltaDto
   readonly totalDelta: DeltaDto
+}
+
+/** One day TimePay called a seller late. */
+export interface PayrollLateDayDto {
+  /** The Tashkent day, `YYYY-MM-DD`. */
+  readonly day: string
+  /** First FaceID arrival, «HH:MM». */
+  readonly checkIn: string
+  /** The shift start TimePay measured against (`shiftStartOf`), «HH:MM». */
+  readonly shiftStart: string | null
+  /** TimePay's minutes late. */
+  readonly minutes: number
+  /** Null — fined (minutes × `timepay.perMinute`); else why the rule took nothing. */
+  readonly skipped: LateSkip | null
 }
 
 /**
@@ -406,11 +435,13 @@ const lateCache = ttlCache<LateMinutes>(120_000, LIVE_CACHE)
 /** Per ISH employee, the minutes fined over a window — see `lateFine`. */
 interface LateMinutes {
   readonly minutes: ReadonlyMap<string, number>
+  /** Per employee, every late day of the window — the proof list. */
+  readonly days: ReadonlyMap<string, readonly PayrollLateDayDto[]>
   readonly linked: ReadonlySet<string>
   readonly syncedAt: Date | null
 }
 
-const NO_LATE: LateMinutes = { minutes: new Map(), linked: new Set(), syncedAt: null }
+const NO_LATE: LateMinutes = { minutes: new Map(), days: new Map(), linked: new Set(), syncedAt: null }
 
 /**
  * Test seam: every memo is module state, shared by every case in a worker —
@@ -609,11 +640,23 @@ export class PayrollService {
     return lateCache.get(`${from}|${to}`, async () => {
       const read = await source.lateDays(from, to)
       const minutes = new Map<string, number>()
+      const proof = new Map<string, PayrollLateDayDto[]>()
       for (const [employeeId, days] of read.days) {
         const sum = days.reduce((acc, day) => acc + fineableMinutes(day), 0)
         if (sum > 0) minutes.set(employeeId, sum)
+        const list = days
+          .filter((d) => d.lateMinutes >= 1 && d.checkIn !== null)
+          .map((d) => ({
+            day: d.day,
+            checkIn: d.checkIn!,
+            shiftStart: shiftStartOf(d.checkIn!, d.lateMinutes),
+            minutes: Math.floor(d.lateMinutes),
+            skipped: lateSkipOf(d),
+          }))
+          .sort((a, b) => a.day.localeCompare(b.day))
+        if (list.length > 0) proof.set(employeeId, list)
       }
-      return { minutes, linked: read.linked, syncedAt: read.syncedAt }
+      return { minutes, days: proof, linked: read.linked, syncedAt: read.syncedAt }
     })
   }
 
@@ -763,6 +806,7 @@ export class PayrollService {
         fixed: cash(pay.fixedMinor),
         lateMinutes: fine.minutes,
         lateFine: cash(fine.fineMinor),
+        lateDays: fine.minutes === null ? [] : (late.days.get(row.employeeId) ?? []),
         total: cash(fine.netMinor),
         tierFloor: pay.tierFloorMinor === null ? null : cash(pay.tierFloorMinor),
         nextFloor: pay.nextFloorMinor === null ? null : cash(pay.nextFloorMinor),

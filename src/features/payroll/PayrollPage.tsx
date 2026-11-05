@@ -30,6 +30,7 @@ import { PayrollGridScreen, emptyBody } from './PayrollGrid'
 import { PayrollSheet, ropFormula, sellerFormula } from './PayrollSheet'
 import { NO_ROP, PayrollMovers, RopCompareChart } from './PayrollTeams'
 import { PayrollFilters, usePayrollParams, usePayrollPicked, useRowPick } from './payrollFilters'
+import { lateDaysText } from './LateProof'
 import { TimepayCard } from './TimepayCard'
 
 /**
@@ -627,6 +628,7 @@ function CopyButton({
       words.fixed,
       'Kechikish, daq',
       'Kechikish jarimasi',
+      'Kechikish kunlari (keldi, daq)',
       'Hisob',
       'JAMI',
       'Oʻtgan davr FAKT 2',
@@ -658,6 +660,7 @@ function CopyButton({
         row.fixed.amount,
         row.lateMinutes ?? '',
         row.lateFine.amount,
+        tsvCell(lateDaysText(row)),
         tsvCell(sellerFormula(row)),
         row.total.amount,
         row.previous?.fakt2.amount ?? '',

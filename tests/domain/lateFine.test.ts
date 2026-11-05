@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fineableMinutes, isWorkday, lateFineMinor, netOfFine } from '@/server/domain/payroll/lateFine'
+import { fineableMinutes, isWorkday, lateFineMinor, lateSkipOf, netOfFine, shiftStartOf } from '@/server/domain/payroll/lateFine'
 import { exactNameLinks, nameKey, nameSimilarity } from '@/server/domain/timepay/names'
 import { daysToPull, dayRowOf, keptFrom } from '@/server/integrations/timepay/timepayImport'
 
@@ -36,6 +36,17 @@ describe('the lateness fine', () => {
 
   it('fines nothing without an arrival mark — a missing FaceID scan is not lateness', () => {
     expect(fineableMinutes(day('2026-11-04', { checkIn: null }))).toBe(0)
+  })
+
+  it('names why a late day is not fined, and reads the shift start back from TimePay’s figures', () => {
+    expect(lateSkipOf(day('2026-11-04'))).toBeNull()
+    expect(lateSkipOf(day('2026-11-01'))).toBe('sunday')
+    expect(lateSkipOf(day('2026-10-01'))).toBe('holiday')
+    expect(lateSkipOf(day('2026-11-04', { onLeave: true }))).toBe('leave')
+    expect(lateSkipOf(day('2026-11-04', { checkIn: null }))).toBe('no_mark')
+    expect(shiftStartOf('08:46', 16)).toBe('08:30')
+    expect(shiftStartOf('10:05', 95)).toBe('08:30')
+    expect(shiftStartOf('8:46', 16)).toBeNull()
   })
 
   it('never takes pay below zero', () => {

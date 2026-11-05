@@ -62,10 +62,39 @@ export function isWorkday(day: string): boolean {
   return new Date(`${day}T12:00:00Z`).getUTCDay() !== 0
 }
 
+/**
+ * Why a day TimePay calls late is NOT fined, or null when it is — the
+ * proof list on «Sotuvchilar oyligi» prints the reason beside the day, so a
+ * seller who came late on a Sunday sees why nothing was taken.
+ */
+export type LateSkip = 'sunday' | 'holiday' | 'leave' | 'no_mark'
+
+export function lateSkipOf(d: LateDay): LateSkip | null {
+  if (d.checkIn === null) return 'no_mark'
+  if (d.onLeave) return 'leave'
+  if (COMPANY_HOLIDAYS.has(d.day) || d.holiday) return 'holiday'
+  if (!isWorkday(d.day)) return 'sunday'
+  return null
+}
+
 /** The minutes of one day a fine is taken for — see the rule above. */
 export function fineableMinutes(d: LateDay): number {
-  if (!isWorkday(d.day) || d.holiday || d.onLeave || d.checkIn === null) return 0
+  if (lateSkipOf(d) !== null) return 0
   return Number.isFinite(d.lateMinutes) && d.lateMinutes >= 1 ? Math.floor(d.lateMinutes) : 0
+}
+
+/**
+ * When the shift started, read back from TimePay's own figures: the arrival
+ * less the minutes it called late («08:46» − 16 → «08:30»). TimePay counts
+ * whole minutes (08:31 → 1, 08:46 → 16, checked 2026-11-05), so this is the
+ * start it measured against. Null when the arrival is unreadable.
+ */
+export function shiftStartOf(checkIn: string, lateMinutes: number): string | null {
+  const m = /^(\d{2}):(\d{2})$/.exec(checkIn)
+  if (!m) return null
+  const at = Number(m[1]) * 60 + Number(m[2]) - Math.max(0, Math.floor(lateMinutes))
+  if (at < 0) return null
+  return `${String(Math.floor(at / 60)).padStart(2, '0')}:${String(at % 60).padStart(2, '0')}`
 }
 
 /** The fine for a number of late minutes, in minor units. */

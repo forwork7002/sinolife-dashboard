@@ -34,6 +34,7 @@ import {
 import { type MoneyDto, type PayrollDto, type PayrollSellerDto, type PayrollTeamDto, type PeriodDto, apiGet } from '@/lib/api'
 import { formatDateShort } from '@/lib/format'
 
+import { LateButton, LateProofProvider, lateDaysText } from './LateProof'
 import { BRANCH_HUE, type Block, Growth, RatePill, layout, nobodyText, ropFormula, sellerFormula, tierProgress } from './PayrollSheet'
 import { NO_ROP } from './PayrollTeams'
 import { PayrollFilters, type RowPick, shownTotal, usePayrollParams, usePayrollPicked, useRowPick } from './payrollFilters'
@@ -320,6 +321,7 @@ export function PayrollGrid({
   const ctx: RowCtx = { cols, dayList, today }
 
   return (
+    <LateProofProvider perMinute={data.timepay.perMinute}>
     <div
       ref={box}
       id={`${STYLE_ID}-box`}
@@ -394,6 +396,7 @@ export function PayrollGrid({
         </tbody>
       </table>
     </div>
+    </LateProofProvider>
   )
 }
 
@@ -689,7 +692,11 @@ function sellerCell(key: Col, row: PayrollSellerDto, compared: boolean): ReactNo
     case 'fixed':
       return <FixedCell row={row} />
     case 'late':
-      return <LateCell minutes={row.lateMinutes} fine={row.lateFine} />
+      return (
+        <LateButton row={row}>
+          <LateCell minutes={row.lateMinutes} fine={row.lateFine} />
+        </LateButton>
+      )
     case 'growth':
       return compared ? <Growth delta={row.fakt2Delta} previous={row.previous?.fakt2 ?? null} /> : null
     case 'fakt2Orders':
@@ -1024,6 +1031,7 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
     'Fiksa / oklad',
     'Kechikish, daq',
     'Kechikish jarimasi',
+    'Kechikish kunlari (keldi, daq)',
     ...(compared ? ['Oʻtgan davr FAKT 2'] : []),
     'Buyurtma soni',
     'Tranzaksiya',
@@ -1049,6 +1057,7 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
           n(r.fixed.amount),
           n(r.lateMinutes),
           n(r.lateFine.amount),
+          lateDaysText(r),
           ...(compared ? [n(r.previous?.fakt2.amount ?? null)] : []),
           n(r.fakt2Orders),
           n(r.fakt1Orders),
@@ -1068,6 +1077,7 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
           '2',
           n(team.ropPay.percent.amount),
           n(team.ropPay.fixed.amount),
+          '',
           '',
           '',
           ...(compared ? [''] : []),
@@ -1090,6 +1100,7 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
         n(team.fixed.amount),
         n(team.lateMinutes),
         n(team.lateFine.amount),
+        '',
         ...(compared ? [n(team.previous?.fakt2.amount ?? null)] : []),
         n(team.fakt2Orders),
         n(team.fakt1Orders),
@@ -1111,6 +1122,7 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
       n(b.fixed.amount),
       n(b.lateMinutes),
       n(b.lateFine.amount),
+      '',
       ...(compared ? [''] : []),
       n(b.fakt2Orders),
       n(b.fakt1Orders),
@@ -1132,6 +1144,7 @@ export function payrollCsv(data: PayrollDto, days: PayrollDaysDto | null, compar
     n(t.fixed.amount),
     n(t.lateMinutes),
     n(t.lateFine.amount),
+    '',
     ...(compared ? [n(data.previous.fakt2.amount)] : []),
     n(t.fakt2Orders),
     n(t.fakt1Orders),
