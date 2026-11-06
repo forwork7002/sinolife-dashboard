@@ -182,7 +182,7 @@ export function tuningValueText(key: keyof AiTuning, value: AiTuning[keyof AiTun
 
 /* ── One-off presses — `actions` ─────────────────────────────────────────── */
 
-export const ACTION_KINDS = ['reregister', 'tls_reset'] as const
+export const ACTION_KINDS = ['reregister', 'tls_reset', 'add_line', 'remove_line'] as const
 export type ActionKind = (typeof ACTION_KINDS)[number]
 
 /** The agent does not do a press older than this (its `ACTION_MAX_AGE_SEC`): one waiting longer is lost. */
@@ -194,4 +194,31 @@ export const MAX_ACTIONS = 20
 export const ACTION_LABEL: Readonly<Record<ActionKind, string>> = {
   reregister: 'Qayta ulash',
   tls_reset: 'TLSʼni yangilash',
+  add_line: 'Liniya qoʻshish',
+  remove_line: 'Olib tashlash',
+}
+
+/* ── «AI liniya qoʻshish» (T123) ─────────────────────────────────────────── */
+
+/** The products a new line calls for — the agent's words. */
+export const LINE_PRODUCTS = ['Kollagen', 'Zekstra'] as const
+export type LineProduct = (typeof LINE_PRODUCTS)[number]
+
+export const LINE_TRANSPORTS = ['udp', 'tls'] as const
+export type LineTransport = (typeof LINE_TRANSPORTS)[number]
+
+/** The owner's own MicroSIP — never an AI line (29.10). */
+export const NEVER_AI_LINES: readonly string[] = ['294']
+
+/**
+ * What the agent takes as a SIP password (its `password_problem`): 1–64
+ * printable ASCII, no space, none of «; [ ] \» — they break Asterisk's
+ * config. Checked in the browser before it is sealed; null when fine.
+ */
+export function linePasswordProblem(password: string): string | null {
+  if (password.length === 0) return 'Parolni kiriting.'
+  if (password.length > 64) return 'Parol 64 belgidan uzun boʻlmasin.'
+  if (!/^[!-~]+$/.test(password)) return 'Parolda boʻsh joy yoki lotin boʻlmagan harf bor — ATS paroli faqat lotin harf, raqam va belgilar.'
+  if (/[;[\]\\]/.test(password)) return 'Parolda «;», «[», «]» yoki «\\» boʻlmasin — AI serveri uni qabul qilmaydi.'
+  return null
 }

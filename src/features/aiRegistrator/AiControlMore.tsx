@@ -25,9 +25,14 @@ import {
   tuningStart,
   tlsResetState,
 } from '@/features/aiRegistrator/aiControlMoreLogic'
+import { type LineForm, PRODUCT_LABEL, lineAddState, lineFormProblems, sealLinePassword, zextraNote } from '@/features/aiRegistrator/aiLineAddLogic'
 import type { AiStatus } from '@/features/aiRegistrator/aiLiveLogic'
 import {
   type AiTuning,
+  LINE_PRODUCTS,
+  LINE_TRANSPORTS,
+  type LineProduct,
+  type LineTransport,
   TRANSFER_ORDERS,
   TRANSFER_ORDER_LABEL,
   TUNING_NUMBERS,
@@ -262,18 +267,28 @@ export function AiLinesControl({
   presses,
   now,
   staleAfterSec,
+  canManageLines = false,
 }: {
   readonly config: {
     readonly version: number
     readonly linesOff: readonly string[]
+    /** The sellers and the parked — never a new AI line (T123). */
+    readonly sellers?: readonly string[]
   }
   readonly status: AiStatus | null
   readonly presses: readonly Press[]
   readonly now: Date
   readonly staleAfterSec: number
+  /** «AI liniya qoʻshish» / «Olib tashlash» (T123) — the administrator only. */
+  readonly canManageLines?: boolean
 }) {
   const lines = status?.report.aiLines
   const [asking, setAsking] = useState(false)
+  const [removing, setRemoving] = useState<string | null>(null)
+  const remove = useControlWrite<string>(
+    (line) => ({ action: { kind: 'remove_line', line } }),
+    () => setRemoving(null),
+  )
   const toggle = useControlWrite<string[]>((linesOff) => ({
     baseVersion: config.version,
     linesOff,
@@ -296,7 +311,7 @@ export function AiLinesControl({
   const rows = lineControlRows(lines, config.linesOff, presses, now)
   const tls = tlsResetState(lines, presses, now)
   const ack = config.linesOff.length > 0 || lines.some((l) => !l.enabled) ? linesAck(config, status, now, staleAfterSec) : null
-  const busy = toggle.isPending || press.isPending
+  const busy = toggle.isPending || press.isPending || remove.isPending
 
   const flip = (ext: string) => {
     toggle.reset()
@@ -322,7 +337,7 @@ export function AiLinesControl({
               <th className="py-1.5 pr-3 font-semibold">ATS holati</th>
               <th className="py-1.5 pr-3 font-semibold">Hozir</th>
               <th className="py-1.5 pr-3 font-semibold">Yoqiq</th>
-              <th className="py-1.5 font-semibold">Qayta ulash</th>
+              <th className="py-1.5 font-semibold">Amal</th>
             </tr>
           </thead>
           <tbody>
@@ -330,8 +345,16 @@ export function AiLinesControl({
               const answer = r.press ? pressText(r.press, now) : null
               return (
                 <tr key={r.ext} className="border-t align-middle" style={{ borderColor: 'var(--grid)' }}>
-                  <td className="py-2 pr-3 font-extrabold tabular-nums" style={{ color: 'var(--ink-primary)' }}>
-                    {r.ext}
+                  <td className="py-2 pr-3" style={{ color: 'var(--ink-primary)' }}>
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="font-extrabold tabular-nums">{r.ext}</span>
+                      {r.stage && <StatePill tone={r.stage.tone}>{r.stage.label}</StatePill>}
+                      {r.note && (
+                        <span className="max-w-56 text-[12px]" style={{ color: 'var(--ink-secondary)' }}>
+                          {r.note}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="py-2 pr-3">
                     <ProductPill product={r.product} />
@@ -379,6 +402,25 @@ export function AiLinesControl({
                       >
                         Qayta ulash
                       </Button>
+                      {canManageLines && r.removable && (
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          aria-label={`${r.ext} liniyasini olib tashlash`}
+                          disabled={!fresh || busy}
+                          onClick={() => {
+                            remove.reset()
+                            setRemoving(r.ext)
+                          }}
+                        >
+                          Olib tashlash
+                        </Button>
+                      )}
+                      {r.removePress && (
+                        <span className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+                          Olib tashlash: {pressText(r.removePress, now).text}
+                        </span>
+                      )}
                       {answer && (
                         <span
                           className="text-[12px]"
@@ -424,9 +466,29 @@ export function AiLinesControl({
           </Button>
         </div>
       )}
-      <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
-        Yangi liniya qoʻshish — hozircha AI serverida.
-      </p>
+      {canManageLines ? (
+        <LineAddForm status={status} fresh={fresh} presses={presses} now={now} sellers={config.sellers ?? []} />
+      ) : (
+        <p className="text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+          Yangi AI liniyani administrator (egasi) qoʻshadi.
+        </p>
+      )}
+      {removing && (
+        <AiConfirmDialog
+          title={`${removing} liniyasini olib tashlash`}
+          question={`${removing} AI liniyalaridan olib tashlanadi va paroli AI serveridan oʻchiriladi. Liniyada qoʻngʻiroq boʻlsa — u tugagach. Olib tashlansinmi?`}
+          confirmLabel="Ha, olib tashlash"
+          pendingLabel="Yuborilmoqda…"
+          pending={remove.isPending}
+          error={errorOf(remove.error)}
+          note={null}
+          onConfirm={() => remove.mutate(removing)}
+          onCancel={() => {
+            setRemoving(null)
+            remove.reset()
+          }}
+        />
+      )}
       {(toggleProblem || errorOf(toggle.error)) && <Problem>{toggleProblem ?? errorOf(toggle.error)}</Problem>}
       {errorOf(press.error) && !asking && <Problem>{errorOf(press.error)}</Problem>}
       {asking && (
@@ -446,6 +508,193 @@ export function AiLinesControl({
         />
       )}
     </Card>
+  )
+}
+
+/* ── «AI liniya qoʻshish» (T123) ───────────────────────────────────────── */
+
+const FIELD = 'focusable rounded-[var(--radius-panel-sm)] border px-3 py-2 text-[14px]'
+const FIELD_STYLE = { background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--ink-primary)' } as const
+
+/**
+ * The owner's form (T123): number, password, product, transport. The password
+ * is sealed here with the AI server's key and only the sealed text is sent;
+ * the field is emptied the moment it is — sent or not. One line at a time, and
+ * a refusal is not retried: the shared ATS bans an IP over failed logins.
+ */
+function LineAddForm({
+  status,
+  fresh,
+  presses,
+  now,
+  sellers,
+}: {
+  readonly status: AiStatus | null
+  readonly fresh: boolean
+  readonly presses: readonly Press[]
+  readonly now: Date
+  readonly sellers: readonly string[]
+}) {
+  const [line, setLine] = useState('')
+  const [password, setPassword] = useState('')
+  const [product, setProduct] = useState<LineProduct>('Kollagen')
+  const [transport, setTransport] = useState<LineTransport>('udp')
+  const [problems, setProblems] = useState<string[]>([])
+  const [confirming, setConfirming] = useState<LineForm | null>(null)
+  const [sealing, setSealing] = useState(false)
+  const report = status?.report ?? null
+  const state = lineAddState(report, fresh, presses, now)
+  const add = useControlWrite<{ line: string; product: LineProduct; transport: LineTransport; secret: string }>(
+    (value) => ({ action: { kind: 'add_line', ...value } }),
+    () => {
+      setConfirming(null)
+      setLine('')
+    },
+  )
+  const last = presses.find((p) => p.kind === 'add_line') ?? null
+  const lastAnswer = last ? pressText(last, now) : null
+  const zextra = product === 'Zekstra' ? zextraNote(report) : null
+
+  const check = () => {
+    add.reset()
+    const form = { line: line.trim(), password, product, transport }
+    const found = lineFormProblems(form, report?.aiLines ?? [], sellers)
+    setProblems(found)
+    if (found.length === 0) setConfirming(form)
+  }
+
+  const send = async (form: LineForm) => {
+    if (!state.key) return
+    setSealing(true)
+    try {
+      const secret = await sealLinePassword(state.key, form.line, form.password)
+      // the dialog closes either way — it holds the typed password; a refusal shows under the form
+      add.mutate({ line: form.line, product: form.product, transport: form.transport, secret }, { onSettled: () => setConfirming(null) })
+    } catch {
+      setProblems(['Parolni shifrlab boʻlmadi — sahifani yangilab, qayta urinib koʻring.'])
+      setConfirming(null)
+    } finally {
+      // the password never outlives the press, sent or not
+      setPassword('')
+      setSealing(false)
+    }
+  }
+
+  return (
+    <section aria-label="AI liniya qoʻshish" className="flex flex-col gap-3 border-t pt-3" style={{ borderColor: 'var(--grid)' }}>
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[13px] font-bold" style={{ color: 'var(--ink-primary)' }}>
+          AI liniya qoʻshish
+        </span>
+        <span className="text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+          MicroSIP ichki raqami va paroli. Parol shu brauzerda shifrlanadi va faqat AI serveriga yetadi — ISHda saqlanmaydi. AI ATSga bir marta ulanadi: parol notoʻgʻri boʻlsa, qayta urinmaydi.
+        </span>
+      </div>
+      <form
+        className="flex flex-wrap items-end gap-3"
+        onSubmit={(e) => {
+          e.preventDefault()
+          check()
+        }}
+      >
+        <label className="flex flex-col gap-1 text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+          Ichki raqam
+          <input
+            value={line}
+            inputMode="numeric"
+            maxLength={6}
+            placeholder="masalan 298"
+            autoComplete="off"
+            disabled={!state.allowed}
+            onChange={(e) => {
+              setLine(e.target.value.replace(/\D/g, ''))
+              setProblems([])
+            }}
+            className={`${FIELD} w-32 tabular-nums`}
+            style={FIELD_STYLE}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+          Parol
+          <input
+            type="password"
+            value={password}
+            maxLength={64}
+            autoComplete="new-password"
+            spellCheck={false}
+            disabled={!state.allowed}
+            onChange={(e) => {
+              setPassword(e.target.value)
+              setProblems([])
+            }}
+            className={`${FIELD} w-48`}
+            style={FIELD_STYLE}
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+          Mahsulot
+          <Select aria-label="Mahsulot" value={product} disabled={!state.allowed} onChange={(e) => setProduct(e.target.value as LineProduct)}>
+            {LINE_PRODUCTS.map((p) => (
+              <option key={p} value={p}>
+                {PRODUCT_LABEL[p]}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="flex flex-col gap-1 text-[12px]" style={{ color: 'var(--ink-muted)' }}>
+          Ulanish
+          <Select aria-label="Ulanish" value={transport} disabled={!state.allowed} onChange={(e) => setTransport(e.target.value as LineTransport)}>
+            {LINE_TRANSPORTS.map((t) => (
+              <option key={t} value={t}>
+                {t.toUpperCase()}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <Button type="submit" variant="secondary" disabled={!state.allowed || line === '' || password === '' || add.isPending || sealing}>
+          + Qoʻshish
+        </Button>
+      </form>
+      {state.why && (
+        <p className="text-[13px]" style={{ color: inked('var(--status-warning)') }}>
+          {state.why}
+        </p>
+      )}
+      {zextra && (
+        <p className="text-[13px]" style={{ color: 'var(--ink-secondary)' }}>
+          {zextra}
+        </p>
+      )}
+      {lastAnswer && last && (
+        <p
+          className="text-[13px]"
+          aria-live="polite"
+          style={{
+            color: lastAnswer.tone === 'critical' ? inked('var(--status-critical)') : lastAnswer.tone === 'good' ? inked('var(--status-good)') : 'var(--ink-secondary)',
+          }}
+        >
+          Oxirgi qoʻshish ({last.line}): {lastAnswer.text}
+        </p>
+      )}
+      {problems.length > 0 && <Problem>{problems.join(' ')}</Problem>}
+      {errorOf(add.error) && !confirming && <Problem>{errorOf(add.error)}</Problem>}
+      {confirming && (
+        <AiConfirmDialog
+          title={`${confirming.line} liniyasini qoʻshish`}
+          question={`${confirming.line} (${PRODUCT_LABEL[confirming.product]}, ${confirming.transport.toUpperCase()}) AI liniyasi boʻladi. AI ATSga bir marta ulanadi — parol notoʻgʻri boʻlsa, liniya rad etiladi, qayta urinilmaydi va 15 daqiqa yangi liniya qoʻshilmaydi. Qoʻshilsinmi?`}
+          confirmLabel="Ha, qoʻshish"
+          pendingLabel="Yuborilmoqda…"
+          pending={add.isPending || sealing}
+          error={errorOf(add.error)}
+          note={null}
+          onConfirm={() => void send(confirming)}
+          onCancel={() => {
+            setConfirming(null)
+            add.reset()
+          }}
+        />
+      )}
+    </section>
   )
 }
 

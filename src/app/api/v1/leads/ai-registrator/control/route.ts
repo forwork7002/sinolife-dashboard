@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { canControlAi } from '@/server/auth/rbac'
+import { canControlAi, canManageAiLines } from '@/server/auth/rbac'
 import { ApiError } from '@/server/http/errors'
 import { getHandler, mutationHandler } from '@/server/http/handler'
 import { controlWriteSchema } from '@/server/integrations/aiRegistrator/control'
@@ -28,7 +28,10 @@ function assertAiControl(principal: Parameters<typeof canControlAi>[0]): void {
 export const GET = getHandler(ACCESS, z.object({ part: z.enum(['live']).optional() }), async (ctx) => {
   assertAiControl(ctx.principal)
   return {
-    data: ctx.query.part === 'live' ? await aiRegistratorControlService.live(ctx.now) : await aiRegistratorControlService.panel(ctx.now),
+    data:
+      ctx.query.part === 'live'
+        ? await aiRegistratorControlService.live(ctx.now)
+        : await aiRegistratorControlService.panel(ctx.now, canManageAiLines(ctx.principal)),
   }
 })
 
@@ -40,14 +43,21 @@ export const GET = getHandler(ACCESS, z.object({ part: z.enum(['live']).optional
  * «Ish vaqti», `{ baseVersion, pauseUntil }` «Vaqtincha toʻxtatish» /
  * «Davom ettirish», `{ baseVersion, linesOff }` an AI line on / off,
  * `{ baseVersion, tuning }` «Qoʻshimcha sozlamalar». `{ action }` is a press
- * («Qayta ulash», «TLSʼni yangilash») — no version: a row the agent does once.
+ * («Qayta ulash», «TLSʼni yangilash», and the administrator's «AI liniya
+ * qoʻshish» / «Olib tashlash», T123) — no version: a row the agent does once.
  */
 export const POST = mutationHandler(ACCESS, controlWriteSchema, async (ctx) => {
   assertAiControl(ctx.principal)
   const by = { label: ctx.principal.login ?? ctx.principal.userId, userId: ctx.principal.userId }
   const body = ctx.body
   const service = aiRegistratorControlService
-  if ('action' in body) return { data: await service.requestAction(body, by, ctx.now) }
+  if ('action' in body) {
+    // «AI liniya qoʻshish» / «Olib tashlash» (T123): the administrator only.
+    if ((body.action.kind === 'add_line' || body.action.kind === 'remove_line') && !canManageAiLines(ctx.principal)) {
+      throw ApiError.forbidden('AI liniyasini faqat administrator (egasi) qoʻsha va olib tashlay oladi.')
+    }
+    return { data: await service.requestAction(body, by, ctx.now) }
+  }
   if ('enabled' in body) return { data: await service.setEnabled(body, by) }
   if ('hours' in body) return { data: await service.setHours(body, by) }
   if ('pauseUntil' in body) return { data: await service.setPause(body, by, ctx.now) }

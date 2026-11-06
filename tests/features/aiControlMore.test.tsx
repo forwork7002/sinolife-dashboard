@@ -87,9 +87,9 @@ const config = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
-function renderPanel(cfg: ReturnType<typeof config>, st: AiStatus | null, actions: unknown[] = []) {
+function renderPanel(cfg: ReturnType<typeof config>, st: AiStatus | null, actions: unknown[] = [], extra: Record<string, unknown> = {}) {
   const posts: unknown[] = []
-  const panel = { config: cfg, status: st, names: {}, rules: { aiLines: ['178', '290'], maxCalls: 8, maxSellers: 60, staleAfterSec: 90 }, history: [], switched: null, hoursSet: null, actions }
+  const panel = { config: cfg, status: st, names: {}, rules: { aiLines: ['178', '290'], maxCalls: 8, maxSellers: 60, staleAfterSec: 90 }, history: [], switched: null, hoursSet: null, actions, ...extra }
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -168,7 +168,9 @@ describe('AI liniyalari (SIP)', () => {
     const { posts } = renderPanel(config(), status())
     const step = await screen.findByRole('region', { name: 'AI liniyalari (SIP)' })
     expect(within(step).queryByText(/Liniya qoʻshish yoki oʻchirish AI serverining sozlamasida/)).toBeNull()
-    expect(within(step).getByText('Yangi liniya qoʻshish — hozircha AI serverida.')).toBeTruthy()
+    // not the administrator: no form, no «Olib tashlash» (T123)
+    expect(within(step).getByText('Yangi AI liniyani administrator (egasi) qoʻshadi.')).toBeTruthy()
+    expect(within(step).queryByRole('region', { name: 'AI liniya qoʻshish' })).toBeNull()
     expect(within(step).getAllByText('Registered ✓').length).toBe(3)
     expect(within(step).getAllByText('Rejected ✗').length).toBe(2)
     expect((within(step).getByRole('button', { name: '178 liniyasini qayta ulash' }) as HTMLButtonElement).disabled).toBe(true)
@@ -236,5 +238,55 @@ describe('«Qoʻshimcha sozlamalar»', () => {
     const step = await screen.findByRole('region', { name: 'Qoʻshimcha sozlamalar' })
     expect(within(step).getByText('qoʻllanmoqda…')).toBeTruthy()
     expect(within(step).getByText(/AIda hozir: 15 s/)).toBeTruthy()
+  })
+})
+
+describe('«AI liniya qoʻshish» (T123) — the administrator\'s form', () => {
+  it('seals the password in the browser, asks first, and sends only the sealed text', async () => {
+    const { webcrypto } = await import('node:crypto')
+    vi.stubGlobal('crypto', webcrypto)
+    const subtle = webcrypto.subtle
+    const pair = await subtle.generateKey({ name: 'RSA-OAEP', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['encrypt', 'decrypt'])
+    const spki = Buffer.from(await subtle.exportKey('spki', pair.publicKey)).toString('base64')
+    const st = status({ lineKey: { alg: 'RSA-OAEP-256', spki, id: 'test' }, lineAdd: { allowed: true, code: null, text: null } })
+    const { posts } = renderPanel(config(), st, [], { canManageLines: true })
+    const form = await screen.findByRole('region', { name: 'AI liniya qoʻshish' })
+    const password = within(form).getByLabelText('Parol') as HTMLInputElement
+    expect(password.type).toBe('password')
+    fireEvent.change(within(form).getByLabelText('Ichki raqam'), { target: { value: '298' } })
+    fireEvent.change(password, { target: { value: 'Ab3!x_-9' } })
+    fireEvent.click(within(form).getByRole('button', { name: '+ Qoʻshish' }))
+    const dialog = await screen.findByRole('alertdialog', { name: '298 liniyasini qoʻshish' })
+    expect(within(dialog).getByText(/qayta urinilmaydi/)).toBeTruthy()
+    expect(posts).toHaveLength(0)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ha, qoʻshish' }))
+    await waitFor(() => expect(posts).toHaveLength(1))
+    const sent = posts[0] as { action: { kind: string; line: string; product: string; transport: string; secret: string } }
+    expect(sent.action).toMatchObject({ kind: 'add_line', line: '298', product: 'Kollagen', transport: 'udp' })
+    expect(JSON.stringify(posts)).not.toContain('Ab3!x_-9')
+    const plain = await subtle.decrypt({ name: 'RSA-OAEP' }, pair.privateKey, Buffer.from(sent.action.secret, 'base64'))
+    expect(JSON.parse(new TextDecoder().decode(plain))).toEqual({ line: '298', password: 'Ab3!x_-9' })
+    await waitFor(() => expect(password.value).toBe(''))
+    vi.unstubAllGlobals()
+  })
+
+  it('says why it cannot add now — busy, one at a time — and keeps the fields shut', async () => {
+    const st = status({ lineKey: { alg: 'RSA-OAEP-256', spki: 'AAAA', id: 'k' }, lineAdd: { allowed: false, code: 'busy', text: "299 hali ATS'ga ulanmoqda" } })
+    renderPanel(config(), st, [], { canManageLines: true })
+    const form = await screen.findByRole('region', { name: 'AI liniya qoʻshish' })
+    expect(within(form).getByText("Band — liniyalar bittadan qoʻshiladi: 299 hali ATS'ga ulanmoqda")).toBeTruthy()
+    expect((within(form).getByLabelText('Parol') as HTMLInputElement).disabled).toBe(true)
+  })
+
+  it('offers «Olib tashlash» for a panel line, with its step, and asks first', async () => {
+    const lines = [...LINES, line('298', { source: 'panel', stage: 'bad_password', registration: 'none', state: 'off', removable: true, note: 'ATS parolni qabul qilmadi' })]
+    const { posts } = renderPanel(config(), status({ aiLines: lines }), [], { canManageLines: true })
+    const step = await screen.findByRole('region', { name: 'AI liniyalari (SIP)' })
+    expect(within(step).getByText('Rad etildi — parol')).toBeTruthy()
+    expect(within(step).queryByRole('button', { name: '178 liniyasini olib tashlash' })).toBeNull()
+    fireEvent.click(within(step).getByRole('button', { name: '298 liniyasini olib tashlash' }))
+    const dialog = await screen.findByRole('alertdialog', { name: '298 liniyasini olib tashlash' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ha, olib tashlash' }))
+    await waitFor(() => expect(posts).toEqual([{ action: { kind: 'remove_line', line: '298' } }]))
   })
 })

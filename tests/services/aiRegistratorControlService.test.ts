@@ -51,6 +51,7 @@ function fake(
   const writes: Written[] = []
   const created: { kind: string; line: string | null; requestedAt: Date; by: { label: string; userId: string } }[] = []
   const answered: ActionAnswer[][] = []
+  const dropped: Date[] = []
   const actions = opts.actions ?? []
   const repository = {
     config: async () => config,
@@ -66,6 +67,9 @@ function fake(
     answerActions: async (answers: ActionAnswer[]) => {
       answered.push(answers)
     },
+    dropSecrets: async (before: Date) => {
+      dropped.push(before)
+    },
     putStatus: async () => {},
     save: async (
       settings: ControlSettings,
@@ -78,7 +82,7 @@ function fake(
       return { ...settings, version: baseVersion + 1, updatedAt: new Date('2026-11-04T10:30:00Z'), updatedBy: by.label }
     },
   } as unknown as AiRegistratorControlRepository
-  return { service: new AiRegistratorControlService(repository, async () => []), writes, created, answered }
+  return { service: new AiRegistratorControlService(repository, async () => []), writes, created, answered, dropped }
 }
 
 const by = { label: 'umida', userId: 'u-umida' }
@@ -428,5 +432,119 @@ describe('the agent\'s config — every new field left out while not set', () =>
     const status = statusWith(LINES).payload
     await service.putStatus({ ...status, actions: [{ id: 5, kind: 'reregister', line: '291', state: 'done', text: 'qayta ulandi', at: NOW.toISOString() }] }, NOW)
     expect(answered).toEqual([[{ id: 5, state: 'done', text: 'qayta ulandi', at: NOW }]])
+  })
+})
+
+/* ── «AI liniya qoʻshish» (T123) ─────────────────────────────────────────── */
+
+const LINE_KEY = { alg: 'RSA-OAEP-256', spki: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA', id: 'abcd1234' }
+const SEALED = 'c2VhbGVkLXBhc3N3b3JkLW5vdC1hLXBhc3N3b3Jk'
+
+/** A report from an agent that knows the form: its key, and whether a line may be added now. */
+const lineStatus = (lineAdd: Record<string, unknown> = { allowed: true, code: null, text: null }, lines: unknown[] = LINES, lineKey: unknown = LINE_KEY) => {
+  const s = statusWith(lines)
+  return { ...s, payload: { ...s.payload, lineKey, lineAdd } as unknown as StoredStatus['payload'] }
+}
+
+const addLine = (line = '298', over: Record<string, unknown> = {}) =>
+  ({ action: { kind: 'add_line', line, product: 'Kollagen', transport: 'udp', secret: SEALED, ...over } }) as Parameters<AiRegistratorControlService['requestAction']>[0]
+
+describe('requestAction — «AI liniya qoʻshish» (T123)', () => {
+  it('stores the sealed password and the product beside the press — never answers with the sealed text', async () => {
+    const { service, created } = fake(stored(), { status: lineStatus() })
+    const press = await service.requestAction(addLine(), by, NOW)
+    expect(created).toEqual([{ kind: 'add_line', line: '298', requestedAt: NOW, by, params: { product: 'Kollagen', transport: 'udp' }, secret: SEALED }])
+    expect(JSON.stringify(press)).not.toContain(SEALED)
+    expect(press).toMatchObject({ kind: 'add_line', line: '298', state: null })
+  })
+
+  it('refuses while the agent says no — busy (one at a time), cooldown — in its own words', async () => {
+    const busy = { allowed: false, code: 'busy', text: "299 hali ATS'ga ulanmoqda — liniyalar bittadan qo'shiladi, natijasini kuting" }
+    expect(await message(fake(stored(), { status: lineStatus(busy) }).service.requestAction(addLine(), by, NOW))).toMatch(/bittadan/)
+    const cooldown = { allowed: false, code: 'cooldown', text: 'ATS yaqinda parolni rad etdi — 12 daqiqadan keyin qoʻshing' }
+    expect(await message(fake(stored(), { status: lineStatus(cooldown) }).service.requestAction(addLine(), by, NOW))).toMatch(/12 daqiqadan keyin/)
+  })
+
+  it('refuses a second add while one is still open — one line at a time', async () => {
+    const open: StoredAction = { id: 40, kind: 'add_line', line: '299', requestedAt: new Date(NOW.getTime() - 60_000), requestedBy: 'adminjon', state: 'pending', text: null, answeredAt: null }
+    expect(await message(fake(stored(), { status: lineStatus(), actions: [open] }).service.requestAction(addLine(), by, NOW))).toMatch(/299 hali qoʻshilmoqda.*bittadan/)
+  })
+
+  it('refuses an agent older than the form, one with no key, and a silent one', async () => {
+    expect(await message(fake(stored(), { status: statusWith(LINES) }).service.requestAction(addLine(), by, NOW))).toMatch(/hali bilmaydi/)
+    expect(await message(fake(stored(), { status: lineStatus(undefined, LINES, null) }).service.requestAction(addLine(), by, NOW))).toMatch(/kaliti yoʻq/)
+    const old = { ...lineStatus(), receivedAt: new Date(NOW.getTime() - 120_000) }
+    expect(await message(fake(stored(), { status: old }).service.requestAction(addLine(), by, NOW))).toMatch(/AIdan yangi xabar yoʻq/)
+  })
+
+  it('refuses 294, a line already the AI\'s, and a seller — but takes a refused line again', async () => {
+    const ask = (line: string, lines: unknown[] = LINES) => fake(stored(), { status: lineStatus(undefined, lines) }).service.requestAction(addLine(line), by, NOW)
+    expect(await message(ask('294'))).toMatch(/MicroSIPi/)
+    expect(await message(ask('290'))).toMatch(/allaqachon AI liniyasi/)
+    expect(await message(ask('122'))).toMatch(/sotuvchi raqami/)
+    expect(await message(ask('128'))).toMatch(/sotuvchi raqami/)
+    const refused = aiLine('298', { source: 'panel', stage: 'bad_password', registration: 'none', state: 'off', removable: true })
+    expect(await ask('298', [...LINES, refused])).toMatchObject({ kind: 'add_line', line: '298' })
+  })
+})
+
+describe('requestAction — «Olib tashlash» (T123)', () => {
+  const panelLine = aiLine('298', { source: 'panel', stage: 'active', removable: true })
+  it('asks the removal of a line added from the panel', async () => {
+    const { service, created } = fake(stored(), { status: lineStatus(undefined, [...LINES, panelLine]) })
+    expect(await service.requestAction({ action: { kind: 'remove_line', line: '298' } }, by, NOW)).toMatchObject({ kind: 'remove_line', line: '298' })
+    expect(created).toEqual([{ kind: 'remove_line', line: '298', requestedAt: NOW, by }])
+  })
+
+  it('refuses a server line, a number not the AI\'s, and a removal still waiting', async () => {
+    const ask = (line: string, actions: StoredAction[] = []) =>
+      fake(stored(), { status: lineStatus(undefined, [...LINES, panelLine]), actions }).service.requestAction({ action: { kind: 'remove_line', line } }, by, NOW)
+    expect(await message(ask('178'))).toMatch(/paneldan olib tashlanmaydi/)
+    expect(await message(ask('555'))).toMatch(/AI liniyasi emas/)
+    const waiting: StoredAction = { id: 40, kind: 'remove_line', line: '298', requestedAt: new Date(NOW.getTime() - 60_000), requestedBy: 'adminjon', state: null, text: null, answeredAt: null }
+    expect(await message(ask('298', [waiting]))).toMatch(/javob kutmoqda/)
+  })
+
+  it('lets «Qayta ulash» reach a panel line the agent reports', async () => {
+    const down = aiLine('298', { source: 'panel', stage: 'active', registration: 'Rejected', state: 'not_registered' })
+    const { service } = fake(stored(), { status: lineStatus(undefined, [...LINES, down]) })
+    expect(await service.requestAction({ action: { kind: 'reregister', line: '298' } }, by, NOW)).toMatchObject({ kind: 'reregister', line: '298' })
+  })
+})
+
+describe('the agent\'s config — the sealed password once (T123)', () => {
+  const add = (over: Partial<StoredAction> = {}): StoredAction => ({
+    id: 9,
+    kind: 'add_line',
+    line: '298',
+    requestedAt: new Date(NOW.getTime() - 60_000),
+    requestedBy: 'adminjon',
+    state: null,
+    text: null,
+    answeredAt: null,
+    params: { product: 'Zekstra', transport: 'tls' },
+    secret: SEALED,
+    ...over,
+  })
+
+  it('carries an unanswered add with its product, transport and sealed text — the agent\'s contract', async () => {
+    const { service, dropped } = fake(stored(), { actions: [add()] })
+    const config = await service.agentConfig(NOW)
+    expect(config?.actions).toEqual([{ id: 9, kind: 'add_line', line: '298', at: '2026-11-04T19:59:00+05:00', by: 'adminjon', product: 'Zekstra', transport: 'tls', secret: SEALED }])
+    // the sealed texts older than ten minutes, or answered, are cleared first
+    expect(dropped).toEqual([new Date(NOW.getTime() - 10 * 60_000)])
+  })
+
+  it('leaves out an add once answered «pending» or with its sealed text gone — the agent does each once', async () => {
+    expect((await fake(stored(), { actions: [add({ state: 'pending', secret: null })] }).service.agentConfig(NOW))?.actions).toBeUndefined()
+    expect((await fake(stored(), { actions: [add({ secret: null })] }).service.agentConfig(NOW))?.actions).toBeUndefined()
+    expect((await fake(stored(), { actions: [add({ params: null })] }).service.agentConfig(NOW))?.actions).toBeUndefined()
+  })
+
+  it('never puts the sealed text in what the panel reads', async () => {
+    const { service } = fake(stored(), { actions: [add()] })
+    expect(JSON.stringify(await service.panel(NOW, true))).not.toContain(SEALED)
+    expect((await service.panel(NOW, true)).canManageLines).toBe(true)
+    expect((await service.panel(NOW)).canManageLines).toBe(false)
   })
 })

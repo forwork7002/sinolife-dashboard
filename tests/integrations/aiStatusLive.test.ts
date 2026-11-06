@@ -273,3 +273,69 @@ describe('aiStatusSchema — the panel\'s controls (T144)', () => {
     expect(r.data.hours?.days).toBeUndefined()
   })
 })
+
+/*
+  «AI liniya qoʻshish» (2026-11-06, T123, ai_registrator 372d513): the key a
+  password is sealed with, whether a line may be added now, Zextra's calls,
+  and each line's step. Optional and lenient like the rest — and no field the
+  agent might send by mistake (a password) is ever kept.
+*/
+describe('aiStatusSchema — «AI liniya qoʻshish» (T123)', () => {
+  const t123 = {
+    lineKey: { alg: 'RSA-OAEP-256', spki: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA', id: 'abcd1234abcd1234' },
+    lineAdd: { allowed: false, code: 'cooldown', text: 'ATS yaqinda parolni rad etdi — 12 daqiqadan keyin qoʻshing' },
+    zextra: { on: false, lines: ['298'], sellers: [], maxCalls: 1, waiting: 'no_zextra_sellers' },
+    aiLines: [
+      {
+        ext: '298',
+        pool: 'zextra',
+        product: 'Zekstra',
+        transport: 'udp',
+        state: 'off',
+        registration: 'none',
+        enabled: false,
+        source: 'panel',
+        hasPassword: false,
+        removable: true,
+        stage: 'bad_password',
+        waiting: null,
+        note: 'ATS parolni qabul qilmadi — olib tashlang yoki toʻgʻri parol bilan qayta qoʻshing',
+        addedAt: '2026-11-06T10:00:00+00:00',
+        addedBy: 'adminjon',
+      },
+    ],
+    actions: [{ id: 9, kind: 'add_line', line: '298', state: 'refused', code: 'bad_password', text: 'qayta urinilmaydi', at: '2026-11-06T10:01:00+00:00' }],
+  }
+
+  it('keeps each as the agent sent it', () => {
+    const r = parse(report(t123))
+    expect(r.lineKey).toEqual(t123.lineKey)
+    expect(r.lineAdd).toEqual(t123.lineAdd)
+    expect(r.zextra).toEqual(t123.zextra)
+    expect(r.aiLines).toEqual(t123.aiLines)
+    expect(r.actions).toEqual(t123.actions)
+  })
+
+  it('reads an agent older than the form as before, and a server with no key as null', () => {
+    const r = parse(report())
+    expect(r.lineKey).toBeUndefined()
+    expect(r.lineAdd).toBeUndefined()
+    expect(parse(report({ lineKey: null })).lineKey).toBeNull()
+  })
+
+  it('drops a wrong one alone, and never keeps a password the agent sent by mistake', () => {
+    const r = parse(
+      report({
+        lineKey: { alg: 'RSA1_5', spki: 'x' },
+        lineAdd: { allowed: 'yes' },
+        aiLines: [{ ext: '298', password: 'Secr3t', secret: 'Secr3t', stage: 7, removable: 'yes' }],
+        actions: [{ id: 9, kind: 'add_line', line: '298', state: 'done', text: '', at: '2026-11-06T10:01:00+00:00', password: 'Secr3t' }],
+      }),
+    )
+    expect(r.lineKey).toBeUndefined()
+    expect(r.lineAdd).toBeUndefined()
+    expect(r.aiLines?.[0]).toMatchObject({ ext: '298', registration: 'unknown' })
+    expect(r.aiLines?.[0]?.stage).toBeUndefined()
+    expect(JSON.stringify(r)).not.toContain('Secr3t')
+  })
+})

@@ -119,6 +119,42 @@ export interface AiLine {
   readonly registration: string
   /** On in the panel (not in `linesOff`). */
   readonly enabled: boolean
+  // «AI liniya qoʻshish» (T123) — absent from an agent older than the form.
+  /** «Kollagen» | «Zekstra». */
+  readonly product?: string | null
+  /** «server» — its .env; «panel» — added from the panel. */
+  readonly source?: string | null
+  /** A panel line's step: registering, active, bad_password, not_loaded, removing. */
+  readonly stage?: string | null
+  readonly waiting?: string | null
+  readonly note?: string | null
+  readonly hasPassword?: boolean
+  readonly removable?: boolean
+  readonly addedAt?: string | null
+  readonly addedBy?: string | null
+}
+
+/** «AI liniya qoʻshish» (T123): the AI server's public key a password is sealed with in the browser. */
+export interface AiLineKey {
+  readonly alg: 'RSA-OAEP-256'
+  readonly spki: string
+  readonly id: string
+}
+
+/** Whether a line may be added now — the agent's ATS guard, and its words when not. */
+export interface AiLineAdd {
+  readonly allowed: boolean
+  readonly code: string | null
+  readonly text: string | null
+}
+
+/** Zextra's calls (T123). */
+export interface AiZextra {
+  readonly on: boolean
+  readonly lines: readonly string[]
+  readonly sellers: readonly string[]
+  readonly maxCalls: number | null
+  readonly waiting: string | null
 }
 
 /** The agent's answer to one press (T144, `actions[]`). */
@@ -129,6 +165,8 @@ export interface AiActionAnswer {
   readonly state: 'done' | 'refused' | 'pending'
   readonly text: string
   readonly at: string
+  /** The answer's word (T123) — registered, bad_password, busy, cooldown … */
+  readonly code?: string | null
 }
 
 /** The tuning the agent runs (T144) — each value optional; `maxAttempts` its own total. */
@@ -150,6 +188,10 @@ export interface AiReport {
   readonly pausedUntil?: string | null
   /** Each AI line (T144). Absent — an agent older than the lines' controls. */
   readonly aiLines?: readonly AiLine[]
+  /** «AI liniya qoʻshish» (T123): null — the server has no key; absent — an agent older than the form. */
+  readonly lineKey?: AiLineKey | null
+  readonly lineAdd?: AiLineAdd | null
+  readonly zextra?: AiZextra | null
   /** The tuning it runs (T144). */
   readonly tuning?: ReportTuning | null
   /** Its answers to the panel's presses, newest first (T144). */

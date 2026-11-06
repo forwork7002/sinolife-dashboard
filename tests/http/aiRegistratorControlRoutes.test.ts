@@ -447,6 +447,27 @@ describe('/api/v1/leads/ai-registrator/control — the owner\'s account only', (
     expect(state.presses).toHaveLength(2)
   })
 
+  it('takes «AI liniya qoʻshish» / «Olib tashlash» from the administrator only — the password sealed, never plain (T123)', async () => {
+    const sealed = 'c2VhbGVkLXBhc3N3b3JkLW5vdC1hLXBhc3N3b3Jk'
+    const add = { action: { kind: 'add_line', line: '298', product: 'Kollagen', transport: 'udp', secret: sealed } }
+    // umida runs the panel, but is not the administrator
+    state.principal = asProd('umida')
+    expect((await write(add)).status).toBe(403)
+    expect((await write({ action: { kind: 'remove_line', line: '298' } })).status).toBe(403)
+    expect(state.presses).toHaveLength(0)
+    state.principal = principal({ aiControl: true, login: 'adminjon' })
+    expect((await write(add)).status).toBe(200)
+    expect((await write({ action: { kind: 'remove_line', line: '298' } })).status).toBe(200)
+    expect(state.presses).toEqual([add, { action: { kind: 'remove_line', line: '298' } }])
+    // a plain password field, an unsealed one, an unknown product or transport — refused before anything
+    expect((await write({ action: { ...add.action, password: 'x' } })).status).toBe(400)
+    expect((await write({ action: { ...add.action, secret: 'not base64 !' } })).status).toBe(400)
+    expect((await write({ action: { ...add.action, product: 'Omega' } })).status).toBe(400)
+    expect((await write({ action: { ...add.action, transport: 'tcp' } })).status).toBe(400)
+    expect((await write({ action: { ...add.action, line: '12a' } })).status).toBe(400)
+    expect(state.presses).toHaveLength(2)
+  })
+
   it('keeps the pause, the lines, the tuning and the presses behind the same door', async () => {
     state.principal = principal()
     expect((await write({ baseVersion: 1, pauseUntil: '2026-11-04T21:30:00+05:00' })).status).toBe(403)

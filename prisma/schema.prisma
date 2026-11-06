@@ -2454,10 +2454,15 @@ model AiRegistratorConfig {
 /// each `id` ONCE, and answers in its status; the answer is written back here.
 model AiRegistratorAction {
   id            Int       @id @default(autoincrement())
-  /// "reregister" | "tls_reset"
+  /// "reregister" | "tls_reset" | "add_line" | "remove_line"
   kind          String
-  /// The AI line for "reregister"; null for "tls_reset".
+  /// The AI line for "reregister", "add_line", "remove_line"; null for "tls_reset".
   line          String?
+  /// add_line (T123): { product: "Kollagen" | "Zekstra", transport: "udp" | "tls" }.
+  params        Json?
+  /// add_line (T123): the password SEALED in the browser with the agent's public key
+  /// (RSA-OAEP-256, base64) — never the password. Cleared on the agent's first answer.
+  secret        String?
   requestedAt   DateTime  @default(now())
   requestedBy   String
   requestedById String?

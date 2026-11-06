@@ -18,6 +18,7 @@ import {
 import { type WorkHours, clockMinutes, worksOn } from '@/lib/aiWorkHours'
 import { formatDateTime, formatTime, tashkentDay } from '@/lib/format'
 
+import { LINE_NOT_IN_USE, lineProduct, lineStageLook } from './aiLineAddLogic'
 import { type AiActionAnswer, type AiLine, type AiReport, type AiStatus, type ReportTuning, type Tone, isFresh, tashkentWeekday } from './aiLiveLogic'
 
 /**
@@ -182,6 +183,8 @@ export function registrationLook(word: string): {
   if (word === 'Registered') return { label: 'Registered ✓', tone: 'good' }
   if (word === 'Rejected') return { label: 'Rejected ✗', tone: 'critical' }
   if (word === 'missing') return { label: 'ATSda yoʻq', tone: 'critical' }
+  // a panel line out of Asterisk (refused, not loaded) — no login is sent for it (T123)
+  if (word === 'none') return { label: 'Ulanmagan', tone: 'neutral' }
   if (word === 'unknown' || word === '') return { label: 'nomaʼlum', tone: 'neutral' }
   return { label: word, tone: 'warning' }
 }
@@ -285,6 +288,13 @@ export interface LineControlRow {
   readonly canReregister: boolean
   readonly reregisterWhy: string | null
   readonly press: Press | null
+  /** A panel line's step (T123) — null for a server line. */
+  readonly stage: { readonly label: string; readonly tone: Tone } | null
+  /** The agent's sentence about it (a refusal, Zextra waiting). */
+  readonly note: string | null
+  /** «Olib tashlash» is offered (T123): a panel line, not the main one, not on its way out. */
+  readonly removable: boolean
+  readonly removePress: Press | null
 }
 
 const byNumber = (a: string, b: string) => Number(a) - Number(b) || a.localeCompare(b)
@@ -296,19 +306,31 @@ export function lineControlRows(lines: readonly AiLine[], linesOff: readonly str
     .sort((a, b) => (a.pool === 'zextra' ? 1 : 0) - (b.pool === 'zextra' ? 1 : 0) || byNumber(a.ext, b.ext))
     .map((l) => {
       const press = lastPress(presses, 'reregister', l.ext)
+      const removePress = lastPress(presses, 'remove_line', l.ext)
       const registered = l.registration === 'Registered'
       const waiting = pressOpen(press, now)
+      const outside = LINE_NOT_IN_USE.has(l.stage ?? '')
       return {
         ext: l.ext,
-        product: l.pool === 'zextra' ? 'Zextra' : 'Collagen',
+        product: lineProduct(l),
         transport: l.transport === 'tls' ? 'TLS' : 'UDP',
         registration: registrationLook(l.registration),
         now: lineNowLook(l.state),
         on: !off.has(l.ext),
         appliedOn: l.enabled,
-        canReregister: !registered && !waiting,
-        reregisterWhy: registered ? 'ATSda roʻyxatda — qayta ulash kerak emas' : waiting ? 'Soʻrov yuborilgan — AI javobini kuting' : null,
+        canReregister: !registered && !waiting && !outside,
+        reregisterWhy: registered
+          ? 'ATSda roʻyxatda — qayta ulash kerak emas'
+          : waiting
+            ? 'Soʻrov yuborilgan — AI javobini kuting'
+            : outside
+              ? 'Paneldan qoʻshilgan liniya — qayta ulanmaydi (ATS rad etsa, toʻgʻri parol bilan qayta qoʻshing)'
+              : null,
         press,
+        stage: lineStageLook(l),
+        note: l.note ?? null,
+        removable: l.removable === true && l.stage !== 'removing' && !pressOpen(removePress, now),
+        removePress,
       }
     })
 }

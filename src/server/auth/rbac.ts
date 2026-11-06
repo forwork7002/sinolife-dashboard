@@ -256,6 +256,15 @@ export function canControlAi(principal: Principal): boolean {
   return principal.isActive && principal.aiControl === true
 }
 
+/**
+ * «AI liniya qoʻshish» / «Olib tashlash» on «AI registrator → Boshqaruv»
+ * (T123): a new SIP line and its password reach the shared ATS — the owner's
+ * administrator account only, not every account that runs the panel.
+ */
+export function canManageAiLines(principal: Principal): boolean {
+  return canControlAi(principal) && can(principal, 'users:manage')
+}
+
 export function can(principal: Principal, permission: Permission): boolean {
   // A deactivated account keeps its role but loses every permission, so
   // disabling a user takes effect without deleting anything.

@@ -10,6 +10,7 @@ import {
   tuningDiff,
   tuningProblems,
   tuningValueText,
+  linePasswordProblem,
 } from '@/lib/aiControlRules'
 import { daysText, normalDays, sameHours, workHoursProblems, worksOn } from '@/lib/aiWorkHours'
 import { type ControlSettings, controlChanges, controlProblems } from '@/server/domain/aiRegistrator/control'
@@ -171,5 +172,31 @@ describe('the columns and the press table (migration 20261104210000)', () => {
     expect(statements[1]).toMatch(/^CREATE TABLE "ai_registrator_action"/)
     expect(statements[2]).toBe('CREATE INDEX "ai_registrator_action_requestedAt_idx" ON "ai_registrator_action"("requestedAt")')
     expect(sql).not.toMatch(/\b(DROP|RENAME|ALTER COLUMN|TRUNCATE|DELETE|UPDATE)\b/i)
+  })
+})
+
+describe('the sealed password column (migration 20261106160000, T123)', () => {
+  it('adds two columns only — nothing existing is changed or dropped', async () => {
+    const { readFileSync } = await import('node:fs')
+    const sql = readFileSync('prisma/migrations/20261106160000_ai_registrator_action_line_add/migration.sql', 'utf8')
+    const statements = sql
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join(' ')
+      .split(';')
+      .map((s) => s.replace(/\s+/g, ' ').trim())
+      .filter((s) => s !== '')
+    expect(statements).toEqual(['ALTER TABLE "ai_registrator_action" ADD COLUMN "params" JSONB, ADD COLUMN "secret" TEXT'])
+  })
+})
+
+describe('linePasswordProblem — what the agent takes as a SIP password (T123)', () => {
+  it('takes printable ASCII up to 64, refuses a space, a non-Latin letter and « ; [ ] \\ »', () => {
+    expect(linePasswordProblem('Ab3!x_-9')).toBeNull()
+    expect(linePasswordProblem('')).toMatch(/kiriting/)
+    expect(linePasswordProblem('a'.repeat(65))).toMatch(/64/)
+    expect(linePasswordProblem('ab cd')).toMatch(/boʻsh joy/)
+    expect(linePasswordProblem('parolь')).toMatch(/lotin/)
+    for (const bad of ['a;b', 'a[b', 'a]b', 'a\\b']) expect(linePasswordProblem(bad)).toMatch(/AI serveri uni qabul qilmaydi/)
   })
 })

@@ -57,7 +57,7 @@
 
 import { z } from 'zod'
 
-import { MAX_ACTIONS } from '@/lib/aiControlRules'
+import { LINE_PRODUCTS, LINE_TRANSPORTS, MAX_ACTIONS } from '@/lib/aiControlRules'
 import { CLOCK_PATTERN } from '@/lib/aiWorkHours'
 import { EXTENSION_PATTERN, MAX_CALLS_LIMIT, MAX_SELLERS, SALE_HANDOFFS } from '@/server/domain/aiRegistrator/control'
 
@@ -168,6 +168,46 @@ const aiLineSchema = z.object({
   state: rawWord.default('unknown').catch('unknown'),
   registration: rawWord.default('unknown').catch('unknown'),
   enabled: z.boolean().default(true).catch(true),
+  // «AI liniya qoʻshish» (T123) — each a nicety: an agent older than the form sends none.
+  /** «Kollagen» | «Zekstra». */
+  product: rawWord.nullable().optional().catch(undefined),
+  /** «server» — in its .env, the panel cannot remove it; «panel» — added from here. */
+  source: rawWord.nullable().optional().catch(undefined),
+  /** A panel line's step: registering, active, bad_password, not_loaded, removing. */
+  stage: rawWord.nullable().optional().catch(undefined),
+  /** Why a Zextra line does not call yet (`no_zextra_sellers` …). */
+  waiting: rawWord.nullable().optional().catch(undefined),
+  /** The agent's own sentence about the line. */
+  note: z.string().trim().max(300).nullable().optional().catch(undefined),
+  /** Whether the server holds its password — only that, never the password. */
+  hasPassword: z.boolean().optional().catch(undefined),
+  /** «Olib tashlash» is offered: a panel line, not the main one. */
+  removable: z.boolean().optional().catch(undefined),
+  addedAt: instant.nullable().optional().catch(undefined),
+  addedBy: z.string().trim().max(60).nullable().optional().catch(undefined),
+})
+
+/** The AI server's public key a new line's password is sealed with in the browser (T123). */
+const lineKeySchema = z.object({
+  alg: z.literal('RSA-OAEP-256'),
+  spki: z.string().regex(/^[A-Za-z0-9+/]+={0,2}$/).max(2000),
+  id: z.string().trim().max(40),
+})
+
+/** May a line be added now, and if not, why (T123) — the agent's ATS guard: one at a time, the cooldowns. */
+const lineAddSchema = z.object({
+  allowed: z.boolean(),
+  code: z.string().trim().max(30).nullable().default(null).catch(null),
+  text: z.string().trim().max(300).nullable().default(null).catch(null),
+})
+
+/** Zextra's calls (T123): on only with its own lines, its sellers and its calls at a time. */
+const zextraSchema = z.object({
+  on: z.boolean().default(false).catch(false),
+  lines: z.array(z.string().trim().regex(EXTENSION_PATTERN)).max(32).default([]).catch([]),
+  sellers: z.array(z.string().trim().regex(EXTENSION_PATTERN)).max(200).default([]).catch([]),
+  maxCalls: count.nullable().default(null).catch(null),
+  waiting: rawWord.nullable().default(null).catch(null),
 })
 
 /** One value of the tuning the agent runs — absent when it is not one. */
@@ -194,6 +234,8 @@ const actionAnswerSchema = z.object({
   state: z.enum(['done', 'refused', 'pending']),
   text: z.string().max(300).default(''),
   at: instant,
+  /** The answer's word (T123: registered, bad_password, busy, cooldown …) — a nicety. */
+  code: z.string().trim().max(30).nullable().optional().catch(undefined),
 })
 
 export const aiStatusSchema = z.object({
@@ -208,6 +250,12 @@ export const aiStatusSchema = z.object({
   pausedUntil: instant.nullable().optional().catch(undefined),
   /** Each AI line (T144). Absent — an agent older than the lines' controls. */
   aiLines: each(aiLineSchema, 32).optional().catch(undefined),
+  /** «AI liniya qoʻshish» (T123): the key to seal a password with; null — the server has none. Absent — an agent older than the form. */
+  lineKey: lineKeySchema.nullable().optional().catch(undefined),
+  /** Whether a line may be added now (T123). */
+  lineAdd: lineAddSchema.nullable().optional().catch(undefined),
+  /** Zextra's calls (T123). */
+  zextra: zextraSchema.nullable().optional().catch(undefined),
   /** The tuning it runs (T144). */
   tuning: tuningReportSchema.nullable().optional().catch(undefined),
   /** Its answers to the panel's presses, newest first (T144). */
@@ -361,6 +409,20 @@ export const controlActionSchema = z.strictObject({
   action: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('reregister'), line: z.string().trim().regex(EXTENSION_PATTERN) }),
     z.strictObject({ kind: z.literal('tls_reset') }),
+    // «AI liniya qoʻshish» (T123): the password comes SEALED by the browser with the agent's
+    // public key (RSA-OAEP-256 of {"line","password"}, base64) — ISH never sees it in the clear.
+    z.strictObject({
+      kind: z.literal('add_line'),
+      line: z.string().trim().regex(EXTENSION_PATTERN),
+      product: z.enum(LINE_PRODUCTS),
+      transport: z.enum(LINE_TRANSPORTS),
+      secret: z
+        .string()
+        .regex(/^[A-Za-z0-9+/]+={0,2}$/)
+        .min(16)
+        .max(2048),
+    }),
+    z.strictObject({ kind: z.literal('remove_line'), line: z.string().trim().regex(EXTENSION_PATTERN) }),
   ]),
 })
 

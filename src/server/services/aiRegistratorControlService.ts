@@ -4,6 +4,7 @@ import {
   type ActionKind,
   type AiTuning,
   MAX_ACTIONS,
+  NEVER_AI_LINES,
   TUNING_LABEL,
   type TransferOrder,
   type WhyUs,
@@ -56,11 +57,36 @@ type By = { readonly label: string; readonly userId: string }
 export interface AgentActionDto {
   readonly id: number
   readonly kind: string
-  /** The line, for «reregister» only. */
+  /** The line, for «reregister», «add_line», «remove_line». */
   readonly line?: string
   /** When it was pressed, Tashkent with the offset — the agent does none older than ten minutes. */
   readonly at: string
   readonly by: string
+  /** add_line (T123): «Kollagen» | «Zekstra». */
+  readonly product?: string
+  /** add_line (T123): «udp» | «tls». */
+  readonly transport?: string
+  /** add_line (T123): the password sealed in the browser with the agent's key — never the password. */
+  readonly secret?: string
+}
+
+/** An add_line press's `params` as stored — anything else reads as none. */
+function lineParams(params: unknown): { product: string; transport: string } | null {
+  if (typeof params !== 'object' || params === null) return null
+  const { product, transport } = params as Record<string, unknown>
+  return typeof product === 'string' && typeof transport === 'string' ? { product, transport } : null
+}
+
+/**
+ * One open press as the agent reads it — null for an add_line whose sealed
+ * password is gone (answered, or stale): the agent has done it, or never will.
+ */
+function agentAction(a: StoredAction): AgentActionDto | null {
+  const base = { id: a.id, kind: a.kind, ...(a.line ? { line: a.line } : {}), at: tashkentIso(a.requestedAt), by: a.requestedBy }
+  if (a.kind !== 'add_line') return base
+  const params = lineParams(a.params)
+  if (a.state !== null || !a.secret || !params) return null
+  return { ...base, product: params.product, transport: params.transport, secret: a.secret }
 }
 
 /** A press and its answer, for the panel — mirrored in `AiControlPage.tsx`. */
@@ -161,6 +187,8 @@ export interface AiControlDto {
   readonly tuningSet: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
   /** The newest presses and their answers (T144), newest first. */
   readonly actions: readonly ActionDto[]
+  /** «AI liniya qoʻshish» / «Olib tashlash» shown (T123): the owner's administrator account only. */
+  readonly canManageLines: boolean
 }
 
 /** The 5 s read of «Boshqaruv» — the agent's last report and nothing else. Mirrored in `AiControlPage.tsx`. */
@@ -258,7 +286,8 @@ function agentHours(hours: WorkHours): NonNullable<AgentConfigDto['hours']> {
  * that does keeps its own value: a pause only while it is ahead, the lines
  * only when any is off, the tuning only once saved, the presses only when open.
  */
-function agentConfig(config: StoredConfig, now: Date = new Date(), actions: readonly StoredAction[] = []): AgentConfigDto {
+function agentConfig(config: StoredConfig, now: Date = new Date(), open: readonly StoredAction[] = []): AgentConfigDto {
+  const actions = open.map(agentAction).filter((a): a is AgentActionDto => a !== null)
   const pause = config.pauseUntil !== null && new Date(config.pauseUntil).getTime() > now.getTime() ? config.pauseUntil : null
   return {
     version: config.version,
@@ -272,27 +301,26 @@ function agentConfig(config: StoredConfig, now: Date = new Date(), actions: read
     ...(pause ? { pauseUntil: tashkentIso(new Date(pause)) } : {}),
     ...(config.linesOff.length > 0 ? { linesOff: config.linesOff } : {}),
     ...(config.tuning ? { tuning: config.tuning } : {}),
-    ...(actions.length > 0
-      ? {
-          actions: actions.map((a) => ({
-            id: a.id,
-            kind: a.kind,
-            ...(a.line ? { line: a.line } : {}),
-            at: tashkentIso(a.requestedAt),
-            by: a.requestedBy,
-          })),
-        }
-      : {}),
+    ...(actions.length > 0 ? { actions } : {}),
     updatedAt: config.updatedAt.toISOString(),
     updatedBy: config.updatedBy,
   }
 }
 
 /** The AI lines the agent last reported (T144) — empty from an agent older than them. */
-function reportedLines(status: StoredStatus | null): { ext: string; pool: string; transport: string; state: string; registration: string }[] {
+function reportedLines(status: StoredStatus | null): NonNullable<AiStatusPush['aiLines']> {
   const parsed = status ? aiStatusSchema.safeParse(status.payload) : null
   return parsed?.success ? (parsed.data.aiLines ?? []) : []
 }
+
+/** The agent's last word on adding a line (T123) — absent from an agent older than the form. */
+function reportedLineAdd(status: StoredStatus | null): Pick<AiStatusPush, 'lineKey' | 'lineAdd'> {
+  const parsed = status ? aiStatusSchema.safeParse(status.payload) : null
+  return parsed?.success ? { lineKey: parsed.data.lineKey, lineAdd: parsed.data.lineAdd } : {}
+}
+
+/** A panel line the ATS refused or Asterisk never loaded — out of Asterisk, may be added again. */
+const LINE_DOWN = new Set(['bad_password', 'not_loaded'])
 
 /** The SIP words for a line on a call — closing its socket or re-registering would cut it. */
 const ON_A_CALL = new Set(['call', 'seller_talk'])
@@ -327,7 +355,10 @@ export class AiRegistratorControlService {
   async agentConfig(now: Date = new Date()): Promise<AgentConfigDto | null> {
     const config = await this.repository.config()
     if (!config) return null
-    const open = await this.repository.openActions(new Date(now.getTime() - ACTION_MAX_AGE_MS), MAX_ACTIONS)
+    const since = new Date(now.getTime() - ACTION_MAX_AGE_MS)
+    // a sealed password the agent will never read again is not kept (T123)
+    await this.repository.dropSecrets(since)
+    const open = await this.repository.openActions(since, MAX_ACTIONS)
     return agentConfig(config, now, open)
   }
 
@@ -347,7 +378,7 @@ export class AiRegistratorControlService {
     return { status: statusDto(await this.repository.status(), now), staleAfterSec: STATUS_STALE_MS / 1000 }
   }
 
-  async panel(now: Date): Promise<AiControlDto> {
+  async panel(now: Date, canManageLines = false): Promise<AiControlDto> {
     const [config, status, changes, roster, actions] = await Promise.all([
       this.repository.config(),
       this.repository.status(),
@@ -407,6 +438,7 @@ export class AiRegistratorControlService {
       pauseSet: who(pauseSet),
       tuningSet: who(tuningSet),
       actions: actions.map(actionDto),
+      canManageLines,
     }
   }
 
@@ -594,12 +626,45 @@ export class AiRegistratorControlService {
     }
     const lines = reportedLines(status)
     if (lines.length === 0) throw ApiError.validation('AI serveri liniyalar holatini hali yubormayapti — tugma u yangilangach ishlaydi.')
-    const kind: ActionKind = body.action.kind
-    const line = body.action.kind === 'reregister' ? body.action.line : null
+    const action = body.action
+    const kind: ActionKind = action.kind
+    const line = action.kind === 'tls_reset' ? null : action.line
+    const open = await this.repository.openActions(new Date(now.getTime() - ACTION_MAX_AGE_MS), MAX_ACTIONS)
 
-    if (line !== null) {
+    if (action.kind === 'add_line') {
+      // One line at a time, the agent's ATS guard first (29.10: one failure per IP in all).
+      const { lineKey, lineAdd } = reportedLineAdd(status)
+      if (lineKey === undefined || lineAdd === undefined) throw ApiError.validation('AI serveri liniya qoʻshishni hali bilmaydi — u yangilangach ishlaydi.')
+      if (lineKey === null) throw ApiError.validation('AI serverida parol kaliti yoʻq — liniya qoʻshib boʻlmaydi.')
+      if (lineAdd && !lineAdd.allowed) throw ApiError.validation(`Hozir qoʻshib boʻlmaydi: ${lineAdd.text ?? 'AI serveri ruxsat bermadi'}.`)
+      const busy = open.find((a) => a.kind === 'add_line')
+      if (busy) throw ApiError.validation(`${busy.line ?? 'Liniya'} hali qoʻshilmoqda — liniyalar bittadan qoʻshiladi, natijasini kuting.`)
+      if (NEVER_AI_LINES.includes(action.line)) throw ApiError.validation(`${action.line} — egasining MicroSIPi, AI liniyasi boʻlmaydi.`)
+      const it = lines.find((l) => l.ext === action.line)
+      if (it && !LINE_DOWN.has(it.stage ?? '')) throw ApiError.validation(`${action.line} allaqachon AI liniyasi.`)
+      if (current.sellers.includes(action.line) || current.parked.includes(action.line)) {
+        throw ApiError.validation(`${action.line} — sotuvchi raqami (ulash roʻyxatida), AI liniyasi boʻlmaydi.`)
+      }
+      return actionDto(
+        await this.repository.createAction({
+          kind,
+          line: action.line,
+          requestedAt: now,
+          by,
+          params: { product: action.product, transport: action.transport },
+          secret: action.secret,
+        }),
+      )
+    }
+
+    if (action.kind === 'remove_line') {
+      const it = lines.find((l) => l.ext === action.line)
+      if (!it) throw ApiError.validation(`${action.line} — AI liniyasi emas.`)
+      if (it.removable !== true) throw ApiError.validation(`${action.line} AI serverining oʻz liniyasi — paneldan olib tashlanmaydi.`)
+    } else if (line !== null) {
       const it = lines.find((l) => l.ext === line)
-      if (!it || !AI_OWN_LINES.includes(line)) throw ApiError.validation(`${line} — AI liniyasi emas.`)
+      // a line the agent reports is its own — a panel-added one too (T123)
+      if (!it) throw ApiError.validation(`${line} — AI liniyasi emas.`)
       if (it.registration === 'Registered') throw ApiError.validation(`${line} ATSda roʻyxatda (Registered) — qayta ulash kerak emas.`)
     } else {
       const tls = lines.filter((l) => l.transport === 'tls')
@@ -610,7 +675,6 @@ export class AiRegistratorControlService {
       if (busy.length > 0) throw ApiError.validation(`${busy.join(', ')} liniyasida qoʻngʻiroq bor — tugagach bosing.`)
     }
 
-    const open = await this.repository.openActions(new Date(now.getTime() - ACTION_MAX_AGE_MS), MAX_ACTIONS)
     const waiting = open.find((a) => a.kind === kind && a.line === line)
     if (waiting) {
       const what = line ? `${line} uchun «${ACTION_LABEL[kind]}»` : `«${ACTION_LABEL[kind]}»`

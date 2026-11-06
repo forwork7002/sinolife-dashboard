@@ -152,11 +152,32 @@ Per-screen traps worth knowing before you touch one:
   «Pauza: 21:30 gacha · 45 daq qoldi» + «Davom ettirish»; header «Pauza (HH:MM gacha)» / «Bugun dam olish kuni»);
   Du…Ya buttons under «Ish vaqti»; step 1 «AI liniyalari (SIP)» table (Liniya · Mahsulot · Ulanish · ATS holati ·
   Hozir · Yoqiq switch · «Qayta ulash»; «TLSʼni yangilash» asks in `AiConfirmDialog`, the last answer beside each
-  button; «Yangi liniya qoʻshish — hozircha AI serverida» — no SIP password in ISH, T123); step 5 «Qoʻshimcha
+  button; under it «AI liniya qoʻshish», T123 below); step 5 «Qoʻshimcha
   sozlamalar» (starts from what the agent runs, «jami N marta», the WHY_US claim warning); history merges saves
   and presses. Each shows saved vs applied (`ackOf`: refused first, then «AI serveri buni hali bilmaydi» for an
   agent that sends nothing, «qoʻllanmoqda…», «AI qoʻlladi ✓»). **Never press any of them on prod to test** —
   pause, a line off and a re-register hit real clients' calls (the owner presses them).
+  **«AI liniya qoʻshish» / «Olib tashlash»** (2026-11-06, T123, ai_registrator 372d513; the owner adds a MicroSIP
+  line from the panel): under the step 1 table — Ichki raqam · Parol · Mahsulot (Collagen/Zextra) · Ulanish
+  (UDP/TLS), «+ Qoʻshish» asks in `AiConfirmDialog` (one login, no retry, 15 daq after a refusal). The password is
+  sealed IN THE BROWSER (`aiLineAddLogic.sealLinePassword`: WebCrypto RSA-OAEP-256 of `{"line","password"}` under
+  the status' `lineKey{alg, spki, id}`) and the field is emptied at once; only the sealed text is POSTed —
+  `{ action: { kind: 'add_line', line, product: Kollagen|Zekstra, transport: udp|tls, secret } }`, `remove_line`
+  `{ line }`. **ISH never has the password**: `ai_registrator_action.secret` (migration 20261106160000, ADD COLUMN
+  `params` JSONB + `secret`) holds the sealed text, the agent's config carries it ONLY while the press is
+  unanswered (`agentAction`), the first answer and `dropSecrets` (asked >10 min ago) clear it; `actions()` /
+  `createAction` omit it, no DTO or log has it. **Administrator only** — `rbac.canManageAiLines` = named panel
+  account (`aiControl`) AND `users:manage` (ADMIN): umida runs the panel but gets 403 here and sees no form
+  (`AiControlDto.canManageLines`). Refused before saving: a silent agent, an agent older than the form (no
+  `lineKey`/`lineAdd`), `lineKey: null`, `lineAdd.allowed=false` (its text: busy — bittadan, cooldown, too_soon,
+  ats_down), an add_line still open (one at a time), 294, a line already the AI's (a refused/not loaded one may
+  be added again), a seller or parked number; remove only `aiLines[].removable`. Status adds (lenient):
+  `lineKey`, `lineAdd{allowed, code, text}`, `zextra{on, lines, sellers, maxCalls, waiting}`, `aiLines[]` +
+  `product, source, stage, waiting, note, hasPassword, removable, addedAt, addedBy`, `actions[].code`. The list
+  shows each panel line's step (ATSga ulanmoqda… / Qoʻshildi ✓ / Rad etildi — parol / Yuklanmadi / Olib
+  tashlanmoqda…), no «Qayta ulash» for one out of Asterisk; a Zextra line waits for Zextra sellers (`zextraSellers`
+  — not in ISH yet). **Never add a line on prod to test** — a wrong password is a failed login on the shared ATS
+  (29.10: one per IP in all); tests seal with a throwaway key only.
 - **AI registrator — the design canvas** (2026-11-02, the owner: «dashboardimiz dizayni shunga boʻladi … funksiyalarini
   hammasini ishlaydigan qilib ber»; artifact «AI registrator — jonli monitoring variantlari», Hisobot + Boshqaruv).
   **Hisobot** = «Hozir · jonli» (`AiNowPanel`: one `.ai-lane[data-phase]` per AI line — client · wire · AI · wire ·
@@ -168,7 +189,7 @@ Per-screen traps worth knowing before you touch one:
   (switch, «Oʻchirib qoʻyilganlar · N», no order and no ↑↓ — the agent picks by its own `limits.transferOrder`, shown
   as words) · 3 limits with the slot bar · 4 refer/bridge · history · a sticky save bar; under the status card
   «Toʻxtatish» / «Yoqish», «Ish vaqti» (its own save), the pause, SIP lines and step 5 since 2026-11-04 (above). **NOT DRAWN, the agent has no
-  such control** (ai_registrator ca9c52a): adding an AI line (T144: on the AI server; switching one off is drawn), seller order, the client's phone in a
+  such control** (ai_registrator ca9c52a): adding an AI line (drawn since T123, above), seller order, the client's phone in a
   lane, a region in a lane. The ca9c52a fields are ALL OPTIONAL, each falls back alone (`.catch`): status
   `live.lines[].started` (the lane timer), `live.events[]`, `sellers[].word/since` (the chip timer; «AI mijozi bilan»
   = busy and a `connected` to that ext within 90 s of `since`, else «oʻz qoʻngʻirogʻida»), `flags`,

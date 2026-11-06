@@ -33,6 +33,14 @@ export interface StoredAction {
   readonly state: string | null
   readonly text: string | null
   readonly answeredAt: Date | null
+  /** add_line (T123): `{ product, transport }`. */
+  readonly params?: unknown
+  /**
+   * add_line (T123): the password sealed with the agent's public key — only
+   * while the press waits for its first answer, and only `openActions` reads
+   * it (for the agent's config). Never the password: ISH never has that.
+   */
+  readonly secret?: string | null
 }
 
 /** The agent's answer to one press, as its status carries it. */
@@ -226,8 +234,9 @@ export class AiRegistratorControlRepository {
   /* ── One-off presses (T144) ─────────────────────────────────────────── */
 
   /** The newest presses, answered or not — the panel's last answers and its history. */
+  /** The newest presses, for the panel — never the sealed password. */
   async actions(limit: number): Promise<StoredAction[]> {
-    return this.prisma.aiRegistratorAction.findMany({ orderBy: { id: 'desc' }, take: limit })
+    return this.prisma.aiRegistratorAction.findMany({ orderBy: { id: 'desc' }, take: limit, omit: { secret: true } })
   }
 
   /**
@@ -242,9 +251,36 @@ export class AiRegistratorControlRepository {
     })
   }
 
-  async createAction(action: { readonly kind: string; readonly line: string | null; readonly requestedAt: Date; readonly by: { readonly label: string; readonly userId: string } }): Promise<StoredAction> {
+  async createAction(action: {
+    readonly kind: string
+    readonly line: string | null
+    readonly requestedAt: Date
+    readonly by: { readonly label: string; readonly userId: string }
+    readonly params?: { readonly product: string; readonly transport: string }
+    readonly secret?: string
+  }): Promise<StoredAction> {
     return this.prisma.aiRegistratorAction.create({
-      data: { kind: action.kind, line: action.line, requestedAt: action.requestedAt, requestedBy: action.by.label, requestedById: action.by.userId },
+      data: {
+        kind: action.kind,
+        line: action.line,
+        requestedAt: action.requestedAt,
+        requestedBy: action.by.label,
+        requestedById: action.by.userId,
+        ...(action.params ? { params: action.params } : {}),
+        ...(action.secret ? { secret: action.secret } : {}),
+      },
+      omit: { secret: true },
+    })
+  }
+
+  /**
+   * The sealed passwords no longer needed (T123): of a press answered, or
+   * asked before `before` — the agent never reads one that old.
+   */
+  async dropSecrets(before: Date): Promise<void> {
+    await this.prisma.aiRegistratorAction.updateMany({
+      where: { secret: { not: null }, OR: [{ requestedAt: { lt: before } }, { state: { not: null } }] },
+      data: { secret: null },
     })
   }
 
@@ -262,7 +298,8 @@ export class AiRegistratorControlRepository {
     for (const row of open) {
       const answer = answers.find((a) => a.id === row.id)
       if (!answer || (answer.state === row.state && answer.text === row.text)) continue
-      await this.prisma.aiRegistratorAction.update({ where: { id: row.id }, data: { state: answer.state, text: answer.text, answeredAt: answer.at } })
+      // The first answer clears the sealed password too (T123): the agent does each press once.
+      await this.prisma.aiRegistratorAction.update({ where: { id: row.id }, data: { state: answer.state, text: answer.text, answeredAt: answer.at, secret: null } })
     }
   }
 }

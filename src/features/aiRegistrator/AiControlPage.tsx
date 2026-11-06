@@ -84,6 +84,8 @@ interface AiControlDto {
   readonly tuningSet?: { readonly version: number; readonly savedAt: string; readonly savedBy: string } | null
   /** The newest presses and their answers (T144), newest first. */
   readonly actions?: readonly Press[]
+  /** «AI liniya qoʻshish» / «Olib tashlash» shown (T123): the administrator only. */
+  readonly canManageLines?: boolean
 }
 
 /* Mirrors `AiLiveDto` — the 5 s read, `?part=live`. */
@@ -252,14 +254,15 @@ export function AiControlPage() {
           <Step
             n={1}
             title="AI liniyalari (SIP)"
-            lead="Har liniyaning ATS holati, yoqish/oʻchirish va qayta ulash; pastda — hozir nima qilyapti, AIning oʻz xabaridan."
+            lead="Har liniyaning ATS holati, yoqish/oʻchirish, qayta ulash va yangi AI liniya qoʻshish; pastda — hozir nima qilyapti, AIning oʻz xabaridan."
           >
             <AiLinesControl
-              config={{ version: data.config!.version, linesOff: data.config!.linesOff ?? [] }}
+              config={{ version: data.config!.version, linesOff: data.config!.linesOff ?? [], sellers: [...data.config!.sellers, ...(data.config!.parked ?? [])] }}
               status={status}
               presses={presses}
               now={now}
               staleAfterSec={staleAfterSec}
+              canManageLines={data.canManageLines === true}
             />
             <AiNowPanel
               status={status}
